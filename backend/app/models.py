@@ -385,6 +385,20 @@ class DocumentTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class GovLog(Base):
+    """سجلّ معاملات المندوب الحكومية: ملاحظات وتجديدات على الإقامات/التراخيص."""
+    __tablename__ = "gov_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    entity_type: Mapped[str] = mapped_column(String(20))  # permit / license
+    entity_id: Mapped[int] = mapped_column(Integer, index=True)
+    action: Mapped[str] = mapped_column(String(20), default="note")  # note / renew
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class ConsumedToken(Base):
     """منع إعادة استخدام رموز QR وتذاكر التسجيل (anti-replay)."""
     __tablename__ = "consumed_tokens"

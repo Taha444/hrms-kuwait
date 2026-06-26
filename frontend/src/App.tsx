@@ -17,6 +17,7 @@ import Requests from "./pages/Requests";
 import RequestDetail from "./pages/RequestDetail";
 import Attendance from "./pages/Attendance";
 import AttendanceReview from "./pages/AttendanceReview";
+import Pro from "./pages/Pro";
 import Branches from "./pages/Branches";
 import Kiosk from "./pages/Kiosk";
 import Eos from "./pages/Eos";
@@ -73,6 +74,7 @@ function Sidebar({ open }: { open: boolean }) {
         {can("view_employee") && <Item to="/structure" icon="branches" label="هيكل الشركة" />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label="مراجعة الحضور" />}
+        {can("manage_permits") && <Item to="/pro" icon="doc" label="معاملات المندوب" />}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label="الصيغ والنماذج" />}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label="الرواتب" />}
@@ -186,6 +188,7 @@ export default function App() {
       <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
       <Route path="/attendance-review" element={<Protected><AttendanceReview /></Protected>} />
+      <Route path="/pro" element={<Protected><Pro /></Protected>} />
       <Route path="/branches" element={<Protected><Branches /></Protected>} />
       <Route path="/eos" element={<Protected><Eos /></Protected>} />
       <Route path="/templates" element={<Protected><Templates /></Protected>} />

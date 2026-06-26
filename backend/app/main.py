@@ -21,6 +21,7 @@ from .routers import (
     audit as audit_router,
     org,
     payroll as payroll_router,
+    pro,
     reports,
     requests as requests_router,
     tasks,
@@ -72,7 +73,7 @@ app.add_middleware(
 os.makedirs(settings.upload_dir, exist_ok=True)
 
 for r in (auth, companies, users, employees, org, attendance, kiosk, documents, tasks,
-          requests_router, templates, payroll_router, reports, audit_router, eos, dashboard):
+          requests_router, templates, payroll_router, reports, pro, audit_router, eos, dashboard):
     app.include_router(r.router, prefix="/api")
 
 
