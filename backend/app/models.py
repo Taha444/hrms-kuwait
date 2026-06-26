@@ -37,6 +37,7 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(200))
     name_en: Mapped[str | None] = mapped_column(String(200))
     commercial_reg: Mapped[str | None] = mapped_column(String(50))
+    file_number: Mapped[str | None] = mapped_column(String(50))  # رقم ملف الشركة (القوى العاملة)
     entity_type: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), default="active")  # active/inactive/archived
     # سياسات مكافأة نهاية الخدمة

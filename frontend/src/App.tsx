@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import EmployeeProfile from "./pages/EmployeeProfile";
 import CompanyStructure from "./pages/CompanyStructure";
+import Archive from "./pages/Archive";
 import Tasks from "./pages/Tasks";
 import Requests from "./pages/Requests";
 import RequestDetail from "./pages/RequestDetail";
@@ -72,6 +73,7 @@ function Sidebar({ open }: { open: boolean }) {
         <div className="nav-label">الموارد</div>
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
         {can("view_employee") && <Item to="/structure" icon="branches" label="هيكل الشركة" />}
+        {can("view_documents") && <Item to="/archive" icon="doc" label="الأرشيف" />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label="مراجعة الحضور" />}
         {can("manage_permits") && <Item to="/pro" icon="doc" label="معاملات المندوب" />}
@@ -186,6 +188,7 @@ export default function App() {
       <Route path="/employees" element={<Protected><Employees /></Protected>} />
       <Route path="/employees/:id" element={<Protected><EmployeeProfile /></Protected>} />
       <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
+      <Route path="/archive" element={<Protected><Archive /></Protected>} />
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
       <Route path="/attendance-review" element={<Protected><AttendanceReview /></Protected>} />
       <Route path="/pro" element={<Protected><Pro /></Protected>} />

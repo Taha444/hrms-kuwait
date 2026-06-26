@@ -50,13 +50,25 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     """يرفع نسخة جديدة: تصبح الأحدث (is_current=True) والقديمة تُحفظ في التاريخ."""
-    # تحديد الشركة للعزل
+    # تحديد الشركة للعزل حسب نوع الكيان
     if entity_type == "employee":
         emp = db.get(models.Employee, entity_id)
         if not emp:
             raise HTTPException(status_code=404, detail="الموظف غير موجود")
         assert_same_company(user, emp.company_id)
         company_id = emp.company_id
+    elif entity_type == "company":
+        company = db.get(models.Company, entity_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+        assert_same_company(user, company.id)
+        company_id = company.id
+    elif entity_type == "branch":
+        branch = db.get(models.Branch, entity_id)
+        if not branch:
+            raise HTTPException(status_code=404, detail="الفرع غير موجود")
+        assert_same_company(user, branch.company_id)
+        company_id = branch.company_id
     else:
         company_id = user.company_id
 
