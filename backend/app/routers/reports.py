@@ -21,10 +21,12 @@ def _file(content: bytes, name: str, mime: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-def _employee_rows(db: Session, cid: int | None):
+def _employee_rows(db: Session, cid: int | None, branch_id: int | None = None):
     q = select(models.Employee).where(models.Employee.status != "archived")
     if cid is not None:
         q = q.where(models.Employee.company_id == cid)
+    if branch_id:
+        q = q.where(models.Employee.branch_id == branch_id)
     emps = db.scalars(q.order_by(models.Employee.name)).all()
     headers = ["الاسم", "الرقم المدني", "الجنسية", "المسمى", "الراتب الأساسي",
                "تاريخ التعيين", "نوع العقد", "الحالة"]
@@ -35,11 +37,11 @@ def _employee_rows(db: Session, cid: int | None):
 
 
 @router.get("/employees")
-def export_employees(fmt: str = "xlsx", company_id: int | None = None,
+def export_employees(fmt: str = "xlsx", company_id: int | None = None, branch_id: int | None = None,
                      user: models.User = Depends(require_perm("export_reports")),
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
-    headers, rows = _employee_rows(db, cid)
+    headers, rows = _employee_rows(db, cid, branch_id)
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), "employees.csv", CSV_MIME)
     return _file(exports.to_xlsx("الموظفون", headers, rows), "employees.xlsx", XLSX_MIME)
@@ -67,6 +69,7 @@ def export_payroll(run_id: int, fmt: str = "xlsx",
 
 @router.get("/attendance")
 def export_attendance(month: str | None = None, fmt: str = "csv", company_id: int | None = None,
+                      branch_id: int | None = None,
                       user: models.User = Depends(require_perm("export_reports")),
                       db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
@@ -79,6 +82,8 @@ def export_attendance(month: str | None = None, fmt: str = "csv", company_id: in
         models.AttendanceRecord.check_in_at >= datetime(y, m, 1))
     if cid is not None:
         q = q.where(models.AttendanceRecord.company_id == cid)
+    if branch_id:
+        q = q.where(models.AttendanceRecord.branch_id == branch_id)
     recs = db.scalars(q.order_by(models.AttendanceRecord.check_in_at)).all()
     emp_names = {e.id: e.name for e in db.scalars(select(models.Employee)).all()}
     headers = ["الموظف", "الدخول", "الخروج", "الحالة", "دقائق العمل", "الإضافي"]

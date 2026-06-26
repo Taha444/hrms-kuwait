@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { downloadFile } from "../api";
+import { useEffect, useState } from "react";
+import api, { downloadFile } from "../api";
 import Icon from "../Icon";
 
 function thisMonth() {
@@ -9,7 +9,12 @@ function thisMonth() {
 
 export default function Reports() {
   const [month, setMonth] = useState(thisMonth());
+  const [branches, setBranches] = useState<any[]>([]);
+  const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState("");
+
+  useEffect(() => { api.get("/branches").then((r) => setBranches(r.data)).catch(() => {}); }, []);
+  const br = branch ? { branch_id: branch } : {};
 
   const dl = async (key: string, path: string, params: any, name: string) => {
     setBusy(key);
@@ -33,23 +38,27 @@ export default function Reports() {
           <h2 style={{ margin: "2px 0 0" }}>التقارير والتصدير</h2>
           <div className="sub">تصدير البيانات إلى Excel أو CSV بترميز يدعم العربية</div>
         </div>
+        <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ maxWidth: 200 }}>
+          <option value="">كل الفروع</option>
+          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
       </div>
 
-      <Card title="بيانات الموظفين" desc="قائمة كاملة بالموظفين في الشركة المختارة.">
-        <button disabled={busy === "emp_x"} onClick={() => dl("emp_x", "/reports/employees", { fmt: "xlsx" }, "employees.xlsx")}>
+      <Card title="بيانات الموظفين" desc="قائمة الموظفين (حسب الفرع المحدّد أو كل الفروع).">
+        <button disabled={busy === "emp_x"} onClick={() => dl("emp_x", "/reports/employees", { fmt: "xlsx", ...br }, "employees.xlsx")}>
           <Icon name="doc" size={15} /> Excel
         </button>
-        <button className="ghost" disabled={busy === "emp_c"} onClick={() => dl("emp_c", "/reports/employees", { fmt: "csv" }, "employees.csv")}>
+        <button className="ghost" disabled={busy === "emp_c"} onClick={() => dl("emp_c", "/reports/employees", { fmt: "csv", ...br }, "employees.csv")}>
           CSV
         </button>
       </Card>
 
-      <Card title="سجل الحضور الشهري" desc="كل سجلات الحضور للشهر المحدد.">
+      <Card title="سجل الحضور الشهري" desc="سجلات الحضور للشهر المحدد (حسب الفرع أو كل الفروع).">
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 160 }} />
-        <button disabled={busy === "att_x"} onClick={() => dl("att_x", "/reports/attendance", { month, fmt: "xlsx" }, "attendance.xlsx")}>
+        <button disabled={busy === "att_x"} onClick={() => dl("att_x", "/reports/attendance", { month, fmt: "xlsx", ...br }, "attendance.xlsx")}>
           <Icon name="doc" size={15} /> Excel
         </button>
-        <button className="ghost" disabled={busy === "att_c"} onClick={() => dl("att_c", "/reports/attendance", { month, fmt: "csv" }, "attendance.csv")}>
+        <button className="ghost" disabled={busy === "att_c"} onClick={() => dl("att_c", "/reports/attendance", { month, fmt: "csv", ...br }, "attendance.csv")}>
           CSV
         </button>
       </Card>

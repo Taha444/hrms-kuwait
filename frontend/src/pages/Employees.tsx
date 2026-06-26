@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -7,7 +7,10 @@ import { useI18n } from "../i18n";
 export default function Employees() {
   const { t } = useI18n();
   const { can } = useAuth();
+  const [params, setParams] = useSearchParams();
   const [emps, setEmps] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [branch, setBranch] = useState<string>(params.get("branch") || "");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -16,10 +19,18 @@ export default function Employees() {
   const [err, setErr] = useState("");
   const PAGE = 25;
 
-  const load = (p = page) => api.get("/employees", { params: { q: q || undefined, limit: PAGE, offset: p * PAGE } })
-    .then((r) => { setEmps(r.data); setTotal(Number(r.headers["x-total-count"] || r.data.length)); });
+  const load = (p = page, br = branch) => api.get("/employees", {
+    params: { q: q || undefined, branch_id: br || undefined, limit: PAGE, offset: p * PAGE },
+  }).then((r) => { setEmps(r.data); setTotal(Number(r.headers["x-total-count"] || r.data.length)); });
+
+  useEffect(() => { api.get("/branches").then((r) => setBranches(r.data)).catch(() => {}); }, []);
   useEffect(() => { load(0); setPage(0); }, []);
   const go = (p: number) => { setPage(p); load(p); };
+  const onBranch = (b: string) => {
+    setBranch(b); setPage(0);
+    if (b) setParams({ branch: b }); else setParams({});
+    load(0, b);
+  };
 
   const create = async () => {
     setErr("");
@@ -40,6 +51,10 @@ export default function Employees() {
         <input placeholder="بحث: الاسم / الرقم المدني / رقم الموظف / رقم الإقامة" value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && go(0)} style={{ maxWidth: 280 }} />
         <button className="ghost" onClick={() => go(0)}>بحث</button>
+        <select value={branch} onChange={(e) => onBranch(e.target.value)} style={{ maxWidth: 200 }}>
+          <option value="">كل الفروع</option>
+          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
       </div>
 
       {showNew && (

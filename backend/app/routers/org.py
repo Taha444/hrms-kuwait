@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """الهيكل التنظيمي: الفروع/المواقع، الورديات، التراخيص، مسؤولو الفروع، ورمز QR الحيّ."""
 import secrets
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -40,6 +41,77 @@ def create_branch(data: schemas.BranchIn, request: Request,
     db.commit()
     db.refresh(branch)
     return branch
+
+
+@router.get("/org/structure")
+def org_structure(company_id: int | None = None,
+                  user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """هيكل الشركة: الفروع وعدد موظفي كل فرع ومسؤوليه (Company → Branches)."""
+    cid = scope_company_id(user, company_id)
+    if cid is None:
+        raise HTTPException(status_code=400, detail="اختر شركة لعرض هيكلها")
+    company = db.get(models.Company, cid)
+    if not company:
+        raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+
+    def emp_count(*conds):
+        q = select(func.count()).select_from(models.Employee).where(
+            models.Employee.company_id == cid, models.Employee.status == "active")
+        for c in conds:
+            q = q.where(c)
+        return db.scalar(q) or 0
+
+    branches = db.scalars(select(models.Branch).where(models.Branch.company_id == cid)
+                          .order_by(models.Branch.name)).all()
+    sup_rows = db.scalars(select(models.BranchSupervisor).where(
+        models.BranchSupervisor.company_id == cid)).all()
+    user_names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
+    sup_by_branch: dict[int, list[str]] = {}
+    for s in sup_rows:
+        sup_by_branch.setdefault(s.branch_id, []).append(user_names.get(s.user_id, "—"))
+
+    out = [{
+        "id": b.id, "name": b.name, "address": b.address,
+        "geofence_radius_m": b.geofence_radius_m,
+        "employee_count": emp_count(models.Employee.branch_id == b.id),
+        "supervisors": sup_by_branch.get(b.id, []),
+    } for b in branches]
+
+    return {
+        "company": {"id": company.id, "name": company.name},
+        "branches": out,
+        "unassigned_employees": emp_count(models.Employee.branch_id.is_(None)),
+        "total_employees": emp_count(),
+    }
+
+
+@router.get("/branches/{branch_id}/stats")
+def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """إحصائيات فرع واحد: الموظفون، حضور اليوم، في إجازة، إقامات قرب الانتهاء."""
+    branch = db.get(models.Branch, branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    assert_same_company(user, branch.company_id)
+    today = date.today()
+    emp_ids = select(models.Employee.id).where(models.Employee.branch_id == branch_id,
+                                               models.Employee.status == "active")
+
+    employees = db.scalar(select(func.count()).select_from(emp_ids.subquery())) or 0
+    present_today = db.scalar(select(func.count(func.distinct(models.AttendanceRecord.employee_id)))
+                              .where(models.AttendanceRecord.branch_id == branch_id,
+                                     models.AttendanceRecord.check_in_at >= datetime(today.year, today.month, today.day))) or 0
+    on_leave = db.scalar(select(func.count()).select_from(models.Leave).where(
+        models.Leave.employee_id.in_(emp_ids), models.Leave.status == "approved",
+        models.Leave.start_date <= today, models.Leave.end_date >= today)) or 0
+    expiring_permits = db.scalar(select(func.count()).select_from(models.Permit).where(
+        models.Permit.employee_id.in_(emp_ids), models.Permit.status == "active",
+        models.Permit.expiry_date.isnot(None),
+        models.Permit.expiry_date <= today + timedelta(days=90))) or 0
+
+    return {"branch_id": branch_id, "branch_name": branch.name, "employees": employees,
+            "present_today": present_today, "on_leave": on_leave,
+            "expiring_permits": expiring_permits}
 
 
 @router.get("/branches/{branch_id}/qr")
