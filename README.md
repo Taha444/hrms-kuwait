@@ -1,5 +1,18 @@
 # نظام إدارة الموارد البشرية متعدد الشركات — دولة الكويت (HRMS / ERP)
 
+<!-- استبدل USERNAME باسم حسابك على GitHub بعد الرفع -->
+![CI](https://github.com/USERNAME/hrms-kuwait/actions/workflows/ci.yml/badge.svg)
+![Backend](https://img.shields.io/badge/backend-FastAPI-009688)
+![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TS%20%2B%20Vite-61dafb)
+![Tests](https://img.shields.io/badge/tests-45%20passing-success)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+> **English summary** — A multi-company HR/ERP web app (installable PWA) for Kuwait, built on a single
+> central server with strict **multi-tenant data isolation**. Features: hierarchical RBAC, a configurable
+> requests & approvals engine, QR + selfie attendance with a branch kiosk, end-of-service (EOS) per Kuwaiti
+> Labor Law 6/2010, payroll, reports/Excel export, document templates, audit trail, and a security-reviewed
+> codebase. Arabic-first (RTL). Stack: **FastAPI + SQLAlchemy 2.0 + Alembic** · **React + TypeScript + Vite**.
+
 نظام ويب متكامل (يُثبَّت كـ **PWA**) لإدارة الموارد البشرية لعدة شركات مستقلة على
 **سيرفر مركزي واحد وقاعدة بيانات واحدة** مع **عزل تام بين الشركات (Multi-Tenancy)**.
 مبني وفق قانون العمل الكويتي للقطاع الخاص رقم 6/2010.
