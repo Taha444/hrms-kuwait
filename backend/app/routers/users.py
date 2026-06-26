@@ -1,0 +1,180 @@
+# -*- coding: utf-8 -*-
+"""المستخدمون والصلاحيات: إنشاء، إسناد/نسخ صلاحيات، قوالب، صلاحيات مؤقتة."""
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..config import settings
+from ..database import get_db
+from ..deps import audit, get_user_perms, require_perm, scope_company_id
+from ..permissions import (
+    CROSS_COMPANY_ROLES,
+    PERMISSION_TEMPLATES,
+    PERMISSIONS,
+    ROLE_LEVEL,
+    ROLES,
+    can_manage_role,
+    effective_permissions,
+)
+from ..security import hash_password
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/catalog")
+def perm_catalog(user: models.User = Depends(require_perm("manage_users"))):
+    """كتالوج الصلاحيات والقوالب والأدوار لواجهة الإدارة."""
+    # المستخدم يدير فقط الأدوار الأدنى منه مستوى
+    if user.role == "super_admin":
+        assignable = ROLES
+    else:
+        assignable = [r for r in ROLES if can_manage_role(user.role, r)]
+    return {"permissions": PERMISSIONS, "templates": PERMISSION_TEMPLATES,
+            "roles": ROLES, "assignable_roles": assignable, "levels": ROLE_LEVEL}
+
+
+@router.get("", response_model=list[schemas.UserOut])
+def list_users(company_id: int | None = None,
+               user: models.User = Depends(require_perm("manage_users")),
+               db: Session = Depends(get_db)):
+    cid = scope_company_id(user, company_id)
+    q = select(models.User)
+    if cid is not None:
+        q = q.where(models.User.company_id == cid)
+    return list(db.scalars(q).all())
+
+
+@router.post("", response_model=schemas.UserOut, status_code=201)
+def create_user(data: schemas.UserIn, request: Request,
+                user: models.User = Depends(require_perm("manage_users")),
+                db: Session = Depends(get_db)):
+    if data.role not in ROLES:
+        raise HTTPException(status_code=400, detail="دور غير صالح")
+    # التسلسل الهرمي: لا تُنشئ دورًا أعلى من مستواك أو مساويًا له
+    if not can_manage_role(user.role, data.role):
+        raise HTTPException(status_code=403, detail="لا يمكنك إنشاء مستخدم بهذا الدور")
+    # الشركة: الإدارة العليا/المالك يختاران الشركة، والباقي مقيّد بشركته
+    if user.role in CROSS_COMPANY_ROLES:
+        company_id = data.company_id
+    else:
+        company_id = user.company_id
+    if db.scalar(select(models.User).where(models.User.civil_id == data.civil_id)):
+        raise HTTPException(status_code=409, detail="الرقم المدني مستخدم بالفعل")
+
+    pw = data.password or settings.default_user_password
+    new_user = models.User(
+        civil_id=data.civil_id, full_name=data.full_name, role=data.role,
+        company_id=company_id, email=data.email, phone=data.phone,
+        employee_id=data.employee_id, password_hash=hash_password(pw),
+        must_change_password=True,
+    )
+    db.add(new_user)
+    db.flush()
+    audit(db, user, "create_user", "user", new_user.id, request=request)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+
+@router.post("/{user_id}/toggle")
+def toggle_active(user_id: int, request: Request,
+                  user: models.User = Depends(require_perm("manage_users")),
+                  db: Session = Depends(get_db)):
+    target = _get_scoped_user(db, user, user_id)
+    target.is_active = not target.is_active
+    audit(db, user, "toggle_user", "user", target.id, request=request)
+    db.commit()
+    return {"ok": True, "is_active": target.is_active}
+
+
+@router.get("/{user_id}/permissions")
+def get_permissions(user_id: int, user: models.User = Depends(require_perm("manage_users")),
+                    db: Session = Depends(get_db)):
+    target = _get_scoped_user(db, user, user_id)
+    assigned = [{"perm_code": p.perm_code, "expires_at": p.expires_at}
+                for p in target.permissions]
+    return {
+        "role": target.role,
+        "assigned": assigned,
+        "effective": sorted(effective_permissions(target.role, get_user_perms(target, db))),
+    }
+
+
+@router.post("/{user_id}/permissions")
+def assign_permissions(user_id: int, data: schemas.PermissionAssignIn, request: Request,
+                       user: models.User = Depends(require_perm("manage_users")),
+                       db: Session = Depends(get_db)):
+    target = _get_scoped_user(db, user, user_id)
+    for code in data.perm_codes:
+        if code not in PERMISSIONS:
+            raise HTTPException(status_code=400, detail=f"صلاحية غير معروفة: {code}")
+        existing = next((p for p in target.permissions if p.perm_code == code), None)
+        if existing:
+            existing.expires_at = data.expires_at
+        else:
+            db.add(models.UserPermission(user_id=target.id, perm_code=code,
+                                         expires_at=data.expires_at))
+    audit(db, user, "assign_permissions", "user", target.id,
+          detail=",".join(data.perm_codes), request=request)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{user_id}/permissions/{perm_code}")
+def revoke_permission(user_id: int, perm_code: str, request: Request,
+                      user: models.User = Depends(require_perm("manage_users")),
+                      db: Session = Depends(get_db)):
+    target = _get_scoped_user(db, user, user_id)
+    perm = next((p for p in target.permissions if p.perm_code == perm_code), None)
+    if perm:
+        db.delete(perm)
+        audit(db, user, "revoke_permission", "user", target.id, detail=perm_code, request=request)
+        db.commit()
+    return {"ok": True}
+
+
+@router.post("/apply-template/{user_id}/{template_code}")
+def apply_template(user_id: int, template_code: str, request: Request,
+                   user: models.User = Depends(require_perm("manage_users")),
+                   db: Session = Depends(get_db)):
+    if template_code not in PERMISSION_TEMPLATES:
+        raise HTTPException(status_code=404, detail="القالب غير موجود")
+    target = _get_scoped_user(db, user, user_id)
+    existing = {p.perm_code for p in target.permissions}
+    for code in PERMISSION_TEMPLATES[template_code]["perms"]:
+        if code not in existing:
+            db.add(models.UserPermission(user_id=target.id, perm_code=code))
+    audit(db, user, "apply_template", "user", target.id, detail=template_code, request=request)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/copy-permissions")
+def copy_permissions(data: schemas.CopyPermsIn, request: Request,
+                     user: models.User = Depends(require_perm("manage_users")),
+                     db: Session = Depends(get_db)):
+    src = _get_scoped_user(db, user, data.from_user_id)
+    dst = _get_scoped_user(db, user, data.to_user_id)
+    existing = {p.perm_code for p in dst.permissions}
+    for p in src.permissions:
+        if p.perm_code not in existing:
+            db.add(models.UserPermission(user_id=dst.id, perm_code=p.perm_code,
+                                         expires_at=p.expires_at))
+    audit(db, user, "copy_permissions", "user", dst.id,
+          detail=f"from {src.id}", request=request)
+    db.commit()
+    return {"ok": True}
+
+
+def _get_scoped_user(db: Session, actor: models.User, user_id: int) -> models.User:
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    # العزل: غير الإدارة العليا/المالك مقيّد بشركته
+    if actor.role not in CROSS_COMPANY_ROLES and target.company_id != actor.company_id:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    # التسلسل الهرمي: لا تُدِر من هم في مستواك أو أعلى (إلا الإدارة العليا)
+    if actor.id != target.id and not can_manage_role(actor.role, target.role):
+        raise HTTPException(status_code=403, detail="لا يمكنك إدارة مستخدم بهذا المستوى")
+    return target

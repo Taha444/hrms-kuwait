@@ -1,0 +1,56 @@
+# ===== أسرار وبيئة (لا تُرفع أبدًا) =====
+.env
+*.env
+**/.env
+.env.*
+!.env.example
+!*.env.example
+.secret_key
+*.pem
+*.key
+
+# ===== قواعد البيانات المحلية =====
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+instance/
+backend/_*.db
+backend/hrms*.db
+
+# ===== الملفات المرفوعة (سيلفي/مستندات حسّاسة) =====
+uploads/
+backend/uploads/
+
+# ===== بيئة بايثون =====
+venv/
+.venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ===== الواجهة الأمامية =====
+node_modules/
+frontend/dist/
+frontend/dev-dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+
+# ===== أدوات ونظام =====
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json

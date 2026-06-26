@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f766e"/>
+  <text x="50%" y="54%" font-family="Tahoma, Arial" font-size="200" font-weight="bold"
+        fill="#ffffff" text-anchor="middle" dominant-baseline="middle">HR</text>
+  <circle cx="256" cy="408" r="26" fill="#5eead4"/>
+</svg>

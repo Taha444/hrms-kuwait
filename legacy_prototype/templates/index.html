@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام إدارة الموارد البشرية — الكويت</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇰🇼</text></svg>">
+</head>
+<body>
+
+  <!-- ===== شاشة تسجيل الدخول ===== -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-logo">🏢</div>
+      <h1>نظام الموارد البشرية</h1>
+      <p class="sub">إدارة متعددة الشركات — نسخة دولة الكويت</p>
+      <div id="login-error" class="error-msg hidden"></div>
+      <div class="field" style="margin-bottom:14px;">
+        <label for="login-username">اسم المستخدم</label>
+        <input type="text" id="login-username" autocomplete="username" placeholder="admin">
+      </div>
+      <div class="field" style="margin-bottom:20px;">
+        <label for="login-password">كلمة المرور</label>
+        <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn" id="login-btn" style="width:100%; justify-content:center;">تسجيل الدخول</button>
+      <p class="muted" style="font-size:11px; text-align:center; margin-top:18px;">
+        حسابات تجريبية: admin / manager1 / manager2 / hr1
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== التطبيق الرئيسي ===== -->
+  <div id="app" class="hidden">
+    <aside class="sidebar">
+      <div class="brand">🏢 <span>الموارد البشرية</span></div>
+      <nav id="nav"><!-- يُبنى ديناميكيًا حسب الصلاحيات --></nav>
+      <div style="padding:14px 20px; border-top:1px solid #1e293b; font-size:11px; color:#64748b;">
+        النسخة 1.0 — الكويت
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title" id="page-title">لوحة التحكم</div>
+        <div class="user-area">
+          <select id="company-select" class="company-select hidden"></select>
+          <div class="user-chip">
+            <div class="avatar" id="user-avatar">؟</div>
+            <div>
+              <div id="user-name" style="font-weight:600;">—</div>
+              <div class="muted" id="user-role" style="font-size:11px;">—</div>
+            </div>
+          </div>
+          <button class="btn ghost sm" id="logout-btn">خروج</button>
+        </div>
+      </header>
+
+      <main class="content" id="view"><!-- تُحقن الشاشات هنا --></main>
+    </div>
+  </div>
+
+  <!-- حاوية المودالات -->
+  <div id="modal-root"></div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

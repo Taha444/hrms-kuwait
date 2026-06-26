@@ -1,0 +1,46 @@
+# تشغيل النظام كاملًا بأمر واحد: docker compose up --build
+# الخدمات: قاعدة بيانات PostgreSQL + الواجهة الخلفية (FastAPI) + الواجهة الأمامية (nginx)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hrms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hrms_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-hrms}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hrms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-hrms}:${POSTGRES_PASSWORD:-hrms_secret}@db:5432/${POSTGRES_DB:-hrms}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      UPLOAD_DIR: /data/uploads
+      SCHEDULER_ENABLED: "true"
+    volumes:
+      - uploads:/data/uploads
+    expose:
+      - "8000"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  db_data:
+  uploads:

@@ -1,0 +1,19 @@
+services:
+  hrms:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      HRMS_DEBUG: "false"
+      HRMS_HOST: "0.0.0.0"
+      HRMS_SECRET_KEY: "${HRMS_SECRET_KEY:-change-me-in-production}"
+      HRMS_COOKIE_SECURE: "false"
+      HRMS_SCHEDULER_ENABLED: "false"
+    volumes:
+      - hrms_data:/app/instance
+      - hrms_uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  hrms_data:
+  hrms_uploads:

@@ -1,0 +1,156 @@
+import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import api from "../api";
+import { useAuth } from "../auth";
+
+export default function EmployeeProfile() {
+  const { id } = useParams();
+  const { can } = useAuth();
+  const [p, setP] = useState<any>(null);
+  const [docType, setDocType] = useState("passport");
+  const [suggested, setSuggested] = useState<any>(null);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [term, setTerm] = useState({ end_date: "", reason: "termination" });
+  const [settlement, setSettlement] = useState<any>(null);
+
+  const REASONS: Record<string, string> = {
+    termination: "فصل (غير تأديبي)", contract_expiry: "انتهاء العقد", resignation: "استقالة",
+    death: "وفاة", disability: "عجز", misconduct: "فصل تأديبي",
+  };
+
+  const terminate = async () => {
+    if (!term.end_date) return;
+    if (!confirm("تأكيد إنهاء خدمة الموظف؟")) return;
+    const r = await api.post(`/employees/${id}/terminate`, null, { params: term });
+    setSettlement(r.data.settlement); setMsg("تم إنهاء الخدمة"); load();
+  };
+
+  const load = () => api.get(`/employees/${id}/profile`).then((r) => setP(r.data));
+  useEffect(() => { load(); }, [id]);
+  if (!p) return <div>…</div>;
+  const e = p.employee;
+
+  const ocrPreview = async (file: File) => {
+    const fd = new FormData();
+    fd.append("document_type_code", docType);
+    fd.append("file", file);
+    const r = await api.post("/documents/ocr-preview", fd);
+    setSuggested(r.data.suggested);
+  };
+
+  const upload = async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("entity_type", "employee");
+    fd.append("entity_id", String(id));
+    fd.append("document_type_code", docType);
+    fd.append("file", file);
+    await api.post("/documents/upload", fd);
+    setMsg("تم رفع المستند (أصبح الأحدث)"); setSuggested(null);
+    if (fileRef.current) fileRef.current.value = "";
+    load();
+  };
+
+  const downloadLatest = (type: string) =>
+    window.open(`/api/documents/latest?entity_type=employee&entity_id=${id}&document_type_code=${type}`, "_blank");
+
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>{e.name} {e.status === "terminated" && <span className="pill cancelled">منتهي الخدمة</span>}</h2>
+      </div>
+      {msg && <div className="ok">{msg}</div>}
+      <div className="grid">
+        <div className="card"><b>المسمى:</b> {e.job_title}<br /><b>الجنسية:</b> {e.nationality}<br />
+          <b>الراتب:</b> {e.basic_salary} د.ك<br /><b>التعيين:</b> {e.hire_date}</div>
+        <div className="card"><b>نمط الحضور:</b> {e.attendance_mode}<br />
+          <b>نوع العقد:</b> {e.contract_type}<br /><b>رصيد الإجازات:</b> {e.annual_leave_balance}</div>
+      </div>
+
+      <div className="card">
+        <h3>الإقامات وأذونات العمل</h3>
+        <table><thead><tr><th>النوع</th><th>الرقم</th><th>الانتهاء</th><th>الحالة</th></tr></thead>
+          <tbody>{p.permits.map((x: any) => (
+            <tr key={x.id}><td>{x.kind}</td><td>{x.number}</td><td>{x.expiry_date}</td>
+              <td><span className="pill info">{x.status}</span></td></tr>
+          ))}{!p.permits.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
+      </div>
+
+      <div className="card">
+        <h3>المستندات (أحدث نسخة)</h3>
+        <table><thead><tr><th>النوع</th><th>العنوان</th><th>النسخة</th><th>الانتهاء</th><th></th></tr></thead>
+          <tbody>{p.documents.map((d: any) => (
+            <tr key={d.id}><td>{d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date}</td>
+              <td><button className="ghost" onClick={() => downloadLatest(d.type)}>تنزيل الأحدث</button></td></tr>
+          ))}{!p.documents.length && <tr><td colSpan={5} className="muted">لا يوجد</td></tr>}</tbody></table>
+
+        {can("upload_documents") && (
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <h4>رفع مستند جديد (مع قراءة OCR مقترحة)</h4>
+            <div className="row">
+              <select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ width: 200 }}>
+                <option value="passport">جواز سفر (MRZ)</option>
+                <option value="civil_id">بطاقة مدنية (باركود)</option>
+                <option value="residency">إقامة</option>
+                <option value="contract">عقد</option>
+              </select>
+              <input type="file" ref={fileRef}
+                onChange={(e) => e.target.files && ocrPreview(e.target.files[0])} />
+              <button onClick={upload}>رفع وحفظ</button>
+            </div>
+            {suggested && (
+              <div className="card" style={{ background: "#f8fafc", marginTop: 10 }}>
+                <b>بيانات مقترحة من OCR (راجعها قبل الحفظ):</b>
+                <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(suggested, null, 2)}</pre>
+              </div>
+            )}
+            {msg && <div className="ok">{msg}</div>}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>آخر سجلات الحضور</h3>
+        <table><thead><tr><th>الدخول</th><th>الخروج</th><th>الحالة</th><th>سيلفي</th></tr></thead>
+          <tbody>{p.attendance.map((a: any) => (
+            <tr key={a.id}><td>{a.check_in_at && new Date(a.check_in_at).toLocaleString("ar")}</td>
+              <td>{a.check_out_at && new Date(a.check_out_at).toLocaleString("ar")}</td>
+              <td><span className={`pill ${a.status === "late" ? "warning" : "success"}`}>{a.status}</span></td>
+              <td>{a.selfie_in ? "✓" : "—"}</td></tr>
+          ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
+      </div>
+
+      {can("terminate_employee") && e.status !== "terminated" && (
+        <div className="card" style={{ borderTop: "3px solid var(--danger)" }}>
+          <h3>إنهاء الخدمة وحساب المكافأة</h3>
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}><label>تاريخ انتهاء الخدمة</label>
+              <input type="date" value={term.end_date} onChange={(ev) => setTerm({ ...term, end_date: ev.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label>السبب</label>
+              <select value={term.reason} onChange={(ev) => setTerm({ ...term, reason: ev.target.value })}>
+                {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select></div>
+            <div className="field" style={{ alignSelf: "flex-end" }}>
+              <button className="danger" onClick={terminate}>إنهاء الخدمة</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {settlement && (
+        <div className="card">
+          <h3>مكافأة نهاية الخدمة (تقديرية)</h3>
+          <div className="grid stats">
+            <div className="stat accent"><div className="num">{settlement.total_settlement}</div><div className="lbl">إجمالي التسوية (د.ك)</div></div>
+            <div className="stat"><div className="num">{settlement.indemnity}</div><div className="lbl">المكافأة</div></div>
+            <div className="stat"><div className="num">{settlement.leave_payout}</div><div className="lbl">بدل الإجازات</div></div>
+          </div>
+          <p className="muted">{settlement.service?.text} · {settlement.factor_note}</p>
+          <p className="muted">{settlement.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
