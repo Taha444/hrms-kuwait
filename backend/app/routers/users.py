@@ -9,6 +9,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import audit, get_user_perms, require_perm, scope_company_id
 from ..permissions import (
+    ACTIONS_AR,
     CROSS_COMPANY_ROLES,
     PERMISSION_TEMPLATES,
     PERMISSIONS,
@@ -16,6 +17,8 @@ from ..permissions import (
     ROLES,
     can_manage_role,
     effective_permissions,
+    has_page_action,
+    permission_matrix_catalog,
 )
 from ..security import hash_password
 
@@ -146,6 +149,62 @@ def apply_template(user_id: int, template_code: str, request: Request,
         if code not in existing:
             db.add(models.UserPermission(user_id=target.id, perm_code=code))
     audit(db, user, "apply_template", "user", target.id, detail=template_code, request=request)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/permission-matrix")
+def matrix_catalog(user: models.User = Depends(require_perm("manage_users"))):
+    """قائمة الصفحات والأفعال لبناء مصفوفة الأذونات."""
+    return {"pages": permission_matrix_catalog(), "actions_ar": ACTIONS_AR}
+
+
+@router.get("/{user_id}/matrix")
+def get_matrix(user_id: int, user: models.User = Depends(require_perm("manage_users")),
+               db: Session = Depends(get_db)):
+    """المصفوفة الفعّالة للمستخدم (صفحة×فعل) + الصفحات المُدارة صراحةً."""
+    target = _get_scoped_user(db, user, user_id)
+    assigned = get_user_perms(target, db)
+    catalog = permission_matrix_catalog()
+    grid: dict[str, dict[str, bool]] = {}
+    custom: list[str] = []
+    for page in catalog:
+        pc = page["code"]
+        if any(c.startswith(pc + ".") for c in assigned):
+            custom.append(pc)
+        grid[pc] = {a: has_page_action(target.role, assigned, pc, a) for a in page["actions"]}
+    return {"role": target.role, "matrix": grid, "custom_pages": custom}
+
+
+@router.post("/{user_id}/matrix")
+def set_matrix(user_id: int, data: schemas.MatrixIn, request: Request,
+               user: models.User = Depends(require_perm("manage_users")),
+               db: Session = Depends(get_db)):
+    """يضبط مصفوفة دقيقة للمستخدم. كل صفحة مذكورة تصبح مُدارة صراحةً (تتجاوز الدور)."""
+    target = _get_scoped_user(db, user, user_id)
+    valid_pages = {p["code"]: set(p["actions"]) for p in permission_matrix_catalog()}
+    # احذف كل المنح الدقيقة الحالية ثم اكتب الجديدة (لقطة كاملة)
+    for p in [x for x in target.permissions if "." in x.perm_code]:
+        db.delete(p)
+    for page, actions in data.grants.items():
+        if page not in valid_pages:
+            continue
+        db.add(models.UserPermission(user_id=target.id, perm_code=f"{page}._"))  # علامة "مُدارة"
+        for a in actions:
+            if a in valid_pages[page]:
+                db.add(models.UserPermission(user_id=target.id, perm_code=f"{page}.{a}"))
+    audit(db, user, "set_permission_matrix", "user", target.id, request=request)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{user_id}/matrix/reset")
+def reset_matrix(user_id: int, user: models.User = Depends(require_perm("manage_users")),
+                 db: Session = Depends(get_db)):
+    """يعيد المستخدم إلى صلاحيات دوره الافتراضية (حذف كل المنح الدقيقة)."""
+    target = _get_scoped_user(db, user, user_id)
+    for p in [x for x in target.permissions if "." in x.perm_code]:
+        db.delete(p)
     db.commit()
     return {"ok": True}
 

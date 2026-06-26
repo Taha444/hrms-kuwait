@@ -94,6 +94,11 @@ class CopyPermsIn(BaseModel):
     to_user_id: int
 
 
+class MatrixIn(BaseModel):
+    # {صفحة: [أفعال مسموحة]} — كل صفحة مذكورة تصبح مُدارة صراحةً
+    grants: dict[str, list[str]]
+
+
 # ----------------------------- الموظفون -----------------------------
 
 class EmployeeIn(BaseModel):

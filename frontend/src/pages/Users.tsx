@@ -9,6 +9,8 @@ export default function Users() {
   const [form, setForm] = useState<any>({ civil_id: "", full_name: "", role: "employee" });
   const [sel, setSel] = useState<any>(null);
   const [perms, setPerms] = useState<any>(null);
+  const [mxCatalog, setMxCatalog] = useState<any>({ pages: [], actions_ar: {} });
+  const [matrix, setMatrix] = useState<any>(null); // {matrix, custom_pages}
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -16,7 +18,25 @@ export default function Users() {
   useEffect(() => {
     load();
     api.get("/users/catalog").then((r) => setCatalog(r.data));
+    api.get("/users/permission-matrix").then((r) => setMxCatalog(r.data)).catch(() => {});
   }, []);
+
+  const loadMatrix = (id: number) => api.get(`/users/${id}/matrix`).then((r) => setMatrix(r.data));
+  const toggleCell = (page: string, action: string) => {
+    setMatrix((m: any) => ({ ...m, matrix: { ...m.matrix, [page]: { ...m.matrix[page], [action]: !m.matrix[page][action] } } }));
+  };
+  const saveMatrix = async () => {
+    const grants: Record<string, string[]> = {};
+    for (const p of mxCatalog.pages) {
+      grants[p.code] = p.actions.filter((a: string) => matrix.matrix[p.code]?.[a]);
+    }
+    await api.post(`/users/${sel.id}/matrix`, { grants });
+    setMsg("تم حفظ مصفوفة الأذونات"); loadMatrix(sel.id);
+  };
+  const resetMatrix = async () => {
+    await api.post(`/users/${sel.id}/matrix/reset`);
+    setMsg("تمت إعادة الأذونات لصلاحيات الدور"); loadMatrix(sel.id);
+  };
 
   const create = async () => {
     setErr("");
@@ -32,6 +52,7 @@ export default function Users() {
     setSel(u);
     const r = await api.get(`/users/${u.id}/permissions`);
     setPerms(r.data);
+    loadMatrix(u.id);
   };
   const togglePerm = async (code: string, has: boolean) => {
     if (has) await api.delete(`/users/${sel.id}/permissions/${code}`);
@@ -85,9 +106,51 @@ export default function Users() {
         </table>
       </div>
 
+      {sel && matrix && (
+        <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0 }}>مصفوفة الأذونات الدقيقة: {sel.full_name}</h3>
+            <div className="row">
+              <button onClick={saveMatrix}>حفظ المصفوفة</button>
+              <button className="ghost" onClick={resetMatrix}>إعادة لصلاحيات الدور</button>
+            </div>
+          </div>
+          <p className="muted">حدّد لكل صفحة الأفعال المسموحة. الصفحة التي تُعدّلها تتجاوز صلاحيات الدور لهذا المستخدم.</p>
+          <div className="att-wrap">
+            <table className="att-matrix">
+              <thead>
+                <tr>
+                  <th className="emp">الصفحة</th>
+                  {["read", "add", "edit", "delete", "print", "export", "approve"].map((a) => (
+                    <th key={a} className="day" style={{ minWidth: 64 }}>{mxCatalog.actions_ar[a] || a}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mxCatalog.pages.map((p: any) => (
+                  <tr key={p.code}>
+                    <td className="emp">{p.label}
+                      {matrix.custom_pages.includes(p.code) && <span className="pill gold" style={{ marginInlineStart: 6 }}>مخصّص</span>}
+                    </td>
+                    {["read", "add", "edit", "delete", "print", "export", "approve"].map((a) => (
+                      <td key={a} className="cell">
+                        {p.actions.includes(a) ? (
+                          <input type="checkbox" checked={!!matrix.matrix[p.code]?.[a]}
+                            onChange={() => toggleCell(p.code, a)} style={{ width: "auto" }} />
+                        ) : <span className="muted">—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {sel && perms && (
         <div className="card">
-          <h3>صلاحيات: {sel.full_name} <span className="muted">({perms.role})</span></h3>
+          <h3>الصلاحيات التفصيلية (متقدّم): {sel.full_name} <span className="muted">({roleAr(perms.role)})</span></h3>
           <div className="row" style={{ marginBottom: 10 }}>
             <span className="muted">تطبيق قالب:</span>
             {Object.entries(catalog.templates).map(([k, v]: any) => (

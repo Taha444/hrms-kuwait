@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .database import get_db
-from .permissions import effective_permissions, has_permission
+from .permissions import check_legacy, effective_permissions, has_permission
 from .security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -71,7 +71,8 @@ def require_perm(perm: str):
         db: Session = Depends(get_db),
     ) -> models.User:
         assigned = get_user_perms(user, db)
-        if not has_permission(user.role, assigned, perm):
+        # يمرّ عبر المصفوفة الدقيقة إن كانت الصلاحية مرتبطة بصفحة/فعل
+        if not check_legacy(user.role, assigned, perm):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"ليس لديك صلاحية: {perm}",

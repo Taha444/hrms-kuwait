@@ -147,3 +147,78 @@ def has_permission(role: str, assigned: set[str], perm: str) -> bool:
     if role == "super_admin":
         return True
     return perm in effective_permissions(role, assigned)
+
+
+# ===========================================================================
+# نظام الأذونات الدقيق: مصفوفة (صفحة × فعل) لكل مستخدم — متوافق خلفيًا.
+# من ليس له منح دقيقة لصفحة معيّنة يبقى على صلاحيات دوره الافتراضية.
+# ===========================================================================
+ACTIONS_AR = {
+    "read": "قراءة", "add": "إضافة", "edit": "تعديل", "delete": "حذف",
+    "print": "طباعة", "export": "تصدير", "approve": "اعتماد",
+}
+
+# ربط الصلاحية القديمة بـ (الصفحة، الفعل) — فقط ما نريد التحكم الدقيق فيه
+LEGACY_TO_PA: dict[str, tuple[str, str]] = {
+    "view_employee": ("employees", "read"),
+    "create_employee": ("employees", "add"),
+    "edit_employee": ("employees", "edit"),
+    "delete_employee": ("employees", "delete"),
+    "view_reports": ("reports", "read"),
+    "export_reports": ("reports", "export"),
+    "approve_request": ("requests", "approve"),
+    "submit_request": ("requests", "add"),
+    "view_documents": ("documents", "read"),
+    "upload_documents": ("documents", "add"),
+    "view_attendance": ("attendance", "read"),
+    "record_attendance": ("attendance", "add"),
+    "manage_permits": ("permits", "edit"),
+    "manage_licenses": ("licenses", "edit"),
+    "view_payroll": ("payroll", "read"),
+    "run_payroll": ("payroll", "add"),
+    "manage_templates": ("templates", "edit"),
+    "manage_users": ("users", "edit"),
+    "view_audit": ("audit", "read"),
+    "manage_branches": ("branches", "edit"),
+    "calculate_eos": ("eos", "read"),
+}
+PA_TO_LEGACY: dict[tuple[str, str], str] = {v: k for k, v in LEGACY_TO_PA.items()}
+
+PAGE_LABELS = {
+    "employees": "الموظفون", "reports": "التقارير", "requests": "الطلبات",
+    "documents": "المستندات", "attendance": "الحضور", "permits": "الإقامات",
+    "licenses": "التراخيص", "payroll": "الرواتب", "templates": "الصيغ",
+    "users": "المستخدمون", "audit": "سجل التدقيق", "branches": "الفروع", "eos": "نهاية الخدمة",
+}
+
+
+def permission_matrix_catalog() -> list[dict]:
+    """قائمة الصفحات وأفعالها المتاحة (لبناء واجهة المصفوفة)."""
+    pages: dict[str, set[str]] = {}
+    for (page, action) in PA_TO_LEGACY:
+        pages.setdefault(page, set()).add(action)
+    order = ["read", "add", "edit", "delete", "print", "export", "approve"]
+    return [{"code": p, "label": PAGE_LABELS.get(p, p),
+             "actions": [a for a in order if a in acts]}
+            for p, acts in sorted(pages.items())]
+
+
+def has_page_action(role: str, assigned: set[str], page: str, action: str) -> bool:
+    """يتحقق من صلاحية (صفحة، فعل): المنح الدقيقة تتقدّم، وإلا دور المستخدم."""
+    if role == "super_admin":
+        return True
+    page_grants = {c.split(".", 1)[1] for c in assigned if c.startswith(page + ".")}
+    if page_grants:  # للمستخدم مصفوفة مخصّصة لهذه الصفحة → تتحكّم وحدها
+        return action in page_grants
+    legacy = PA_TO_LEGACY.get((page, action))
+    if not legacy:
+        return False
+    return legacy in ROLE_DEFAULT_PERMS.get(role, set()) or legacy in assigned
+
+
+def check_legacy(role: str, assigned: set[str], perm: str) -> bool:
+    """نقطة التحقق الموحّدة: تحوّل الصلاحية القديمة لمصفوفة دقيقة إن أمكن."""
+    pa = LEGACY_TO_PA.get(perm)
+    if pa:
+        return has_page_action(role, assigned, pa[0], pa[1])
+    return has_permission(role, assigned, perm)
