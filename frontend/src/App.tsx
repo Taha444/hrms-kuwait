@@ -63,33 +63,33 @@ function Sidebar({ open }: { open: boolean }) {
       </div>
 
       <div className="nav-group">
-        <div className="nav-label">الرئيسية</div>
+        <div className="nav-label">{t("main_section")}</div>
         <Item to="/" icon="dashboard" label={t("dashboard")} />
         <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
         <Item to="/requests" icon="requests" label={t("requests")} />
       </div>
 
       <div className="nav-group">
-        <div className="nav-label">الموارد</div>
+        <div className="nav-label">{t("resources_section")}</div>
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
-        {can("view_employee") && <Item to="/structure" icon="branches" label="هيكل الشركة" />}
-        {can("view_documents") && <Item to="/archive" icon="doc" label="الأرشيف" />}
+        {can("view_employee") && <Item to="/structure" icon="branches" label={t("structure")} />}
+        {can("view_documents") && <Item to="/archive" icon="doc" label={t("archive")} />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
-        {canReview && <Item to="/attendance-review" icon="attendance" label="مراجعة الحضور" />}
-        {can("manage_permits") && <Item to="/pro" icon="doc" label="معاملات المندوب" />}
+        {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
+        {can("manage_permits") && <Item to="/pro" icon="doc" label={t("pro")} />}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
-        {can("manage_templates") && <Item to="/templates" icon="doc" label="الصيغ والنماذج" />}
-        {can("view_payroll") && <Item to="/payroll" icon="eos" label="الرواتب" />}
+        {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} />}
+        {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
         {can("calculate_eos") && <Item to="/eos" icon="eos" label={t("eos")} />}
-        {can("export_reports") && <Item to="/reports" icon="doc" label="التقارير" />}
+        {can("export_reports") && <Item to="/reports" icon="doc" label={t("reports")} />}
       </div>
 
       {(user?.role === "super_admin" || can("manage_users") || can("view_audit")) && (
         <div className="nav-group">
-          <div className="nav-label">الإدارة</div>
+          <div className="nav-label">{t("admin_section")}</div>
           {user?.role === "super_admin" && <Item to="/companies" icon="companies" label={t("companies")} />}
           {can("manage_users") && <Item to="/users" icon="users" label={t("users")} />}
-          {can("view_audit") && <Item to="/audit" icon="lock" label="سجل التدقيق" />}
+          {can("view_audit") && <Item to="/audit" icon="lock" label={t("audit")} />}
         </div>
       )}
 

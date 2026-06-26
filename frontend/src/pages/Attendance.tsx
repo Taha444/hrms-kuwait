@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import api from "../api";
+import { attAr } from "../labels";
 
 // تدفّق من خطوتين: (1) مسح الـ QR بالكاميرا الخلفية → تحقّق ← تذكرة،
 // (2) فتح كاميرا السيلفي الأمامية ← التقاط ← تسجيل حضور/انصراف.
@@ -175,7 +176,7 @@ export default function Attendance() {
           <tbody>{records.map((r) => (
             <tr key={r.id}><td>{r.check_in_at && new Date(r.check_in_at).toLocaleString("ar")}</td>
               <td>{r.check_out_at ? new Date(r.check_out_at).toLocaleString("ar") : "—"}</td>
-              <td><span className={`pill ${r.status === "late" ? "warning" : "success"}`}>{r.status}</span></td>
+              <td><span className={`pill ${r.status === "late" ? "warning" : "success"}`}>{attAr(r.status)}</span></td>
               <td>{r.worked_minutes}</td><td>{r.overtime_minutes}</td></tr>
           ))}{!records.length && <tr><td colSpan={5} className="muted">لا يوجد</td></tr>}</tbody></table>
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../auth";
+import { attAr, statusAr } from "../labels";
 
 export default function EmployeeProfile() {
   const { id } = useParams();
@@ -81,7 +82,7 @@ export default function EmployeeProfile() {
         <table><thead><tr><th>النوع</th><th>الرقم</th><th>الانتهاء</th><th>الحالة</th></tr></thead>
           <tbody>{p.permits.map((x: any) => (
             <tr key={x.id}><td>{x.kind}</td><td>{x.number}</td><td>{x.expiry_date}</td>
-              <td><span className="pill info">{x.status}</span></td></tr>
+              <td><span className="pill info">{statusAr(x.status)}</span></td></tr>
           ))}{!p.permits.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
       </div>
 
@@ -124,7 +125,7 @@ export default function EmployeeProfile() {
           <tbody>{p.attendance.map((a: any) => (
             <tr key={a.id}><td>{a.check_in_at && new Date(a.check_in_at).toLocaleString("ar")}</td>
               <td>{a.check_out_at && new Date(a.check_out_at).toLocaleString("ar")}</td>
-              <td><span className={`pill ${a.status === "late" ? "warning" : "success"}`}>{a.status}</span></td>
+              <td><span className={`pill ${a.status === "late" ? "warning" : "success"}`}>{attAr(a.status)}</span></td>
               <td>{a.selfie_in ? "✓" : "—"}</td></tr>
           ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
       </div>

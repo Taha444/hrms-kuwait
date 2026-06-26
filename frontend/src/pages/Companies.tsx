@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../api";
+import { statusAr } from "../labels";
 
 export default function Companies() {
   const [list, setList] = useState<any[]>([]);
@@ -45,7 +46,7 @@ export default function Companies() {
           <thead><tr><th>الاسم</th><th>السجل</th><th>مقسوم EOS</th><th>الحالة</th><th></th></tr></thead>
           <tbody>{list.map((c) => (
             <tr key={c.id}><td>{c.name}</td><td>{c.commercial_reg}</td><td>{c.eos_day_divisor}</td>
-              <td><span className="pill info">{c.status}</span></td>
+              <td><span className="pill info">{statusAr(c.status)}</span></td>
               <td className="row">
                 <button className="ghost" onClick={() => setStatus(c.id, c.status === "active" ? "inactive" : "active")}>
                   {c.status === "active" ? "تعطيل" : "تفعيل"}</button>

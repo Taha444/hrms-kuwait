@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
+import { taskAr, severityAr } from "../labels";
 
 export default function Tasks() {
   const { t } = useI18n();
@@ -43,10 +44,10 @@ export default function Tasks() {
           <tbody>
             {tasks.map((x) => (
               <tr key={x.id}>
-                <td><span className="pill info">{x.type}</span></td>
+                <td><span className="pill info">{taskAr(x.type)}</span></td>
                 <td>{x.title}</td>
                 <td className="muted">{x.detail}</td>
-                <td><span className={`pill ${x.severity}`}>{x.severity}</span></td>
+                <td><span className={`pill ${x.severity}`}>{severityAr(x.severity)}</span></td>
                 <td>
                   {status === "open" && (
                     <div className="row">
