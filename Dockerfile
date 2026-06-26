@@ -25,5 +25,5 @@ COPY backend/ ./backend/
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
 WORKDIR /app/backend
-# تعبئة بيانات تجريبية ثم تشغيل الخادم على منفذ المنصّة (افتراضي 8000)
-CMD ["sh", "-c", "python -m app.seed; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# إقلاع آمن (يُعبّئ مرة واحدة إن كانت القاعدة فارغة) ثم تشغيل الخادم على منفذ المنصّة
+CMD ["sh", "-c", "python -m app.bootstrap; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
