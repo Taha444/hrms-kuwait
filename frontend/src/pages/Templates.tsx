@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api";
+import { useAuth } from "../auth";
 import Icon from "../Icon";
 
 // وحدة الصيغ والنماذج: تسجيل صيغة بمتغيّرات {{...}}، تعبئتها تلقائيًا ببيانات الموظف، وطباعتها.
@@ -10,6 +11,8 @@ const NEW_TEMPLATE = `<h2>عنوان الصيغة</h2>
 <br><br><p>التوقيع: ............................</p>`;
 
 export default function Templates() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "super_admin";
   const [templates, setTemplates] = useState<any[]>([]);
   const [placeholders, setPlaceholders] = useState<Record<string, string>>({});
   const [employees, setEmployees] = useState<any[]>([]);
@@ -77,11 +80,13 @@ export default function Templates() {
         <div>
           <div className="eyebrow">المستندات</div>
           <h2 style={{ margin: "2px 0 0" }}>الصيغ والنماذج</h2>
-          <div className="sub">سجّل صيغة بمتغيّرات تلقائية، ثم اختر الموظف لتُعبّأ وتُطبع</div>
+          <div className="sub">اختر صيغة ثم الموظف لتُعبّأ تلقائيًا وتُطبع{isAdmin ? " · أو أنشئ صيغة جديدة" : ""}</div>
         </div>
-        <button onClick={() => setEditing({ name: "", category: "عام", body_html: NEW_TEMPLATE })}>
-          + صيغة جديدة
-        </button>
+        {isAdmin && (
+          <button onClick={() => setEditing({ name: "", category: "عام", body_html: NEW_TEMPLATE })}>
+            + صيغة جديدة
+          </button>
+        )}
       </div>
 
       {msg && <div className="ok">{msg}</div>}
@@ -162,8 +167,8 @@ export default function Templates() {
                 <td>{t.is_global ? <span className="pill gold">عامة</span> : <span className="pill info">الشركة</span>}</td>
                 <td className="row">
                   <button className="sm" onClick={() => openFill(t)}>تعبئة وطباعة</button>
-                  <button className="ghost sm" onClick={() => api.get(`/templates/${t.id}`).then((r) => setEditing(r.data))}>تعديل</button>
-                  <button className="ghost sm" onClick={() => remove(t.id)}>حذف</button>
+                  {isAdmin && <button className="ghost sm" onClick={() => api.get(`/templates/${t.id}`).then((r) => setEditing(r.data))}>تعديل</button>}
+                  {isAdmin && <button className="ghost sm" onClick={() => remove(t.id)}>حذف</button>}
                 </td>
               </tr>
             ))}

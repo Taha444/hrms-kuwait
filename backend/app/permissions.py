@@ -91,8 +91,17 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                       "calculate_eos", "manage_request_types", "view_audit"},
     "company_manager": _COMPANY_ALL,
     "branch_supervisor": set(PERMISSION_TEMPLATES["branch_supervisor"]["perms"]),
-    "hr": set(PERMISSION_TEMPLATES["hr_officer"]["perms"]) | {"manage_attendance", "manage_tasks", "manage_templates"},
-    "delegate": set(PERMISSION_TEMPLATES["delegate"]["perms"]),
+    # HR: مسؤول الموظفين فقط (لا إقامات/تراخيص/مهام حكومية)
+    "hr": {"view_employee", "create_employee", "edit_employee", "manage_leaves",
+           "manage_deductions", "upload_documents", "view_documents", "view_attendance",
+           "manage_attendance", "approve_request", "view_tasks", "manage_tasks",
+           "submit_request", "view_reports", "calculate_eos", "terminate_employee",
+           "manage_templates"},
+    # PRO / المندوب: كل المعاملات الحكومية (إقامات، أذونات، تراخيص، تجديدات)
+    "delegate": {"view_employee", "view_documents", "upload_documents", "manage_permits",
+                 "manage_licenses", "process_delegate_tasks", "view_tasks", "manage_tasks",
+                 "submit_request", "view_reports"},
+    # الموظف: خدمة ذاتية فقط (لا إحصائيات شركة)
     "employee": {"submit_request", "record_attendance", "view_tasks"},
 }
 

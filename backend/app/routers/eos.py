@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """مكافأة نهاية الخدمة: حاسبة حرّة + حساب لموظف وفق سياسة شركته."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,34 @@ def calculate(data: schemas.EosIn, user: models.User = Depends(require_perm("cal
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/leave-balance")
+def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None = None,
+                  user: models.User = Depends(require_perm("calculate_eos")),
+                  db: Session = Depends(get_db)):
+    """يحسب رصيد الإجازات المستحق تلقائيًا حسب مدة الخدمة؛ المستخدم يُدخل المستهلَك فقط."""
+    emp = db.get(models.Employee, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    assert_same_company(user, emp.company_id)
+    if not emp.hire_date:
+        raise HTTPException(status_code=400, detail="تاريخ التعيين غير مُسجّل")
+    company = db.get(models.Company, emp.company_id)
+    end = as_of or date.today()
+    _, _, _, _, decimal_years = eos_engine.service_breakdown(emp.hire_date, end)
+    per_year = float(company.annual_leave_days or 30)
+    accrued = round(per_year * decimal_years, 2)
+    remaining = round(accrued - float(consumed_days or 0), 2)
+    return {
+        "employee_id": emp.id, "name": emp.name,
+        "service_years": round(decimal_years, 2),
+        "annual_days_per_year": per_year,
+        "accrued_days": accrued,
+        "consumed_days": float(consumed_days or 0),
+        "remaining_days": remaining,
+        "as_of": end.isoformat(),
+    }
 
 
 @router.post("/for-employee")

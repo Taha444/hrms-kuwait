@@ -13,6 +13,13 @@ export default function EmployeeProfile() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [term, setTerm] = useState({ end_date: "", reason: "termination" });
   const [settlement, setSettlement] = useState<any>(null);
+  const [consumed, setConsumed] = useState(0);
+  const [leaveBal, setLeaveBal] = useState<any>(null);
+
+  const calcLeave = async () => {
+    const r = await api.post("/eos/leave-balance", null, { params: { employee_id: id, consumed_days: consumed } });
+    setLeaveBal(r.data);
+  };
 
   const REASONS: Record<string, string> = {
     termination: "فصل (غير تأديبي)", contract_expiry: "انتهاء العقد", resignation: "استقالة",
@@ -121,6 +128,26 @@ export default function EmployeeProfile() {
               <td>{a.selfie_in ? "✓" : "—"}</td></tr>
           ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
       </div>
+
+      {can("calculate_eos") && (
+        <div className="card">
+          <h3>رصيد الإجازات (حساب تلقائي حسب مدة الخدمة)</h3>
+          <p className="muted">النظام يحسب الرصيد المستحق تلقائيًا — أدخل عدد الأيام المستهلكة فقط.</p>
+          <div className="row">
+            <div className="field" style={{ width: 200 }}><label>الأيام المستهلَكة</label>
+              <input type="number" value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
+            <div className="field" style={{ alignSelf: "flex-end" }}>
+              <button onClick={calcLeave}>احسب الرصيد المتبقي</button></div>
+          </div>
+          {leaveBal && (
+            <div className="grid stats">
+              <div className="stat"><div className="num">{leaveBal.accrued_days}</div><div className="lbl">المستحق ({leaveBal.service_years} سنة خدمة)</div></div>
+              <div className="stat"><div className="num">{leaveBal.consumed_days}</div><div className="lbl">المستهلَك</div></div>
+              <div className="stat accent"><div className="num">{leaveBal.remaining_days}</div><div className="lbl">المتبقي</div></div>
+            </div>
+          )}
+        </div>
+      )}
 
       {can("terminate_employee") && e.status !== "terminated" && (
         <div className="card" style={{ borderTop: "3px solid var(--danger)" }}>

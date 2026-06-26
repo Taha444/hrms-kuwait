@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../api";
+import { roleAr } from "../labels";
 
 export default function Users() {
   const [users, setUsers] = useState<any[]>([]);
@@ -58,8 +59,8 @@ export default function Users() {
             <div className="field" style={{ flex: 1 }}><label>الاسم</label>
               <input onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
             <div className="field" style={{ flex: 1 }}><label>الدور</label>
-              <select onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {catalog.roles.map((r: string) => <option key={r} value={r}>{r}</option>)}
+              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                {(catalog.assignable_roles || catalog.roles).map((r: string) => <option key={r} value={r}>{roleAr(r)}</option>)}
               </select></div>
           </div>
           <p className="muted">كلمة المرور الافتراضية تُطلب تغييرها عند أول دخول.</p>
@@ -73,7 +74,7 @@ export default function Users() {
           <thead><tr><th>الرقم المدني</th><th>الاسم</th><th>الدور</th><th>مفعّل</th><th></th></tr></thead>
           <tbody>{users.map((u) => (
             <tr key={u.id}><td>{u.civil_id}</td><td>{u.full_name}</td>
-              <td><span className="pill info">{u.role}</span></td>
+              <td><span className="pill info">{roleAr(u.role)}</span></td>
               <td>{u.is_active ? "✓" : "✕"}</td>
               <td className="row">
                 <button className="ghost" onClick={() => openPerms(u)}>الصلاحيات</button>

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""لوحات التحكم: مؤشرات مختلفة حسب الدور (إدارة عليا / مدير / HR / عامل)."""
+"""لوحات التحكم: مؤشرات مختلفة حسب الدور (إدارة عليا / مدير / PRO / HR / عامل)."""
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
@@ -20,7 +20,7 @@ def dashboard(company_id: int | None = None,
     today = date.today()
     soon = today + timedelta(days=90)
 
-    def _count(model, *conds):
+    def count(model, *conds):
         q = select(func.count()).select_from(model)
         if cid is not None and hasattr(model, "company_id"):
             q = q.where(model.company_id == cid)
@@ -28,32 +28,63 @@ def dashboard(company_id: int | None = None,
             q = q.where(c)
         return db.scalar(q) or 0
 
-    open_tasks = db.scalar(
+    my_open_tasks = db.scalar(
         select(func.count()).select_from(models.Task)
-        .where(models.Task.assignee_user_id == user.id, models.Task.status == "open")
-    ) or 0
+        .where(models.Task.assignee_user_id == user.id, models.Task.status == "open")) or 0
 
-    expiring_permits = _count(models.Permit, models.Permit.status == "active",
-                              models.Permit.expiry_date.isnot(None),
-                              models.Permit.expiry_date <= soon)
+    role = user.role
+    data: dict = {"role": role}
 
-    data = {
-        "role": user.role,
-        "companies": db.scalar(select(func.count()).select_from(models.Company)) or 0
-        if user.role == "super_admin" else None,
-        "employees": _count(models.Employee, models.Employee.status == "active"),
-        "branches": _count(models.Branch),
+    # ----- العامل: لا إحصائيات شركة، فقط مهامه وطلباته -----
+    if role == "employee":
+        my_reqs = db.scalar(
+            select(func.count()).select_from(models.Request).where(
+                models.Request.employee_id == (user.employee_id or -1),
+                models.Request.status.notin_(["completed", "rejected", "cancelled"]))) or 0
+        data.update({"my_open_tasks": my_open_tasks, "my_active_requests": my_reqs,
+                     "personal_only": True})
+        return data
+
+    # ----- مؤشرات مشتركة -----
+    expiring_permits = count(models.Permit, models.Permit.status == "active",
+                             models.Permit.expiry_date.isnot(None), models.Permit.expiry_date <= soon)
+    data["open_tasks"] = my_open_tasks
+
+    if role == "super_admin":
+        data["companies"] = db.scalar(select(func.count()).select_from(models.Company)) or 0
+
+    # ----- PRO / المندوب: إقامات وتراخيص ومهام حكومية -----
+    if role == "delegate":
+        data.update({
+            "expiring_residencies": count(models.Permit, models.Permit.kind == "residency",
+                                          models.Permit.status == "active",
+                                          models.Permit.expiry_date.isnot(None),
+                                          models.Permit.expiry_date <= soon),
+            "expiring_work_permits": count(models.Permit, models.Permit.kind == "work_permit",
+                                           models.Permit.status == "active",
+                                           models.Permit.expiry_date.isnot(None),
+                                           models.Permit.expiry_date <= soon),
+            "expiring_licenses": count(models.License, models.License.status == "active",
+                                       models.License.expiry_date.isnot(None),
+                                       models.License.expiry_date <= soon),
+        })
+        return data
+
+    # ----- HR: إحصائيات الموظفين فقط -----
+    if role == "hr":
+        data.update({
+            "employees": count(models.Employee, models.Employee.status == "active"),
+            "pending_requests": count(models.Request, models.Request.status == "pending"),
+            "on_leave": count(models.Leave, models.Leave.status == "approved",
+                              models.Leave.start_date <= today, models.Leave.end_date >= today),
+        })
+        return data
+
+    # ----- المدير / المالك / الإدارة العليا -----
+    data.update({
+        "employees": count(models.Employee, models.Employee.status == "active"),
+        "branches": count(models.Branch),
         "expiring_permits": expiring_permits,
-        "open_tasks": open_tasks,
-        "pending_requests": _count(models.Request, models.Request.status == "pending"),
-    }
-
-    # مؤشرات خاصة بالعامل
-    if user.role == "employee" and user.employee_id:
-        my_open = db.scalar(
-            select(func.count()).select_from(models.Request)
-            .where(models.Request.employee_id == user.employee_id,
-                   models.Request.status.notin_(["completed", "rejected", "cancelled"]))
-        ) or 0
-        data["my_active_requests"] = my_open
+        "pending_requests": count(models.Request, models.Request.status == "pending"),
+    })
     return data

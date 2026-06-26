@@ -37,7 +37,7 @@ export default function Employees() {
         {can("create_employee") && <button onClick={() => setShowNew((s) => !s)}>+ موظف جديد</button>}
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
-        <input placeholder="بحث بالاسم" value={q} onChange={(e) => setQ(e.target.value)}
+        <input placeholder="بحث: الاسم / الرقم المدني / رقم الموظف / رقم الإقامة" value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && go(0)} style={{ maxWidth: 280 }} />
         <button className="ghost" onClick={() => go(0)}>بحث</button>
       </div>

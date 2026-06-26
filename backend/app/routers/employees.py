@@ -3,7 +3,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import eos as eos_engine
@@ -40,7 +40,14 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
     if branch_id:
         base = base.where(models.Employee.branch_id == branch_id)
     if q:
-        base = base.where(models.Employee.name.like(f"%{q}%"))
+        like = f"%{q.strip()}%"
+        # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة
+        permit_emp_ids = select(models.Permit.employee_id).where(models.Permit.number.like(like))
+        conds = [models.Employee.name.like(like), models.Employee.civil_id.like(like),
+                 models.Employee.id.in_(permit_emp_ids)]
+        if q.strip().isdigit():
+            conds.append(models.Employee.id == int(q.strip()))
+        base = base.where(or_(*conds))
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     response.headers["X-Total-Count"] = str(total)
     limit = max(1, min(limit, 500))

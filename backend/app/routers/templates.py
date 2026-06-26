@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config import settings
 from ..database import get_db
-from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
+from ..deps import (
+    assert_same_company,
+    audit,
+    get_current_user,
+    require_perm,
+    require_super_admin,
+    scope_company_id,
+)
 from ..permissions import CROSS_COMPANY_ROLES
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -78,10 +85,10 @@ def get_template(tpl_id: int, user: models.User = Depends(require_perm("manage_t
 
 @router.post("", status_code=201)
 def create_template(data: schemas.DocumentTemplateIn, request: Request,
-                    user: models.User = Depends(require_perm("manage_templates")),
+                    user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
-    cid = None if user.role == "super_admin" else user.company_id
-    t = models.DocumentTemplate(company_id=cid, name=data.name, category=data.category,
+    # إنشاء النماذج حصري للإدارة العليا؛ باقي المستخدمين يختارون من الموجود
+    t = models.DocumentTemplate(company_id=None, name=data.name, category=data.category,
                                 body_html=data.body_html, code=data.code, created_by=user.id)
     db.add(t)
     db.flush()
@@ -92,16 +99,11 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
 
 @router.put("/{tpl_id}")
 def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Request,
-                    user: models.User = Depends(require_perm("manage_templates")),
+                    user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
-    # لا يعدّل الصيغ العامة إلا الإدارة العليا
-    if t.company_id is None and user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="الصيغ العامة تُعدَّل من الإدارة العليا فقط")
-    if t.company_id is not None:
-        assert_same_company(user, t.company_id)
     t.name, t.category, t.body_html = data.name, data.category, data.body_html
     audit(db, user, "update_template", "template", t.id, request=request)
     db.commit()
@@ -109,15 +111,11 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
 
 
 @router.delete("/{tpl_id}")
-def delete_template(tpl_id: int, user: models.User = Depends(require_perm("manage_templates")),
+def delete_template(tpl_id: int, user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
-    if t.company_id is None and user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="غير مسموح")
-    if t.company_id is not None:
-        assert_same_company(user, t.company_id)
     t.is_active = False
     db.commit()
     return {"ok": True}
