@@ -1,0 +1,17 @@
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+frontend/dist
+frontend/dev-dist
+backend/uploads
+**/*.db
+**/*.db-*
+**/.env
+.git
+legacy_prototype
+docs
+*.md
