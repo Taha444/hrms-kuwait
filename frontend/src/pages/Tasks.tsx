@@ -11,9 +11,7 @@ export default function Tasks() {
   const [status, setStatus] = useState("open");
   const [category, setCategory] = useState("");
   const [msg, setMsg] = useState("");
-  const CAT_AR: Record<string, string> = {
-    system: "النظام", government: "حكومية", hr: "موارد بشرية", approvals: "موافقات",
-  };
+  const CATS = ["system", "government", "hr", "approvals"];
 
   const load = () => api.get("/tasks/my", { params: { status, category: category || undefined } }).then((r) => setTasks(r.data));
   useEffect(() => { load(); }, [status, category]);
@@ -24,31 +22,34 @@ export default function Tasks() {
   };
   const runScan = async () => {
     const r = await api.post("/tasks/run-scan");
-    setMsg(`تم توليد ${r.data.generated} مهمة`);
+    setMsg(t("scan_generated", { n: r.data.generated }));
     load();
   };
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>{t("tasks")}</h2>
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">{t("tasks")}</div>
+          <h2 style={{ margin: "2px 0 0" }}>{t("tasks")}</h2>
+        </div>
         <div className="row">
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: 150 }}>
-            <option value="">كل التصنيفات</option>
-            {Object.entries(CAT_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <option value="">{t("tasks_all_categories")}</option>
+            {CATS.map((c) => <option key={c} value={c}>{t(`cat_${c}`)}</option>)}
           </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 160 }}>
-            <option value="open">المفتوحة</option>
-            <option value="done">المنجزة</option>
-            <option value="dismissed">المتجاهَلة</option>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 150 }}>
+            <option value="open">{t("tasks_open")}</option>
+            <option value="done">{t("tasks_done")}</option>
+            <option value="dismissed">{t("tasks_dismissed")}</option>
           </select>
-          {can("manage_tasks") && <button onClick={runScan}>تشغيل المسح اليومي</button>}
+          {can("manage_tasks") && <button onClick={runScan}>{t("tasks_run_scan")}</button>}
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
-      <div className="card">
+      <div className="table-wrap">
         <table>
-          <thead><tr><th>النوع</th><th>العنوان</th><th>التفاصيل</th><th>الأهمية</th><th></th></tr></thead>
+          <thead><tr><th>{t("col_type")}</th><th>{t("col_title")}</th><th>{t("col_detail")}</th><th>{t("col_severity")}</th><th></th></tr></thead>
           <tbody>
             {tasks.map((x) => (
               <tr key={x.id}>
@@ -59,14 +60,14 @@ export default function Tasks() {
                 <td>
                   {status === "open" && (
                     <div className="row">
-                      <button className="ghost" onClick={() => setTaskStatus(x.id, "done")}>إنجاز</button>
-                      <button className="ghost" onClick={() => setTaskStatus(x.id, "dismissed")}>تجاهل</button>
+                      <button className="ghost sm" onClick={() => setTaskStatus(x.id, "done")}>{t("act_complete")}</button>
+                      <button className="ghost sm" onClick={() => setTaskStatus(x.id, "dismissed")}>{t("act_dismiss")}</button>
                     </div>
                   )}
                 </td>
               </tr>
             ))}
-            {!tasks.length && <tr><td colSpan={5} className="muted">{t("no_data")}</td></tr>}
+            {!tasks.length && <tr><td colSpan={5} className="empty">{t("no_data")}</td></tr>}
           </tbody>
         </table>
       </div>

@@ -20,7 +20,7 @@ export default function Login() {
       const u = await login(civilId.trim(), password);
       nav(u.must_change_password ? "/change-password" : (u.is_cross_company ? "/select-company" : "/"));
     } catch (e: any) {
-      setErr(e.response?.data?.detail || "تعذّر تسجيل الدخول");
+      setErr(e.response?.data?.detail || t("login_failed"));
     } finally {
       setBusy(false);
     }
@@ -31,8 +31,8 @@ export default function Login() {
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-brand">
           <div className="logo">H<span>R</span></div>
-          <h1>نظام الموارد البشرية</h1>
-          <span className="muted">الكويت · منصّة متعددة الشركات</span>
+          <h1>{t("app_name")}</h1>
+          <span className="muted">{t("app_tagline")}</span>
         </div>
         <div className="field">
           <label>{t("civil_id")}</label>
@@ -48,7 +48,7 @@ export default function Login() {
           {busy ? t("loading") : t("login")}
         </button>
         <p className="muted" style={{ marginTop: 16, textAlign: "center" }}>
-          تجريبي — إدارة عليا: <code>000000000000</code> / <code>admin123</code>
+          {t("demo_hint")} <code>000000000000</code> / <code>admin123</code>
         </p>
       </form>
     </div>

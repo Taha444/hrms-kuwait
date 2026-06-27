@@ -30,11 +30,20 @@ import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
 import Companies from "./pages/Companies";
 import Users from "./pages/Users";
+import { roleAr } from "./labels";
 
-const ROLE_AR: Record<string, string> = {
-  super_admin: "إدارة عليا", company_owner: "صاحب الشركات", company_manager: "مدير شركة",
-  branch_supervisor: "مسؤول فرع", hr: "موارد بشرية", delegate: "مندوب", employee: "موظف",
+// لوجو/شعار مميّز لكل دور (أيقونة + لون)
+const ROLE_THEME: Record<string, { icon: string; c1: string; c2: string }> = {
+  super_admin: { icon: "key", c1: "#c9a227", c2: "#8a6d10" },
+  company_owner: { icon: "building", c1: "#0e5a54", c2: "#082523" },
+  company_manager: { icon: "dashboard", c1: "#0f766e", c2: "#0b3b38" },
+  hr: { icon: "employees", c1: "#0e7490", c2: "#0b3b54" },
+  delegate: { icon: "doc", c1: "#15857b", c2: "#0b3b38" },
+  branch_supervisor: { icon: "branches", c1: "#15803d", c2: "#0b3b1f" },
+  admin_employee: { icon: "users", c1: "#5c706a", c2: "#384542" },
+  employee: { icon: "requests", c1: "#0f766e", c2: "#0b3b38" },
 };
+const roleTheme = (r?: string) => ROLE_THEME[r || ""] || ROLE_THEME.employee;
 
 function Sidebar({ open }: { open: boolean }) {
   const { user, can } = useAuth();
@@ -112,22 +121,22 @@ function Topbar() {
 
   useEffect(() => {
     if (!user?.is_cross_company) return;
-    if (activeCompanyId === "all") { setCompanyName("كل الشركات"); return; }
+    if (activeCompanyId === "all") { setCompanyName(t("all_companies")); return; }
     api.get("/companies", { params: { _r: 1 } }).then((r) => {
       const c = r.data.find((x: any) => String(x.id) === activeCompanyId);
-      setCompanyName(c?.name || "اختر الشركة");
+      setCompanyName(c?.name || t("pick_company"));
     }).catch(() => {});
   }, [activeCompanyId, user]);
 
-  const initials = (user?.full_name || "؟").trim().slice(0, 2);
+  const th = roleTheme(user?.role);
 
   return (
     <div className="topbar">
       {user?.is_cross_company && (
         <div className="company-switch" onClick={() => { setActiveCompany(null); nav("/select-company"); }}
-             title="تبديل الشركة">
+             title={t("pick_company")}>
           <Icon name="building" size={16} />
-          <span>{companyName || "اختر الشركة"}</span>
+          <span>{companyName || t("pick_company")}</span>
           <Icon name="chevron" size={15} className="chev" />
         </div>
       )}
@@ -136,14 +145,16 @@ function Topbar() {
       <button className="icon-btn" onClick={() => nav("/tasks")} title={t("tasks")}>
         <Icon name="bell" size={18} />
       </button>
-      <button className="icon-btn" onClick={toggle} title="اللغة">
-        <Icon name="globe" size={18} />
+      <button className="icon-btn" onClick={toggle} title={t("language")}>
+        <Icon name="globe" size={18} /><span style={{ fontSize: 11, fontWeight: 700, marginInlineStart: 2 }}>{lang === "ar" ? "EN" : "ع"}</span>
       </button>
       <div className="user-chip">
-        <div className="avatar">{initials}</div>
+        <div className="avatar" style={{ background: `linear-gradient(145deg, ${th.c1}, ${th.c2})` }} title={roleAr(user?.role || "")}>
+          <Icon name={th.icon} size={18} />
+        </div>
         <div className="meta">
           <b>{user?.full_name}</b>
-          <small>{ROLE_AR[user?.role || ""] || user?.role}</small>
+          <small>{roleAr(user?.role || "")}</small>
         </div>
       </div>
       <button className="icon-btn" onClick={logout} title={t("logout")}><Icon name="logout" size={18} /></button>
