@@ -115,6 +115,22 @@ def set_user_status(user_id: int, status: str, request: Request,
     return {"ok": True, "status": status}
 
 
+@router.post("/{user_id}/scope")
+def set_data_scope(user_id: int, branch_id: int | None = None, request: Request = None,
+                   user: models.User = Depends(require_perm("manage_users")),
+                   db: Session = Depends(get_db)):
+    """تقييد نطاق بيانات المستخدم بفرع معيّن (أو إلغاء التقييد بترك branch_id فارغًا)."""
+    target = _get_scoped_user(db, user, user_id)
+    if branch_id:
+        branch = db.get(models.Branch, branch_id)
+        if not branch or (user.role not in CROSS_COMPANY_ROLES and branch.company_id != user.company_id):
+            raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    target.scope_branch_id = branch_id
+    audit(db, user, "set_data_scope", "user", target.id, detail=str(branch_id), request=request)
+    db.commit()
+    return {"ok": True, "scope_branch_id": branch_id}
+
+
 @router.post("/{user_id}/impersonate")
 def impersonate(user_id: int, request: Request, reason: str | None = None,
                 actor: models.User = Depends(require_super_admin),

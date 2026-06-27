@@ -20,12 +20,18 @@ export default function Users() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
+  const [branches, setBranches] = useState<any[]>([]);
   const load = () => api.get("/users").then((r) => setUsers(r.data));
   useEffect(() => {
     load();
     api.get("/users/catalog").then((r) => setCatalog(r.data));
     api.get("/users/permission-matrix").then((r) => setMxCatalog(r.data)).catch(() => {});
+    api.get("/branches").then((r) => setBranches(r.data)).catch(() => {});
   }, []);
+  const setScope = async (uid: number, branch_id: string) => {
+    await api.post(`/users/${uid}/scope`, null, { params: { branch_id: branch_id || undefined } });
+    load(); setMsg("تم ضبط نطاق البيانات");
+  };
 
   const loadMatrix = (id: number) => api.get(`/users/${id}/matrix`).then((r) => setMatrix(r.data));
   const toggleCell = (page: string, action: string) => {
@@ -130,6 +136,13 @@ export default function Users() {
             </div>
           </div>
           <p className="muted">حدّد لكل صفحة الأفعال المسموحة. الصفحة التي تُعدّلها تتجاوز صلاحيات الدور لهذا المستخدم.</p>
+          <div className="row" style={{ marginBottom: 10 }}>
+            <span className="muted">نطاق البيانات (تقييد بفرع):</span>
+            <select value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, e.target.value)} style={{ width: 220 }}>
+              <option value="">كل فروع الشركة</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
           <div className="att-wrap">
             <table className="att-matrix">
               <thead>

@@ -82,6 +82,7 @@ class UserOut(BaseModel):
     phone: str | None
     is_active: bool
     status: str = "active"
+    scope_branch_id: int | None = None
     must_change_password: bool
 
 

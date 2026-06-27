@@ -59,6 +59,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(30))
     role: Mapped[str] = mapped_column(String(30), default="employee")
+    scope_branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))  # تقييد نطاق البيانات بفرع
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))  # للخدمة الذاتية
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active/inactive/suspended/locked

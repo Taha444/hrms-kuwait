@@ -12,6 +12,7 @@ from ..database import get_db
 from ..deps import (
     assert_same_company,
     audit,
+    get_branch_scope,
     get_current_user,
     require_perm,
     scope_company_id,
@@ -25,6 +26,9 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id)
+    scope = get_branch_scope(user, db)
+    if scope is not None and emp.branch_id not in scope:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خارج نطاق فرعك
     return emp
 
 
@@ -42,6 +46,10 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
         base = base.where(models.Employee.branch_id == branch_id)
     if department_id:
         base = base.where(models.Employee.department_id == department_id)
+    # تقييد نطاق الفرع (مسؤول الفرع / المستخدم المقيّد)
+    scope = get_branch_scope(user, db)
+    if scope is not None:
+        base = base.where(models.Employee.branch_id.in_(scope))
     if q:
         like = f"%{q.strip()}%"
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة

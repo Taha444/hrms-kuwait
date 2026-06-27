@@ -101,6 +101,24 @@ def scope_company_id(user: models.User, requested: int | None = None) -> int | N
     return user.company_id
 
 
+def get_branch_scope(user: models.User, db: Session) -> set[int] | None:
+    """نطاق الفروع المسموح للمستخدم: مجموعة معرّفات أو None (كل الفروع).
+
+    - مسؤول الفرع: الفروع التي يشرف عليها فقط.
+    - أي مستخدم له scope_branch_id: ذلك الفرع فقط.
+    - غير ذلك: None (لا تقييد على مستوى الفرع).
+    """
+    if user.role in ("super_admin", "company_owner"):
+        return None
+    if user.scope_branch_id:
+        return {user.scope_branch_id}
+    if user.role == "branch_supervisor":
+        ids = {bs.branch_id for bs in db.scalars(
+            select(models.BranchSupervisor).where(models.BranchSupervisor.user_id == user.id)).all()}
+        return ids or {-1}  # لا فروع مُسندة → لا يرى شيئًا
+    return None
+
+
 def assert_same_company(user: models.User, entity_company_id: int | None):
     """يمنع الوصول لكيان خارج نطاق شركة المستخدم (إلا الإدارة العليا والمالك)."""
     from .permissions import CROSS_COMPANY_ROLES
