@@ -32,7 +32,7 @@ export default function Requests() {
     try {
       await api.post("/requests", { request_type_code: typeCode, payload_json: payload });
       setShowNew(false); setPayload({}); load();
-    } catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
 
   const list = tab === "mine" ? mine : inbox;
@@ -48,7 +48,7 @@ export default function Requests() {
         <div className="card">
           <h3>{t("new_request")}</h3>
           <div className="field">
-            <label>نوع الطلب</label>
+            <label>{t("req_type")}</label>
             <select value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
               {types.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
@@ -57,27 +57,27 @@ export default function Requests() {
             <>
               <div className="row">
                 <div className="field" style={{ flex: 1 }}>
-                  <label>من تاريخ</label>
+                  <label>{t("req_from")}</label>
                   <input type="date" onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
-                  <label>إلى تاريخ</label>
+                  <label>{t("req_to")}</label>
                   <input type="date" onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ width: 100 }}>
-                  <label>عدد الأيام</label>
+                  <label>{t("req_days")}</label>
                   <input type="number" onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
                 </div>
               </div>
-              <div className="field"><label>السبب</label>
+              <div className="field"><label>{t("req_reason")}</label>
                 <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </>
           )}
           {typeCode === "salary_certificate" && (
             <>
-              <div className="field"><label>الجهة المستفيدة (موجَّه إلى)</label>
+              <div className="field"><label>{t("req_addressed")}</label>
                 <input onChange={(e) => setPayload({ ...payload, addressed_to: e.target.value })} /></div>
-              <div className="field"><label>الغرض</label>
+              <div className="field"><label>{t("req_purpose")}</label>
                 <input onChange={(e) => setPayload({ ...payload, purpose: e.target.value })} /></div>
             </>
           )}
@@ -90,14 +90,14 @@ export default function Requests() {
         <button className={tab === "mine" ? "" : "ghost"} onClick={() => setTab("mine")}>{t("my_requests")}</button>
         {can("approve_request") && (
           <button className={tab === "inbox" ? "" : "ghost"} onClick={() => setTab("inbox")}>
-            {t("inbox")} {inbox.length ? `(${inbox.length})` : ""}
+            {t("approval_inbox")} {inbox.length ? `(${inbox.length})` : ""}
           </button>
         )}
       </div>
 
       <div className="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>النوع</th><th>الموظف</th><th>{t("status")}</th><th>المسار</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>{t("col_type")}</th><th>{t("col_employee")}</th><th>{t("status")}</th><th>{t("req_path")}</th><th></th></tr></thead>
           <tbody>
             {list.map((r) => (
               <tr key={r.id}>
@@ -106,7 +106,7 @@ export default function Requests() {
                 <td>{r.employee_name}</td>
                 <td><span className={`pill ${r.status}`}>{statusAr(r.status)}</span></td>
                 <td><ProgressMini current={r.current_stage} total={r.total_stages} status={r.status} /></td>
-                <td><Link to={`/requests/${r.id}`}>عرض ←</Link></td>
+                <td><Link to={`/requests/${r.id}`}>{t("view")} →</Link></td>
               </tr>
             ))}
             {!list.length && <tr><td colSpan={6} className="empty">{t("no_data")}</td></tr>}

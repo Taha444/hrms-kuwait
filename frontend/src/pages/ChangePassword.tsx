@@ -19,10 +19,10 @@ export default function ChangePassword() {
     try {
       await api.post("/auth/change-password", { old_password: oldP, new_password: newP });
       await refreshUser();
-      setMsg("تم التغيير بنجاح");
+      setMsg(t("pw_changed"));
       setTimeout(() => nav("/"), 600);
     } catch (e: any) {
-      setErr(e.response?.data?.detail || "خطأ");
+      setErr(e.response?.data?.detail || t("error"));
     }
   };
 
@@ -32,14 +32,14 @@ export default function ChangePassword() {
         <div className="auth-brand">
           <div className="logo">H<span>R</span></div>
           <h1 style={{ fontSize: 19 }}>{t("change_password")}</h1>
-          <span className="muted">يلزم تعيين كلمة مرور جديدة لأول دخول</span>
+          <span className="muted">{t("pw_first_login")}</span>
         </div>
         <div className="field">
-          <label>كلمة المرور الحالية</label>
+          <label>{t("pw_current")}</label>
           <input type="password" value={oldP} onChange={(e) => setOldP(e.target.value)} />
         </div>
         <div className="field">
-          <label>كلمة المرور الجديدة</label>
+          <label>{t("pw_new")}</label>
           <input type="password" value={newP} onChange={(e) => setNewP(e.target.value)} />
         </div>
         {err && <div className="err">{err}</div>}

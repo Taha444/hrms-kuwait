@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api, { downloadFile } from "../api";
+import { useI18n } from "../i18n";
 import Icon from "../Icon";
 
 function thisMonth() {
@@ -8,6 +9,7 @@ function thisMonth() {
 }
 
 export default function Reports() {
+  const { t } = useI18n();
   const [month, setMonth] = useState(thisMonth());
   const [branches, setBranches] = useState<any[]>([]);
   const [branch, setBranch] = useState("");
@@ -34,17 +36,17 @@ export default function Reports() {
     <div>
       <div className="page-head">
         <div>
-          <div className="eyebrow">التقارير</div>
-          <h2 style={{ margin: "2px 0 0" }}>التقارير والتصدير</h2>
-          <div className="sub">تصدير البيانات إلى Excel أو CSV بترميز يدعم العربية</div>
+          <div className="eyebrow">{t("reports")}</div>
+          <h2 style={{ margin: "2px 0 0" }}>{t("reports")}</h2>
+          <div className="sub">{t("reports_sub")}</div>
         </div>
         <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ maxWidth: 200 }}>
-          <option value="">كل الفروع</option>
+          <option value="">{t("all_branches")}</option>
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>
 
-      <Card title="بيانات الموظفين" desc="قائمة الموظفين (حسب الفرع المحدّد أو كل الفروع).">
+      <Card title={t("rep_employees")} desc={t("rep_employees_sub")}>
         <button disabled={busy === "emp_x"} onClick={() => dl("emp_x", "/reports/employees", { fmt: "xlsx", ...br }, "employees.xlsx")}>
           <Icon name="doc" size={15} /> Excel
         </button>
@@ -53,7 +55,7 @@ export default function Reports() {
         </button>
       </Card>
 
-      <Card title="سجل الحضور الشهري" desc="سجلات الحضور للشهر المحدد (حسب الفرع أو كل الفروع).">
+      <Card title={t("rep_attendance")} desc={t("rep_attendance_sub")}>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 160 }} />
         <button disabled={busy === "att_x"} onClick={() => dl("att_x", "/reports/attendance", { month, fmt: "xlsx", ...br }, "attendance.xlsx")}>
           <Icon name="doc" size={15} /> Excel
@@ -63,9 +65,7 @@ export default function Reports() {
         </button>
       </Card>
 
-      <div className="card muted">
-        تصدير الرواتب يتم من صفحة <b>مسيّر الرواتب</b> بجانب كل مسيّر محفوظ.
-      </div>
+      <div className="card muted">{t("rep_payroll_hint")}</div>
     </div>
   );
 }
