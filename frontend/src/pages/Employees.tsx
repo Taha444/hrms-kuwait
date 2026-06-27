@@ -107,6 +107,18 @@ export default function Employees() {
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select></div>
           </div>
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}><label>الجنسية</label>
+              <input onChange={(e) => setForm({ ...form, nationality: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label>الجنس</label>
+              <select onChange={(e) => setForm({ ...form, gender: e.target.value || null })}>
+                <option value="">— اختر —</option><option value="male">ذكر</option><option value="female">أنثى</option>
+              </select></div>
+            <div className="field" style={{ flex: 1 }}><label>تاريخ الميلاد</label>
+              <input type="date" onChange={(e) => setForm({ ...form, date_of_birth: e.target.value || null })} /></div>
+            <div className="field" style={{ flex: 1 }}><label>رقم الجواز</label>
+              <input onChange={(e) => setForm({ ...form, passport_number: e.target.value })} /></div>
+          </div>
           {err && <div className="err">{err}</div>}
           <button onClick={create}>{t("save")}</button>
         </div>

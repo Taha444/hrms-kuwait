@@ -107,6 +107,14 @@ class EmployeeIn(BaseModel):
     name: str
     name_en: str | None = None
     nationality: str | None = None
+    gender: str | None = None
+    date_of_birth: date | None = None
+    marital_status: str | None = None
+    email: str | None = None
+    passport_number: str | None = None
+    passport_expiry: date | None = None
+    health_insurance: str | None = None
+    direct_manager_id: int | None = None
     worker_type: str | None = None
     job_title: str | None = None
     basic_salary: float = 0

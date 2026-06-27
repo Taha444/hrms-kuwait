@@ -16,10 +16,32 @@ export default function EmployeeProfile() {
   const [settlement, setSettlement] = useState<any>(null);
   const [consumed, setConsumed] = useState(0);
   const [leaveBal, setLeaveBal] = useState<any>(null);
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [evForm, setEvForm] = useState({ kind: "warning", title: "", amount: "" });
+
+  const EMP_STATUS = { active: "نشط", vacation: "في إجازة", suspended: "موقوف", resigned: "مستقيل", terminated: "منتهي الخدمة", retired: "متقاعد" };
+  const EV_AR: Record<string, string> = { warning: "إنذار", penalty: "جزاء", bonus: "مكافأة", promotion: "ترقية", note: "ملاحظة" };
+
+  const loadExtras = () => {
+    api.get(`/employees/${id}/timeline`).then((r) => setTimeline(r.data.timeline)).catch(() => {});
+    api.get(`/employees/${id}/events`).then((r) => setEvents(r.data)).catch(() => {});
+  };
+  useEffect(() => { loadExtras(); }, [id]);
 
   const calcLeave = async () => {
     const r = await api.post("/eos/leave-balance", null, { params: { employee_id: id, consumed_days: consumed } });
     setLeaveBal(r.data);
+  };
+  const changeStatus = async (status: string) => {
+    await api.post(`/employees/${id}/status`, null, { params: { status } });
+    setMsg("تم تغيير الحالة"); load();
+  };
+  const addEvent = async () => {
+    if (!evForm.title) return;
+    await api.post(`/employees/${id}/events`, null, { params: {
+      kind: evForm.kind, title: evForm.title, amount: evForm.amount || undefined } });
+    setEvForm({ kind: "warning", title: "", amount: "" }); loadExtras();
   };
 
   const REASONS: Record<string, string> = {
@@ -66,15 +88,27 @@ export default function EmployeeProfile() {
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>{e.name} {e.status === "terminated" && <span className="pill cancelled">منتهي الخدمة</span>}</h2>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <h2 style={{ margin: 0 }}>{e.name} <span className={`pill ${e.status === "active" ? "success" : "neutral"}`}>{(EMP_STATUS as any)[e.status] || statusAr(e.status)}</span></h2>
+        {can("edit_employee") && (
+          <div className="row">
+            <span className="muted">الحالة:</span>
+            <select value={e.status} onChange={(ev) => changeStatus(ev.target.value)} style={{ width: 160 }}>
+              {Object.entries(EMP_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+        )}
       </div>
       {msg && <div className="ok">{msg}</div>}
-      <div className="grid">
-        <div className="card"><b>المسمى:</b> {e.job_title}<br /><b>الجنسية:</b> {e.nationality}<br />
-          <b>الراتب:</b> {e.basic_salary} د.ك<br /><b>التعيين:</b> {e.hire_date}</div>
-        <div className="card"><b>نمط الحضور:</b> {e.attendance_mode}<br />
-          <b>نوع العقد:</b> {e.contract_type}<br /><b>رصيد الإجازات:</b> {e.annual_leave_balance}</div>
+      <div className="grid cards">
+        <div className="card"><b>المسمى:</b> {e.job_title || "—"}<br /><b>الجنسية:</b> {e.nationality || "—"}<br />
+          <b>الراتب:</b> {e.basic_salary} د.ك<br /><b>التعيين:</b> {e.hire_date || "—"}<br /><b>نوع العقد:</b> {e.contract_type}</div>
+        <div className="card"><b>الجنس:</b> {e.gender === "male" ? "ذكر" : e.gender === "female" ? "أنثى" : "—"}<br />
+          <b>الميلاد:</b> {e.date_of_birth || "—"}<br /><b>الحالة الاجتماعية:</b> {e.marital_status || "—"}<br />
+          <b>البريد:</b> {e.email || "—"}</div>
+        <div className="card"><b>رقم الجواز:</b> {e.passport_number || "—"}<br />
+          <b>انتهاء الجواز:</b> {e.passport_expiry || "—"}<br /><b>التأمين الصحي:</b> {e.health_insurance || "—"}<br />
+          <b>نمط الحضور:</b> {e.attendance_mode}</div>
       </div>
 
       <div className="card">
@@ -128,6 +162,45 @@ export default function EmployeeProfile() {
               <td><span className={`pill ${a.status === "late" ? "warning" : "success"}`}>{attAr(a.status)}</span></td>
               <td>{a.selfie_in ? "✓" : "—"}</td></tr>
           ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody></table>
+      </div>
+
+      <div className="card">
+        <h3>سجل الموارد البشرية (إنذارات · جزاءات · مكافآت · ترقيات)</h3>
+        {can("edit_employee") && (
+          <div className="row" style={{ marginBottom: 10 }}>
+            <select value={evForm.kind} onChange={(e) => setEvForm({ ...evForm, kind: e.target.value })} style={{ width: 130 }}>
+              {Object.entries(EV_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <input placeholder="العنوان/السبب" value={evForm.title} onChange={(e) => setEvForm({ ...evForm, title: e.target.value })} style={{ flex: 1 }} />
+            <input type="number" placeholder="مبلغ (اختياري)" value={evForm.amount} onChange={(e) => setEvForm({ ...evForm, amount: e.target.value })} style={{ width: 140 }} />
+            <button onClick={addEvent}>إضافة</button>
+          </div>
+        )}
+        <table>
+          <thead><tr><th>النوع</th><th>العنوان</th><th>المبلغ</th><th>التاريخ</th></tr></thead>
+          <tbody>{events.map((ev) => (
+            <tr key={ev.id}>
+              <td><span className={`pill ${ev.kind === "bonus" || ev.kind === "promotion" ? "success" : ev.kind === "note" ? "neutral" : "warning"}`}>{EV_AR[ev.kind]}</span></td>
+              <td>{ev.title}</td><td>{ev.amount ? `${ev.amount} د.ك` : "—"}</td><td>{ev.date}</td>
+            </tr>
+          ))}{!events.length && <tr><td colSpan={4} className="muted">لا يوجد</td></tr>}</tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h3>الخط الزمني للموظف</h3>
+        <div className="steps">
+          {timeline.map((it, i) => (
+            <div className="step done" key={i}>
+              <div className="rail"><div className="node">•</div><div className="connector" /></div>
+              <div className="body">
+                <div className="s-title">{it.text}</div>
+                <div className="s-meta"><span>{new Date(it.at).toLocaleDateString("ar", { dateStyle: "medium" })}</span></div>
+              </div>
+            </div>
+          ))}
+          {!timeline.length && <div className="muted">لا أحداث بعد.</div>}
+        </div>
       </div>
 
       {can("calculate_eos") && (

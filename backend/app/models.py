@@ -145,6 +145,14 @@ class Employee(Base):
     name: Mapped[str] = mapped_column(String(200))
     name_en: Mapped[str | None] = mapped_column(String(200))
     nationality: Mapped[str | None] = mapped_column(String(100))
+    gender: Mapped[str | None] = mapped_column(String(10))  # male / female
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    marital_status: Mapped[str | None] = mapped_column(String(20))
+    email: Mapped[str | None] = mapped_column(String(150))
+    passport_number: Mapped[str | None] = mapped_column(String(40))
+    passport_expiry: Mapped[date | None] = mapped_column(Date)
+    health_insurance: Mapped[str | None] = mapped_column(String(100))
+    direct_manager_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))
     worker_type: Mapped[str | None] = mapped_column(String(50))  # عامل / موظف
     job_title: Mapped[str | None] = mapped_column(String(150))
     basic_salary: Mapped[float] = mapped_column(Float, default=0)
@@ -347,6 +355,22 @@ class Leave(Base):
     end_date: Mapped[date] = mapped_column(Date)
     days: Mapped[float] = mapped_column(Float, default=0)
     status: Mapped[str] = mapped_column(String(20), default="approved")
+
+
+class EmployeeEvent(Base):
+    """أحداث الموارد البشرية على الموظف: إنذار/جزاء/مكافأة/ترقية/ملاحظة."""
+    __tablename__ = "employee_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # warning/penalty/bonus/promotion/note
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[float | None] = mapped_column(Float)  # للجزاء/المكافأة
+    date: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class Deduction(Base):

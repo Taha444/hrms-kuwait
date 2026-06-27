@@ -175,6 +175,85 @@ def add_permit(emp_id: int, kind: str, number: str | None = None,
     return {"ok": True, "id": permit.id}
 
 
+EMP_STATUSES = {"active", "vacation", "suspended", "resigned", "terminated", "retired", "archived"}
+EVENT_KINDS = {"warning", "penalty", "bonus", "promotion", "note"}
+
+
+@router.post("/{emp_id}/status")
+def set_status(emp_id: int, status: str, request: Request = None,
+               user: models.User = Depends(require_perm("edit_employee")),
+               db: Session = Depends(get_db)):
+    """تغيير حالة الموظف (حالة واحدة فقط في كل وقت)."""
+    if status not in EMP_STATUSES:
+        raise HTTPException(status_code=400, detail="حالة غير صالحة")
+    emp = _get_emp(db, user, emp_id)
+    old = emp.status
+    emp.status = status
+    audit(db, user, "employee_status", "employee", emp.id, detail=f"{old} → {status}", request=request)
+    db.commit()
+    return {"ok": True, "status": status}
+
+
+# ----------------------------- أحداث الموارد البشرية -----------------------------
+
+@router.post("/{emp_id}/events")
+def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
+              amount: float | None = None, date_val: date | None = None, request: Request = None,
+              user: models.User = Depends(require_perm("edit_employee")),
+              db: Session = Depends(get_db)):
+    """تسجيل إنذار/جزاء/مكافأة/ترقية/ملاحظة للموظف."""
+    if kind not in EVENT_KINDS:
+        raise HTTPException(status_code=400, detail="نوع حدث غير صالح")
+    emp = _get_emp(db, user, emp_id)
+    ev = models.EmployeeEvent(company_id=emp.company_id, employee_id=emp.id, kind=kind,
+                              title=title, detail=detail, amount=amount,
+                              date=date_val or date.today(), created_by=user.id)
+    db.add(ev)
+    db.flush()
+    audit(db, user, f"employee_{kind}", "employee", emp.id, detail=title, request=request)
+    db.commit()
+    return {"ok": True, "id": ev.id}
+
+
+@router.get("/{emp_id}/events")
+def list_events(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
+                db: Session = Depends(get_db)):
+    emp = _get_emp(db, user, emp_id)
+    rows = db.scalars(select(models.EmployeeEvent).where(
+        models.EmployeeEvent.employee_id == emp.id).order_by(models.EmployeeEvent.date.desc())).all()
+    return [{"id": e.id, "kind": e.kind, "title": e.title, "detail": e.detail,
+             "amount": e.amount, "date": e.date} for e in rows]
+
+
+# ----------------------------- الخط الزمني (Timeline) -----------------------------
+
+@router.get("/{emp_id}/timeline")
+def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
+                      db: Session = Depends(get_db)):
+    """سجل زمني موحّد لكل أحداث الموظف (إنشاء، مستندات، إقامات، إجازات، إنذارات...)."""
+    emp = _get_emp(db, user, emp_id)
+    items: list[dict] = []
+
+    items.append({"at": emp.created_at.isoformat(), "category": "create", "text": "تم إنشاء ملف الموظف"})
+    for d in db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee", models.Document.entity_id == emp.id)).all():
+        items.append({"at": d.created_at.isoformat(), "category": "document",
+                      "text": f"رفع مستند: {d.title or d.document_type_code} (نسخة {d.version})"})
+    for p in db.scalars(select(models.Permit).where(models.Permit.employee_id == emp.id)).all():
+        kind = "إقامة" if p.kind == "residency" else "إذن عمل"
+        items.append({"at": (p.start_date or emp.created_at.date()).isoformat() + "T00:00:00",
+                      "category": "permit", "text": f"{kind} رقم {p.number} (تنتهي {p.expiry_date})"})
+    for lv in db.scalars(select(models.Leave).where(models.Leave.employee_id == emp.id)).all():
+        items.append({"at": lv.start_date.isoformat() + "T00:00:00", "category": "leave",
+                      "text": f"إجازة من {lv.start_date} إلى {lv.end_date} ({lv.days} يوم)"})
+    for ev in db.scalars(select(models.EmployeeEvent).where(models.EmployeeEvent.employee_id == emp.id)).all():
+        items.append({"at": (ev.date or ev.created_at.date()).isoformat() + "T00:00:00",
+                      "category": ev.kind, "text": ev.title + (f" — {ev.amount} د.ك" if ev.amount else "")})
+
+    items.sort(key=lambda x: x["at"], reverse=True)
+    return {"employee": {"id": emp.id, "name": emp.name, "status": emp.status}, "timeline": items}
+
+
 # ----------------------------- إنهاء الخدمة -----------------------------
 
 @router.post("/{emp_id}/terminate")
