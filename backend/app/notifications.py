@@ -89,9 +89,24 @@ def notify_employee_self(db: Session, employee_id: int, **kwargs) -> None:
 
 # ----------------------------- المسح اليومي -----------------------------
 
-def _lead_buckets(lead_days: int) -> list[int]:
-    """مهل التنبيه الافتراضية بناءً على إعداد الشركة + مهل قانونية شائعة."""
-    return sorted({180, 90, 60, 30, lead_days}, reverse=True)
+# مهل التنبيه الذكية (Rule 2): 90/60/30/15/7/يوم الانتهاء
+EXPIRY_THRESHOLDS = [0, 7, 15, 30, 60, 90]
+
+
+def expiry_bucket(days_left: int) -> int | None:
+    """يرجع أصغر عتبة تنبيه وقع ضمنها days_left (أو None إن كان أبعد من 90 يومًا)."""
+    for t in EXPIRY_THRESHOLDS:
+        if days_left <= t:
+            return t
+    return None
+
+
+def expiry_severity(days_left: int) -> str:
+    if days_left <= 7:
+        return "critical"
+    if days_left <= 30:
+        return "warning"
+    return "info"
 
 
 def daily_scan(db: Session) -> dict:
@@ -106,15 +121,14 @@ def daily_scan(db: Session) -> dict:
         if not permit.expiry_date:
             continue
         days_left = (permit.expiry_date - today).days
-        company = companies.get(permit.company_id)
-        lead = company.alert_lead_days if company else 30
-        if days_left > max(90, lead):
+        bucket = expiry_bucket(days_left)
+        if bucket is None:  # أبعد من 90 يومًا
             continue
         emp = db.get(models.Employee, permit.employee_id)
         kind_ar = "الإقامة" if permit.kind == "residency" else "إذن العمل"
-        sev = "critical" if days_left <= 30 else "warning"
+        sev = expiry_severity(days_left)
         name = emp.name if emp else f"#{permit.employee_id}"
-        dk = f"permit_expiring:{permit.id}:{180 if days_left>90 else 90 if days_left>30 else 30}"
+        dk = f"permit_expiring:{permit.id}:{bucket}"
         # للمندوب + المدير
         notify_roles(
             db, permit.company_id, ["delegate", "company_manager", "hr"],
@@ -140,10 +154,10 @@ def daily_scan(db: Session) -> dict:
         select(models.Document).where(models.Document.is_current == True, models.Document.expiry_date.isnot(None))  # noqa: E712
     ).all():
         days_left = (doc.expiry_date - today).days
-        if days_left > 180:
+        bucket = expiry_bucket(days_left)
+        if bucket is None:
             continue
-        sev = "critical" if days_left <= 30 else "warning"
-        bucket = 180 if days_left > 90 else 90 if days_left > 30 else 30
+        sev = expiry_severity(days_left)
         dk = f"doc_expiring:{doc.id}:{bucket}"
         title = doc.title or doc.document_type_code
         notify_roles(
@@ -167,9 +181,9 @@ def daily_scan(db: Session) -> dict:
     for lic in db.scalars(select(models.License).where(models.License.status == "active")).all():
         if lic.expiry_date:
             days_left = (lic.expiry_date - today).days
-            if days_left <= 90:
-                sev = "critical" if days_left <= 30 else "warning"
-                bucket = 90 if days_left > 30 else 30
+            bucket = expiry_bucket(days_left)
+            if bucket is not None:
+                sev = expiry_severity(days_left)
                 notify_roles(
                     db, lic.company_id, ["company_manager", "hr", "delegate"],
                     type="license_expiring", title=f"ترخيص قارب على الانتهاء: {lic.name}",

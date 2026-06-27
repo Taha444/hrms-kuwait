@@ -13,14 +13,33 @@ from ..notifications import daily_scan
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+# تصنيف الإشعارات (Rule / 3.10)
+_CATEGORY = {
+    "renew_residency": "government", "renew_work_permit": "government", "license_expiring": "government",
+    "doc_expiring": "government", "transfer_info": "government", "exit_permit": "government",
+    "capacity_exceeded": "government", "request_stage": "approvals", "request_update": "approvals",
+    "pickup_ready": "hr", "appointment": "hr",
+}
 
-@router.get("/my", response_model=list[schemas.TaskOut])
-def my_tasks(status: str | None = "open",
+
+def _category(task_type: str) -> str:
+    return _CATEGORY.get(task_type, "system")
+
+
+@router.get("/my")
+def my_tasks(status: str | None = "open", category: str | None = None,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = select(models.Task).where(models.Task.assignee_user_id == user.id)
     if status:
         q = q.where(models.Task.status == status)
-    return list(db.scalars(q.order_by(models.Task.created_at.desc())).all())
+    rows = db.scalars(q.order_by(models.Task.created_at.desc())).all()
+    out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
+            "detail": t.detail, "status": t.status, "severity": t.severity,
+            "due_date": t.due_date, "related_entity_type": t.related_entity_type,
+            "related_entity_id": t.related_entity_id, "created_at": t.created_at} for t in rows]
+    if category:
+        out = [x for x in out if x["category"] == category]
+    return out
 
 
 @router.get("/count")

@@ -9,10 +9,14 @@ export default function Tasks() {
   const { can } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [status, setStatus] = useState("open");
+  const [category, setCategory] = useState("");
   const [msg, setMsg] = useState("");
+  const CAT_AR: Record<string, string> = {
+    system: "النظام", government: "حكومية", hr: "موارد بشرية", approvals: "موافقات",
+  };
 
-  const load = () => api.get(`/tasks/my?status=${status}`).then((r) => setTasks(r.data));
-  useEffect(() => { load(); }, [status]);
+  const load = () => api.get("/tasks/my", { params: { status, category: category || undefined } }).then((r) => setTasks(r.data));
+  useEffect(() => { load(); }, [status, category]);
 
   const setTaskStatus = async (id: number, s: string) => {
     await api.post(`/tasks/${id}/status?status=${s}`);
@@ -29,6 +33,10 @@ export default function Tasks() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2>{t("tasks")}</h2>
         <div className="row">
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: 150 }}>
+            <option value="">كل التصنيفات</option>
+            {Object.entries(CAT_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 160 }}>
             <option value="open">المفتوحة</option>
             <option value="done">المنجزة</option>
