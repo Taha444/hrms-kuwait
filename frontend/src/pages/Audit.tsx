@@ -2,18 +2,13 @@ import { useEffect, useState } from "react";
 import api from "../api";
 import { useI18n } from "../i18n";
 
-const ACTION_AR: Record<string, string> = {
-  login: "تسجيل دخول", create_employee: "إضافة موظف", update_employee: "تعديل موظف",
-  terminate_employee: "إنهاء خدمة", transfer_employee: "نقل موظف", create_user: "إضافة مستخدم",
-  reset_password: "إعادة تعيين كلمة مرور", change_password: "تغيير كلمة المرور",
-  run_payroll: "تشغيل مسيّر رواتب", upload_document: "رفع مستند", render_template: "توليد صيغة",
-  submit_request: "تقديم طلب", request_approved: "اعتماد طلب", request_rejected: "رفض طلب",
-  request_cancel: "إلغاء طلب", check_in: "تسجيل حضور", check_out: "تسجيل انصراف",
-  rotate_kiosk_key: "تدوير مفتاح شاشة", create_company: "إضافة شركة", create_branch: "إضافة فرع",
-};
-
 export default function Audit() {
   const { t } = useI18n();
+  const actionLabel = (a: string) => {
+    const key = `audit_act_${a}`;
+    const lbl = t(key);
+    return lbl === key ? a : lbl;
+  };
   const [rows, setRows] = useState<any[]>([]);
   const [action, setAction] = useState("");
   const [loading, setLoading] = useState(true);
@@ -37,7 +32,7 @@ export default function Audit() {
         </div>
         <select value={action} onChange={(e) => setAction(e.target.value)} style={{ width: 200 }}>
           <option value="">{t("audit_all")}</option>
-          {actions.map((a) => <option key={a} value={a}>{ACTION_AR[a] || a}</option>)}
+          {actions.map((a) => <option key={a} value={a}>{actionLabel(a)}</option>)}
         </select>
       </div>
 
@@ -48,7 +43,7 @@ export default function Audit() {
             {loading ? <tr><td colSpan={6} className="empty">{t("loading")}</td></tr>
               : rows.map((r) => (
                 <tr key={r.id}>
-                  <td><span className="pill neutral">{ACTION_AR[r.action] || r.action}</span></td>
+                  <td><span className="pill neutral">{actionLabel(r.action)}</span></td>
                   <td className="muted">{r.entity_type}{r.entity_id ? ` #${r.entity_id}` : ""}</td>
                   <td className="muted">{r.detail}</td>
                   <td>{r.by}</td>

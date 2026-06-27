@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import api from "../api";
 import { attAr } from "../labels";
+import { useI18n } from "../i18n";
 
 // تدفّق من خطوتين: (1) مسح الـ QR بالكاميرا الخلفية → تحقّق ← تذكرة،
 // (2) فتح كاميرا السيلفي الأمامية ← التقاط ← تسجيل حضور/انصراف.
 export default function Attendance() {
+  const { t, lang } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -49,7 +51,7 @@ export default function Attendance() {
       scanningRef.current = true;
       setScanningUI(true);
       scanLoop();
-    } catch { setErr("تعذّر الوصول إلى الكاميرا (يلزم HTTPS أو localhost)"); }
+    } catch { setErr(t("att_cam_err")); }
   };
 
   const scanLoop = () => {
@@ -77,10 +79,10 @@ export default function Attendance() {
       setBranchName(r.data.branch.name);
       setTicket(r.data.checkin_ticket);
       setStep(2);
-      setMsg(`تم التحقق — الفرع: ${r.data.branch.name}. التقط صورتك الآن.`);
+      setMsg(t("att_verified_msg", { branch: r.data.branch.name }));
       startSelfieCam();
     } catch (e: any) {
-      setErr(e.response?.data?.detail || "رمز غير صالح");
+      setErr(e.response?.data?.detail || t("att_invalid_qr"));
       // استئناف المسح
       scanningRef.current = true; setScanningUI(true); scanLoop();
     }
@@ -92,7 +94,7 @@ export default function Attendance() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-    } catch { setErr("تعذّر فتح كاميرا السيلفي"); }
+    } catch { setErr(t("att_selfie_cam_err")); }
   };
 
   const capture = () => {
@@ -106,7 +108,7 @@ export default function Attendance() {
 
   const submit = async (action: "in" | "out") => {
     setErr(""); setMsg("");
-    if (!selfie) return setErr("التقط صورة السيلفي أولًا");
+    if (!selfie) return setErr(t("att_need_selfie"));
     const fd = new FormData();
     fd.append("checkin_ticket", ticket);
     fd.append("action", action);
@@ -114,10 +116,10 @@ export default function Attendance() {
     try {
       const r = await api.post("/attendance/check-in", fd);
       setMsg(action === "in"
-        ? `تم تسجيل الحضور (${r.data.status})`
-        : `تم تسجيل الانصراف (عمل ${r.data.worked_minutes} دقيقة)`);
+        ? t("att_checkin_done", { status: attAr(r.data.status) })
+        : t("att_checkout_done", { minutes: r.data.worked_minutes }));
       reset(); loadRecords();
-    } catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
 
   const reset = () => {
@@ -127,40 +129,40 @@ export default function Attendance() {
 
   return (
     <div>
-      <h2>الحضور والانصراف (خدمة ذاتية)</h2>
+      <h2>{t("att_self_title")}</h2>
 
       <div className="card">
         <div className="row" style={{ gap: 6, marginBottom: 10 }}>
-          <span className={`pill ${step === 1 ? "info" : "success"}`}>1 · مسح الرمز</span>
-          <span>←</span>
-          <span className={`pill ${step === 2 ? "info" : "pending"}`}>2 · السيلفي والتسجيل</span>
+          <span className={`pill ${step === 1 ? "info" : "success"}`}>1 · {t("att_step_scan")}</span>
+          <span>{lang === "ar" ? "←" : "→"}</span>
+          <span className={`pill ${step === 2 ? "info" : "pending"}`}>2 · {t("att_step_selfie")}</span>
         </div>
 
         {step === 1 && (
           <div>
-            <p className="muted">وجّه الكاميرا إلى شاشة رمز QR في الفرع. لا يمكن إدخال الرمز يدويًا.</p>
+            <p className="muted">{t("att_scan_hint")}</p>
             <video ref={videoRef} playsInline muted style={{ display: scanningUI ? "block" : "none" }} />
-            {!scanningUI && <button onClick={startScan}>📷 مسح الرمز</button>}
-            {scanningUI && <p className="muted">جارِ البحث عن الرمز…</p>}
+            {!scanningUI && <button onClick={startScan}>{t("att_scan_btn")}</button>}
+            {scanningUI && <p className="muted">{t("att_searching")}</p>}
           </div>
         )}
 
         {step === 2 && (
           <div>
-            <p className="ok">✓ الفرع المؤكَّد: <b>{branchName}</b></p>
+            <p className="ok">✓ {t("att_branch_confirmed")}: <b>{branchName}</b></p>
             {!selfiePreview
               ? <video ref={videoRef} playsInline muted />
               : <img src={selfiePreview} className="cam" alt="selfie" style={{ maxWidth: 320, borderRadius: 12 }} />}
             <div className="row" style={{ marginTop: 10 }}>
-              {!selfiePreview && <button onClick={capture}>📸 التقاط</button>}
+              {!selfiePreview && <button onClick={capture}>{t("att_capture")}</button>}
               {selfiePreview && (
                 <>
-                  <button onClick={() => submit("in")}>تسجيل حضور</button>
-                  <button className="warn" onClick={() => submit("out")}>تسجيل انصراف</button>
-                  <button className="ghost" onClick={() => { setSelfie(null); setSelfiePreview(""); startSelfieCam(); }}>إعادة الالتقاط</button>
+                  <button onClick={() => submit("in")}>{t("att_checkin")}</button>
+                  <button className="warn" onClick={() => submit("out")}>{t("att_checkout")}</button>
+                  <button className="ghost" onClick={() => { setSelfie(null); setSelfiePreview(""); startSelfieCam(); }}>{t("att_recapture")}</button>
                 </>
               )}
-              <button className="ghost" onClick={reset}>إلغاء</button>
+              <button className="ghost" onClick={reset}>{t("cancel")}</button>
             </div>
           </div>
         )}
@@ -171,14 +173,14 @@ export default function Attendance() {
       </div>
 
       <div className="card">
-        <h3>سجلّي</h3>
-        <table><thead><tr><th>الدخول</th><th>الخروج</th><th>الحالة</th><th>دقائق العمل</th><th>إضافي</th></tr></thead>
+        <h3>{t("att_my_log")}</h3>
+        <table><thead><tr><th>{t("col_in")}</th><th>{t("col_out")}</th><th>{t("status")}</th><th>{t("col_worked")}</th><th>{t("col_overtime")}</th></tr></thead>
           <tbody>{records.map((r) => (
-            <tr key={r.id}><td>{r.check_in_at && new Date(r.check_in_at).toLocaleString("ar")}</td>
-              <td>{r.check_out_at ? new Date(r.check_out_at).toLocaleString("ar") : "—"}</td>
+            <tr key={r.id}><td>{r.check_in_at && new Date(r.check_in_at).toLocaleString(lang)}</td>
+              <td>{r.check_out_at ? new Date(r.check_out_at).toLocaleString(lang) : "—"}</td>
               <td><span className={`pill ${r.status === "late" ? "warning" : "success"}`}>{attAr(r.status)}</span></td>
               <td>{r.worked_minutes}</td><td>{r.overtime_minutes}</td></tr>
-          ))}{!records.length && <tr><td colSpan={5} className="muted">لا يوجد</td></tr>}</tbody></table>
+          ))}{!records.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
       </div>
     </div>
   );

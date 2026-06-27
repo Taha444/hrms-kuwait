@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import { useAuth } from "../auth";
+import { useI18n } from "../i18n";
 import { roleAr } from "../labels";
 
-const USER_STATUS_AR: Record<string, string> = {
-  active: "نشط", inactive: "غير نشط", suspended: "موقوف", locked: "مقفل",
-};
+const ACTIONS = ["read", "add", "edit", "delete", "print", "export", "approve"];
 
 export default function Users() {
   const { user: me, impersonate } = useAuth();
+  const { t } = useI18n();
+  const USER_STATUS: Record<string, string> = {
+    active: t("user_status_active"), inactive: t("user_status_inactive"),
+    suspended: t("user_status_suspended"), locked: t("user_status_locked"),
+  };
+  const actionLabel = (a: string) => t(`act_${a}`);
   const [users, setUsers] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<any>({ permissions: {}, templates: {}, roles: [] });
   const [showNew, setShowNew] = useState(false);
@@ -30,7 +35,7 @@ export default function Users() {
   }, []);
   const setScope = async (uid: number, branch_id: string) => {
     await api.post(`/users/${uid}/scope`, null, { params: { branch_id: branch_id || undefined } });
-    load(); setMsg("تم ضبط نطاق البيانات");
+    load(); setMsg(t("user_scope_set"));
   };
 
   const loadMatrix = (id: number) => api.get(`/users/${id}/matrix`).then((r) => setMatrix(r.data));
@@ -43,22 +48,22 @@ export default function Users() {
       grants[p.code] = p.actions.filter((a: string) => matrix.matrix[p.code]?.[a]);
     }
     await api.post(`/users/${sel.id}/matrix`, { grants });
-    setMsg("تم حفظ مصفوفة الأذونات"); loadMatrix(sel.id);
+    setMsg(t("user_matrix_saved")); loadMatrix(sel.id);
   };
   const resetMatrix = async () => {
     await api.post(`/users/${sel.id}/matrix/reset`);
-    setMsg("تمت إعادة الأذونات لصلاحيات الدور"); loadMatrix(sel.id);
+    setMsg(t("user_matrix_reset")); loadMatrix(sel.id);
   };
 
   const create = async () => {
     setErr("");
     try { await api.post("/users", form); setShowNew(false); load(); }
-    catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
   const toggle = async (id: number) => { await api.post(`/users/${id}/toggle`); load(); };
   const reset = async (id: number) => {
     const r = await api.post("/auth/reset-password", { user_id: id });
-    setMsg(`كلمة مرور مؤقتة: ${r.data.temporary_password}`);
+    setMsg(t("user_temp_pw", { pw: r.data.temporary_password }));
   };
   const openPerms = async (u: any) => {
     setSel(u);
@@ -79,32 +84,32 @@ export default function Users() {
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>المستخدمون والصلاحيات</h2>
-        <button onClick={() => setShowNew((s) => !s)}>+ مستخدم جديد</button>
+        <h2>{t("users_title")}</h2>
+        <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>
       </div>
       {msg && <div className="ok">{msg}</div>}
 
       {showNew && (
         <div className="card">
           <div className="row">
-            <div className="field" style={{ flex: 1 }}><label>الرقم المدني</label>
+            <div className="field" style={{ flex: 1 }}><label>{t("user_civil_id")}</label>
               <input onChange={(e) => setForm({ ...form, civil_id: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>الاسم</label>
+            <div className="field" style={{ flex: 1 }}><label>{t("user_name")}</label>
               <input onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>الدور</label>
+            <div className="field" style={{ flex: 1 }}><label>{t("user_role")}</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 {(catalog.assignable_roles || catalog.roles).map((r: string) => <option key={r} value={r}>{roleAr(r)}</option>)}
               </select></div>
           </div>
-          <p className="muted">كلمة المرور الافتراضية تُطلب تغييرها عند أول دخول.</p>
+          <p className="muted">{t("user_default_pw_hint")}</p>
           {err && <div className="err">{err}</div>}
-          <button onClick={create}>حفظ</button>
+          <button onClick={create}>{t("save")}</button>
         </div>
       )}
 
       <div className="table-wrap">
         <table>
-          <thead><tr><th>الرقم المدني</th><th>الاسم</th><th>الدور</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>{t("user_civil_id")}</th><th>{t("user_name")}</th><th>{t("user_role")}</th><th>{t("status")}</th><th></th></tr></thead>
           <tbody>{users.map((u) => (
             <tr key={u.id}><td className="num">{u.civil_id}</td><td>{u.full_name}</td>
               <td><span className="pill info">{roleAr(u.role)}</span></td>
@@ -112,14 +117,14 @@ export default function Users() {
                 <select value={u.status || "active"} onChange={async (e) => {
                   await api.post(`/users/${u.id}/status`, null, { params: { status: e.target.value } }); load();
                 }} style={{ width: 110, padding: "4px 8px" }}>
-                  {Object.entries(USER_STATUS_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {Object.entries(USER_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </td>
               <td className="row">
-                <button className="ghost sm" onClick={() => openPerms(u)}>الصلاحيات</button>
-                <button className="ghost sm" onClick={() => reset(u.id)}>كلمة المرور</button>
+                <button className="ghost sm" onClick={() => openPerms(u)}>{t("user_perms")}</button>
+                <button className="ghost sm" onClick={() => reset(u.id)}>{t("user_password")}</button>
                 {me?.role === "super_admin" && u.role !== "super_admin" && (
-                  <button className="ghost sm" onClick={() => impersonate(u.id)}>انتحال</button>
+                  <button className="ghost sm" onClick={() => impersonate(u.id)}>{t("user_impersonate")}</button>
                 )}
               </td></tr>
           ))}</tbody>
@@ -129,17 +134,17 @@ export default function Users() {
       {sel && matrix && (
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3 style={{ margin: 0 }}>مصفوفة الأذونات الدقيقة: {sel.full_name}</h3>
+            <h3 style={{ margin: 0 }}>{t("user_matrix_title")}: {sel.full_name}</h3>
             <div className="row">
-              <button onClick={saveMatrix}>حفظ المصفوفة</button>
-              <button className="ghost" onClick={resetMatrix}>إعادة لصلاحيات الدور</button>
+              <button onClick={saveMatrix}>{t("user_save_matrix")}</button>
+              <button className="ghost" onClick={resetMatrix}>{t("user_reset_role")}</button>
             </div>
           </div>
-          <p className="muted">حدّد لكل صفحة الأفعال المسموحة. الصفحة التي تُعدّلها تتجاوز صلاحيات الدور لهذا المستخدم.</p>
+          <p className="muted">{t("user_matrix_hint")}</p>
           <div className="row" style={{ marginBottom: 10 }}>
-            <span className="muted">نطاق البيانات (تقييد بفرع):</span>
+            <span className="muted">{t("user_data_scope")}</span>
             <select value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, e.target.value)} style={{ width: 220 }}>
-              <option value="">كل فروع الشركة</option>
+              <option value="">{t("user_all_branches")}</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
@@ -147,9 +152,9 @@ export default function Users() {
             <table className="att-matrix">
               <thead>
                 <tr>
-                  <th className="emp">الصفحة</th>
-                  {["read", "add", "edit", "delete", "print", "export", "approve"].map((a) => (
-                    <th key={a} className="day" style={{ minWidth: 64 }}>{mxCatalog.actions_ar[a] || a}</th>
+                  <th className="emp">{t("user_page")}</th>
+                  {ACTIONS.map((a) => (
+                    <th key={a} className="day" style={{ minWidth: 64 }}>{actionLabel(a)}</th>
                   ))}
                 </tr>
               </thead>
@@ -157,9 +162,9 @@ export default function Users() {
                 {mxCatalog.pages.map((p: any) => (
                   <tr key={p.code}>
                     <td className="emp">{p.label}
-                      {matrix.custom_pages.includes(p.code) && <span className="pill gold" style={{ marginInlineStart: 6 }}>مخصّص</span>}
+                      {matrix.custom_pages.includes(p.code) && <span className="pill gold" style={{ marginInlineStart: 6 }}>{t("user_custom")}</span>}
                     </td>
-                    {["read", "add", "edit", "delete", "print", "export", "approve"].map((a) => (
+                    {ACTIONS.map((a) => (
                       <td key={a} className="cell">
                         {p.actions.includes(a) ? (
                           <input type="checkbox" checked={!!matrix.matrix[p.code]?.[a]}
@@ -177,9 +182,9 @@ export default function Users() {
 
       {sel && perms && (
         <div className="card">
-          <h3>الصلاحيات التفصيلية (متقدّم): {sel.full_name} <span className="muted">({roleAr(perms.role)})</span></h3>
+          <h3>{t("user_adv_title")}: {sel.full_name} <span className="muted">({roleAr(perms.role)})</span></h3>
           <div className="row" style={{ marginBottom: 10 }}>
-            <span className="muted">تطبيق قالب:</span>
+            <span className="muted">{t("user_apply_template")}</span>
             {Object.entries(catalog.templates).map(([k, v]: any) => (
               <button key={k} className="ghost" onClick={() => applyTemplate(k)}>{v.label}</button>
             ))}

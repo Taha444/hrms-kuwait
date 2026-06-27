@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import { useAuth } from "../auth";
+import { useI18n } from "../i18n";
 import Icon from "../Icon";
 
 // وحدة الصيغ والنماذج: تسجيل صيغة بمتغيّرات {{...}}، تعبئتها تلقائيًا ببيانات الموظف، وطباعتها.
@@ -12,6 +13,7 @@ const NEW_TEMPLATE = `<h2>عنوان الصيغة</h2>
 
 export default function Templates() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const isAdmin = user?.role === "super_admin";
   const [templates, setTemplates] = useState<any[]>([]);
   const [placeholders, setPlaceholders] = useState<Record<string, string>>({});
@@ -46,12 +48,12 @@ export default function Templates() {
     try {
       if (editing.id) await api.put(`/templates/${editing.id}`, editing);
       else await api.post("/templates", editing);
-      setEditing(null); setMsg("تم حفظ الصيغة"); load();
-    } catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+      setEditing(null); setMsg(t("tpl_saved")); load();
+    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
 
   const remove = async (id: number) => {
-    if (!confirm("حذف هذه الصيغة؟")) return;
+    if (!confirm(t("tpl_confirm_delete"))) return;
     await api.delete(`/templates/${id}`); load();
   };
 
@@ -70,21 +72,21 @@ export default function Templates() {
       const r = await api.post(`/templates/${filling.id}/render`, { employee_id: empId, extra, save: true });
       const w = window.open("", "_blank");
       if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
-      setMsg("تم توليد المستند وحفظه في ملف الموظف");
-    } catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+      setMsg(t("tpl_rendered"));
+    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
 
   return (
     <div>
       <div className="page-head">
         <div>
-          <div className="eyebrow">المستندات</div>
-          <h2 style={{ margin: "2px 0 0" }}>الصيغ والنماذج</h2>
-          <div className="sub">اختر صيغة ثم الموظف لتُعبّأ تلقائيًا وتُطبع{isAdmin ? " · أو أنشئ صيغة جديدة" : ""}</div>
+          <div className="eyebrow">{t("tpl_eyebrow")}</div>
+          <h2 style={{ margin: "2px 0 0" }}>{t("templates_title")}</h2>
+          <div className="sub">{t("templates_sub")}{isAdmin ? t("templates_sub_admin") : ""}</div>
         </div>
         {isAdmin && (
-          <button onClick={() => setEditing({ name: "", category: "عام", body_html: NEW_TEMPLATE })}>
-            + صيغة جديدة
+          <button onClick={() => setEditing({ name: "", category: t("tpl_default_category"), body_html: NEW_TEMPLATE })}>
+            {t("tpl_new")}
           </button>
         )}
       </div>
@@ -95,14 +97,14 @@ export default function Templates() {
       {/* محرّر الصيغة */}
       {editing && (
         <div className="card">
-          <h3>{editing.id ? "تعديل صيغة" : "صيغة جديدة"}</h3>
+          <h3>{editing.id ? t("tpl_edit") : t("tpl_new_title")}</h3>
           <div className="row">
-            <div className="field" style={{ flex: 2 }}><label>اسم الصيغة</label>
+            <div className="field" style={{ flex: 2 }}><label>{t("tpl_name")}</label>
               <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>التصنيف</label>
+            <div className="field" style={{ flex: 1 }}><label>{t("tpl_category")}</label>
               <input value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })} /></div>
           </div>
-          <label>المتغيّرات التلقائية — اضغط لإدراجها في النص</label>
+          <label>{t("tpl_auto_vars")}</label>
           <div className="row" style={{ marginBottom: 10 }}>
             {Object.entries(placeholders).map(([k, v]) => (
               <button key={k} type="button" className="ghost sm" onClick={() => insertToken(k)} title={`{{${k}}}`}>
@@ -111,15 +113,15 @@ export default function Templates() {
             ))}
           </div>
           <div className="field">
-            <label>نص الصيغة (HTML) — استخدم {"{{متغيّر}}"} للحقول</label>
+            <label>{t("tpl_body_label")}</label>
             <textarea ref={bodyRef} rows={12} value={editing.body_html}
               onChange={(e) => setEditing({ ...editing, body_html: e.target.value })}
               style={{ fontFamily: "monospace", lineHeight: 1.7 }} />
           </div>
-          <p className="muted">يمكنك إضافة متغيّرات مخصّصة مثل <code>{"{{addressed_to}}"}</code> وسيُطلب إدخالها عند التعبئة.</p>
+          <p className="muted">{t("tpl_custom_hint")} <code>{"{{addressed_to}}"}</code></p>
           <div className="row">
-            <button onClick={saveTemplate}>حفظ</button>
-            <button className="ghost" onClick={() => setEditing(null)}>إلغاء</button>
+            <button onClick={saveTemplate}>{t("save")}</button>
+            <button className="ghost" onClick={() => setEditing(null)}>{t("cancel")}</button>
           </div>
         </div>
       )}
@@ -127,16 +129,16 @@ export default function Templates() {
       {/* لوحة التعبئة والطباعة */}
       {filling && (
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
-          <h3>تعبئة وطباعة: {filling.name}</h3>
+          <h3>{t("tpl_fill_print")}: {filling.name}</h3>
           <div className="field" style={{ maxWidth: 360 }}>
-            <label>اختر الموظف</label>
+            <label>{t("tpl_select_emp")}</label>
             <select value={empId} onChange={(e) => setEmpId(+e.target.value)}>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
             </select>
           </div>
           {filling.customKeys?.length > 0 && (
             <>
-              <label>حقول إضافية مطلوبة</label>
+              <label>{t("tpl_extra")}</label>
               <div className="row">
                 {filling.customKeys.map((k: string) => (
                   <div className="field" key={k} style={{ flex: 1, minWidth: 200 }}>
@@ -148,8 +150,8 @@ export default function Templates() {
             </>
           )}
           <div className="row">
-            <button onClick={renderPrint}><Icon name="doc" size={16} /> معاينة وطباعة</button>
-            <button className="ghost" onClick={() => setFilling(null)}>إغلاق</button>
+            <button onClick={renderPrint}><Icon name="doc" size={16} /> {t("tpl_preview_print")}</button>
+            <button className="ghost" onClick={() => setFilling(null)}>{t("close")}</button>
           </div>
         </div>
       )}
@@ -157,22 +159,22 @@ export default function Templates() {
       {/* قائمة الصيغ */}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>الصيغة</th><th>التصنيف</th><th>المتغيّرات</th><th>النطاق</th><th></th></tr></thead>
+          <thead><tr><th>{t("tpl_col_name")}</th><th>{t("tpl_category")}</th><th>{t("tpl_col_vars")}</th><th>{t("tpl_scope")}</th><th></th></tr></thead>
           <tbody>
-            {templates.map((t) => (
-              <tr key={t.id}>
-                <td><b>{t.name}</b></td>
-                <td><span className="pill neutral">{t.category}</span></td>
-                <td className="muted">{t.placeholders?.length || 0} متغيّر</td>
-                <td>{t.is_global ? <span className="pill gold">عامة</span> : <span className="pill info">الشركة</span>}</td>
+            {templates.map((tpl) => (
+              <tr key={tpl.id}>
+                <td><b>{tpl.name}</b></td>
+                <td><span className="pill neutral">{tpl.category}</span></td>
+                <td className="muted">{t("tpl_vars_count", { n: tpl.placeholders?.length || 0 })}</td>
+                <td>{tpl.is_global ? <span className="pill gold">{t("tpl_global")}</span> : <span className="pill info">{t("tpl_company")}</span>}</td>
                 <td className="row">
-                  <button className="sm" onClick={() => openFill(t)}>تعبئة وطباعة</button>
-                  {isAdmin && <button className="ghost sm" onClick={() => api.get(`/templates/${t.id}`).then((r) => setEditing(r.data))}>تعديل</button>}
-                  {isAdmin && <button className="ghost sm" onClick={() => remove(t.id)}>حذف</button>}
+                  <button className="sm" onClick={() => openFill(tpl)}>{t("tpl_fill_print")}</button>
+                  {isAdmin && <button className="ghost sm" onClick={() => api.get(`/templates/${tpl.id}`).then((r) => setEditing(r.data))}>{t("edit")}</button>}
+                  {isAdmin && <button className="ghost sm" onClick={() => remove(tpl.id)}>{t("delete")}</button>}
                 </td>
               </tr>
             ))}
-            {!templates.length && <tr><td colSpan={5} className="empty">لا توجد صيغ بعد — أنشئ واحدة.</td></tr>}
+            {!templates.length && <tr><td colSpan={5} className="empty">{t("tpl_none")}</td></tr>}
           </tbody>
         </table>
       </div>

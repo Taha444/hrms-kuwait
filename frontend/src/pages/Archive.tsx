@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import api, { downloadFile } from "../api";
 import { useAuth } from "../auth";
+import { useI18n } from "../i18n";
 import Icon from "../Icon";
 
 // أرشيف الشركة والفروع: المستندات الرسمية (عقد التأسيس، السجل التجاري، الرخص…).
 export default function Archive() {
   const { can } = useAuth();
+  const { t, lang } = useI18n();
   const [tab, setTab] = useState<"company" | "branch">("company");
   const [data, setData] = useState<any>(null);          // أرشيف الشركة
   const [branches, setBranches] = useState<any[]>([]);
@@ -23,7 +25,7 @@ export default function Archive() {
 
   const saveFileNo = async () => {
     await api.put("/archive/company/info", null, { params: { file_number: fileNo } });
-    setMsg("تم حفظ رقم الملف"); loadCompany();
+    setMsg(t("arch_file_saved")); loadCompany();
   };
 
   const upload = async (entityType: string, entityId: number, code: string, name: string, file: File, reload: () => void) => {
@@ -34,7 +36,7 @@ export default function Archive() {
     fd.append("title", name);
     fd.append("file", file);
     await api.post("/documents/upload", fd);
-    setMsg(`تم رفع: ${name}`); reload();
+    setMsg(t("arch_uploaded", { name })); reload();
   };
 
   const download = (entityType: string, entityId: number, code: string, name: string) =>
@@ -49,14 +51,14 @@ export default function Archive() {
           <div className="card" key={dt.code} style={{ borderTop: cur ? "3px solid var(--success)" : "3px solid var(--line)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <b>{dt.name}</b>
-              {cur ? <span className="pill success">مرفوع v{cur.version}</span> : <span className="pill neutral">غير مرفوع</span>}
+              {cur ? <span className="pill success">{t("arch_uploaded_v", { v: cur.version })}</span> : <span className="pill neutral">{t("arch_not_uploaded")}</span>}
             </div>
-            {cur && <p className="muted" style={{ fontSize: 12 }}>أُضيف: {new Date(cur.created_at).toLocaleDateString("ar")}{cur.expiry_date ? ` · ينتهي ${cur.expiry_date}` : ""}</p>}
+            {cur && <p className="muted" style={{ fontSize: 12 }}>{t("arch_added", { date: new Date(cur.created_at).toLocaleDateString(lang) })}{cur.expiry_date ? ` · ${t("arch_expires", { date: cur.expiry_date })}` : ""}</p>}
             <div className="row" style={{ marginTop: 8 }}>
-              {cur && <button className="ghost sm" onClick={() => download(entityType, entityId, dt.code, dt.name)}><Icon name="doc" size={14} /> تنزيل</button>}
+              {cur && <button className="ghost sm" onClick={() => download(entityType, entityId, dt.code, dt.name)}><Icon name="doc" size={14} /> {t("arch_download")}</button>}
               {can("upload_documents") && (
                 <label className="btn ghost sm" style={{ cursor: "pointer" }}>
-                  {cur ? "استبدال" : "رفع"}
+                  {cur ? t("arch_replace") : t("arch_upload")}
                   <input type="file" style={{ display: "none" }}
                     onChange={(e) => e.target.files && upload(entityType, entityId, dt.code, dt.name, e.target.files[0], reload)} />
                 </label>
@@ -72,16 +74,16 @@ export default function Archive() {
     <div>
       <div className="page-head">
         <div>
-          <div className="eyebrow">الأرشيف</div>
-          <h2 style={{ margin: "2px 0 0" }}>أرشيف المستندات الرسمية</h2>
-          <div className="sub">عقد التأسيس · السجل التجاري · الرخص · مستندات الفروع</div>
+          <div className="eyebrow">{t("arch_eyebrow")}</div>
+          <h2 style={{ margin: "2px 0 0" }}>{t("arch_title")}</h2>
+          <div className="sub">{t("arch_sub")}</div>
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
 
       <div className="row" style={{ marginBottom: 14 }}>
-        <button className={tab === "company" ? "" : "ghost"} onClick={() => setTab("company")}>أرشيف الشركة</button>
-        <button className={tab === "branch" ? "" : "ghost"} onClick={() => setTab("branch")}>أرشيف الفروع</button>
+        <button className={tab === "company" ? "" : "ghost"} onClick={() => setTab("company")}>{t("arch_tab_company")}</button>
+        <button className={tab === "branch" ? "" : "ghost"} onClick={() => setTab("branch")}>{t("arch_tab_branch")}</button>
       </div>
 
       {tab === "company" && data && (
@@ -90,12 +92,12 @@ export default function Archive() {
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
               <div>
                 <h3 style={{ margin: 0 }}>{data.company.name}</h3>
-                <p className="muted" style={{ margin: "4px 0" }}>السجل التجاري: {data.company.commercial_reg || "—"} · النوع: {data.company.entity_type || "—"}</p>
+                <p className="muted" style={{ margin: "4px 0" }}>{t("arch_commercial_reg")}: {data.company.commercial_reg || "—"} · {t("arch_entity_type")}: {data.company.entity_type || "—"}</p>
               </div>
               <div className="row" style={{ alignItems: "flex-end" }}>
-                <div className="field" style={{ margin: 0 }}><label>رقم ملف الشركة (القوى العاملة)</label>
+                <div className="field" style={{ margin: 0 }}><label>{t("arch_file_number")}</label>
                   <input value={fileNo} onChange={(e) => setFileNo(e.target.value)} style={{ width: 200 }} /></div>
-                {can("manage_company") && <button onClick={saveFileNo}>حفظ</button>}
+                {can("manage_company") && <button onClick={saveFileNo}>{t("save")}</button>}
               </div>
             </div>
           </div>
@@ -107,7 +109,7 @@ export default function Archive() {
       {tab === "branch" && (
         <>
           <div className="field" style={{ maxWidth: 320 }}>
-            <label>اختر الفرع</label>
+            <label>{t("arch_select_branch")}</label>
             <select value={branchId} onChange={(e) => { const id = +e.target.value; setBranchId(id); loadBranch(id); }}>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
