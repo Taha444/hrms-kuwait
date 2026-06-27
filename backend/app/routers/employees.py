@@ -30,7 +30,8 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
 
 @router.get("", response_model=list[schemas.EmployeeOut])
 def list_employees(response: Response, company_id: int | None = None, branch_id: int | None = None,
-                   q: str | None = None, limit: int = 100, offset: int = 0,
+                   department_id: int | None = None, q: str | None = None,
+                   limit: int = 100, offset: int = 0,
                    user: models.User = Depends(require_perm("view_employee")),
                    db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
@@ -39,6 +40,8 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
         base = base.where(models.Employee.company_id == cid)
     if branch_id:
         base = base.where(models.Employee.branch_id == branch_id)
+    if department_id:
+        base = base.where(models.Employee.department_id == department_id)
     if q:
         like = f"%{q.strip()}%"
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة

@@ -184,6 +184,44 @@ def add_supervisor(branch_id: int, user_id: int, request: Request,
     return {"ok": True}
 
 
+# ----------------------------- الإدارات/الأقسام -----------------------------
+
+@router.get("/departments")
+def list_departments(company_id: int | None = None, branch_id: int | None = None,
+                     user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    cid = scope_company_id(user, company_id)
+    q = select(models.Department).where(models.Department.status == "active")
+    if cid is not None:
+        q = q.where(models.Department.company_id == cid)
+    if branch_id:
+        q = q.where(models.Department.branch_id == branch_id)
+    rows = db.scalars(q.order_by(models.Department.name)).all()
+    counts = {}
+    for d in rows:
+        counts[d.id] = len(db.scalars(select(models.Employee.id).where(
+            models.Employee.department_id == d.id, models.Employee.status == "active")).all())
+    return [{"id": d.id, "name": d.name, "branch_id": d.branch_id,
+             "employee_count": counts.get(d.id, 0)} for d in rows]
+
+
+@router.post("/departments", status_code=201)
+def create_department(name: str, branch_id: int | None = None, request: Request = None,
+                      user: models.User = Depends(require_perm("manage_departments")),
+                      db: Session = Depends(get_db)):
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="يجب أن يكون المستخدم تابعًا لشركة")
+    if branch_id:
+        branch = db.get(models.Branch, branch_id)
+        if not branch or branch.company_id != user.company_id:
+            raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    dept = models.Department(company_id=user.company_id, branch_id=branch_id, name=name)
+    db.add(dept)
+    db.flush()
+    audit(db, user, "create_department", "department", dept.id, request=request)
+    db.commit()
+    return {"ok": True, "id": dept.id}
+
+
 # ----------------------------- الورديات -----------------------------
 
 @router.get("/shifts")

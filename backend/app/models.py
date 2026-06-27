@@ -111,6 +111,19 @@ class BranchSupervisor(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
 
+class Department(Base):
+    """الإدارة/القسم داخل فرع (الهرم: شركة ← فرع ← إدارة ← موظفون)."""
+    __tablename__ = "departments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    name: Mapped[str] = mapped_column(String(150))
+    manager_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Shift(Base):
     __tablename__ = "shifts"
 
@@ -140,6 +153,7 @@ class Employee(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"))
     branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     shift_id: Mapped[int | None] = mapped_column(ForeignKey("shifts.id"))
     attendance_mode: Mapped[str] = mapped_column(String(10), default="none")  # none/qr/gps/both
     annual_leave_balance: Mapped[float] = mapped_column(Float, default=30)

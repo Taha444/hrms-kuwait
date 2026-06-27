@@ -11,7 +11,8 @@ export const STATUS_AR: Record<string, string> = {
 
 export const ROLE_AR: Record<string, string> = {
   super_admin: "إدارة عليا", company_owner: "صاحب الشركات", company_manager: "مدير شركة",
-  branch_supervisor: "مسؤول فرع", hr: "موارد بشرية", delegate: "مندوب", employee: "موظف",
+  branch_supervisor: "مسؤول فرع", hr: "موارد بشرية", delegate: "مندوب",
+  admin_employee: "موظف إداري", employee: "موظف",
 };
 
 // حالات الحضور

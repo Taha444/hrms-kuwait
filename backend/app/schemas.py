@@ -114,6 +114,7 @@ class EmployeeIn(BaseModel):
     contract_type: str = "indefinite"
     license_id: int | None = None
     branch_id: int | None = None
+    department_id: int | None = None
     shift_id: int | None = None
     attendance_mode: str = "none"
     annual_leave_balance: float = 30

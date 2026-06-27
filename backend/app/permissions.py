@@ -18,6 +18,7 @@ PERMISSIONS: dict[str, str] = {
     "edit_employee": "تعديل موظف",
     "delete_employee": "حذف موظف",
     "manage_branches": "إدارة الفروع والمواقع",
+    "manage_departments": "إدارة الإدارات/الأقسام",
     "manage_licenses": "إدارة التراخيص",
     "manage_permits": "إدارة الإقامات وأذونات العمل",
     "upload_documents": "رفع المستندات",
@@ -101,6 +102,8 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "delegate": {"view_employee", "view_documents", "upload_documents", "manage_permits",
                  "manage_licenses", "process_delegate_tasks", "view_tasks", "manage_tasks",
                  "submit_request", "view_reports"},
+    # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
+    "admin_employee": set(),
     # الموظف: خدمة ذاتية فقط (لا إحصائيات شركة)
     "employee": {"submit_request", "record_attendance", "view_tasks"},
 }
@@ -115,6 +118,7 @@ ROLE_LEVEL: dict[str, int] = {
     "hr": 40,
     "branch_supervisor": 40,
     "delegate": 30,
+    "admin_employee": 20,
     "employee": 10,
 }
 

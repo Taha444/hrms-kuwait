@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { useI18n } from "./i18n";
 import api from "./api";
 import Icon from "./Icon";
+import GlobalSearch from "./components/GlobalSearch";
 
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
@@ -19,6 +20,7 @@ import RequestDetail from "./pages/RequestDetail";
 import Attendance from "./pages/Attendance";
 import AttendanceReview from "./pages/AttendanceReview";
 import Pro from "./pages/Pro";
+import Operations from "./pages/Operations";
 import Branches from "./pages/Branches";
 import Kiosk from "./pages/Kiosk";
 import Eos from "./pages/Eos";
@@ -67,6 +69,8 @@ function Sidebar({ open }: { open: boolean }) {
         <Item to="/" icon="dashboard" label={t("dashboard")} />
         <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
         <Item to="/requests" icon="requests" label={t("requests")} />
+        {(can("view_reports") || can("manage_permits") || can("approve_request")) &&
+          <Item to="/operations" icon="scan" label="مركز العمليات" />}
       </div>
 
       <div className="nav-group">
@@ -127,6 +131,7 @@ function Topbar() {
           <Icon name="chevron" size={15} className="chev" />
         </div>
       )}
+      <GlobalSearch />
       <div className="spacer" />
       <button className="icon-btn" onClick={() => nav("/tasks")} title={t("tasks")}>
         <Icon name="bell" size={18} />
@@ -192,6 +197,7 @@ export default function App() {
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
       <Route path="/attendance-review" element={<Protected><AttendanceReview /></Protected>} />
       <Route path="/pro" element={<Protected><Pro /></Protected>} />
+      <Route path="/operations" element={<Protected><Operations /></Protected>} />
       <Route path="/branches" element={<Protected><Branches /></Protected>} />
       <Route path="/eos" element={<Protected><Eos /></Protected>} />
       <Route path="/templates" element={<Protected><Templates /></Protected>} />

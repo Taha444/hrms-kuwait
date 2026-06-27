@@ -10,7 +10,9 @@ export default function Employees() {
   const [params, setParams] = useSearchParams();
   const [emps, setEmps] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [branch, setBranch] = useState<string>(params.get("branch") || "");
+  const [dept, setDept] = useState<string>("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -19,11 +21,14 @@ export default function Employees() {
   const [err, setErr] = useState("");
   const PAGE = 25;
 
-  const load = (p = page, br = branch) => api.get("/employees", {
-    params: { q: q || undefined, branch_id: br || undefined, limit: PAGE, offset: p * PAGE },
+  const load = (p = page, br = branch, dp = dept) => api.get("/employees", {
+    params: { q: q || undefined, branch_id: br || undefined, department_id: dp || undefined, limit: PAGE, offset: p * PAGE },
   }).then((r) => { setEmps(r.data); setTotal(Number(r.headers["x-total-count"] || r.data.length)); });
 
-  useEffect(() => { api.get("/branches").then((r) => setBranches(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get("/branches").then((r) => setBranches(r.data)).catch(() => {});
+    api.get("/departments").then((r) => setDepartments(r.data)).catch(() => {});
+  }, []);
   useEffect(() => { load(0); setPage(0); }, []);
   const go = (p: number) => { setPage(p); load(p); };
   const onBranch = (b: string) => {
@@ -51,10 +56,22 @@ export default function Employees() {
         <input placeholder="بحث: الاسم / الرقم المدني / رقم الموظف / رقم الإقامة" value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && go(0)} style={{ maxWidth: 280 }} />
         <button className="ghost" onClick={() => go(0)}>بحث</button>
-        <select value={branch} onChange={(e) => onBranch(e.target.value)} style={{ maxWidth: 200 }}>
+        <select value={branch} onChange={(e) => onBranch(e.target.value)} style={{ maxWidth: 180 }}>
           <option value="">كل الفروع</option>
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
+        <select value={dept} onChange={(e) => { setDept(e.target.value); setPage(0); load(0, branch, e.target.value); }} style={{ maxWidth: 180 }}>
+          <option value="">كل الإدارات</option>
+          {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        {can("manage_departments") && (
+          <button className="ghost" onClick={async () => {
+            const name = prompt("اسم الإدارة/القسم الجديد:");
+            if (!name) return;
+            await api.post("/departments", null, { params: { name, branch_id: branch || undefined } });
+            api.get("/departments").then((r) => setDepartments(r.data));
+          }}>+ إدارة</button>
+        )}
       </div>
 
       {showNew && (
@@ -76,6 +93,18 @@ export default function Employees() {
               <select onChange={(e) => setForm({ ...form, attendance_mode: e.target.value })}>
                 <option value="none">بدون</option><option value="qr">QR</option>
                 <option value="gps">GPS</option><option value="both">كلاهما</option>
+              </select></div>
+          </div>
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}><label>الفرع</label>
+              <select onChange={(e) => setForm({ ...form, branch_id: e.target.value ? +e.target.value : null })}>
+                <option value="">— اختر —</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select></div>
+            <div className="field" style={{ flex: 1 }}><label>الإدارة/القسم</label>
+              <select onChange={(e) => setForm({ ...form, department_id: e.target.value ? +e.target.value : null })}>
+                <option value="">— اختر —</option>
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select></div>
           </div>
           {err && <div className="err">{err}</div>}
