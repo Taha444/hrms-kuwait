@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api";
+import { useI18n } from "../i18n";
 import Icon from "../Icon";
 
 // هيكل الشركة: Company → Branches، كل فرع وحدة لها موظفوها وإحصائياتها.
 export default function CompanyStructure() {
+  const { t } = useI18n();
   const [data, setData] = useState<any>(null);
   const [stats, setStats] = useState<Record<number, any>>({});
   const [err, setErr] = useState("");
@@ -34,12 +36,11 @@ export default function CompanyStructure() {
     <div>
       <div className="page-head">
         <div>
-          <div className="eyebrow">الهيكل التنظيمي</div>
+          <div className="eyebrow">{t("structure")}</div>
           <h2 style={{ margin: "2px 0 0" }}>{data.company.name}</h2>
-          <div className="sub">{data.total_employees} موظف · {data.branches.length} فرع
-            {data.unassigned_employees ? ` · ${data.unassigned_employees} بلا فرع` : ""}</div>
+          <div className="sub">{data.total_employees} · {data.branches.length} {t("branch_name")}</div>
         </div>
-        <Link to="/employees"><button className="ghost">عرض كل الموظفين (كل الفروع)</button></Link>
+        <Link to="/employees"><button className="ghost">{t("view_all_emps")}</button></Link>
       </div>
 
       <div className="grid cards">
@@ -52,27 +53,26 @@ export default function CompanyStructure() {
                   <h3 style={{ margin: 0 }}><Icon name="branches" size={16} /> {b.name}</h3>
                   <div className="muted" style={{ fontSize: 12 }}>{b.address || "—"}</div>
                 </div>
-                <span className="pill neutral">{b.employee_count} موظف</span>
+                <span className="pill neutral">{b.employee_count}</span>
               </div>
               {b.supervisors?.length > 0 && (
                 <div className="muted" style={{ fontSize: 12, margin: "6px 0" }}>
-                  مسؤول الفرع: {b.supervisors.join("، ")}
+                  {t("supervisor")}: {b.supervisors.join("، ")}
                 </div>
               )}
               <div className="row" style={{ justifyContent: "space-around", margin: "12px 0", padding: "10px 0",
                 borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-                <Mini val={s.present_today} lbl="حضور اليوم" />
-                <Mini val={s.on_leave} lbl="في إجازة" />
-                <Mini val={s.expiring_permits} lbl="إقامات تنتهي" />
+                <Mini val={s.present_today} lbl={t("present_today")} />
+                <Mini val={s.on_leave} lbl={t("on_leave_now")} />
+                <Mini val={s.expiring_permits} lbl={t("expiring_now")} />
               </div>
               <div className="row">
-                <Link to={`/employees?branch=${b.id}`}><button className="sm">عرض موظفي الفرع</button></Link>
-                <Link to={`/branch-qr-screen?branch=${b.id}`} style={{ display: "none" }} />
+                <Link to={`/employees?branch=${b.id}`}><button className="sm">{t("view_branch_emps")}</button></Link>
               </div>
             </div>
           );
         })}
-        {!data.branches.length && <div className="card empty">لا توجد فروع لهذه الشركة بعد.</div>}
+        {!data.branches.length && <div className="card empty">{t("no_data")}</div>}
       </div>
     </div>
   );
