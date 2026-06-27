@@ -22,6 +22,9 @@ type AuthCtx = {
   can: (perm: string) => boolean;
   activeCompanyId: string | null; // رقم الشركة أو "all" أو null (لم يُختَر بعد)
   setActiveCompany: (id: string | null) => void;
+  impersonatingName: string | null;
+  impersonate: (userId: number, reason?: string) => Promise<void>;
+  stopImpersonating: () => void;
 };
 
 const Ctx = createContext<AuthCtx>({} as AuthCtx);
@@ -74,8 +77,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = (perm: string) =>
     !!user && (user.role === "super_admin" || user.permissions.includes(perm));
 
+  const impersonate = async (userId: number, reason?: string) => {
+    const r = await api.post(`/users/${userId}/impersonate`, null, { params: { reason } });
+    localStorage.setItem("imp_backup_access", localStorage.getItem("access_token") || "");
+    localStorage.setItem("imp_backup_refresh", localStorage.getItem("refresh_token") || "");
+    localStorage.setItem("imp_name", r.data.impersonated.full_name || "مستخدم");
+    setTokens(r.data.access_token, r.data.refresh_token);
+    localStorage.removeItem("active_company_id");
+    window.location.href = "/";
+  };
+  const stopImpersonating = () => {
+    const a = localStorage.getItem("imp_backup_access");
+    const rf = localStorage.getItem("imp_backup_refresh");
+    setTokens(a, rf || null);
+    ["imp_backup_access", "imp_backup_refresh", "imp_name"].forEach((k) => localStorage.removeItem(k));
+    window.location.href = "/users";
+  };
+  const impersonatingName = localStorage.getItem("imp_name");
+
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, can, activeCompanyId, setActiveCompany }}>
+    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, can, activeCompanyId,
+      setActiveCompany, impersonatingName, impersonate, stopImpersonating }}>
       {children}
     </Ctx.Provider>
   );

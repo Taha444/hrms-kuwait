@@ -81,6 +81,7 @@ class UserOut(BaseModel):
     email: str | None
     phone: str | None
     is_active: bool
+    status: str = "active"
     must_change_password: bool
 
 

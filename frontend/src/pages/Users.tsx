@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import api from "../api";
+import { useAuth } from "../auth";
 import { roleAr } from "../labels";
 
+const USER_STATUS_AR: Record<string, string> = {
+  active: "نشط", inactive: "غير نشط", suspended: "موقوف", locked: "مقفل",
+};
+
 export default function Users() {
+  const { user: me, impersonate } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<any>({ permissions: {}, templates: {}, roles: [] });
   const [showNew, setShowNew] = useState(false);
@@ -90,17 +96,25 @@ export default function Users() {
         </div>
       )}
 
-      <div className="card">
+      <div className="table-wrap">
         <table>
-          <thead><tr><th>الرقم المدني</th><th>الاسم</th><th>الدور</th><th>مفعّل</th><th></th></tr></thead>
+          <thead><tr><th>الرقم المدني</th><th>الاسم</th><th>الدور</th><th>الحالة</th><th></th></tr></thead>
           <tbody>{users.map((u) => (
-            <tr key={u.id}><td>{u.civil_id}</td><td>{u.full_name}</td>
+            <tr key={u.id}><td className="num">{u.civil_id}</td><td>{u.full_name}</td>
               <td><span className="pill info">{roleAr(u.role)}</span></td>
-              <td>{u.is_active ? "✓" : "✕"}</td>
+              <td>
+                <select value={u.status || "active"} onChange={async (e) => {
+                  await api.post(`/users/${u.id}/status`, null, { params: { status: e.target.value } }); load();
+                }} style={{ width: 110, padding: "4px 8px" }}>
+                  {Object.entries(USER_STATUS_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </td>
               <td className="row">
-                <button className="ghost" onClick={() => openPerms(u)}>الصلاحيات</button>
-                <button className="ghost" onClick={() => reset(u.id)}>إعادة تعيين</button>
-                <button className="ghost" onClick={() => toggle(u.id)}>{u.is_active ? "تعطيل" : "تفعيل"}</button>
+                <button className="ghost sm" onClick={() => openPerms(u)}>الصلاحيات</button>
+                <button className="ghost sm" onClick={() => reset(u.id)}>كلمة المرور</button>
+                {me?.role === "super_admin" && u.role !== "super_admin" && (
+                  <button className="ghost sm" onClick={() => impersonate(u.id)}>انتحال</button>
+                )}
               </td></tr>
           ))}</tbody>
         </table>

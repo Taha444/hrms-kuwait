@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config import settings
 from ..database import get_db
-from ..deps import audit, get_user_perms, require_perm, scope_company_id
+from ..deps import audit, get_user_perms, require_perm, require_super_admin, scope_company_id
 from ..permissions import (
     ACTIONS_AR,
     CROSS_COMPANY_ROLES,
@@ -86,9 +86,55 @@ def toggle_active(user_id: int, request: Request,
                   db: Session = Depends(get_db)):
     target = _get_scoped_user(db, user, user_id)
     target.is_active = not target.is_active
+    target.status = "active" if target.is_active else "inactive"
     audit(db, user, "toggle_user", "user", target.id, request=request)
     db.commit()
-    return {"ok": True, "is_active": target.is_active}
+    return {"ok": True, "is_active": target.is_active, "status": target.status}
+
+
+USER_STATUSES = {"active", "inactive", "suspended", "locked"}
+
+
+@router.post("/{user_id}/status")
+def set_user_status(user_id: int, status: str, request: Request,
+                    user: models.User = Depends(require_perm("manage_users")),
+                    db: Session = Depends(get_db)):
+    """تغيير حالة المستخدم (نشط/غير نشط/موقوف/مقفل) — لا يُحذف نهائيًا."""
+    if status not in USER_STATUSES:
+        raise HTTPException(status_code=400, detail="حالة غير صالحة")
+    target = _get_scoped_user(db, user, user_id)
+    target.status = status
+    target.is_active = status == "active"
+    if status == "locked":
+        from datetime import datetime, timedelta, timezone
+        target.locked_until = datetime.now(timezone.utc) + timedelta(days=3650)
+    elif status == "active":
+        target.locked_until = None
+    audit(db, user, "set_user_status", "user", target.id, detail=status, request=request)
+    db.commit()
+    return {"ok": True, "status": status}
+
+
+@router.post("/{user_id}/impersonate")
+def impersonate(user_id: int, request: Request, reason: str | None = None,
+                actor: models.User = Depends(require_super_admin),
+                db: Session = Depends(get_db)):
+    """انتحال هوية مستخدم مؤقتًا (للإدارة العليا فقط) — يُسجَّل في التدقيق."""
+    from ..security import create_access_token, create_refresh_token
+
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if target.role == "super_admin":
+        raise HTTPException(status_code=400, detail="لا يمكن انتحال إدارة عليا")
+    audit(db, actor, "impersonate_start", "user", target.id,
+          detail=f"reason={reason or '-'}", request=request)
+    db.commit()
+    return {
+        "access_token": create_access_token(target.id, target.role, target.company_id),
+        "refresh_token": create_refresh_token(target.id),
+        "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
+    }
 
 
 @router.get("/{user_id}/permissions")

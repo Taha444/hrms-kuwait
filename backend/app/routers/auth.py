@@ -59,8 +59,9 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
     if user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > now:
         raise HTTPException(status_code=423, detail="الحساب مقفل مؤقتًا، حاول لاحقًا")
 
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="الحساب غير مفعّل")
+    if not user.is_active or user.status in ("inactive", "suspended"):
+        msg = "الحساب موقوف" if user.status == "suspended" else "الحساب غير مفعّل"
+        raise HTTPException(status_code=403, detail=msg)
 
     if not verify_password(data.password, user.password_hash):
         user.failed_attempts += 1

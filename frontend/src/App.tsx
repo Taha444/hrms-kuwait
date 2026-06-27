@@ -151,11 +151,26 @@ function Topbar() {
   );
 }
 
+function ImpersonationBanner() {
+  const { impersonatingName, stopImpersonating } = useAuth();
+  if (!impersonatingName) return null;
+  return (
+    <div style={{ background: "#8a6d10", color: "#fff", padding: "8px 24px", display: "flex",
+      alignItems: "center", gap: 12, fontSize: 13.5 }}>
+      <Icon name="users" size={16} />
+      <span>أنت تتصفّح كـ <b>{impersonatingName}</b> (انتحال هوية)</span>
+      <button className="ghost" style={{ marginInlineStart: "auto", padding: "4px 12px" }}
+        onClick={stopImpersonating}>إنهاء الانتحال</button>
+    </div>
+  );
+}
+
 function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
       <Sidebar open={false} />
       <div className="main">
+        <ImpersonationBanner />
         <Topbar />
         <div className="content">{children}</div>
       </div>

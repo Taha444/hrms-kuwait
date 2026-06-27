@@ -61,6 +61,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(30), default="employee")
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))  # للخدمة الذاتية
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active/inactive/suspended/locked
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=True)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
