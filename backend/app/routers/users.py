@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """المستخدمون والصلاحيات: إنشاء، إسناد/نسخ صلاحيات، قوالب، صلاحيات مؤقتة."""
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -116,19 +116,56 @@ def set_user_status(user_id: int, status: str, request: Request,
 
 
 @router.post("/{user_id}/scope")
-def set_data_scope(user_id: int, branch_id: int | None = None, request: Request = None,
+def set_data_scope(user_id: int, level: str | None = None, branch_id: int | None = None,
+                   branch_ids: list[int] | None = Query(None), request: Request = None,
                    user: models.User = Depends(require_perm("manage_users")),
                    db: Session = Depends(get_db)):
-    """تقييد نطاق بيانات المستخدم بفرع معيّن (أو إلغاء التقييد بترك branch_id فارغًا)."""
+    """يضبط مستوى نطاق بيانات المستخدم: company | branch | multi | self.
+
+    - branch: فرع واحد عبر branch_id.
+    - multi : عدة فروع عبر branch_ids (تُخزّن في branch_supervisors).
+    - company/self: لا فروع.
+    لتوافق خلفي: تمرير branch_id وحده (بلا level) يُفسَّر كـ branch، وتركه فارغًا = company.
+    """
+    from ..deps import SCOPE_LEVELS
+
     target = _get_scoped_user(db, user, user_id)
-    if branch_id:
-        branch = db.get(models.Branch, branch_id)
-        if not branch or (user.role not in CROSS_COMPANY_ROLES and branch.company_id != user.company_id):
+
+    # توافق خلفي: استنتاج المستوى من المُدخل القديم
+    if level is None:
+        level = "branch" if branch_id else "company"
+    if level not in SCOPE_LEVELS:
+        raise HTTPException(status_code=400, detail="مستوى نطاق غير صالح")
+
+    def _assert_branch(bid: int) -> models.Branch:
+        b = db.get(models.Branch, bid)
+        if not b or (user.role not in CROSS_COMPANY_ROLES and b.company_id != user.company_id):
             raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    target.scope_branch_id = branch_id
-    audit(db, user, "set_data_scope", "user", target.id, detail=str(branch_id), request=request)
+        return b
+
+    # تنظيف أي إسناد فروع سابق ثم إعادة الضبط حسب المستوى
+    db.query(models.BranchSupervisor).filter(
+        models.BranchSupervisor.user_id == target.id).delete()
+    target.scope_branch_id = None
+
+    if level == "branch":
+        if not branch_id:
+            raise HTTPException(status_code=400, detail="يلزم تحديد فرع للمستوى branch")
+        _assert_branch(branch_id)
+        target.scope_branch_id = branch_id
+    elif level == "multi":
+        ids = branch_ids or ([branch_id] if branch_id else [])
+        if not ids:
+            raise HTTPException(status_code=400, detail="يلزم تحديد فرع واحد على الأقل للمستوى multi")
+        for bid in dict.fromkeys(ids):  # إزالة التكرار مع الحفاظ على الترتيب
+            b = _assert_branch(bid)
+            db.add(models.BranchSupervisor(company_id=b.company_id, branch_id=bid, user_id=target.id))
+
+    target.scope_level = level
+    audit(db, user, "set_data_scope", "user", target.id,
+          detail=f"level={level} branch={branch_id} multi={branch_ids}", request=request)
     db.commit()
-    return {"ok": True, "scope_branch_id": branch_id}
+    return {"ok": True, "scope_level": level, "scope_branch_id": target.scope_branch_id}
 
 
 @router.post("/{user_id}/impersonate")

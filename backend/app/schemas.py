@@ -82,6 +82,7 @@ class UserOut(BaseModel):
     phone: str | None
     is_active: bool
     status: str = "active"
+    scope_level: str = "company"
     scope_branch_id: int | None = None
     must_change_password: bool
 
@@ -243,7 +244,8 @@ class EosIn(BaseModel):
     end_date: date
     reason: str = "termination"
     contract_type: str = "indefinite"
-    unused_leave_days: float = 0
+    used_leave_days: int = 0          # المُدخل الوحيد للإجازات؛ المتبقّي يُحسب آليًا
+    annual_leave_days: int = 30       # سياسة الأيام السنوية (افتراضي 30)
     day_divisor: int | None = None
     max_months: int | None = None
 
@@ -252,7 +254,7 @@ class EosForEmployeeIn(BaseModel):
     employee_id: int
     end_date: date
     reason: str = "termination"
-    unused_leave_days: float = 0
+    used_leave_days: int = 0          # المتبقّي يُحسب آليًا من مدة الخدمة
 
 
 # ----------------------------- مستندات -----------------------------

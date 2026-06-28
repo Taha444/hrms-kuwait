@@ -41,6 +41,13 @@ def test_operations_center(client):
     assert set(d["compliance"]) == {"expired", "critical", "warning"}
 
 
+def test_operations_center_denied_for_hr(client):
+    # مركز العمليات يعرض معاملات حكومية/تراخيص → ممنوع على HR (دورة حياة الموظف فقط)
+    hr = login(client, "100000000002", "hr12345")
+    r = client.get("/api/operations", headers=auth_headers(hr))
+    assert r.status_code == 403
+
+
 def test_admin_employee_role_starts_with_no_permissions(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)

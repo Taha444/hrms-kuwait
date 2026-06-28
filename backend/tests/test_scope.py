@@ -38,3 +38,45 @@ def test_admin_can_set_and_clear_user_scope(client):
     tok = login(client, "666000111000", "NewPass123")
     rows = client.get("/api/employees", headers=auth_headers(tok)).json()
     assert all(e["branch_id"] == 2 for e in rows)  # الفرع 2 فقط
+
+
+def _mk_user(client, ah, civil_id, **extra):
+    """ينشئ مستخدمًا بكلمة مرور معروفة ويتجاوز إجبار التغيير، ويعيد توكنه."""
+    body = {"civil_id": civil_id, "full_name": "اختبار النطاق", "role": "admin_employee",
+            "company_id": 1, "password": "temp123456", **extra}
+    uid = client.post("/api/users", headers=ah, json=body).json()["id"]
+    client.post(f"/api/users/{uid}/matrix", headers=ah, json={"grants": {"employees": ["read"]}})
+    tok = login(client, civil_id, "temp123456")
+    client.post("/api/auth/change-password", headers=auth_headers(tok),
+                json={"old_password": "temp123456", "new_password": "NewPass123"})
+    return uid, login(client, civil_id, "NewPass123")
+
+
+def test_scope_self_sees_only_own_record(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    emp_id = client.post("/api/employees", headers=ah, json={
+        "name": "موظف الخدمة الذاتية", "company_id": 1, "branch_id": 1}).json()["id"]
+    uid, tok = _mk_user(client, ah, "666000222000", employee_id=emp_id)
+    client.post(f"/api/users/{uid}/scope", headers=ah, params={"level": "self"})
+    rows = client.get("/api/employees", headers=auth_headers(tok)).json()
+    assert [e["id"] for e in rows] == [emp_id]  # سجله فقط لا غير
+
+
+def test_scope_company_sees_all_branches(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    uid, tok = _mk_user(client, ah, "666000333000")
+    client.post(f"/api/users/{uid}/scope", headers=ah, params={"level": "company"})
+    rows = client.get("/api/employees", headers=auth_headers(tok)).json()
+    assert {e["branch_id"] for e in rows} >= {1, 2}  # يرى كل فروع شركته
+
+
+def test_scope_multi_sees_listed_branches_only(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    uid, tok = _mk_user(client, ah, "666000444000")
+    r = client.post(f"/api/users/{uid}/scope", headers=ah, params={"level": "multi", "branch_ids": [2]})
+    assert r.status_code == 200 and r.json()["scope_level"] == "multi"
+    rows = client.get("/api/employees", headers=auth_headers(tok)).json()
+    assert rows and all(e["branch_id"] == 2 for e in rows)  # الفروع المُسندة فقط

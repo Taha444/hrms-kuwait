@@ -6,11 +6,29 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from fastapi import HTTPException
+
 from .. import models
 from ..database import get_db
-from ..deps import get_current_user, scope_company_id
+from ..deps import get_current_user, get_user_perms, scope_company_id
+from ..permissions import has_permission
 
 router = APIRouter(prefix="/operations", tags=["operations"])
+
+# مركز العمليات يعرض إقامات/أذونات/تراخيص (معاملات حكومية) — يُمنع عن HR والعامل.
+_OPS_MANAGEMENT_ROLES = {"super_admin", "company_owner", "company_manager"}
+
+
+def require_operations(user: models.User = Depends(get_current_user),
+                       db: Session = Depends(get_db)) -> models.User:
+    """يسمح بمركز العمليات للإدارة أو من يملك صلاحية إقامات/تراخيص (PRO)."""
+    if user.role in _OPS_MANAGEMENT_ROLES:
+        return user
+    assigned = get_user_perms(user, db)
+    if has_permission(user.role, assigned, "manage_permits") or \
+       has_permission(user.role, assigned, "manage_licenses"):
+        return user
+    raise HTTPException(status_code=403, detail="مركز العمليات غير متاح لدورك")
 
 
 def _urgency(days: int | None) -> str:
@@ -27,7 +45,7 @@ def _urgency(days: int | None) -> str:
 
 @router.get("")
 def operations_center(company_id: int | None = None, branch_id: int | None = None,
-                      user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+                      user: models.User = Depends(require_operations), db: Session = Depends(get_db)):
     """كل العناصر التي تتطلّب إجراءً: إقامات/تراخيص قرب الانتهاء، طلبات معلّقة، مهام مفتوحة."""
     cid = scope_company_id(user, company_id)
     today = date.today()

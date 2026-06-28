@@ -12,9 +12,9 @@ from ..database import get_db
 from ..deps import (
     assert_same_company,
     audit,
-    get_branch_scope,
     get_current_user,
     require_perm,
+    resolve_scope,
     scope_company_id,
 )
 
@@ -26,9 +26,11 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id)
-    scope = get_branch_scope(user, db)
-    if scope is not None and emp.branch_id not in scope:
+    sc = resolve_scope(user, db)
+    if sc.branch_ids is not None and emp.branch_id not in sc.branch_ids:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خارج نطاق فرعك
+    if sc.self_employee_id is not None and emp.id != sc.self_employee_id:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خدمة ذاتية: سجله فقط
     return emp
 
 
@@ -46,10 +48,12 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
         base = base.where(models.Employee.branch_id == branch_id)
     if department_id:
         base = base.where(models.Employee.department_id == department_id)
-    # تقييد نطاق الفرع (مسؤول الفرع / المستخدم المقيّد)
-    scope = get_branch_scope(user, db)
-    if scope is not None:
-        base = base.where(models.Employee.branch_id.in_(scope))
+    # تقييد النطاق وفق المستوى: فرع/عدة فروع/خدمة ذاتية (يُفرَض على الخادم)
+    sc = resolve_scope(user, db)
+    if sc.branch_ids is not None:
+        base = base.where(models.Employee.branch_id.in_(sc.branch_ids))
+    if sc.self_employee_id is not None:
+        base = base.where(models.Employee.id == sc.self_employee_id)
     if q:
         like = f"%{q.strip()}%"
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة
@@ -266,10 +270,13 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
 
 @router.post("/{emp_id}/terminate")
 def terminate_employee(emp_id: int, end_date: date, reason: str = "termination",
-                       unused_leave_days: float = 0, request: Request = None,
+                       used_leave_days: int = 0, request: Request = None,
                        user: models.User = Depends(require_perm("terminate_employee")),
                        db: Session = Depends(get_db)):
-    """ينهي خدمة الموظف: يحسب مكافأة نهاية الخدمة وفق سياسة شركته ويؤرشف حالته."""
+    """ينهي خدمة الموظف: يحسب مكافأة نهاية الخدمة وفق سياسة شركته ويؤرشف حالته.
+
+    رصيد الإجازات يُحسب آليًا من مدة الخدمة؛ يُستقبَل المستهلَك فقط (used_leave_days).
+    """
     emp = _get_emp(db, user, emp_id)
     if emp.status == "terminated":
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
@@ -278,7 +285,7 @@ def terminate_employee(emp_id: int, end_date: date, reason: str = "termination",
         settlement = eos_engine.calculate_eos(
             basic_salary=emp.basic_salary, hire_date=emp.hire_date, end_date=end_date,
             reason=reason, contract_type=emp.contract_type,
-            unused_leave_days=unused_leave_days,
+            used_leave_days=used_leave_days, annual_leave_days=company.annual_leave_days,
             day_divisor=company.eos_day_divisor, max_months=company.eos_max_months)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

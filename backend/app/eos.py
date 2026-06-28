@@ -102,13 +102,20 @@ def calculate_eos(
     end_date,
     reason="termination",
     contract_type="indefinite",
-    unused_leave_days=0,
+    used_leave_days=0,
+    annual_leave_days=30,
     day_divisor=26,
     max_months=18,
 ):
-    """يحسب مكافأة نهاية الخدمة ويُرجع قاموسًا تفصيليًا."""
+    """يحسب مكافأة نهاية الخدمة ويُرجع قاموسًا تفصيليًا.
+
+    رصيد الإجازات يُحسب آليًا: المستحق = (أيام الإجازة السنوية × سنوات الخدمة)،
+    والمتبقّي = المستحق − المستهلَك. المستخدم يُدخل عدد الأيام المستهلَكة فقط
+    (used_leave_days) ولا يُدخل الرصيد المتبقّي يدويًا إطلاقًا.
+    """
     basic_salary = float(basic_salary or 0)
-    unused_leave_days = float(unused_leave_days or 0)
+    used_leave_days = float(used_leave_days or 0)
+    annual_leave_days = float(annual_leave_days or 30)
     day_divisor = int(day_divisor or 26)
     max_months = float(max_months or 18)
 
@@ -152,8 +159,11 @@ def calculate_eos(
 
     indemnity = full_indemnity * factor
 
-    # رصيد الإجازات غير المستخدمة
-    leave_payout = daily_wage * unused_leave_days
+    # رصيد الإجازات يُحسب آليًا من مدة الخدمة — لا يُدخله المستخدم يدويًا
+    accrued_leave = annual_leave_days * decimal_years
+    remaining_leave = accrued_leave - used_leave_days
+    # لا يُدفع عن رصيد سالب (استهلاك زائد)؛ يُعرض المتبقّي الحقيقي للشفافية
+    leave_payout = daily_wage * max(remaining_leave, 0.0)
 
     total_settlement = indemnity + leave_payout
 
@@ -165,9 +175,16 @@ def calculate_eos(
             "reason": reason,
             "reason_label": TERMINATION_REASONS.get(reason, reason),
             "contract_type": contract_type,
-            "unused_leave_days": unused_leave_days,
+            "used_leave_days": used_leave_days,
+            "annual_leave_days": annual_leave_days,
             "day_divisor": day_divisor,
             "max_months": max_months,
+        },
+        "leave": {
+            "annual_days_per_year": round(annual_leave_days, 2),
+            "accrued_days": round(accrued_leave, 2),
+            "used_days": round(used_leave_days, 2),
+            "remaining_days": round(remaining_leave, 2),
         },
         "service": {
             "years": years,

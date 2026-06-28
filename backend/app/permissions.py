@@ -195,29 +195,56 @@ PAGE_LABELS = {
     "users": "المستخدمون", "audit": "سجل التدقيق", "branches": "الفروع", "eos": "نهاية الخدمة",
 }
 
+# السطح الكامل للأفعال المتاحة لكل صفحة — المرجع الوحيد لبناء المصفوفة وفرضها.
+# يشمل الأفعال السبعة [قراءة، إضافة، تعديل، حذف، طباعة، تصدير، اعتماد] حيثما تنطبق.
+PAGE_ACTIONS: dict[str, list[str]] = {
+    "employees":  ["read", "add", "edit", "delete", "print", "export"],
+    "reports":    ["read", "export", "print"],
+    "requests":   ["read", "add", "approve", "print"],
+    "documents":  ["read", "add", "delete", "print"],
+    "attendance": ["read", "add", "export"],
+    "permits":    ["read", "edit", "print"],
+    "licenses":   ["read", "edit", "print"],
+    "payroll":    ["read", "add", "export", "print"],
+    "templates":  ["read", "edit", "print"],
+    "users":      ["read", "edit"],
+    "audit":      ["read", "export"],
+    "branches":   ["read", "edit"],
+    "eos":        ["read", "print"],
+}
+
+# الأفعال المشتقّة: عند غياب منح مخصّصة، تَرِث افتراضيًا من فعل أساس بنفس الصفحة.
+# (من يستطيع العرض يطبع/يصدّر افتراضيًا؛ من يستطيع التعديل يعتمد) — قابلة للإلغاء بالمصفوفة.
+_DERIVED_ACTION_BASE = {"print": "read", "export": "read", "approve": "edit"}
+
 
 def permission_matrix_catalog() -> list[dict]:
     """قائمة الصفحات وأفعالها المتاحة (لبناء واجهة المصفوفة)."""
-    pages: dict[str, set[str]] = {}
-    for (page, action) in PA_TO_LEGACY:
-        pages.setdefault(page, set()).add(action)
     order = ["read", "add", "edit", "delete", "print", "export", "approve"]
     return [{"code": p, "label": PAGE_LABELS.get(p, p),
-             "actions": [a for a in order if a in acts]}
-            for p, acts in sorted(pages.items())]
+             "actions": [a for a in order if a in set(acts)]}
+            for p, acts in sorted(PAGE_ACTIONS.items())]
 
 
 def has_page_action(role: str, assigned: set[str], page: str, action: str) -> bool:
-    """يتحقق من صلاحية (صفحة، فعل): المنح الدقيقة تتقدّم، وإلا دور المستخدم."""
+    """يتحقق من صلاحية (صفحة، فعل): المنح الدقيقة تتقدّم، وإلا دور المستخدم.
+
+    ترتيب الحسم: super_admin ← منح المصفوفة المخصّصة ← الصلاحية القديمة المكافئة ←
+    فعل مشتقّ يرث من فعل أساس (طباعة/تصدير←قراءة، اعتماد←تعديل).
+    """
     if role == "super_admin":
         return True
     page_grants = {c.split(".", 1)[1] for c in assigned if c.startswith(page + ".")}
     if page_grants:  # للمستخدم مصفوفة مخصّصة لهذه الصفحة → تتحكّم وحدها
         return action in page_grants
     legacy = PA_TO_LEGACY.get((page, action))
-    if not legacy:
-        return False
-    return legacy in ROLE_DEFAULT_PERMS.get(role, set()) or legacy in assigned
+    if legacy:
+        return legacy in ROLE_DEFAULT_PERMS.get(role, set()) or legacy in assigned
+    # فعل بلا صلاحية قديمة مكافئة (طباعة/تصدير/اعتماد) → يرث من فعل الأساس
+    base = _DERIVED_ACTION_BASE.get(action)
+    if base and base != action:
+        return has_page_action(role, assigned, page, base)
+    return False
 
 
 def check_legacy(role: str, assigned: set[str], perm: str) -> bool:

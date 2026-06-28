@@ -53,3 +53,23 @@ def test_other_pages_unaffected_by_role_default(client):
     # مستخدم بلا أي مصفوفة دقيقة يبقى على صلاحيات دوره (توافق خلفي)
     mgr = login(client, "100000000001", "manager123")
     assert client.get("/api/employees", headers=auth_headers(mgr)).status_code == 200
+
+
+def test_seven_actions_exposed_and_derived(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    # الكتالوج يعرض الأفعال الجديدة (طباعة/تصدير) على صفحة الموظفين
+    cat = client.get("/api/users/permission-matrix", headers=ah).json()["pages"]
+    emp = next(p for p in cat if p["code"] == "employees")
+    assert {"print", "export"} <= set(emp["actions"])
+
+    hr_id = _hr_id(client, admin)
+    # HR بلا تخصيص يرث الطباعة من القراءة (read ⇒ print)
+    m = client.get(f"/api/users/{hr_id}/matrix", headers=ah).json()["matrix"]
+    assert m["employees"]["read"] is True and m["employees"]["print"] is True
+
+    # تقييد الصفحة على القراءة فقط ⇒ تُمنع الطباعة (لا يتسرّب الافتراضي المشتقّ)
+    client.post(f"/api/users/{hr_id}/matrix", headers=ah, json={"grants": {"employees": ["read"]}})
+    m2 = client.get(f"/api/users/{hr_id}/matrix", headers=ah).json()["matrix"]
+    assert m2["employees"]["read"] is True and m2["employees"]["print"] is False
+    client.post(f"/api/users/{hr_id}/matrix/reset", headers=ah)

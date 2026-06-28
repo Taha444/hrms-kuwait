@@ -24,7 +24,7 @@ def calculate(data: schemas.EosIn, user: models.User = Depends(require_perm("cal
         return eos_engine.calculate_eos(
             basic_salary=data.basic_salary, hire_date=data.hire_date, end_date=data.end_date,
             reason=data.reason, contract_type=data.contract_type,
-            unused_leave_days=data.unused_leave_days,
+            used_leave_days=data.used_leave_days, annual_leave_days=data.annual_leave_days,
             day_divisor=data.day_divisor or 26, max_months=data.max_months or 18,
         )
     except ValueError as e:
@@ -72,7 +72,7 @@ def for_employee(data: schemas.EosForEmployeeIn,
         result = eos_engine.calculate_eos(
             basic_salary=emp.basic_salary, hire_date=emp.hire_date, end_date=data.end_date,
             reason=data.reason, contract_type=emp.contract_type,
-            unused_leave_days=data.unused_leave_days,
+            used_leave_days=data.used_leave_days, annual_leave_days=company.annual_leave_days,
             day_divisor=company.eos_day_divisor, max_months=company.eos_max_months,
         )
     except ValueError as e:

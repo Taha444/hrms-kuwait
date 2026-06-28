@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .database import get_db
-from .permissions import check_legacy, effective_permissions, has_permission
+from .permissions import check_legacy, effective_permissions, has_page_action, has_permission
 from .security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -82,6 +82,24 @@ def require_perm(perm: str):
     return checker
 
 
+def require_page_action(page: str, action: str):
+    """مولّد تبعية تتحقق من صلاحية (صفحة، فعل) دقيقة — للأفعال كالطباعة/التصدير."""
+
+    def checker(
+        user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> models.User:
+        assigned = get_user_perms(user, db)
+        if not has_page_action(user.role, assigned, page, action):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"ليس لديك صلاحية: {page}.{action}",
+            )
+        return user
+
+    return checker
+
+
 def require_super_admin(user: models.User = Depends(get_current_user)) -> models.User:
     if user.role != "super_admin":
         raise HTTPException(status_code=403, detail="هذا الإجراء للإدارة العليا فقط")
@@ -101,22 +119,62 @@ def scope_company_id(user: models.User, requested: int | None = None) -> int | N
     return user.company_id
 
 
-def get_branch_scope(user: models.User, db: Session) -> set[int] | None:
-    """نطاق الفروع المسموح للمستخدم: مجموعة معرّفات أو None (كل الفروع).
+from dataclasses import dataclass
 
-    - مسؤول الفرع: الفروع التي يشرف عليها فقط.
-    - أي مستخدم له scope_branch_id: ذلك الفرع فقط.
-    - غير ذلك: None (لا تقييد على مستوى الفرع).
+# مستويات نطاق البيانات الأربعة (Scope) — تُفرَض على الخادم
+SCOPE_LEVELS = ("company", "branch", "multi", "self")
+
+
+@dataclass
+class DataScope:
+    """نطاق البيانات الموحّد للمستخدم — مرجع واحد يُطبّق في كل الموجّهات.
+
+    - company_id: None = كل الشركات (أدوار عابرة للشركات)، أو معرّف الشركة.
+    - branch_ids: None = كل فروع الشركة؛ مجموعة = مقيّد بهذه الفروع فقط.
+    - self_employee_id: ليس None ⇒ خدمة ذاتية، يرى سجله الخاص فقط.
     """
-    if user.role in ("super_admin", "company_owner"):
-        return None
-    if user.scope_branch_id:
-        return {user.scope_branch_id}
-    if user.role == "branch_supervisor":
+    company_id: int | None
+    branch_ids: set[int] | None
+    self_employee_id: int | None
+
+
+def _effective_scope_level(user: models.User) -> str:
+    """المستوى الصريح إن ضُبط، وإلا يُشتق توافقًا مع البيانات القديمة."""
+    level = user.scope_level or "company"
+    if level == "company":  # قيمة افتراضية → اشتقاق خلفيّ للسلوك السابق
+        if user.role == "employee":
+            return "self"
+        if user.role == "branch_supervisor":
+            return "multi"
+        if user.scope_branch_id:
+            return "branch"
+    return level
+
+
+def resolve_scope(user: models.User, db: Session) -> DataScope:
+    """يحسم نطاق البيانات الكامل للمستخدم وفق scope_level (المرجع الوحيد)."""
+    from .permissions import CROSS_COMPANY_ROLES
+
+    if user.role in CROSS_COMPANY_ROLES:
+        return DataScope(company_id=None, branch_ids=None, self_employee_id=None)
+
+    cid = user.company_id
+    level = _effective_scope_level(user)
+
+    if level == "self":
+        return DataScope(cid, None, user.employee_id or -1)
+    if level == "branch":
+        return DataScope(cid, {user.scope_branch_id} if user.scope_branch_id else {-1}, None)
+    if level == "multi":
         ids = {bs.branch_id for bs in db.scalars(
             select(models.BranchSupervisor).where(models.BranchSupervisor.user_id == user.id)).all()}
-        return ids or {-1}  # لا فروع مُسندة → لا يرى شيئًا
-    return None
+        return DataScope(cid, ids or {-1}, None)  # لا فروع مُسندة → لا يرى شيئًا
+    return DataScope(cid, None, None)  # company
+
+
+def get_branch_scope(user: models.User, db: Session) -> set[int] | None:
+    """توافق خلفي: نطاق الفروع فقط (مجموعة معرّفات أو None). يفوّض لـ resolve_scope."""
+    return resolve_scope(user, db).branch_ids
 
 
 def assert_same_company(user: models.User, entity_company_id: int | None):

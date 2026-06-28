@@ -39,8 +39,21 @@ def test_resignation_under_3_years_zero():
     assert r["entitlement_factor"] == 0.0
 
 
-def test_leave_payout_added():
+def test_leave_accrued_auto_and_payout():
+    # 5 سنوات خدمة × 30 يومًا سنويًا ⇒ مستحق ≈ 150 يومًا (يُحسب آليًا)
     r = calculate_eos(basic_salary=520, hire_date="2015-01-01", end_date="2020-01-01",
-                      reason="termination", unused_leave_days=10, day_divisor=26)
-    # أجر اليوم = 20، رصيد الإجازات = 200
-    assert approx(r["leave_payout"], 200, 0.5)
+                      reason="termination", used_leave_days=140, annual_leave_days=30,
+                      day_divisor=26)
+    assert approx(r["leave"]["accrued_days"], 150, 0.5)
+    assert approx(r["leave"]["remaining_days"], 10, 0.5)   # 150 مستحق − 140 مستهلَك
+    # أجر اليوم = 20، المتبقّي ≈ 10 ⇒ بدل الإجازة ≈ 200
+    assert approx(r["leave_payout"], 200, 1.0)
+
+
+def test_over_consumed_leave_floors_payout():
+    # استهلاك أكثر من المستحق ⇒ لا بدل سالب (يُصفّر)، مع عرض المتبقّي الحقيقي
+    r = calculate_eos(basic_salary=520, hire_date="2018-01-01", end_date="2020-01-01",
+                      reason="termination", used_leave_days=200, annual_leave_days=30,
+                      day_divisor=26)
+    assert r["leave_payout"] == 0.0
+    assert r["leave"]["remaining_days"] < 0
