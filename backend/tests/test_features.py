@@ -22,8 +22,8 @@ def test_mrz_passport_parser():
 # ----------------------------- الرواتب -----------------------------
 
 def test_payroll_run_and_view(client):
-    mgr = login(client, "100000000001", "manager123")
-    h = auth_headers(mgr)
+    acc = login(client, "100000000007", "account123")  # محاسب الشركة
+    h = auth_headers(acc)
     period = f"{date.today().year}-{date.today().month:02d}"
     r = client.post("/api/payroll/run", headers=h, params={"period": period})
     assert r.status_code == 200, r.text
@@ -58,9 +58,10 @@ def test_export_employees_xlsx_and_csv(client):
 
 # ----------------------------- التدقيق -----------------------------
 
-def test_audit_log_visible_to_manager(client):
-    mgr = login(client, "100000000001", "manager123")
-    r = client.get("/api/audit", headers=auth_headers(mgr))
+def test_audit_log_visible_to_admin(client):
+    # سجل التدقيق للإدارة العليا فقط (تمت إزالته من المدير)
+    admin = login(client, "000000000000", "admin123")
+    r = client.get("/api/audit", headers=auth_headers(admin))
     assert r.status_code == 200
     assert isinstance(r.json(), list)
     # تسجيل الدخول يُسجَّل في التدقيق
@@ -75,8 +76,9 @@ def test_audit_denied_for_employee(client):
 # ----------------------------- إنهاء الخدمة -----------------------------
 
 def test_terminate_employee_computes_eos(client):
-    mgr = login(client, "100000000001", "manager123")
-    h = auth_headers(mgr)
+    # إنهاء الخدمة + EOS من اختصاص HR (انتقلت من المدير)
+    hr = login(client, "100000000002", "hr12345")
+    h = auth_headers(hr)
     # موظف جديد ثم إنهاء خدمته (حتى لا يؤثر على إجماليات بقية الاختبارات)
     new = client.post("/api/employees", headers=h, json={
         "civil_id": "199900099001", "name": "موظف للإنهاء", "basic_salary": 520,

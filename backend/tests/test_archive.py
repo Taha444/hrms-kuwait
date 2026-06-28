@@ -15,11 +15,13 @@ def test_company_archive_lists_doc_types(client):
 
 
 def test_set_company_file_number(client):
-    mgr = login(client, "100000000001", "manager123")
-    h = auth_headers(mgr)
-    r = client.put("/api/archive/company/info", headers=h, params={"file_number": "MF-12345"})
+    # بيانات/إعدادات الشركة للإدارة العليا فقط (المدير لا يعدّل إعدادات النظام)
+    admin = login(client, "000000000000", "admin123")
+    h = auth_headers(admin)
+    r = client.put("/api/archive/company/info", headers=h,
+                   params={"file_number": "MF-12345", "company_id": 1})
     assert r.status_code == 200
-    again = client.get("/api/archive/company", headers=h).json()
+    again = client.get("/api/archive/company", headers=h, params={"company_id": 1}).json()
     assert again["company"]["file_number"] == "MF-12345"
 
 

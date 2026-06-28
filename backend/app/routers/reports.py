@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import exports, models
 from ..database import get_db
-from ..deps import assert_same_company, require_perm, scope_company_id
+from ..deps import assert_same_company, require_perm, resolve_scope, scope_company_id
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -21,12 +21,22 @@ def _file(content: bytes, name: str, mime: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-def _employee_rows(db: Session, cid: int | None, branch_id: int | None = None):
+def _scoped_branches(user, db, branch_id: int | None) -> set[int] | None:
+    """يدمج الفرع المطلوب مع نطاق فروع المستخدم (مسؤول الفرع لا يتعدّى فروعه)."""
+    allowed = resolve_scope(user, db).branch_ids  # None = كل الفروع المسموحة
+    if branch_id:
+        if allowed is not None and branch_id not in allowed:
+            return {-1}  # فرع خارج نطاقه → لا نتائج
+        return {branch_id}
+    return allowed
+
+
+def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = None):
     q = select(models.Employee).where(models.Employee.status != "archived")
     if cid is not None:
         q = q.where(models.Employee.company_id == cid)
-    if branch_id:
-        q = q.where(models.Employee.branch_id == branch_id)
+    if branch_ids is not None:
+        q = q.where(models.Employee.branch_id.in_(branch_ids))
     emps = db.scalars(q.order_by(models.Employee.name)).all()
     headers = ["الاسم", "الرقم المدني", "الجنسية", "المسمى", "الراتب الأساسي",
                "تاريخ التعيين", "نوع العقد", "الحالة"]
@@ -41,7 +51,7 @@ def export_employees(fmt: str = "xlsx", company_id: int | None = None, branch_id
                      user: models.User = Depends(require_perm("export_reports")),
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
-    headers, rows = _employee_rows(db, cid, branch_id)
+    headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id))
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), "employees.csv", CSV_MIME)
     return _file(exports.to_xlsx("الموظفون", headers, rows), "employees.xlsx", XLSX_MIME)
@@ -82,8 +92,9 @@ def export_attendance(month: str | None = None, fmt: str = "csv", company_id: in
         models.AttendanceRecord.check_in_at >= datetime(y, m, 1))
     if cid is not None:
         q = q.where(models.AttendanceRecord.company_id == cid)
-    if branch_id:
-        q = q.where(models.AttendanceRecord.branch_id == branch_id)
+    bscope = _scoped_branches(user, db, branch_id)
+    if bscope is not None:
+        q = q.where(models.AttendanceRecord.branch_id.in_(bscope))
     recs = db.scalars(q.order_by(models.AttendanceRecord.check_in_at)).all()
     emp_names = {e.id: e.name for e in db.scalars(select(models.Employee)).all()}
     headers = ["الموظف", "الدخول", "الخروج", "الحالة", "دقائق العمل", "الإضافي"]

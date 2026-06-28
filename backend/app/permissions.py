@@ -87,21 +87,35 @@ _COMPANY_ALL = {p for p in PERMISSIONS if p != "manage_companies"}
 
 ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "super_admin": _ALL | {"manage_companies"},
-    "company_owner": {"view_employee", "view_documents", "view_attendance", "approve_request",
-                      "view_tasks", "view_reports", "export_reports", "view_payroll",
-                      "calculate_eos", "manage_request_types", "view_audit"},
-    "company_manager": _COMPANY_ALL,
-    "branch_supervisor": set(PERMISSION_TEMPLATES["branch_supervisor"]["perms"]),
-    # HR: مسؤول الموظفين فقط (لا إقامات/تراخيص/مهام حكومية)
-    "hr": {"view_employee", "create_employee", "edit_employee", "manage_leaves",
-           "manage_deductions", "upload_documents", "view_documents", "view_attendance",
-           "manage_attendance", "approve_request", "view_tasks", "manage_tasks",
-           "submit_request", "view_reports", "calculate_eos", "terminate_employee",
-           "manage_templates"},
-    # PRO / المندوب: كل المعاملات الحكومية (إقامات، أذونات، تراخيص، تجديدات)
+    # المالك: دور رقابي للاطلاع فقط (متابعة الشركات/الفروع/الأداء/التقارير) — لا أعمال تشغيلية
+    "company_owner": {"view_employee", "view_reports", "export_reports", "view_tasks"},
+    # مدير الشركة: التشغيل اليومي فقط — موظفون/فروع/إدارات/إجازات/طلبات/تقارير/مستخدمو شركته.
+    # لا رواتب/خصومات (المحاسب)، لا EOS/إنهاء خدمة (HR)، لا إقامات/تراخيص (PRO)،
+    # لا إعدادات نظام/شركات/قوالب/تدقيق/نقل بين الشركات (الإدارة العليا).
+    "company_manager": {"view_employee", "create_employee", "edit_employee", "delete_employee",
+                        "view_documents", "upload_documents", "manage_leaves", "view_attendance",
+                        "manage_branches", "manage_departments", "approve_request",
+                        "view_reports", "export_reports", "view_tasks", "manage_tasks",
+                        "manage_users"},
+    # محاسب الشركة: الرواتب والخصومات فقط (موظف ضمن الشركة)
+    "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
+                   "view_reports", "export_reports", "view_tasks"},
+    # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
+    # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
+    "branch_supervisor": {"view_employee", "view_attendance", "approve_request",
+                          "view_tasks", "view_reports", "export_reports"},
+    # الشؤون القانونية/HR: مسؤول عن الموظفين فقط (لا حكومة/إقامات/تراخيص).
+    # دورة حياة الموظف: إضافة/تعديل/عقود (مستندات)/إجازات/إنذارات/خصومات/EOS + خطابات الإنذار (قوالب).
+    # approve_request مطلوب لأن HR مرحلة في سلسلة طلبات الموظفين (مراجعة/توقيع/استلام).
+    "hr": {"view_employee", "create_employee", "edit_employee",
+           "view_documents", "upload_documents",
+           "manage_leaves", "manage_deductions",
+           "approve_request", "calculate_eos", "terminate_employee",
+           "manage_templates", "view_tasks"},
+    # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
+    # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR.
     "delegate": {"view_employee", "view_documents", "upload_documents", "manage_permits",
-                 "manage_licenses", "process_delegate_tasks", "view_tasks", "manage_tasks",
-                 "submit_request", "view_reports"},
+                 "manage_licenses", "process_delegate_tasks", "view_tasks", "manage_tasks"},
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
     "admin_employee": set(),
     # الموظف: خدمة ذاتية فقط (لا إحصائيات شركة)
@@ -117,6 +131,7 @@ ROLE_LEVEL: dict[str, int] = {
     "company_manager": 60,
     "hr": 40,
     "branch_supervisor": 40,
+    "accountant": 35,
     "delegate": 30,
     "admin_employee": 20,
     "employee": 10,

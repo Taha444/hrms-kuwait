@@ -33,8 +33,8 @@ def test_global_search(client):
 
 
 def test_operations_center(client):
-    mgr = login(client, "100000000001", "manager123")
-    r = client.get("/api/operations", headers=auth_headers(mgr))
+    pro = login(client, "100000000003", "deleg123")  # مركز العمليات من اختصاص PRO
+    r = client.get("/api/operations", headers=auth_headers(pro))
     assert r.status_code == 200, r.text
     d = r.json()
     assert "compliance" in d and "permits" in d and "licenses" in d

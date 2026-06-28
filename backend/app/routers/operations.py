@@ -15,13 +15,13 @@ from ..permissions import has_permission
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
-# مركز العمليات يعرض إقامات/أذونات/تراخيص (معاملات حكومية) — يُمنع عن HR والعامل.
-_OPS_MANAGEMENT_ROLES = {"super_admin", "company_owner", "company_manager"}
+# مركز العمليات يعرض إقامات/أذونات/تراخيص (معاملات حكومية) — للـ PRO/الإدارة العليا فقط.
+_OPS_MANAGEMENT_ROLES = {"super_admin"}
 
 
 def require_operations(user: models.User = Depends(get_current_user),
                        db: Session = Depends(get_db)) -> models.User:
-    """يسمح بمركز العمليات للإدارة أو من يملك صلاحية إقامات/تراخيص (PRO)."""
+    """يسمح بمركز العمليات للإدارة العليا أو من يملك صلاحية إقامات/تراخيص (PRO)."""
     if user.role in _OPS_MANAGEMENT_ROLES:
         return user
     assigned = get_user_perms(user, db)

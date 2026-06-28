@@ -19,7 +19,7 @@ from .security import hash_password
 from .workflow import DEFAULT_REQUEST_TYPES
 
 PW = {"manager": "manager123", "hr": "hr12345", "delegate": "deleg123",
-      "supervisor": "sup12345", "employee": "emp12345"}
+      "supervisor": "sup12345", "employee": "emp12345", "accountant": "account123"}
 
 COMPANIES = [
     {
@@ -146,6 +146,7 @@ def build_company(db, cfg) -> dict:
     deleg2 = staff(4, "delegate", "المندوب الثاني", PW["delegate"])
     sup1 = staff(5, "branch_supervisor", f"مسؤول {cfg['branches'][0][0]}", PW["supervisor"])
     sup2 = staff(6, "branch_supervisor", f"مسؤول {cfg['branches'][1][0]}", PW["supervisor"])
+    accountant = staff(7, "accountant", f"محاسب {cfg['name']}", PW["accountant"])  # noqa: F841
     db.flush()
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[0].id, user_id=sup1.id))
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[1].id, user_id=sup2.id))

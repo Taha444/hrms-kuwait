@@ -56,6 +56,26 @@ def test_owner_can_scope_to_any_company(client):
     assert all(e["company_id"] == 2 for e in emps)
 
 
+def test_owner_dashboard_is_oversight_view(client):
+    token = login(client, "111111111111", "owner123")
+    d = client.get("/api/dashboard", headers=auth_headers(token)).json()
+    assert d.get("owner_view") is True
+    # كروت المتابعة: موظفون/فروع/إقامات/تراخيص/إشعارات + مؤشر الأداء
+    for k in ("employees", "branches", "residencies", "licenses", "notifications", "performance"):
+        assert k in d, k
+    perf = d["performance"]
+    assert {"attendance_rate", "valid_licenses_pct", "expired_licenses_pct"} <= set(perf)
+
+
+def test_owner_is_read_only_no_operational_actions(client):
+    token = login(client, "111111111111", "owner123")
+    h = auth_headers(token)
+    # المالك دور رقابي: لا يعتمد طلبات ولا ينشئ موظفين ولا يشغّل رواتب
+    assert client.post("/api/employees", headers=h,
+                       json={"name": "x", "basic_salary": 100}).status_code == 403
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
+
+
 def test_dashboard_scopes_to_selected_company(client):
     token = login(client, "000000000000", "admin123")
     h = auth_headers(token)

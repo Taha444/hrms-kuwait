@@ -32,13 +32,13 @@ def test_employee_cannot_manage_templates(client):
 
 
 def test_template_render_respects_isolation(client):
-    # مدير الشركة 1 لا يستطيع تعبئة صيغة لموظف الشركة 2
-    mgr1 = login(client, "100000000001", "manager123")
-    tpls = client.get("/api/templates", headers=auth_headers(mgr1)).json()
+    # HR الشركة 1 (يملك تعبئة/طباعة القوالب) لا يصل لموظف الشركة 2
+    hr1 = login(client, "100000000002", "hr12345")
+    tpls = client.get("/api/templates", headers=auth_headers(hr1)).json()
     tpl = tpls[0]
     # احصل على موظف من الشركة 2 عبر الإدارة العليا
     admin = login(client, "000000000000", "admin123")
     emp2 = client.get("/api/employees", headers=auth_headers(admin), params={"company_id": 2}).json()[0]
-    r = client.post(f"/api/templates/{tpl['id']}/render", headers=auth_headers(mgr1),
+    r = client.post(f"/api/templates/{tpl['id']}/render", headers=auth_headers(hr1),
                     json={"employee_id": emp2["id"], "extra": {}, "save": False})
     assert r.status_code == 404  # العزل يمنع الوصول
