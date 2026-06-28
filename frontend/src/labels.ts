@@ -25,6 +25,7 @@ export const roleAr = M({
   super_admin: { ar: "إدارة عليا", en: "Super Admin" }, company_owner: { ar: "صاحب الشركات", en: "Company Owner" },
   company_manager: { ar: "مدير شركة", en: "Manager" }, branch_supervisor: { ar: "مسؤول فرع", en: "Branch Supervisor" },
   hr: { ar: "موارد بشرية", en: "HR" }, delegate: { ar: "مندوب", en: "PRO" },
+  accountant: { ar: "محاسب", en: "Accountant" },
   admin_employee: { ar: "موظف إداري", en: "Admin Employee" }, employee: { ar: "موظف", en: "Employee" },
 });
 

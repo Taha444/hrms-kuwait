@@ -11,6 +11,7 @@ import ChangePassword from "./pages/ChangePassword";
 import CompanyPicker from "./pages/CompanyPicker";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
+import MyProfile from "./pages/MyProfile";
 import CompanyStructure from "./pages/CompanyStructure";
 import Archive from "./pages/Archive";
 import Tasks from "./pages/Tasks";
@@ -38,6 +39,7 @@ const ROLE_THEME: Record<string, { icon: string; c1: string; c2: string }> = {
   company_manager: { icon: "dashboard", c1: "#0f766e", c2: "#0b3b38" },
   hr: { icon: "employees", c1: "#0e7490", c2: "#0b3b54" },
   delegate: { icon: "doc", c1: "#15857b", c2: "#0b3b38" },
+  accountant: { icon: "eos", c1: "#7c5e10", c2: "#3d2e08" },
   branch_supervisor: { icon: "branches", c1: "#15803d", c2: "#0b3b1f" },
   admin_employee: { icon: "users", c1: "#5c706a", c2: "#384542" },
   employee: { icon: "requests", c1: "#0f766e", c2: "#0b3b38" },
@@ -63,11 +65,34 @@ function Sidebar({ open }: { open: boolean }) {
   );
 
   const isEmployee = !!user?.employee_id; // فقط من له ملف موظف يبصم حضورًا
-  const canReview = ["super_admin", "company_owner", "company_manager"].includes(user?.role || "");
+  const isOwner = user?.role === "company_owner"; // مالك: واجهة رقابية مقيّدة (اطلاع فقط)
   const isCrossCompany = ["super_admin", "company_owner"].includes(user?.role || "");
-  // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — يُمنعان عن HR والعامل
-  const canOperations = can("manage_permits") || can("manage_licenses") || canReview;
-  const canArchive = can("manage_licenses") || can("manage_company") || isCrossCompany;
+  const canReview = ["super_admin", "company_manager"].includes(user?.role || "");
+  // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — للـ PRO/الإدارة العليا فقط
+  const canOperations = can("manage_permits") || can("manage_licenses") || user?.role === "super_admin";
+  const canArchive = can("manage_licenses") || can("manage_company") || user?.role === "super_admin";
+
+  // واجهة المالك: لوحة + متابعة الفروع + التقارير + الإشعارات فقط — لا شيء غير ذلك
+  if (isOwner) {
+    return (
+      <aside className={`sidebar ${open ? "open" : ""}`}>
+        <div className="brand">
+          <div className="logo">H<span>R</span></div>
+          <b>نظام الموارد البشرية</b>
+        </div>
+        <div className="nav-group">
+          <div className="nav-label">{t("main_section")}</div>
+          <Item to="/" icon="dashboard" label={t("dashboard")} />
+          <Item to="/structure" icon="branches" label={t("structure")} />
+          <Item to="/reports" icon="doc" label={t("reports")} />
+          <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
+        </div>
+        <div className="sb-foot">
+          <Item to="/change-password" icon="key" label={t("change_password")} />
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -86,8 +111,12 @@ function Sidebar({ open }: { open: boolean }) {
 
       <div className="nav-group">
         <div className="nav-label">{t("resources_section")}</div>
+        {/* خدمة ذاتية: ملف الموظف الشخصي (لمن له ملف موظف بلا صلاحية عرض عامة) */}
+        {isEmployee && !can("view_employee") && <Item to="/my-profile" icon="employees" label={t("my_profile")} />}
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
-        {can("view_employee") && <Item to="/structure" icon="branches" label={t("structure")} />}
+        {/* الهيكل يعرض كل الفروع → للإدارة فقط (مسؤول الفرع مقيّد بفرعه) */}
+        {(canReview || isCrossCompany || can("manage_branches")) &&
+          <Item to="/structure" icon="branches" label={t("structure")} />}
         {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
@@ -220,6 +249,7 @@ export default function App() {
       <Route path="/requests/:id" element={<Protected><RequestDetail /></Protected>} />
       <Route path="/employees" element={<Protected><Employees /></Protected>} />
       <Route path="/employees/:id" element={<Protected><Employees /></Protected>} />
+      <Route path="/my-profile" element={<Protected><MyProfile /></Protected>} />
       <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
       <Route path="/archive" element={<Protected><Archive /></Protected>} />
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
