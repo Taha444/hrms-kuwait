@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api";
 import { useI18n } from "../i18n";
+import { useAuth } from "../auth";
 import Icon from "../Icon";
 
 // هيكل الشركة: Company → Branches، كل فرع وحدة لها موظفوها وإحصائياتها.
 export default function CompanyStructure() {
   const { t } = useI18n();
+  const { can } = useAuth();
   const [data, setData] = useState<any>(null);
   const [stats, setStats] = useState<Record<number, any>>({});
   const [err, setErr] = useState("");
@@ -64,7 +66,7 @@ export default function CompanyStructure() {
                 borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
                 <Mini val={s.present_today} lbl={t("present_today")} />
                 <Mini val={s.on_leave} lbl={t("on_leave_now")} />
-                <Mini val={s.expiring_permits} lbl={t("expiring_now")} />
+                {can("manage_permits") && <Mini val={s.expiring_permits} lbl={t("expiring_now")} />}
               </div>
               <div className="row">
                 <Link to={`/employees?branch=${b.id}`}><button className="sm">{t("view_branch_emps")}</button></Link>

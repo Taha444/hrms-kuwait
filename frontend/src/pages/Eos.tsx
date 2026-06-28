@@ -7,7 +7,8 @@ export default function Eos() {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [form, setForm] = useState<any>({
     basic_salary: 500, hire_date: "2018-01-01", end_date: "2024-01-01",
-    reason: "termination", contract_type: "indefinite", unused_leave_days: 0, day_divisor: 26,
+    reason: "termination", contract_type: "indefinite",
+    used_leave_days: 0, annual_leave_days: 30, day_divisor: 26,
   });
   const [res, setRes] = useState<any>(null);
   const [err, setErr] = useState("");
@@ -44,9 +45,12 @@ export default function Eos() {
             <select value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })}>
               <option value="indefinite">{t("eos_indefinite")}</option><option value="definite">{t("eos_definite")}</option>
             </select></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_unused_leave")}</label>
-            <input type="number" value={form.unused_leave_days}
-              onChange={(e) => setForm({ ...form, unused_leave_days: +e.target.value })} /></div>
+          <div className="field" style={{ flex: 1 }}><label>{t("eos_used_leave")}</label>
+            <input type="number" min={0} step={1} value={form.used_leave_days}
+              onChange={(e) => setForm({ ...form, used_leave_days: +e.target.value })} /></div>
+          <div className="field" style={{ flex: 1 }}><label>{t("eos_annual_leave")}</label>
+            <input type="number" min={0} step={1} value={form.annual_leave_days}
+              onChange={(e) => setForm({ ...form, annual_leave_days: +e.target.value })} /></div>
           <div className="field" style={{ width: 100 }}><label>{t("eos_divisor")}</label>
             <select value={form.day_divisor} onChange={(e) => setForm({ ...form, day_divisor: +e.target.value })}>
               <option value={26}>26</option><option value={30}>30</option></select></div>
@@ -65,6 +69,10 @@ export default function Eos() {
             <div className="stat card"><div className="num">{res.daily_wage}</div><div className="lbl">{t("eos_daily_wage")}</div></div>
           </div>
           <p><b>{t("eos_service")}</b> {res.service.text} ({res.service.decimal_years} {t("eos_years")})</p>
+          {res.leave && (
+            <p><b>{t("eos_leave_breakdown")}</b> {t("eos_leave_detail", {
+              accrued: res.leave.accrued_days, used: res.leave.used_days, remaining: res.leave.remaining_days })}</p>
+          )}
           <p><b>{t("eos_factor")}</b> {(res.entitlement_factor * 100).toFixed(2)}% — {res.factor_note}</p>
           {res.cap_applied && <p className="err">{t("eos_cap")}</p>}
           <p className="muted">{res.disclaimer}</p>

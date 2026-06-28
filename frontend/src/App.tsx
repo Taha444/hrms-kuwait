@@ -11,7 +11,6 @@ import ChangePassword from "./pages/ChangePassword";
 import CompanyPicker from "./pages/CompanyPicker";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
-import EmployeeProfile from "./pages/EmployeeProfile";
 import CompanyStructure from "./pages/CompanyStructure";
 import Archive from "./pages/Archive";
 import Tasks from "./pages/Tasks";
@@ -65,6 +64,10 @@ function Sidebar({ open }: { open: boolean }) {
 
   const isEmployee = !!user?.employee_id; // فقط من له ملف موظف يبصم حضورًا
   const canReview = ["super_admin", "company_owner", "company_manager"].includes(user?.role || "");
+  const isCrossCompany = ["super_admin", "company_owner"].includes(user?.role || "");
+  // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — يُمنعان عن HR والعامل
+  const canOperations = can("manage_permits") || can("manage_licenses") || canReview;
+  const canArchive = can("manage_licenses") || can("manage_company") || isCrossCompany;
 
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -78,15 +81,14 @@ function Sidebar({ open }: { open: boolean }) {
         <Item to="/" icon="dashboard" label={t("dashboard")} />
         <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
         <Item to="/requests" icon="requests" label={t("requests")} />
-        {(can("view_reports") || can("manage_permits") || can("approve_request")) &&
-          <Item to="/operations" icon="scan" label="مركز العمليات" />}
+        {canOperations && <Item to="/operations" icon="scan" label={t("operations")} />}
       </div>
 
       <div className="nav-group">
         <div className="nav-label">{t("resources_section")}</div>
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
         {can("view_employee") && <Item to="/structure" icon="branches" label={t("structure")} />}
-        {can("view_documents") && <Item to="/archive" icon="doc" label={t("archive")} />}
+        {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
         {can("manage_permits") && <Item to="/pro" icon="doc" label={t("pro")} />}
@@ -217,7 +219,7 @@ export default function App() {
       <Route path="/requests" element={<Protected><Requests /></Protected>} />
       <Route path="/requests/:id" element={<Protected><RequestDetail /></Protected>} />
       <Route path="/employees" element={<Protected><Employees /></Protected>} />
-      <Route path="/employees/:id" element={<Protected><EmployeeProfile /></Protected>} />
+      <Route path="/employees/:id" element={<Protected><Employees /></Protected>} />
       <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
       <Route path="/archive" element={<Protected><Archive /></Protected>} />
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />

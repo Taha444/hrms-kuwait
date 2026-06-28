@@ -351,7 +351,33 @@ video, canvas.cam, .cam { width: 100%; max-width: 340px; border-radius: 14px; ba
 .att-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
 .att-legend .sw { width: 16px; height: 16px; border-radius: 5px; }
 
+/* ---------- تخطيط رئيسي-تفصيلي (Master–Detail) ---------- */
+.md-layout { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 16px; align-items: start; }
+.md-list { background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.md-list .md-filters { padding: 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.md-rows { max-height: calc(100vh - 230px); overflow-y: auto; }
+.md-row { width: 100%; text-align: start; background: none; border: none; border-bottom: 1px solid var(--line);
+  padding: 11px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; transition: background 0.12s; }
+.md-row:hover { background: rgba(14, 116, 144, 0.05); }
+.md-row.active { background: var(--info-bg); box-shadow: inset 3px 0 0 var(--petrol-600, #0e7490); }
+.md-row .r-name { font-weight: 700; color: var(--ink, #16302b); }
+.md-row .r-sub { font-size: 12px; color: var(--muted); }
+.md-detail { min-width: 0; }
+.md-empty { display: grid; place-items: center; min-height: 320px; color: var(--muted);
+  border: 1px dashed var(--line); border-radius: 14px; text-align: center; padding: 30px; }
+
+/* ---------- تبويبات (Tabs) ---------- */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.tabs .tab { background: none; border: none; padding: 10px 14px; cursor: pointer; font-weight: 600;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs .tab:hover { color: var(--ink, #16302b); }
+.tabs .tab.active { color: var(--petrol-700, #0b3b54); border-bottom-color: var(--gold, #c8a24a); }
+
 /* ---------- استجابة ---------- */
+@media (max-width: 980px) {
+  .md-layout { grid-template-columns: 1fr; }
+  .md-rows { max-height: 360px; }
+}
 @media (max-width: 860px) {
   .sidebar { position: fixed; z-index: 50; transform: translateX(110%); transition: transform 0.2s; }
   .sidebar.open { transform: translateX(0); }

@@ -33,9 +33,14 @@ export default function Users() {
     api.get("/users/permission-matrix").then((r) => setMxCatalog(r.data)).catch(() => {});
     api.get("/branches").then((r) => setBranches(r.data)).catch(() => {});
   }, []);
-  const setScope = async (uid: number, branch_id: string) => {
-    await api.post(`/users/${uid}/scope`, null, { params: { branch_id: branch_id || undefined } });
-    load(); setMsg(t("user_scope_set"));
+  // ضبط مستوى نطاق البيانات: company | branch | multi | self
+  const setScope = async (uid: number, level: string, branchId?: string, branchIds?: number[]) => {
+    await api.post(`/users/${uid}/scope`, null, {
+      params: { level, branch_id: branchId || undefined, branch_ids: branchIds || undefined },
+    });
+    load();
+    if (sel?.id === uid) setSel({ ...sel, scope_level: level, scope_branch_id: branchId ? +branchId : null });
+    setMsg(t("user_scope_set"));
   };
 
   const loadMatrix = (id: number) => api.get(`/users/${id}/matrix`).then((r) => setMatrix(r.data));
@@ -141,12 +146,43 @@ export default function Users() {
             </div>
           </div>
           <p className="muted">{t("user_matrix_hint")}</p>
-          <div className="row" style={{ marginBottom: 10 }}>
+          <div className="row" style={{ marginBottom: 10, flexWrap: "wrap" }}>
             <span className="muted">{t("user_data_scope")}</span>
-            <select value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, e.target.value)} style={{ width: 220 }}>
-              <option value="">{t("user_all_branches")}</option>
-              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            <select value={sel.scope_level || "company"}
+              onChange={(e) => {
+                const lvl = e.target.value;
+                // company/self لا يحتاجان فرعًا؛ branch يبدأ بأول فرع متاح
+                if (lvl === "branch") setScope(sel.id, "branch", String(sel.scope_branch_id || branches[0]?.id || ""));
+                else setScope(sel.id, lvl);
+              }} style={{ width: 200 }}>
+              <option value="company">{t("scope_company")}</option>
+              <option value="branch">{t("scope_branch")}</option>
+              <option value="multi">{t("scope_multi")}</option>
+              <option value="self">{t("scope_self")}</option>
             </select>
+            {sel.scope_level === "branch" && (
+              <select value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, "branch", e.target.value)} style={{ width: 200 }}>
+                <option value="" disabled>{t("opt_choose")}</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+            {sel.scope_level === "multi" && (
+              <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                {branches.map((b) => (
+                  <label key={b.id} className="muted" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <input type="checkbox" style={{ width: "auto" }}
+                      checked={(sel.scope_branch_ids || []).includes(b.id)}
+                      onChange={(e) => {
+                        const cur: number[] = sel.scope_branch_ids || [];
+                        const next = e.target.checked ? [...cur, b.id] : cur.filter((x) => x !== b.id);
+                        setSel({ ...sel, scope_branch_ids: next });
+                        if (next.length) setScope(sel.id, "multi", undefined, next);
+                      }} />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
           <div className="att-wrap">
             <table className="att-matrix">
