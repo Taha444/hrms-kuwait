@@ -65,6 +65,53 @@ def test_eos_leave_balance_auto(client):
     assert b["remaining_days"] == round(b["accrued_days"] - 10, 2)
 
 
+def test_licenses_list_is_gov_only(client):
+    # التراخيص حكومية → المدير/HR ممنوعون، المندوب مسموح
+    assert client.get("/api/licenses",
+                      headers=auth_headers(login(client, "100000000001", "manager123"))).status_code == 403
+    assert client.get("/api/licenses",
+                      headers=auth_headers(login(client, "100000000002", "hr12345"))).status_code == 403
+    assert client.get("/api/licenses",
+                      headers=auth_headers(login(client, "100000000003", "deleg123"))).status_code == 200
+
+
+def test_supervisor_cannot_see_other_branch_stats(client):
+    admin = login(client, "000000000000", "admin123")
+    branches = client.get("/api/branches", headers=auth_headers(admin), params={"company_id": 1}).json()
+    sup = login(client, "100000000005", "sup12345")
+    his = client.get("/api/branches", headers=auth_headers(sup)).json()
+    assert len(his) == 1  # يرى فرعه فقط من قائمة الفروع
+    other = next(b["id"] for b in branches if b["id"] != his[0]["id"])
+    assert client.get(f"/api/branches/{other}/stats", headers=auth_headers(sup)).status_code == 404
+
+
+def test_employee_cannot_view_colleague_request(client):
+    emp1 = login(client, "100000000101", "emp12345")
+    rid = client.post("/api/requests", headers=auth_headers(emp1), json={
+        "request_type_code": "leave",
+        "payload_json": {"start_date": "2026-08-01", "end_date": "2026-08-03", "days": 3, "reason": "x"},
+    }).json()["id"]
+    # زميل آخر لا يستطيع الاطلاع على الطلب
+    emp2 = login(client, "100000000102", "emp12345")
+    assert client.get(f"/api/requests/{rid}", headers=auth_headers(emp2)).status_code == 404
+    # صاحب الطلب يراه
+    assert client.get(f"/api/requests/{rid}", headers=auth_headers(emp1)).status_code == 200
+
+
+def test_government_tasks_go_to_pro_not_hr(client):
+    # تشغيل المسح اليومي يولّد مهام تجديد إقامات/تراخيص
+    admin = login(client, "000000000000", "admin123")
+    client.post("/api/tasks/run-scan", headers=auth_headers(admin))
+    # HR لا يرى أي مهمة حكومية في صندوقه
+    hr = login(client, "100000000002", "hr12345")
+    hr_tasks = client.get("/api/tasks/my", headers=auth_headers(hr)).json()
+    assert all(tk["category"] != "government" for tk in hr_tasks)
+    # المندوب (PRO) هو من يستلم المهام الحكومية
+    pro = login(client, "100000000003", "deleg123")
+    pro_tasks = client.get("/api/tasks/my", headers=auth_headers(pro)).json()
+    assert any(tk["category"] == "government" for tk in pro_tasks)
+
+
 def test_employee_self_service_only(client):
     # الموظف: خدمة ذاتية — ملفه/إنذاراته فقط، بلا موظفين آخرين ولا لوحة شركة
     emp = login(client, "100000000101", "emp12345")

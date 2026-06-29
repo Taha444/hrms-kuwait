@@ -252,6 +252,15 @@ def _get_req(db: Session, user: models.User, req_id: int) -> models.Request:
     if not req:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
     assert_same_company(user, req.company_id)
+    # خدمة ذاتية: من لا يعتمد/يعالج الطلبات يرى طلباته هو فقط (لا طلبات الزملاء)
+    from ..permissions import has_permission
+    from ..deps import get_user_perms
+    perms = get_user_perms(user, db)
+    is_handler = (user.role == "super_admin"
+                  or has_permission(user.role, perms, "approve_request")
+                  or has_permission(user.role, perms, "process_delegate_tasks"))
+    if not is_handler and req.employee_id != user.employee_id:
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
     return req
 
 

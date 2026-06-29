@@ -150,14 +150,17 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               )}
             </div>
           </div>
-          <div className="card">
-            <h3>{t("emp_permits")}</h3>
-            <table><thead><tr><th>{t("epf_col_type")}</th><th>{t("pro_col_number")}</th><th>{t("pro_col_expiry")}</th><th>{t("status")}</th></tr></thead>
-              <tbody>{p.permits.map((x: any) => (
-                <tr key={x.id}><td>{x.kind}</td><td>{x.number}</td><td>{x.expiry_date}</td>
-                  <td><span className="pill info">{statusAr(x.status)}</span></td></tr>
-              ))}{!p.permits.length && <tr><td colSpan={4} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
-          </div>
+          {/* الإقامات/أذونات العمل شأن حكومي → للمندوب فقط */}
+          {can("manage_permits") && (
+            <div className="card">
+              <h3>{t("emp_permits")}</h3>
+              <table><thead><tr><th>{t("epf_col_type")}</th><th>{t("pro_col_number")}</th><th>{t("pro_col_expiry")}</th><th>{t("status")}</th></tr></thead>
+                <tbody>{p.permits.map((x: any) => (
+                  <tr key={x.id}><td>{x.kind}</td><td>{x.number}</td><td>{x.expiry_date}</td>
+                    <td><span className="pill info">{statusAr(x.status)}</span></td></tr>
+                ))}{!p.permits.length && <tr><td colSpan={4} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
+            </div>
+          )}
           <div className="card">
             <h3>{t("emp_recent_att")}</h3>
             <table><thead><tr><th>{t("col_in")}</th><th>{t("col_out")}</th><th>{t("status")}</th><th>{t("epf_col_selfie")}</th></tr></thead>

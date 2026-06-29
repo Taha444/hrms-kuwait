@@ -129,9 +129,9 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         name = emp.name if emp else f"#{permit.employee_id}"
         dk = f"permit_expiring:{permit.id}:{bucket}"
-        # للمندوب + المدير
+        # شأن حكومي → للمندوب (PRO) فقط
         notify_roles(
-            db, permit.company_id, ["delegate", "company_manager", "hr"],
+            db, permit.company_id, ["delegate"],
             type="renew_residency" if permit.kind == "residency" else "renew_work_permit",
             title=f"تجديد {kind_ar}: {name}",
             detail=f"{kind_ar} للعامل {name} تنتهي خلال {days_left} يومًا ({permit.expiry_date}).",
@@ -160,8 +160,9 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         dk = f"doc_expiring:{doc.id}:{bucket}"
         title = doc.title or doc.document_type_code
+        # مستندات رسمية (جوازات/إقامات) → شأن حكومي للمندوب فقط
         notify_roles(
-            db, doc.company_id, ["delegate", "company_manager", "hr"],
+            db, doc.company_id, ["delegate"],
             type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
             detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
             related_entity_type="document", related_entity_id=doc.id,
@@ -185,7 +186,7 @@ def daily_scan(db: Session) -> dict:
             if bucket is not None:
                 sev = expiry_severity(days_left)
                 notify_roles(
-                    db, lic.company_id, ["company_manager", "hr", "delegate"],
+                    db, lic.company_id, ["delegate"],
                     type="license_expiring", title=f"ترخيص قارب على الانتهاء: {lic.name}",
                     detail=f"الترخيص {lic.name} ينتهي خلال {days_left} يومًا ({lic.expiry_date}).",
                     related_entity_type="license", related_entity_id=lic.id,
@@ -202,7 +203,7 @@ def daily_scan(db: Session) -> dict:
             ).all())
             if actual > lic.allowed_workers:
                 notify_roles(
-                    db, lic.company_id, ["company_manager", "hr"],
+                    db, lic.company_id, ["delegate"],
                     type="capacity_exceeded",
                     title=f"تجاوز سعة الترخيص: {lic.name}",
                     detail=f"عدد العمالة {actual} يتجاوز المسموح {lic.allowed_workers}.",

@@ -170,7 +170,23 @@ def dashboard(company_id: int | None = None,
         })
         return data
 
-    # ----- الإدارة العليا / أدوار أخرى -----
+    # ----- المحاسب: الرواتب فقط (موظفون + تنبيهاته) — بلا مؤشرات حكومية -----
+    if role == "accountant":
+        data.update({
+            "employees": count(models.Employee, models.Employee.status == "active"),
+            "notifications": my_open_tasks,
+        })
+        return data
+
+    # ----- أدوار أخرى (إداري مرن…): لوحة بسيطة بلا مؤشرات حكومية -----
+    if role != "super_admin":
+        data.update({
+            "employees": count(models.Employee, models.Employee.status == "active"),
+            "open_tasks": my_open_tasks,
+        })
+        return data
+
+    # ----- الإدارة العليا: نظرة كاملة -----
     data.update({
         "employees": count(models.Employee, models.Employee.status == "active"),
         "branches": count(models.Branch),

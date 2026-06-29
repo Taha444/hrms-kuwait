@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
+from ..deps import (assert_same_company, audit, get_current_user, require_perm,
+                    resolve_scope, scope_company_id)
 from ..qr import current_code, seconds_remaining
 
 router = APIRouter(tags=["org"])
@@ -24,6 +25,10 @@ def list_branches(company_id: int | None = None,
     q = select(models.Branch)
     if cid is not None:
         q = q.where(models.Branch.company_id == cid)
+    # تقييد بنطاق فروع المستخدم (مسؤول الفرع لا يرى فروعًا أخرى)
+    bids = resolve_scope(user, db).branch_ids
+    if bids is not None:
+        q = q.where(models.Branch.id.in_(bids))
     return list(db.scalars(q).all())
 
 
@@ -61,8 +66,11 @@ def org_structure(company_id: int | None = None,
             q = q.where(c)
         return db.scalar(q) or 0
 
-    branches = db.scalars(select(models.Branch).where(models.Branch.company_id == cid)
-                          .order_by(models.Branch.name)).all()
+    bq = select(models.Branch).where(models.Branch.company_id == cid)
+    scope_bids = resolve_scope(user, db).branch_ids
+    if scope_bids is not None:  # مسؤول الفرع: فروعه فقط
+        bq = bq.where(models.Branch.id.in_(scope_bids))
+    branches = db.scalars(bq.order_by(models.Branch.name)).all()
     sup_rows = db.scalars(select(models.BranchSupervisor).where(
         models.BranchSupervisor.company_id == cid)).all()
     user_names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
@@ -77,11 +85,18 @@ def org_structure(company_id: int | None = None,
         "supervisors": sup_by_branch.get(b.id, []),
     } for b in branches]
 
+    # الإجماليات تتبع النطاق: مسؤول الفرع يرى إجمالي فروعه فقط
+    if scope_bids is not None:
+        total = emp_count(models.Employee.branch_id.in_(scope_bids))
+        unassigned = 0
+    else:
+        total = emp_count()
+        unassigned = emp_count(models.Employee.branch_id.is_(None))
     return {
         "company": {"id": company.id, "name": company.name},
         "branches": out,
-        "unassigned_employees": emp_count(models.Employee.branch_id.is_(None)),
-        "total_employees": emp_count(),
+        "unassigned_employees": unassigned,
+        "total_employees": total,
     }
 
 
@@ -93,6 +108,10 @@ def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
     assert_same_company(user, branch.company_id)
+    # مسؤول الفرع لا يطّلع على إحصائيات فرع خارج نطاقه
+    bids = resolve_scope(user, db).branch_ids
+    if bids is not None and branch_id not in bids:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
     today = date.today()
     emp_ids = select(models.Employee.id).where(models.Employee.branch_id == branch_id,
                                                models.Employee.status == "active")
@@ -255,7 +274,8 @@ def create_shift(data: schemas.ShiftIn, request: Request,
 
 @router.get("/licenses")
 def list_licenses(company_id: int | None = None,
-                  user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+                  user: models.User = Depends(require_perm("manage_licenses")),
+                  db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     q = select(models.License)
     if cid is not None:

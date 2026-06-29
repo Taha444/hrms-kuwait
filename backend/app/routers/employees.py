@@ -129,7 +129,13 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
                      db: Session = Depends(get_db)):
     """الملف المجمّع: البيانات + الإقامات + المستندات + الخصومات + الإجازات + الحضور."""
     emp = _get_emp(db, user, emp_id)
-    permits = db.scalars(select(models.Permit).where(models.Permit.employee_id == emp_id)).all()
+    # الإقامات/أذونات العمل شأن حكومي → تُعرَض للمندوب/الإدارة العليا فقط
+    from ..permissions import has_permission
+    from ..deps import get_user_perms
+    can_gov = user.role == "super_admin" or has_permission(
+        user.role, get_user_perms(user, db), "manage_permits")
+    permits = db.scalars(select(models.Permit).where(
+        models.Permit.employee_id == emp_id)).all() if can_gov else []
     docs = db.scalars(
         select(models.Document).where(
             models.Document.entity_type == "employee",

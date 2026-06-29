@@ -27,7 +27,8 @@ from . import models
 from .config import settings
 from .notifications import create_task, notify_employee_self, users_by_role
 
-CANCEL_ROLES = {"super_admin", "company_owner", "company_manager"}
+# إلغاء الطلب إجراء تشغيلي → المالك (اطلاع فقط) مستبعَد
+CANCEL_ROLES = {"super_admin", "company_manager"}
 
 
 # ----------------------- أنواع الطلبات الافتراضية (للـ seed) -----------------------

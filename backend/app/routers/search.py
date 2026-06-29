@@ -56,8 +56,8 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
         results["branches"] = [{"id": b.id, "label": b.name, "sub": b.address or "",
                                 "link": f"/employees?branch={b.id}"} for b in branches]
 
-    # التراخيص
-    if can("manage_licenses") or can("view_reports"):
+    # التراخيص (شأن حكومي → المندوب/الإدارة العليا فقط)
+    if can("manage_licenses"):
         lic_q = scoped(select(models.License).where(or_(
             models.License.name.like(like), models.License.license_no.like(like))), models.License)
         lics = db.scalars(lic_q.limit(6)).all()
