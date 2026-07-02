@@ -65,6 +65,17 @@ def test_eos_leave_balance_auto(client):
     assert b["remaining_days"] == round(b["accrued_days"] - 10, 2)
 
 
+def test_search_by_passport_number(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    # أضف موظفًا برقم جواز مميّز ثم ابحث به
+    client.post("/api/employees", headers=ah, json={
+        "civil_id": "277700033344", "name": "صاحب جواز", "passport_number": "PP-XY-9911",
+        "company_id": 1})
+    res = client.get("/api/employees", headers=ah, params={"q": "PP-XY-9911", "company_id": 1}).json()
+    assert any(e["passport_number"] == "PP-XY-9911" for e in res)
+
+
 def test_actual_salary_is_permission_gated(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)

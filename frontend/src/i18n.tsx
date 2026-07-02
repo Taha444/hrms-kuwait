@@ -114,7 +114,7 @@ const dict: Record<string, { ar: string; en: string }> = {
   all_departments: { ar: "كل الإدارات", en: "All Departments" },
   // الموظفون
   emp_new: { ar: "موظف جديد", en: "New Employee" },
-  emp_search_ph: { ar: "بحث: الاسم / الرقم المدني / رقم الموظف / رقم الإقامة", en: "Search: name / civil ID / employee no / residency no" },
+  emp_search_ph: { ar: "بحث: الاسم / المدني / رقم الموظف / الإقامة / الجواز", en: "Search: name / civil ID / emp no / residency / passport" },
   add_department: { ar: "+ إدارة", en: "+ Department" },
   add_department_prompt: { ar: "اسم الإدارة/القسم الجديد:", en: "New department name:" },
   col_name: { ar: "الاسم", en: "Name" },

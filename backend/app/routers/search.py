@@ -28,14 +28,13 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
 
     results: dict = {}
 
-    # الموظفون (بالاسم/المدني/رقم الموظف)
+    # الموظفون (بالاسم/المدني/الجواز/رقم الموظف)
     if can("view_employee"):
-        emp_q = select(models.Employee).where(or_(
-            models.Employee.name.like(like), models.Employee.civil_id.like(like)))
+        conds = [models.Employee.name.like(like), models.Employee.civil_id.like(like),
+                 models.Employee.passport_number.like(like)]
         if q.isdigit():
-            emp_q = select(models.Employee).where(or_(
-                models.Employee.name.like(like), models.Employee.civil_id.like(like),
-                models.Employee.id == int(q)))
+            conds.append(models.Employee.id == int(q))
+        emp_q = select(models.Employee).where(or_(*conds))
         emps = db.scalars(scoped(emp_q, models.Employee).limit(8)).all()
         results["employees"] = [{"id": e.id, "label": e.name,
                                  "sub": f"{e.civil_id or ''} · {e.job_title or ''}",

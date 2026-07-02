@@ -88,6 +88,7 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة
         permit_emp_ids = select(models.Permit.employee_id).where(models.Permit.number.like(like))
         conds = [models.Employee.name.like(like), models.Employee.civil_id.like(like),
+                 models.Employee.passport_number.like(like),
                  models.Employee.id.in_(permit_emp_ids)]
         if q.strip().isdigit():
             conds.append(models.Employee.id == int(q.strip()))
