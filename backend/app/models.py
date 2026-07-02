@@ -115,6 +115,25 @@ class BranchSupervisor(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
 
+class ResidencyRenewal(Base):
+    """معاملة تجديد الإقامة (مبكر/عادي) بحالاتها المتعددة — DEMO-001/002."""
+    __tablename__ = "residency_renewals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    permit_id: Mapped[int | None] = mapped_column(ForeignKey("permits.id"))  # الإقامة محل التجديد
+    renewal_type: Mapped[str] = mapped_column(String(10), default="early")  # early / normal
+    status: Mapped[str] = mapped_column(String(30), default="new", index=True)
+    reason: Mapped[str | None] = mapped_column(Text)          # سبب التجديد المبكر (إلزامي للمبكر)
+    notes: Mapped[str | None] = mapped_column(Text)
+    reject_reason: Mapped[str | None] = mapped_column(Text)   # سبب الرفض
+    days_left_at_request: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class Department(Base):
     """الإدارة/القسم داخل فرع (الهرم: شركة ← فرع ← إدارة ← موظفون)."""
     __tablename__ = "departments"
