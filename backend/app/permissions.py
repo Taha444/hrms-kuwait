@@ -46,6 +46,8 @@ PERMISSIONS: dict[str, str] = {
     "manage_company": "إدارة بيانات الشركة",
     "manage_companies": "إدارة جميع الشركات (إدارة عليا)",
     "transfer_employee": "نقل موظف بين الشركات",
+    "view_actual_salary": "عرض الراتب الفعلي",
+    "edit_actual_salary": "تعديل الراتب الفعلي",
 }
 
 # قوالب صلاحيات جاهزة
@@ -88,7 +90,8 @@ _COMPANY_ALL = {p for p in PERMISSIONS if p != "manage_companies"}
 ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "super_admin": _ALL | {"manage_companies"},
     # المالك: دور رقابي للاطلاع فقط (متابعة الشركات/الفروع/الأداء/التقارير) — لا أعمال تشغيلية
-    "company_owner": {"view_employee", "view_reports", "export_reports", "view_tasks"},
+    "company_owner": {"view_employee", "view_reports", "export_reports", "view_tasks",
+                      "view_actual_salary"},
     # مدير الشركة: التشغيل اليومي فقط — موظفون/فروع/إدارات/إجازات/طلبات/تقارير/مستخدمو شركته.
     # لا رواتب/خصومات (المحاسب)، لا EOS/إنهاء خدمة (HR)، لا إقامات/تراخيص (PRO)،
     # لا إعدادات نظام/شركات/قوالب/تدقيق/نقل بين الشركات (الإدارة العليا).
@@ -97,8 +100,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
                         "manage_users"},
-    # محاسب الشركة: الرواتب والخصومات فقط (موظف ضمن الشركة)
+    # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)
     "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
+                   "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks"},
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
@@ -114,8 +118,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
            "manage_templates", "view_tasks"},
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
     # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR.
-    "delegate": {"view_employee", "view_documents", "upload_documents", "manage_permits",
-                 "manage_licenses", "process_delegate_tasks", "view_tasks", "manage_tasks"},
+    "delegate": {"view_employee", "create_employee", "view_documents", "upload_documents",
+                 "manage_permits", "manage_licenses", "process_delegate_tasks",
+                 "view_tasks", "manage_tasks"},
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
     "admin_employee": set(),
     # الموظف: خدمة ذاتية فقط (لا إحصائيات شركة)

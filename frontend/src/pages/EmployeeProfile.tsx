@@ -25,6 +25,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [timeline, setTimeline] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [evForm, setEvForm] = useState({ kind: "warning", title: "", amount: "" });
+  const [actualEdit, setActualEdit] = useState(false);
+  const [actualVal, setActualVal] = useState("");
 
   const EMP_STATUS: Record<string, string> = {
     active: t("empst_active"), vacation: t("empst_vacation"), suspended: t("empst_suspended"),
@@ -59,6 +61,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const changeStatus = async (status: string) => {
     await api.post(`/employees/${id}/status`, null, { params: { status } });
     setMsg(t("epf_status_changed")); load(); onChanged?.();
+  };
+  const saveActualSalary = async () => {
+    await api.post(`/employees/${id}/actual-salary`, null, { params: { amount: +actualVal || 0 } });
+    setActualEdit(false); setMsg(t("actual_salary_saved")); load();
   };
   const addEvent = async () => {
     if (!evForm.title) return;
@@ -136,9 +142,28 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       {tab === "employment" && (
         <>
           <div className="grid cards">
-            <div className="card"><b>{t("epf_job")}:</b> {e.job_title || "—"}<br /><b>{t("epf_salary")}:</b> {e.basic_salary} {kwd}<br />
+            <div className="card"><b>{t("epf_job")}:</b> {e.job_title || "—"}<br />
+              <b>{t("fld_official_salary")}:</b> {e.basic_salary} {kwd}<br />
+              {p.can_view_actual_salary && (
+                <><b>{t("fld_actual_salary")}:</b>{" "}
+                  {!actualEdit
+                    ? <>{p.actual_salary != null ? `${p.actual_salary} ${kwd}` : "—"}
+                        {p.can_edit_actual_salary &&
+                          <button className="ghost sm" style={{ marginInlineStart: 8 }}
+                            onClick={() => { setActualEdit(true); setActualVal(String(p.actual_salary ?? "")); }}>
+                            {t("edit")}</button>}</>
+                    : <span className="row" style={{ display: "inline-flex", gap: 6 }}>
+                        <input type="number" min={0} value={actualVal} style={{ width: 110 }}
+                          onChange={(ev) => setActualVal(ev.target.value)} />
+                        <button className="sm" onClick={saveActualSalary}>{t("save")}</button>
+                        <button className="ghost sm" onClick={() => setActualEdit(false)}>{t("cancel")}</button>
+                      </span>}
+                  <br /></>
+              )}
               <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br /><b>{t("epf_contract")}:</b> {e.contract_type}<br />
-              <b>{t("epf_att_mode")}:</b> {e.attendance_mode}</div>
+              <b>{t("epf_att_mode")}:</b> {e.attendance_mode}
+              {p.created_by_name && <><br /><span className="muted" style={{ fontSize: 12 }}>{t("emp_created_by")}: {p.created_by_name}</span></>}
+            </div>
             <div className="card">
               {can("edit_employee") && (
                 <div className="field" style={{ margin: 0 }}>

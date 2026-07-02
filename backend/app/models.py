@@ -159,12 +159,16 @@ class Employee(Base):
     direct_manager_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))
     worker_type: Mapped[str | None] = mapped_column(String(50))  # عامل / موظف
     job_title: Mapped[str | None] = mapped_column(String(150))
-    basic_salary: Mapped[float] = mapped_column(Float, default=0)
+    basic_salary: Mapped[float] = mapped_column(Float, default=0)  # الراتب الرسمي (عقد/إذن عمل/حكومي)
+    actual_salary: Mapped[float | None] = mapped_column(Float)  # الراتب الفعلي (صلاحية خاصة)
     hire_date: Mapped[date | None] = mapped_column(Date)
     contract_type: Mapped[str] = mapped_column(String(20), default="indefinite")  # indefinite/definite
     status: Mapped[str] = mapped_column(String(20), default="active")
-    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"))
-    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"))  # الترخيص الرسمي
+    actual_license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"))  # ترخيص الدوام الفعلي
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))  # الفرع الرسمي
+    actual_branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))  # فرع الدوام الفعلي
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))  # من أضاف الموظف
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     shift_id: Mapped[int | None] = mapped_column(ForeignKey("shifts.id"))
     attendance_mode: Mapped[str] = mapped_column(String(10), default="none")  # none/qr/gps/both

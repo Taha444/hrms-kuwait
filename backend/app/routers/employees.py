@@ -21,6 +21,35 @@ from ..deps import (
 router = APIRouter(prefix="/employees", tags=["employees"])
 
 
+def _assert_no_duplicates(db: Session, cid: int, civil_id: str | None,
+                          passport: str | None, exclude_id: int | None = None):
+    """منع تكرار الرقم المدني ورقم الجواز داخل الشركة."""
+    if civil_id:
+        q = select(models.Employee.id).where(models.Employee.company_id == cid,
+                                             models.Employee.civil_id == civil_id)
+        if exclude_id:
+            q = q.where(models.Employee.id != exclude_id)
+        if db.scalar(q):
+            raise HTTPException(status_code=409, detail="الرقم المدني مسجّل لموظف آخر")
+    if passport:
+        q = select(models.Employee.id).where(models.Employee.company_id == cid,
+                                             models.Employee.passport_number == passport)
+        if exclude_id:
+            q = q.where(models.Employee.id != exclude_id)
+        if db.scalar(q):
+            raise HTTPException(status_code=409, detail="رقم الجواز مسجّل لموظف آخر")
+
+
+def _assert_branch_in_scope(db: Session, user: models.User, *branch_ids: int | None):
+    """من له نطاق فروع محدد لا يضيف/ينقل موظفًا إلى فرع خارج نطاقه."""
+    sc = resolve_scope(user, db)
+    if sc.branch_ids is None:
+        return
+    for bid in branch_ids:
+        if bid and bid not in sc.branch_ids:
+            raise HTTPException(status_code=403, detail="لا يمكنك إضافة موظف لفرع خارج نطاقك")
+
+
 def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     emp = db.get(models.Employee, emp_id)
     if not emp:
@@ -81,7 +110,9 @@ def create_employee(data: schemas.EmployeeIn, request: Request,
     cid = requested_cid if user.role in CROSS_COMPANY_ROLES else user.company_id
     if cid is None:
         raise HTTPException(status_code=400, detail="يجب تحديد الشركة")
-    emp = models.Employee(company_id=cid, **payload)
+    _assert_no_duplicates(db, cid, payload.get("civil_id"), payload.get("passport_number"))
+    _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
+    emp = models.Employee(company_id=cid, created_by=user.id, **payload)
     db.add(emp)
     db.flush()
     audit(db, user, "create_employee", "employee", emp.id, request=request)
@@ -103,12 +134,31 @@ def update_employee(emp_id: int, data: schemas.EmployeeIn, request: Request,
     emp = _get_emp(db, user, emp_id)
     payload = data.model_dump()
     payload.pop("company_id", None)  # لا يُغيَّر انتماء الشركة عبر التعديل العادي
+    _assert_no_duplicates(db, emp.company_id, payload.get("civil_id"),
+                          payload.get("passport_number"), exclude_id=emp.id)
+    _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
     for k, v in payload.items():
         setattr(emp, k, v)
     audit(db, user, "update_employee", "employee", emp.id, request=request)
     db.commit()
     db.refresh(emp)
     return emp
+
+
+@router.post("/{emp_id}/actual-salary")
+def set_actual_salary(emp_id: int, amount: float, request: Request = None,
+                      user: models.User = Depends(require_perm("edit_actual_salary")),
+                      db: Session = Depends(get_db)):
+    """تعديل الراتب الفعلي (صلاحية مالية خاصة) — يُسجَّل في التدقيق مع القيمة القديمة."""
+    if amount < 0:
+        raise HTTPException(status_code=400, detail="القيمة لا يمكن أن تكون سالبة")
+    emp = _get_emp(db, user, emp_id)
+    old = emp.actual_salary
+    emp.actual_salary = amount
+    audit(db, user, "edit_actual_salary", "employee", emp.id,
+          detail=f"{old} → {amount}", request=request)
+    db.commit()
+    return {"ok": True, "actual_salary": amount}
 
 
 @router.post("/{emp_id}/attendance-mode")
@@ -132,8 +182,11 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     # الإقامات/أذونات العمل شأن حكومي → تُعرَض للمندوب/الإدارة العليا فقط
     from ..permissions import has_permission
     from ..deps import get_user_perms
-    can_gov = user.role == "super_admin" or has_permission(
-        user.role, get_user_perms(user, db), "manage_permits")
+    perms = get_user_perms(user, db)
+    is_admin = user.role == "super_admin"
+    can_gov = is_admin or has_permission(user.role, perms, "manage_permits")
+    can_view_actual = is_admin or has_permission(user.role, perms, "view_actual_salary")
+    can_edit_actual = is_admin or has_permission(user.role, perms, "edit_actual_salary")
     permits = db.scalars(select(models.Permit).where(
         models.Permit.employee_id == emp_id)).all() if can_gov else []
     docs = db.scalars(
@@ -152,6 +205,12 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     ).all()
     return {
         "employee": schemas.EmployeeOut.model_validate(emp),
+        # الراتب الفعلي يُعرَض/يُعدَّل حسب الصلاحية المالية فقط
+        "actual_salary": emp.actual_salary if can_view_actual else None,
+        "can_view_actual_salary": can_view_actual,
+        "can_edit_actual_salary": can_edit_actual,
+        "created_by_name": (db.get(models.User, emp.created_by).full_name
+                            if emp.created_by and db.get(models.User, emp.created_by) else None),
         "permits": [
             {"id": p.id, "kind": p.kind, "number": p.number,
              "expiry_date": p.expiry_date, "status": p.status} for p in permits

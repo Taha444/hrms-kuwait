@@ -65,6 +65,38 @@ def test_eos_leave_balance_auto(client):
     assert b["remaining_days"] == round(b["accrued_days"] - 10, 2)
 
 
+def test_actual_salary_is_permission_gated(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    eid = client.get("/api/employees", headers=ah, params={"company_id": 1}).json()[0]["id"]
+    # المحاسب يعدّل الراتب الفعلي
+    acc = login(client, "100000000007", "account123")
+    assert client.post(f"/api/employees/{eid}/actual-salary", headers=auth_headers(acc),
+                       params={"amount": 850}).status_code == 200
+    # HR لا يملك تعديل الراتب الفعلي
+    hr = login(client, "100000000002", "hr12345")
+    assert client.post(f"/api/employees/{eid}/actual-salary", headers=auth_headers(hr),
+                       params={"amount": 999}).status_code == 403
+    # HR لا يرى الراتب الفعلي في الملف؛ المحاسب يراه
+    prof_hr = client.get(f"/api/employees/{eid}/profile", headers=auth_headers(hr)).json()
+    assert prof_hr["actual_salary"] is None and prof_hr["can_view_actual_salary"] is False
+    prof_acc = client.get(f"/api/employees/{eid}/profile", headers=auth_headers(acc)).json()
+    assert prof_acc["actual_salary"] == 850
+
+
+def test_add_employee_pro_and_duplicate_block(client):
+    # المندوب يقدر يضيف موظفًا (DEMO-006)
+    pro = login(client, "100000000003", "deleg123")
+    h = auth_headers(pro)
+    r = client.post("/api/employees", headers=h, json={
+        "civil_id": "288800011122", "name": "موظف المندوب", "basic_salary": 300})
+    assert r.status_code == 201, r.text
+    # منع تكرار الرقم المدني
+    dup = client.post("/api/employees", headers=h, json={
+        "civil_id": "288800011122", "name": "مكرر", "basic_salary": 300})
+    assert dup.status_code == 409
+
+
 def test_licenses_list_is_gov_only(client):
     # التراخيص حكومية → المدير/HR ممنوعون، المندوب مسموح
     assert client.get("/api/licenses",

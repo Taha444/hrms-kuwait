@@ -111,7 +111,7 @@ export default function Employees() {
                   <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                 <div className="field" style={{ flex: 1 }}><label>{t("fld_civil_id")}</label>
                   <input onChange={(e) => setForm({ ...form, civil_id: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label>{t("fld_basic_salary")}</label>
+                <div className="field" style={{ flex: 1 }}><label>{t("fld_official_salary")}</label>
                   <input type="number" onChange={(e) => setForm({ ...form, basic_salary: +e.target.value })} /></div>
               </div>
               <div className="row">
@@ -126,8 +126,13 @@ export default function Employees() {
                   </select></div>
               </div>
               <div className="row">
-                <div className="field" style={{ flex: 1 }}><label>{t("fld_branch")}</label>
+                <div className="field" style={{ flex: 1 }}><label>{t("fld_official_branch")}</label>
                   <select onChange={(e) => setForm({ ...form, branch_id: e.target.value ? +e.target.value : null })}>
+                    <option value="">{t("opt_choose")}</option>
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select></div>
+                <div className="field" style={{ flex: 1 }}><label>{t("fld_actual_branch")}</label>
+                  <select onChange={(e) => setForm({ ...form, actual_branch_id: e.target.value ? +e.target.value : null })}>
                     <option value="">{t("opt_choose")}</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select></div>

@@ -120,11 +120,13 @@ class EmployeeIn(BaseModel):
     direct_manager_id: int | None = None
     worker_type: str | None = None
     job_title: str | None = None
-    basic_salary: float = 0
+    basic_salary: float = 0                 # الراتب الرسمي (عقد/حكومي)
     hire_date: date | None = None
     contract_type: str = "indefinite"
-    license_id: int | None = None
-    branch_id: int | None = None
+    license_id: int | None = None           # الترخيص الرسمي
+    actual_license_id: int | None = None    # ترخيص الدوام الفعلي
+    branch_id: int | None = None            # الفرع الرسمي
+    actual_branch_id: int | None = None     # فرع الدوام الفعلي
     department_id: int | None = None
     shift_id: int | None = None
     attendance_mode: str = "none"
