@@ -47,6 +47,26 @@ def test_branch_archive(client):
     assert any(t["code"] == "branch_license" for t in r.json()["doc_types"])
 
 
+def test_upload_replaces_but_keeps_old_version(client):
+    # DEMO-015: رفع نسخة أحدث يبقّي القديمة (سجل نسخ) والأحدث هي الحالية
+    admin = login(client, "000000000000", "admin123")
+    h = auth_headers(admin)
+    cid = 1
+    for n in (b"v1-content", b"v2-content"):
+        files = {"file": (f"reg.pdf", io.BytesIO(n), "application/pdf")}
+        client.post("/api/documents/upload", headers=h, files=files, data={
+            "entity_type": "company", "entity_id": str(cid),
+            "document_type_code": "commercial_reg", "title": "السجل التجاري"})
+    # الأرشيف يعرض النسخة الحالية فقط، برقم نسخة ≥ 2
+    docs = client.get("/api/archive/company", headers=h, params={"company_id": cid}).json()["documents"]
+    cur = [x for x in docs if x["type"] == "commercial_reg"]
+    assert len(cur) == 1 and cur[0]["version"] >= 2
+    # سجل النسخ يحتفظ بالقديمة
+    hist = client.get("/api/documents/history", headers=h, params={
+        "entity_type": "company", "entity_id": cid, "document_type_code": "commercial_reg"}).json()
+    assert len(hist) >= 2
+
+
 def test_archive_isolation(client):
     # مدير الشركة 1 لا يصل لأرشيف فرع الشركة 2
     admin = login(client, "000000000000", "admin123")

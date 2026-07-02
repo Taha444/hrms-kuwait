@@ -66,7 +66,14 @@ def test_admin_employee_role_starts_with_no_permissions(client):
     # بلا صلاحيات افتراضية → ممنوع
     assert client.get("/api/employees", headers=h).status_code == 403
 
-    # المدير يمنحه قراءة الموظفين عبر المصفوفة
-    client.post(f"/api/users/{uid}/matrix", headers=ah, json={"grants": {"employees": ["read"]}})
+    # المدير يمنحه قراءة + إضافة الموظفين عبر المصفوفة (DEMO-013 + DEMO-006)
+    client.post(f"/api/users/{uid}/matrix", headers=ah, json={"grants": {"employees": ["read", "add"]}})
     tok = login(client, "777000111000", "NewPass123")
-    assert client.get("/api/employees", headers=auth_headers(tok)).status_code == 200
+    h = auth_headers(tok)
+    assert client.get("/api/employees", headers=h).status_code == 200
+    assert client.post("/api/employees", headers=h, json={
+        "name": "أضافه الإداري", "civil_id": "744000111222"}).status_code == 201
+    # إلغاء الصلاحية → يُمنع فورًا من Backend (تختفي القدرة)
+    client.post(f"/api/users/{uid}/matrix/reset", headers=ah)
+    tok = login(client, "777000111000", "NewPass123")
+    assert client.get("/api/employees", headers=auth_headers(tok)).status_code == 403
