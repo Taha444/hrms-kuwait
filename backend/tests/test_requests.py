@@ -12,6 +12,24 @@ def _emp_id(client):
     return next(e["id"] for e in emps if e["civil_id"] == "100000000101")
 
 
+def test_new_request_types_available(client):
+    emp = login(client, "100000000101", "emp12345")
+    codes = {x["code"] for x in client.get("/api/requests/types", headers=auth_headers(emp)).json()}
+    assert {"exit_permission", "advance", "loan"} <= codes
+
+
+def test_advance_request_flows_to_accountant(client):
+    emp = login(client, "100000000101", "emp12345")
+    rid = client.post("/api/requests", headers=auth_headers(emp), json={
+        "request_type_code": "advance", "payload_json": {"amount": 200, "reason": "ظرف"}}).json()["id"]
+    # المدير يعتمد → ينتقل الطلب للمحاسب للتنفيذ
+    mgr = login(client, "100000000001", "manager123")
+    client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
+    acc = login(client, "100000000007", "account123")
+    tasks = client.get("/api/tasks/my", headers=auth_headers(acc)).json()
+    assert any(tk.get("related_entity_id") == rid for tk in tasks)
+
+
 def test_full_leave_workflow(client):
     emp_token = login(client, "100000000101", "emp12345")
     # 1) العامل يقدّم طلب إجازة

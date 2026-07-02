@@ -61,6 +61,39 @@ DEFAULT_REQUEST_TYPES = [
         ],
         "template_html": None,
     },
+    {
+        "code": "exit_permission",
+        "name": "طلب إذن خروج/استئذان",
+        "requires_physical_signature": False,
+        "produces_document": False,
+        "approval_chain_json": [
+            {"order": 0, "label": "اعتماد مسؤول الفرع", "role": "branch_supervisor", "kind": "approval"},
+            {"order": 1, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
+        ],
+        "template_html": None,
+    },
+    {
+        "code": "advance",
+        "name": "طلب سلفة",
+        "requires_physical_signature": False,
+        "produces_document": False,
+        "approval_chain_json": [
+            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
+            {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
+        ],
+        "template_html": None,
+    },
+    {
+        "code": "loan",
+        "name": "طلب قرض",
+        "requires_physical_signature": False,
+        "produces_document": False,
+        "approval_chain_json": [
+            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
+            {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
+        ],
+        "template_html": None,
+    },
 ]
 
 
@@ -176,13 +209,15 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
             )
     elif kind == "pickup":
         req.status = "ready_for_pickup"
-        for u in users_by_role(db, req.company_id, ["hr"]):
+        # يُنفّذ الطلب الدور المحدَّد في المرحلة (hr افتراضيًا، أو accountant للسلف/القروض)
+        executor = stage.get("role") or "hr"
+        for u in users_by_role(db, req.company_id, [executor]):
             create_task(
                 db, company_id=req.company_id, assignee_user_id=u.id, type="pickup_ready",
-                title=f"مستند جاهز للحفظ/التسليم: {rt.name} — {name}",
-                detail="تم اعتماد الطلب. احفظ المستند وسلّمه للعامل عند حضوره.",
+                title=f"طلب معتمَد بانتظار التنفيذ: {rt.name} — {name}",
+                detail="تم اعتماد الطلب. استكمل التنفيذ/التسليم.",
                 related_entity_type="request", related_entity_id=req.id,
-                dedup_key=f"req_pickup_hr:{req.id}",
+                dedup_key=f"req_pickup:{req.id}",
             )
         notify_employee_self(
             db, req.employee_id, type="pickup_ready",

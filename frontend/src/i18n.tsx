@@ -164,6 +164,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   req_from: { ar: "من تاريخ", en: "From" }, req_to: { ar: "إلى تاريخ", en: "To" },
   req_days: { ar: "عدد الأيام", en: "Days" }, req_reason: { ar: "السبب", en: "Reason" },
   req_addressed: { ar: "الجهة المستفيدة (موجَّه إلى)", en: "Addressed To" },
+  req_amount: { ar: "المبلغ (د.ك)", en: "Amount (KWD)" },
+  req_months: { ar: "عدد الأشهر", en: "Months" },
+  req_date: { ar: "التاريخ", en: "Date" },
   req_purpose: { ar: "الغرض", en: "Purpose" },
   // مركز العمليات
   ops_eyebrow: { ar: "المتابعة والامتثال", en: "Compliance & Monitoring" },

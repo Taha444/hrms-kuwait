@@ -81,6 +81,26 @@ export default function Requests() {
                 <input onChange={(e) => setPayload({ ...payload, purpose: e.target.value })} /></div>
             </>
           )}
+          {typeCode === "exit_permission" && (
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{t("req_date")}</label>
+                <input type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
+                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+            </div>
+          )}
+          {(typeCode === "advance" || typeCode === "loan") && (
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
+                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              {typeCode === "loan" && (
+                <div className="field" style={{ width: 120 }}><label>{t("req_months")}</label>
+                  <input type="number" min={1} onChange={(e) => setPayload({ ...payload, months: +e.target.value })} /></div>
+              )}
+              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
+                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+            </div>
+          )}
           {err && <div className="err">{err}</div>}
           <button onClick={submit}>{t("submit")}</button>
         </div>
