@@ -65,6 +65,22 @@ def test_eos_leave_balance_auto(client):
     assert b["remaining_days"] == round(b["accrued_days"] - 10, 2)
 
 
+def test_apply_ocr_updates_fields_and_audits(client):
+    admin = login(client, "000000000000", "admin123")
+    ah = auth_headers(admin)
+    eid = client.post("/api/employees", headers=ah, json={
+        "civil_id": "255500066677", "name": "قبل OCR", "company_id": 1}).json()["id"]
+    # تطبيق بيانات OCR بعد المراجعة
+    r = client.post(f"/api/employees/{eid}/apply-ocr", headers=ah, json={
+        "name": "بعد OCR", "nationality": "مصري", "passport_number": "PP-OCR-1"})
+    assert r.status_code == 200 and r.json()["updated"] >= 2
+    prof = client.get(f"/api/employees/{eid}/profile", headers=ah).json()
+    assert prof["employee"]["nationality"] == "مصري"
+    # العملية مسجّلة في التدقيق
+    logs = client.get("/api/audit", headers=ah).json()
+    assert any(x["action"] == "apply_ocr" for x in logs)
+
+
 def test_search_by_passport_number(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)

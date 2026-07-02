@@ -80,6 +80,21 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     setSettlement(r.data.settlement); setMsg(t("epf_terminated_msg")); load(); onChanged?.();
   };
 
+  const applyOcr = async () => {
+    if (!suggested) return;
+    // خريطة حقول OCR ← حقول ملف الموظف (بعد مراجعة المستخدم)
+    const payload: any = {
+      name: suggested.full_name || undefined,
+      civil_id: suggested.civil_id || undefined,
+      nationality: suggested.nationality || undefined,
+      date_of_birth: suggested.date_of_birth || undefined,
+      passport_number: suggested.passport_number || suggested.passport || undefined,
+      passport_expiry: suggested.expiry_date || undefined,
+    };
+    const r = await api.post(`/employees/${id}/apply-ocr`, payload);
+    setSuggested(null);
+    setMsg(t("ocr_applied", { n: r.data.updated })); load();
+  };
   const ocrPreview = async (file: File) => {
     const fd = new FormData();
     fd.append("document_type_code", docType);
@@ -226,6 +241,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <div className="card" style={{ background: "#f8fafc", marginTop: 10 }}>
                   <b>{t("epf_ocr_suggested")}</b>
                   <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(suggested, null, 2)}</pre>
+                  {can("edit_employee") && (
+                    <button onClick={applyOcr}>{t("ocr_apply")}</button>
+                  )}
                 </div>
               )}
             </div>

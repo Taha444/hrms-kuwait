@@ -162,6 +162,18 @@ class EmployeeOut(EmployeeIn):
     status: str
 
 
+class OcrApplyIn(BaseModel):
+    """بيانات OCR بعد مراجعة المستخدم — تُطبَّق على ملف الموظف."""
+    name: str | None = None
+    civil_id: str | None = None
+    nationality: str | None = None
+    date_of_birth: date | None = None
+    passport_number: str | None = None
+    passport_expiry: date | None = None
+    job_title: str | None = None
+    basic_salary: float | None = None
+
+
 # ----------------------------- الفروع والورديات -----------------------------
 
 class BranchIn(BaseModel):

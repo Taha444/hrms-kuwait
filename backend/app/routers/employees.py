@@ -146,6 +146,27 @@ def update_employee(emp_id: int, data: schemas.EmployeeIn, request: Request,
     return emp
 
 
+@router.post("/{emp_id}/apply-ocr")
+def apply_ocr(emp_id: int, data: schemas.OcrApplyIn, request: Request = None,
+              user: models.User = Depends(require_perm("edit_employee")),
+              db: Session = Depends(get_db)):
+    """تطبيق بيانات OCR (بعد مراجعة المستخدم) على ملف الموظف — يحفظ القيم القديمة في التدقيق."""
+    emp = _get_emp(db, user, emp_id)
+    fields = data.model_dump(exclude_none=True)
+    _assert_no_duplicates(db, emp.company_id, fields.get("civil_id"),
+                          fields.get("passport_number"), exclude_id=emp.id)
+    changes = []
+    for k, v in fields.items():
+        old = getattr(emp, k)
+        if old != v:
+            changes.append(f"{k}: {old if old not in (None, '') else '—'} → {v}")
+            setattr(emp, k, v)
+    if changes:
+        audit(db, user, "apply_ocr", "employee", emp.id, detail=" | ".join(changes), request=request)
+        db.commit()
+    return {"ok": True, "updated": len(changes), "changes": changes}
+
+
 @router.post("/{emp_id}/actual-salary")
 def set_actual_salary(emp_id: int, amount: float, request: Request = None,
                       user: models.User = Depends(require_perm("edit_actual_salary")),

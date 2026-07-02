@@ -336,6 +336,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   epf_doc_passport: { ar: "جواز سفر (MRZ)", en: "Passport (MRZ)" }, epf_doc_civil: { ar: "بطاقة مدنية (باركود)", en: "Civil ID (barcode)" },
   epf_doc_residency: { ar: "إقامة", en: "Residency" }, epf_doc_contract: { ar: "عقد", en: "Contract" },
   epf_ocr_suggested: { ar: "بيانات مقترحة من OCR (راجعها قبل الحفظ):", en: "Suggested OCR data (review before saving):" },
+  ocr_apply: { ar: "تطبيق على ملف الموظف", en: "Apply to employee file" },
+  ocr_applied: { ar: "تم تحديث {n} حقل من OCR", en: "Updated {n} fields from OCR" },
   epf_ev_title_ph: { ar: "العنوان/السبب", en: "Title/Reason" }, epf_ev_amount_ph: { ar: "مبلغ (اختياري)", en: "Amount (optional)" },
   epf_doc_uploaded: { ar: "تم رفع المستند (أصبح الأحدث)", en: "Document uploaded (now latest)" },
   epf_status_changed: { ar: "تم تغيير الحالة", en: "Status changed" },
