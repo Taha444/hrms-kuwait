@@ -12,6 +12,7 @@ import CompanyPicker from "./pages/CompanyPicker";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import MyProfile from "./pages/MyProfile";
+import Renewals from "./pages/Renewals";
 import CompanyStructure from "./pages/CompanyStructure";
 import Archive from "./pages/Archive";
 import Tasks from "./pages/Tasks";
@@ -121,6 +122,10 @@ function Sidebar({ open }: { open: boolean }) {
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
         {can("manage_permits") && <Item to="/pro" icon="doc" label={t("pro")} />}
+        {/* تجديد الإقامة: الموظف/المندوب/المدير/الشؤون */}
+        {(isEmployee || can("manage_permits") || can("process_delegate_tasks") ||
+          ["company_manager", "hr", "super_admin"].includes(user?.role || "")) &&
+          <Item to="/renewals" icon="attendance" label={t("rnw_nav")} />}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} />}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
@@ -258,6 +263,7 @@ export default function App() {
       <Route path="/employees" element={<Protected><Employees /></Protected>} />
       <Route path="/employees/:id" element={<Protected><Employees /></Protected>} />
       <Route path="/my-profile" element={<Protected><MyProfile /></Protected>} />
+      <Route path="/renewals" element={<Protected><Renewals /></Protected>} />
       <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
       <Route path="/archive" element={<Protected><Archive /></Protected>} />
       <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
