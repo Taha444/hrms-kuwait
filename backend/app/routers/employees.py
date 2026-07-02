@@ -212,6 +212,11 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         "can_edit_actual_salary": can_edit_actual,
         "created_by_name": (db.get(models.User, emp.created_by).full_name
                             if emp.created_by and db.get(models.User, emp.created_by) else None),
+        # نتيجة نهاية الخدمة المحفوظة (إن وُجدت)
+        "saved_eos": (__import__("json").loads(emp.eos_settlement_json)
+                      if emp.eos_settlement_json else None),
+        "termination_date": emp.termination_date,
+        "termination_reason": emp.termination_reason,
         "permits": [
             {"id": p.id, "kind": p.kind, "number": p.number,
              "expiry_date": p.expiry_date, "status": p.status} for p in permits
@@ -356,6 +361,11 @@ def terminate_employee(emp_id: int, end_date: date, reason: str = "termination",
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     emp.status = "terminated"
+    # حفظ نتيجة الحسبة في ملف الموظف (DEMO-014)
+    import json
+    emp.termination_date = end_date
+    emp.termination_reason = reason
+    emp.eos_settlement_json = json.dumps(settlement, ensure_ascii=False)
     audit(db, user, "terminate_employee", "employee", emp.id,
           detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD", request=request)
     db.commit()

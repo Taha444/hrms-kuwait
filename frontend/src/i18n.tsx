@@ -326,6 +326,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   actual_salary_edit: { ar: "تعديل الراتب الفعلي", en: "Edit Actual Salary" },
   actual_salary_saved: { ar: "تم تحديث الراتب الفعلي", en: "Actual salary updated" },
   actual_salary_hidden: { ar: "— (غير مخوّل)", en: "— (not authorized)" },
+  eos_export: { ar: "تصدير الحسبة (Excel)", en: "Export Settlement (Excel)" },
+  eos_saved_title: { ar: "حسبة نهاية الخدمة المحفوظة", en: "Saved End-of-Service Settlement" },
   epf_col_type: { ar: "النوع", en: "Type" }, epf_col_version: { ar: "النسخة", en: "Version" },
   epf_col_selfie: { ar: "سيلفي", en: "Selfie" }, epf_col_amount: { ar: "المبلغ", en: "Amount" }, epf_col_date: { ar: "التاريخ", en: "Date" },
   epf_download_latest: { ar: "تنزيل الأحدث", en: "Download Latest" },

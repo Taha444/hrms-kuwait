@@ -175,6 +175,10 @@ class Employee(Base):
     annual_leave_balance: Mapped[float] = mapped_column(Float, default=30)
     phone: Mapped[str | None] = mapped_column(String(30))
     photo: Mapped[str | None] = mapped_column(String(300))
+    # نهاية الخدمة: تُحفظ نتيجة الحسبة في ملف الموظف عند الإنهاء
+    termination_date: Mapped[date | None] = mapped_column(Date)
+    termination_reason: Mapped[str | None] = mapped_column(String(40))
+    eos_settlement_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

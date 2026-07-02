@@ -77,6 +77,39 @@ def export_payroll(run_id: int, fmt: str = "xlsx",
     return _file(exports.to_xlsx(f"رواتب {pr.period}", headers, rows), f"{name}.xlsx", XLSX_MIME)
 
 
+@router.get("/eos/{emp_id}")
+def export_eos(emp_id: int, fmt: str = "xlsx",
+               user: models.User = Depends(require_perm("calculate_eos")),
+               db: Session = Depends(get_db)):
+    """تصدير/طباعة تقرير مكافأة نهاية الخدمة المحفوظ للموظف (DEMO-014)."""
+    import json
+    emp = db.get(models.Employee, emp_id)
+    if not emp or not emp.eos_settlement_json:
+        raise HTTPException(status_code=404, detail="لا توجد حسبة نهاية خدمة محفوظة")
+    assert_same_company(user, emp.company_id)
+    s = json.loads(emp.eos_settlement_json)
+    lv = s.get("leave", {})
+    headers = ["البند", "القيمة"]
+    rows = [
+        ["الموظف", emp.name],
+        ["تاريخ الانتهاء", str(emp.termination_date or "")],
+        ["السبب", s.get("inputs", {}).get("reason_label", emp.termination_reason or "")],
+        ["مدة الخدمة", s.get("service", {}).get("text", "")],
+        ["أجر اليوم", s.get("daily_wage", "")],
+        ["نسبة الاستحقاق %", round(s.get("entitlement_factor", 0) * 100, 2)],
+        ["المكافأة", s.get("indemnity", "")],
+        ["رصيد الإجازات المستحق", lv.get("accrued_days", "")],
+        ["المستهلَك", lv.get("used_days", "")],
+        ["المتبقّي", lv.get("remaining_days", "")],
+        ["بدل الإجازات", s.get("leave_payout", "")],
+        ["إجمالي التسوية (د.ك)", s.get("total_settlement", "")],
+    ]
+    name = f"eos_{emp.id}"
+    if fmt == "csv":
+        return _file(exports.to_csv(headers, rows), f"{name}.csv", CSV_MIME)
+    return _file(exports.to_xlsx(f"نهاية خدمة {emp.name}", headers, rows), f"{name}.xlsx", XLSX_MIME)
+
+
 @router.get("/attendance")
 def export_attendance(month: str | None = None, fmt: str = "csv", company_id: int | None = None,
                       branch_id: int | None = None,

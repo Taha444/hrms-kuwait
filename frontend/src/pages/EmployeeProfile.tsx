@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import api from "../api";
+import api, { downloadFile } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { attAr, statusAr } from "../labels";
@@ -275,23 +275,33 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               </div>
             </div>
           )}
-          {settlement && (
-            <div className="card">
-              <h3>{t("epf_settlement_title")}</h3>
-              <div className="grid stats">
-                <div className="stat accent"><div className="num">{settlement.total_settlement}</div><div className="lbl">{t("epf_total_settlement")}</div></div>
-                <div className="stat"><div className="num">{settlement.indemnity}</div><div className="lbl">{t("epf_indemnity")}</div></div>
-                <div className="stat"><div className="num">{settlement.leave_payout}</div><div className="lbl">{t("epf_leave_payout")}</div></div>
+          {(() => {
+            const s = settlement || p.saved_eos;
+            if (!s) return e.status === "terminated" ? <div className="card muted">{t("empst_terminated")}</div> : null;
+            return (
+              <div className="card">
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <h3 style={{ margin: 0 }}>{settlement ? t("epf_settlement_title") : t("eos_saved_title")}</h3>
+                  {can("calculate_eos") && (
+                    <button className="ghost sm" onClick={() => downloadFile(`/reports/eos/${id}`, { fmt: "xlsx" }, `eos_${id}.xlsx`)}>
+                      {t("eos_export")}
+                    </button>
+                  )}
+                </div>
+                <div className="grid stats">
+                  <div className="stat accent"><div className="num">{s.total_settlement}</div><div className="lbl">{t("epf_total_settlement")}</div></div>
+                  <div className="stat"><div className="num">{s.indemnity}</div><div className="lbl">{t("epf_indemnity")}</div></div>
+                  <div className="stat"><div className="num">{s.leave_payout}</div><div className="lbl">{t("epf_leave_payout")}</div></div>
+                </div>
+                {s.leave && (
+                  <p className="muted">{t("eos_leave_detail", {
+                    accrued: s.leave.accrued_days, used: s.leave.used_days, remaining: s.leave.remaining_days })}</p>
+                )}
+                <p className="muted">{s.service?.text} · {s.factor_note}</p>
+                <p className="muted">{s.disclaimer}</p>
               </div>
-              {settlement.leave && (
-                <p className="muted">{t("eos_leave_detail", {
-                  accrued: settlement.leave.accrued_days, used: settlement.leave.used_days, remaining: settlement.leave.remaining_days })}</p>
-              )}
-              <p className="muted">{settlement.service?.text} · {settlement.factor_note}</p>
-              <p className="muted">{settlement.disclaimer}</p>
-            </div>
-          )}
-          {e.status === "terminated" && !settlement && <div className="card muted">{t("empst_terminated")}</div>}
+            );
+          })()}
         </>
       )}
 
