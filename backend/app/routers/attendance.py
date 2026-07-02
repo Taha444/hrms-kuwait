@@ -76,10 +76,11 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
 
     _check_geofence(emp, branch, data.lat, data.lng)
 
-    # منع إعادة الاستخدام: استهلاك jti الخاص بالرمز
-    if not qr_token.consume_jti(db, payload["jti"], "qr", payload["exp"]):
-        db.commit()
-        raise HTTPException(status_code=409, detail="هذا الرمز استُخدم بالفعل، انتظر تجدّده")
+    # منع إعادة الاستخدام للرموز المتغيّرة فقط؛ الرمز الثابت يُقبل دومًا (يحميه الـ geofence)
+    if not payload.get("static"):
+        if not qr_token.consume_jti(db, payload["jti"], "qr", payload["exp"]):
+            db.commit()
+            raise HTTPException(status_code=409, detail="هذا الرمز استُخدم بالفعل، انتظر تجدّده")
 
     ticket, ticket_exp = qr_token.make_checkin_ticket(emp.id, branch.id)
     audit(db, user, "validate_qr", "branch", branch.id, request=request)

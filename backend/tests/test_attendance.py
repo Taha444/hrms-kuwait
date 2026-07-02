@@ -89,7 +89,11 @@ def test_kiosk_endpoint_key_required(client):
     good = client.get(f"/api/kiosk/{branch_id}/qr", params={"key": kiosk_key})
     assert good.status_code == 200, good.text
     body = good.json()
-    assert body["token"] and body["branch_name"] and body["refresh_in_seconds"] > 0
+    # الرمز ثابت لكل فرع
+    assert body["token"] and body["branch_name"] and body.get("static") is True
+    # نفس الفرع يُعطي نفس الرمز دائمًا (deterministic)
+    again = client.get(f"/api/kiosk/{branch_id}/qr", params={"key": kiosk_key}).json()
+    assert again["token"] == body["token"]
 
 
 def test_attendance_review_for_manager(client):

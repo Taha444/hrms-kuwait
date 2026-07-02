@@ -3,16 +3,15 @@ import { useParams, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
 
 // صفحة عرض QR للفرع (Kiosk) — مستقلة بلا تسجيل دخول، مُصرّحة بمفتاح الفرع فقط.
-// تجلب الرمز من الخادم وتعيد رسمه تلقائيًا قبل انتهاء صلاحيته. الخادم مصدر الحقيقة.
+// الرمز ثابت لكل فرع (لا يتغيّر) — يُجلب مرة واحدة ويُعاد المحاولة فقط عند الانقطاع.
 export default function Kiosk() {
   const { branchId } = useParams();
   const [params] = useSearchParams();
   const key = params.get("key") || "";
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [branchName, setBranchName] = useState("");
-  const [countdown, setCountdown] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [clock, setClock] = useState(new Date());
   const fetching = useRef(false);
 
   const fetchToken = async () => {
@@ -23,10 +22,10 @@ export default function Kiosk() {
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       setBranchName(data.branch_name);
-      setCountdown(data.refresh_in_seconds);
       setError("");
       if (canvasRef.current)
         await QRCode.toCanvas(canvasRef.current, data.token, { width: 320, margin: 1 });
+      setLoaded(true);
     } catch (e: any) {
       setError(e.message === "403" ? "مفتاح الشاشة غير صالح" : "إعادة الاتصال…");
     } finally {
@@ -34,25 +33,15 @@ export default function Kiosk() {
     }
   };
 
-  useEffect(() => { fetchToken(); /* أول جلب */ }, [branchId, key]);
+  // جلب واحد فقط — الرمز ثابت
+  useEffect(() => { fetchToken(); }, [branchId, key]);
 
+  // إعادة محاولة فقط لو لسه ما اتحمّلش وفيه انقطاع
   useEffect(() => {
-    const t = setInterval(() => {
-      setClock(new Date());
-      setCountdown((c) => {
-        if (c <= 10) { fetchToken(); return c <= 1 ? 0 : c - 1; }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  // إعادة محاولة دورية عند الانقطاع
-  useEffect(() => {
-    if (!error || error.includes("غير صالح")) return;
+    if (loaded || !error || error.includes("غير صالح")) return;
     const r = setInterval(fetchToken, 4000);
     return () => clearInterval(r);
-  }, [error]);
+  }, [error, loaded]);
 
   return (
     <div style={{
@@ -63,16 +52,13 @@ export default function Kiosk() {
       <h1 style={{ fontSize: 40, margin: 0 }}>{branchName || "شاشة الحضور"}</h1>
       <p style={{ opacity: 0.8, margin: 0 }}>امسح الرمز من تطبيق الموظف لتسجيل الحضور</p>
       <div style={{ background: "#fff", padding: 20, borderRadius: 20 }}>
-        {error && !error.includes("غير صالح")
+        {error && !error.includes("غير صالح") && !loaded
           ? <div style={{ width: 320, height: 320, display: "grid", placeItems: "center", color: "#0b3b38" }}>{error}</div>
           : <canvas ref={canvasRef} />}
       </div>
       {error.includes("غير صالح")
         ? <div style={{ color: "#fecaca", fontSize: 22 }}>⚠ {error}</div>
-        : <div style={{ fontSize: 26 }}>يتجدّد خلال <b>{countdown}</b> ثانية</div>}
-      <div style={{ position: "fixed", bottom: 20, opacity: 0.7, fontSize: 18 }}>
-        {clock.toLocaleString("ar")}
-      </div>
+        : <div style={{ fontSize: 22, opacity: 0.85 }}>رمز الفرع الثابت — علّقه في مكان الحضور</div>}
     </div>
   );
 }

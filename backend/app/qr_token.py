@@ -38,6 +38,15 @@ def make_qr_token(branch_id: int) -> tuple[str, datetime]:
     return _encode({"branch_id": branch_id}, QR_TTL_SECONDS, "qr")
 
 
+def make_static_qr_token(branch_id: int) -> str:
+    """رمز فرع ثابت (deterministic، بلا انتهاء ولا jti) — لا يتغيّر إطلاقًا.
+
+    الحماية من الاستخدام عن بُعد تعتمد على الـ geofence (الموقع الجغرافي) لا على تغيّر الرمز.
+    """
+    body = {"branch_id": branch_id, "type": "qr", "static": True}
+    return jwt.encode(body, settings.secret_key, algorithm=settings.algorithm)
+
+
 def make_checkin_ticket(employee_id: int, branch_id: int) -> tuple[str, datetime]:
     return _encode({"employee_id": employee_id, "branch_id": branch_id},
                    TICKET_TTL_SECONDS, "checkin_ticket")
