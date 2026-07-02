@@ -4,6 +4,7 @@ import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { ProgressMini } from "../components/RequestSteps";
+import { Skeleton, ErrorRetry, EmptyState } from "../components/States";
 import { statusAr } from "../labels";
 
 export default function Requests() {
@@ -13,14 +14,17 @@ export default function Requests() {
   const [mine, setMine] = useState<any[]>([]);
   const [inbox, setInbox] = useState<any[]>([]);
   const [types, setTypes] = useState<any[]>([]);
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [showNew, setShowNew] = useState(false);
   const [typeCode, setTypeCode] = useState("");
   const [payload, setPayload] = useState<any>({});
   const [err, setErr] = useState("");
 
   const load = () => {
-    api.get("/requests/mine").then((r) => setMine(r.data));
-    if (can("approve_request")) api.get("/requests/inbox").then((r) => setInbox(r.data));
+    setState("loading");
+    api.get("/requests/mine").then((r) => { setMine(r.data); setState("ok"); })
+      .catch(() => setState("error"));
+    if (can("approve_request")) api.get("/requests/inbox").then((r) => setInbox(r.data)).catch(() => {});
   };
   useEffect(() => {
     load();
@@ -115,7 +119,10 @@ export default function Requests() {
         )}
       </div>
 
-      <div className="table-wrap">
+      {state === "loading" ? <Skeleton rows={4} />
+        : state === "error" ? <ErrorRetry onRetry={load} />
+        : !list.length ? <EmptyState icon="requests" />
+        : <div className="table-wrap">
         <table>
           <thead><tr><th>#</th><th>{t("col_type")}</th><th>{t("col_employee")}</th><th>{t("status")}</th><th>{t("req_path")}</th><th></th></tr></thead>
           <tbody>
@@ -129,10 +136,9 @@ export default function Requests() {
                 <td><Link to={`/requests/${r.id}`}>{t("view")} →</Link></td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan={6} className="empty">{t("no_data")}</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }

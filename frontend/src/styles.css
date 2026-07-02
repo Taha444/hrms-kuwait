@@ -373,6 +373,17 @@ video, canvas.cam, .cam { width: 100%; max-width: 340px; border-radius: 14px; ba
 .tabs .tab:hover { color: var(--ink, #16302b); }
 .tabs .tab.active { color: var(--petrol-700, #0b3b54); border-bottom-color: var(--gold, #c8a24a); }
 
+/* ---------- حالات التحميل/الفراغ/الخطأ ---------- */
+.sk-wrap { display: flex; flex-direction: column; gap: 12px; }
+.sk { border-radius: 8px; background: linear-gradient(90deg, #eef2f1 25%, #f6f9f8 37%, #eef2f1 63%);
+  background-size: 400% 100%; animation: sk-shimmer 1.3s ease infinite; }
+.sk-head { height: 34px; width: 45%; }
+.sk-row { height: 46px; }
+@keyframes sk-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+.state-box { display: grid; place-items: center; gap: 10px; text-align: center; padding: 40px 20px;
+  color: var(--muted); border: 1px dashed var(--line); border-radius: 14px; }
+.state-box.err { color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg); }
+
 /* ---------- استجابة (موبايل / تابلت) ---------- */
 /* زر القائمة وخلفية الـ drawer يظهروا على الشاشات الصغيرة فقط */
 .menu-btn { display: none; }

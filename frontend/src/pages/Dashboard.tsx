@@ -4,6 +4,7 @@ import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
+import { Skeleton, ErrorRetry } from "../components/States";
 
 // تعريف كل مؤشّر: مفتاح الترجمة + الأيقونة + هل هو مميّز
 const META: Record<string, { key: string; icon: string; accent?: boolean }> = {
@@ -35,8 +36,11 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
 
-  useEffect(() => { api.get("/dashboard").then((r) => setData(r.data)); }, []);
-  if (!data) return <div className="empty">{t("loading")}</div>;
+  const [err, setErr] = useState(false);
+  const load = () => { setErr(false); api.get("/dashboard").then((r) => setData(r.data)).catch(() => setErr(true)); };
+  useEffect(() => { load(); }, []);
+  if (err) return <ErrorRetry onRetry={load} />;
+  if (!data) return <Skeleton rows={4} />;
 
   if (data.personal_only) {
     return (

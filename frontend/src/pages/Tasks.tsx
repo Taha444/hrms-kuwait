@@ -3,17 +3,24 @@ import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { taskAr, severityAr } from "../labels";
+import { Skeleton, ErrorRetry, EmptyState } from "../components/States";
 
 export default function Tasks() {
   const { t } = useI18n();
   const { can } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [status, setStatus] = useState("open");
   const [category, setCategory] = useState("");
   const [msg, setMsg] = useState("");
   const CATS = ["system", "government", "hr", "approvals"];
 
-  const load = () => api.get("/tasks/my", { params: { status, category: category || undefined } }).then((r) => setTasks(r.data));
+  const load = () => {
+    setState("loading");
+    api.get("/tasks/my", { params: { status, category: category || undefined } })
+      .then((r) => { setTasks(r.data); setState("ok"); })
+      .catch(() => setState("error"));
+  };
   useEffect(() => { load(); }, [status, category]);
 
   const setTaskStatus = async (id: number, s: string) => {
@@ -47,7 +54,10 @@ export default function Tasks() {
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
-      <div className="table-wrap">
+      {state === "loading" ? <Skeleton rows={5} />
+        : state === "error" ? <ErrorRetry onRetry={load} />
+        : !tasks.length ? <EmptyState icon="tasks" />
+        : <div className="table-wrap">
         <table>
           <thead><tr><th>{t("col_type")}</th><th>{t("col_title")}</th><th>{t("col_detail")}</th><th>{t("col_severity")}</th><th></th></tr></thead>
           <tbody>
@@ -67,10 +77,9 @@ export default function Tasks() {
                 </td>
               </tr>
             ))}
-            {!tasks.length && <tr><td colSpan={5} className="empty">{t("no_data")}</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }

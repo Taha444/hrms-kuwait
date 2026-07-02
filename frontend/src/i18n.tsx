@@ -46,6 +46,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   view: { ar: "عرض", en: "View" },
   loading: { ar: "جارِ التحميل…", en: "Loading…" },
   no_data: { ar: "لا توجد بيانات", en: "No data" },
+  load_failed: { ar: "تعذّر تحميل البيانات", en: "Failed to load data" },
+  retry: { ar: "إعادة المحاولة", en: "Retry" },
   status: { ar: "الحالة", en: "Status" },
   language: { ar: "اللغة", en: "Language" },
   // لوحة التحكم
