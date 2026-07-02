@@ -23,6 +23,7 @@ const paths: Record<string, JSX.Element> = {
   lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
   check: <path d="M20 6L9 17l-5-5" />,
   x: <path d="M18 6L6 18M6 6l12 12" />,
+  menu: <path d="M3 6h18M3 12h18M3 18h18" />,
 };
 
 export default function Icon({ name, className, size = 20 }: Props) {

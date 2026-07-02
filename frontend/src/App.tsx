@@ -144,7 +144,7 @@ function Sidebar({ open }: { open: boolean }) {
   );
 }
 
-function Topbar() {
+function Topbar({ onMenu }: { onMenu?: () => void }) {
   const { user, logout, activeCompanyId, setActiveCompany } = useAuth();
   const { t, lang, toggle } = useI18n();
   const nav = useNavigate();
@@ -163,6 +163,9 @@ function Topbar() {
 
   return (
     <div className="topbar">
+      <button className="icon-btn menu-btn" onClick={onMenu} title={t("main_section")} aria-label="menu">
+        <Icon name="menu" size={20} />
+      </button>
       {user?.is_cross_company && (
         <div className="company-switch" onClick={() => { setActiveCompany(null); nav("/select-company"); }}
              title={t("pick_company")}>
@@ -208,12 +211,17 @@ function ImpersonationBanner() {
 }
 
 function Layout({ children }: { children: React.ReactNode }) {
+  const [navOpen, setNavOpen] = useState(false);
+  const loc = useLocation();
+  // إغلاق القائمة الجانبية تلقائيًا عند الانتقال لصفحة (مهم على الموبايل)
+  useEffect(() => { setNavOpen(false); }, [loc.pathname]);
   return (
     <div className="app">
-      <Sidebar open={false} />
+      <Sidebar open={navOpen} />
+      {navOpen && <div className="nav-overlay" onClick={() => setNavOpen(false)} />}
       <div className="main">
         <ImpersonationBanner />
-        <Topbar />
+        <Topbar onMenu={() => setNavOpen((o) => !o)} />
         <div className="content">{children}</div>
       </div>
     </div>
