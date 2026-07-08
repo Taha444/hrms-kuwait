@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # تحديد معدّل الدخول (يُعطَّل في الاختبارات)
     rate_limit_enabled: bool = True
 
+    # واتساب/SMS عبر Twilio — تُترك فارغة لتعطيل القناة (تسجيل فقط)، تُضبط في .env للتفعيل الفعلي
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_sms_from: str = ""          # رقم Twilio المرسِل لل SMS، مثل +1XXXXXXXXXX
+    twilio_whatsapp_from: str = ""     # رقم واتساب المفعَّل على Twilio، مثل whatsapp:+1XXXXXXXXXX
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

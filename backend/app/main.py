@@ -49,6 +49,9 @@ async def lifespan(app: FastAPI):
     # إنشاء الجداول للتطوير (في الإنتاج تُدار عبر Alembic)
     init_db()
     os.makedirs(settings.upload_dir, exist_ok=True)
+
+    from .channels import configure_from_settings
+    configure_from_settings(settings)
     scheduler = None
     if settings.scheduler_enabled:
         from .scheduler import shutdown_scheduler, start_scheduler

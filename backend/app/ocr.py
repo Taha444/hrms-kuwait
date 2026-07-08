@@ -80,12 +80,33 @@ class OcrProvider(Protocol):
 
 
 class NullImageOcr:
-    """لا محرّك صور مُفعّل — يُرجع نصًّا فارغًا (يُستبدل بـ Tesseract لاحقًا)."""
+    """لا محرّك صور مُفعّل — يُرجع نصًّا فارغًا."""
     def image_to_text(self, file_path: str) -> str:
         return ""
 
 
-provider: OcrProvider = NullImageOcr()
+class TesseractOcr:
+    """محرّك OCR فعلي عبر Tesseract (pytesseract) — يقرأ نص MRZ من صورة الجواز مباشرة."""
+    def image_to_text(self, file_path: str) -> str:
+        import pytesseract
+        from PIL import Image
+
+        img = Image.open(file_path)
+        # سطرا MRZ بأسفل الصورة عادةً؛ lang=eng كافٍ لأن MRZ حروف/أرقام لاتينية فقط
+        return pytesseract.image_to_string(img, lang="eng")
+
+
+def _detect_provider() -> OcrProvider:
+    """يفعّل Tesseract تلقائيًا إن كانت المكتبة والثنائي (binary) متوفّرين، وإلا يبقى معطَّلًا بأمان."""
+    try:
+        import pytesseract
+        pytesseract.get_tesseract_version()
+        return TesseractOcr()
+    except Exception:
+        return NullImageOcr()
+
+
+provider: OcrProvider = _detect_provider()
 
 
 def _read_text_source(file_path: str) -> str:

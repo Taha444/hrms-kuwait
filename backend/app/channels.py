@@ -7,7 +7,11 @@
 """
 from __future__ import annotations
 
+import base64
 import logging
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Protocol
 
 logger = logging.getLogger("hrms.notify")
@@ -55,8 +59,61 @@ class WhatsAppChannel:
         return self.provider.send_whatsapp(to, f"{title}\n{body}")
 
 
+class TwilioProvider:
+    """مزوّد فعلي عبر REST API الخاص بـ Twilio (بلا مكتبة خارجية — urllib فقط).
+
+    يحتاج account_sid و auth_token فعليَّين من لوحة Twilio؛ بدونهما تبقى القناة معطَّلة
+    (WhatsAppChannel/SmsChannel تُرجعان False) دون أي كسر للنظام.
+    """
+
+    API_BASE = "https://api.twilio.com/2010-04-01/Accounts"
+
+    def __init__(self, account_sid: str, auth_token: str, sms_from: str = "", whatsapp_from: str = ""):
+        self.account_sid = account_sid
+        self.auth_token = auth_token
+        self.sms_from = sms_from
+        self.whatsapp_from = whatsapp_from
+
+    def _post(self, to: str, from_: str, body: str) -> bool:
+        if not (self.account_sid and self.auth_token and from_ and to):
+            logger.warning("Twilio: بيانات ناقصة (sid/token/from/to) — لم يُرسَل شيء.")
+            return False
+        url = f"{self.API_BASE}/{self.account_sid}/Messages.json"
+        data = urllib.parse.urlencode({"To": to, "From": from_, "Body": body}).encode()
+        req = urllib.request.Request(url, data=data, method="POST")
+        auth = base64.b64encode(f"{self.account_sid}:{self.auth_token}".encode()).decode()
+        req.add_header("Authorization", f"Basic {auth}")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return 200 <= resp.status < 300
+        except urllib.error.URLError:
+            logger.exception("Twilio: فشل الاتصال بواجهة الإرسال")
+            return False
+
+    def send_sms(self, to: str, body: str) -> bool:
+        return self._post(to, self.sms_from, body)
+
+    def send_whatsapp(self, to: str, body: str) -> bool:
+        to_wa = to if to.startswith("whatsapp:") else f"whatsapp:{to}"
+        return self._post(to_wa, self.whatsapp_from, body)
+
+
 # القنوات الفعّالة (تُضاف قنوات حقيقية عند ضبط المزوّدين)
 _channels: list[NotificationChannel] = [LogChannel()]
+
+
+def configure_from_settings(settings) -> None:
+    """يُستدعى عند إقلاع التطبيق: يفعّل واتساب/SMS الفعليتين إن ضُبطت بيانات Twilio في .env."""
+    if not (settings.twilio_account_sid and settings.twilio_auth_token):
+        return
+    provider = TwilioProvider(settings.twilio_account_sid, settings.twilio_auth_token,
+                              settings.twilio_sms_from, settings.twilio_whatsapp_from)
+    if settings.twilio_sms_from:
+        register_channel(SmsChannel(provider))
+    if settings.twilio_whatsapp_from:
+        register_channel(WhatsAppChannel(provider))
+    logger.info("Twilio: تم تفعيل قنوات SMS/واتساب الفعلية.")
 
 
 def dispatch(to: str | None, title: str, body: str) -> None:
