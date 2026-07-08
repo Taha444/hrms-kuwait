@@ -69,14 +69,34 @@ class ArabicPDF:
             self.c.setFont(self.font, 11)
             self.y = self.height - 2.2 * cm
 
-    def _text(self, text: str, size: int = 12, bold_gap: float = 0.8 * cm, center: bool = False) -> None:
+    def _text(self, text: str, size: int = 12, bold_gap: float = 0.8 * cm, center: bool = False,
+             wrap: bool = False) -> None:
         self.c.setFont(self.font, size)
+        if wrap:
+            max_width = self.right - self.left
+            words = text.split()
+            line_words: list[str] = []
+            for word in words:
+                candidate = " ".join(line_words + [word])
+                if line_words and self.c.stringWidth(_shape(candidate), self.font, size) > max_width:
+                    self._draw_line(" ".join(line_words), size, center)
+                    self._line_break(bold_gap)
+                    line_words = [word]
+                else:
+                    line_words.append(word)
+            if line_words:
+                self._draw_line(" ".join(line_words), size, center)
+            self._line_break(bold_gap)
+            return
+        self._draw_line(text, size, center)
+        self._line_break(bold_gap)
+
+    def _draw_line(self, text: str, size: int, center: bool) -> None:
         shaped = _shape(text)
         if center:
             self.c.drawCentredString(self.width / 2, self.y, shaped)
         else:
             self.c.drawRightString(self.right, self.y, shaped)
-        self._line_break(bold_gap)
 
     def _header(self, title: str, subtitle: str) -> None:
         self._text(title, size=16, center=True)
@@ -87,17 +107,17 @@ class ArabicPDF:
         self._line_break(0.6 * cm)
 
     def kv(self, label: str, value: str) -> None:
-        self._text(f":{value}  {label}", size=11)
+        self._text(f":{value}  {label}", size=11, wrap=True)
 
     def section(self, title: str) -> None:
         self._line_break(0.2 * cm)
         self._text(title, size=13, bold_gap=0.7 * cm)
 
     def paragraph(self, text: str) -> None:
-        self._text(text, size=11)
+        self._text(text, size=11, wrap=True, bold_gap=0.65 * cm)
 
     def bullet(self, text: str) -> None:
-        self._text(f"• {text}", size=10.5, bold_gap=0.7 * cm)
+        self._text(f"• {text}", size=10.5, bold_gap=0.7 * cm, wrap=True)
 
     def signatures(self, labels: list[str]) -> None:
         self._line_break(1.2 * cm)
