@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hrms-serve",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["serve.py", "5180"],
+      "cwd": "backend",
+      "port": 5180
+    }
+  ]
+}

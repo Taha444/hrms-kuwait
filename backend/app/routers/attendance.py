@@ -181,7 +181,10 @@ def _compute_in_status(db: Session, emp: models.Employee, now: datetime) -> str:
 
 
 def _finalize_out(db: Session, emp: models.Employee, rec: models.AttendanceRecord, now: datetime):
+    # SQLite لا يحفظ tzinfo عند إعادة القراءة — نطبّع الطرفين دومًا لتفادي مقارنة naive/aware
     check_in = rec.check_in_at.replace(tzinfo=timezone.utc) if rec.check_in_at.tzinfo is None else rec.check_in_at
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     rec.worked_minutes = max(int((now - check_in).total_seconds() // 60), 0)
     if emp.shift_id:
         shift = db.get(models.Shift, emp.shift_id)
@@ -206,6 +209,43 @@ def my_attendance(user: models.User = Depends(get_current_user), db: Session = D
     return [{"id": r.id, "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,
              "status": r.status, "worked_minutes": r.worked_minutes,
              "overtime_minutes": r.overtime_minutes, "method": r.method} for r in rows]
+
+
+@router.put("/{record_id}/correct")
+def correct_attendance(record_id: int, request: Request, reason: str,
+                       check_in_at: datetime | None = None,
+                       check_out_at: datetime | None = None,
+                       status: str | None = None,
+                       user: models.User = Depends(require_perm("manage_attendance")),
+                       db: Session = Depends(get_db)):
+    """تصحيح سجل حضور (FIX-015): يعيد احتساب دقائق العمل/الإضافي ويسجّل السبب في التدقيق."""
+    if not reason.strip():
+        raise HTTPException(status_code=400, detail="سبب التصحيح إلزامي")
+    rec = db.get(models.AttendanceRecord, record_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="السجل غير موجود")
+    assert_same_company(user, rec.company_id, db=db, request=request)
+
+    before = {"check_in_at": str(rec.check_in_at), "check_out_at": str(rec.check_out_at),
+             "status": rec.status, "worked_minutes": rec.worked_minutes}
+    if check_in_at is not None:
+        rec.check_in_at = check_in_at if check_in_at.tzinfo else check_in_at.replace(tzinfo=timezone.utc)
+    if check_out_at is not None:
+        rec.check_out_at = check_out_at if check_out_at.tzinfo else check_out_at.replace(tzinfo=timezone.utc)
+    if status is not None:
+        rec.status = status
+    if rec.check_in_at and rec.check_out_at:
+        emp = db.get(models.Employee, rec.employee_id)
+        rec.overtime_minutes = 0
+        _finalize_out(db, emp, rec, rec.check_out_at)
+
+    audit(db, user, "correct_attendance", "attendance", rec.id,
+         detail=f"{reason} | before={before}", request=request)
+    db.commit()
+    db.refresh(rec)
+    return {"ok": True, "check_in_at": rec.check_in_at, "check_out_at": rec.check_out_at,
+            "status": rec.status, "worked_minutes": rec.worked_minutes,
+            "overtime_minutes": rec.overtime_minutes}
 
 
 @router.get("/review")

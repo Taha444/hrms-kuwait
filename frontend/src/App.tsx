@@ -47,11 +47,33 @@ const ROLE_THEME: Record<string, { icon: string; c1: string; c2: string }> = {
 };
 const roleTheme = (r?: string) => ROLE_THEME[r || ""] || ROLE_THEME.employee;
 
-function Sidebar({ open }: { open: boolean }) {
+// حسابات الصلاحية المشتركة بين القائمة الجانبية وحارس المسارات (FIX-001):
+// نفس القاعدة تحدد ما يُعرَض في القائمة وما يُسمح بفتحه مباشرةً عبر الرابط،
+// حتى لا يبقى مسار مفتوحًا في الواجهة بينما زرّه مخفي فقط.
+function useAccess() {
   const { user, can } = useAuth();
+  const isEmployee = !!user?.employee_id; // فقط من له ملف موظف يبصم حضورًا
+  const isOwner = user?.role === "company_owner"; // مالك: واجهة رقابية مقيّدة (اطلاع فقط)
+  const isCrossCompany = ["super_admin", "company_owner"].includes(user?.role || "");
+  const canReview = ["super_admin", "company_manager"].includes(user?.role || "");
+  // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — للـ PRO/الإدارة العليا فقط
+  const canOperations = can("manage_permits") || can("manage_licenses") || user?.role === "super_admin";
+  const canArchive = can("manage_licenses") || can("manage_company") || user?.role === "super_admin";
+  const canStructure = canReview || isCrossCompany || can("manage_branches");
+  const canRenewals = isEmployee || can("manage_permits") || can("process_delegate_tasks") ||
+    ["company_manager", "hr", "super_admin"].includes(user?.role || "");
+  return {
+    user, can, isEmployee, isOwner, isCrossCompany, canReview, canOperations, canArchive,
+    canStructure, canRenewals,
+  };
+}
+
+function Sidebar({ open }: { open: boolean }) {
   const { t } = useI18n();
   const loc = useLocation();
   const [taskCount, setTaskCount] = useState(0);
+  const { user, can, isEmployee, isOwner, isCrossCompany, canReview,
+    canOperations, canArchive, canStructure, canRenewals } = useAccess();
 
   useEffect(() => {
     api.get("/tasks/count").then((r) => setTaskCount(r.data.open)).catch(() => {});
@@ -65,15 +87,7 @@ function Sidebar({ open }: { open: boolean }) {
     </NavLink>
   );
 
-  const isEmployee = !!user?.employee_id; // فقط من له ملف موظف يبصم حضورًا
-  const isOwner = user?.role === "company_owner"; // مالك: واجهة رقابية مقيّدة (اطلاع فقط)
-  const isCrossCompany = ["super_admin", "company_owner"].includes(user?.role || "");
-  const canReview = ["super_admin", "company_manager"].includes(user?.role || "");
-  // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — للـ PRO/الإدارة العليا فقط
-  const canOperations = can("manage_permits") || can("manage_licenses") || user?.role === "super_admin";
-  const canArchive = can("manage_licenses") || can("manage_company") || user?.role === "super_admin";
-
-  // واجهة المالك: لوحة + متابعة الفروع + التقارير + الإشعارات فقط — لا شيء غير ذلك
+  // واجهة المالك: لوحة رقابية عبر كل الشركات — اطلاع فقط، بلا أي إجراء تشغيلي (FIX-010)
   if (isOwner) {
     return (
       <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -87,6 +101,8 @@ function Sidebar({ open }: { open: boolean }) {
           <Item to="/structure" icon="branches" label={t("structure")} />
           <Item to="/reports" icon="doc" label={t("reports")} />
           <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
+          {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
+          {can("view_audit") && <Item to="/audit" icon="lock" label={t("audit")} />}
         </div>
         <div className="sb-foot">
           <Item to="/change-password" icon="key" label={t("change_password")} />
@@ -116,16 +132,13 @@ function Sidebar({ open }: { open: boolean }) {
         {isEmployee && !can("view_employee") && <Item to="/my-profile" icon="employees" label={t("my_profile")} />}
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
         {/* الهيكل يعرض كل الفروع → للإدارة فقط (مسؤول الفرع مقيّد بفرعه) */}
-        {(canReview || isCrossCompany || can("manage_branches")) &&
-          <Item to="/structure" icon="branches" label={t("structure")} />}
+        {canStructure && <Item to="/structure" icon="branches" label={t("structure")} />}
         {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
         {can("manage_permits") && <Item to="/pro" icon="doc" label={t("pro")} />}
         {/* تجديد الإقامة: الموظف/المندوب/المدير/الشؤون */}
-        {(isEmployee || can("manage_permits") || can("process_delegate_tasks") ||
-          ["company_manager", "hr", "super_admin"].includes(user?.role || "")) &&
-          <Item to="/renewals" icon="attendance" label={t("rnw_nav")} />}
+        {canRenewals && <Item to="/renewals" icon="attendance" label={t("rnw_nav")} />}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} />}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
@@ -233,7 +246,19 @@ function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Protected({ children }: { children: React.ReactNode }) {
+// صفحة "غير مصرَّح" حقيقية بدل فتح صفحة إدارية لمن لا يملك صلاحيتها (FIX-001)
+function Forbidden() {
+  const { t } = useI18n();
+  return (
+    <div className="card" style={{ textAlign: "center", padding: 48 }}>
+      <Icon name="lock" size={40} />
+      <h2 style={{ marginTop: 16 }}>{t("forbidden_title") || "غير مصرَّح بالوصول"}</h2>
+      <p className="muted">{t("forbidden_body") || "لا تملك الصلاحية اللازمة لعرض هذه الصفحة."}</p>
+    </div>
+  );
+}
+
+function Protected({ children, need }: { children: React.ReactNode; need?: boolean }) {
   const { user, loading, activeCompanyId } = useAuth();
   const { t } = useI18n();
   if (loading) return <div className="auth-wrap" style={{ color: "#fff" }}>{t("loading")}</div>;
@@ -241,7 +266,15 @@ function Protected({ children }: { children: React.ReactNode }) {
   if (user.must_change_password) return <Navigate to="/change-password" replace />;
   // الإدارة العليا/المالك يجب أن يختاروا شركة أولًا
   if (user.is_cross_company && !activeCompanyId) return <Navigate to="/select-company" replace />;
+  // حارس صلاحية المسار: نفس قاعدة إظهار الرابط في القائمة الجانبية (لا يفتح المسار مباشرة عبر الرابط)
+  if (need === false) return <Layout><Forbidden /></Layout>;
   return <Layout>{children}</Layout>;
+}
+
+// يطبّق حارس الصلاحية داخل التوجيه (Routes لا تسمح بـ Hooks مباشرة في العنصر)
+function Guarded({ need, children }: { need: (a: ReturnType<typeof useAccess>) => boolean; children: React.ReactNode }) {
+  const access = useAccess();
+  return <Protected need={need(access)}>{children}</Protected>;
 }
 
 export default function App() {
@@ -260,24 +293,25 @@ export default function App() {
       <Route path="/tasks" element={<Protected><Tasks /></Protected>} />
       <Route path="/requests" element={<Protected><Requests /></Protected>} />
       <Route path="/requests/:id" element={<Protected><RequestDetail /></Protected>} />
-      <Route path="/employees" element={<Protected><Employees /></Protected>} />
-      <Route path="/employees/:id" element={<Protected><Employees /></Protected>} />
-      <Route path="/my-profile" element={<Protected><MyProfile /></Protected>} />
-      <Route path="/renewals" element={<Protected><Renewals /></Protected>} />
-      <Route path="/structure" element={<Protected><CompanyStructure /></Protected>} />
-      <Route path="/archive" element={<Protected><Archive /></Protected>} />
-      <Route path="/attendance" element={<Protected><Attendance /></Protected>} />
-      <Route path="/attendance-review" element={<Protected><AttendanceReview /></Protected>} />
-      <Route path="/pro" element={<Protected><Pro /></Protected>} />
-      <Route path="/operations" element={<Protected><Operations /></Protected>} />
-      <Route path="/branches" element={<Protected><Branches /></Protected>} />
-      <Route path="/eos" element={<Protected><Eos /></Protected>} />
-      <Route path="/templates" element={<Protected><Templates /></Protected>} />
-      <Route path="/payroll" element={<Protected><Payroll /></Protected>} />
-      <Route path="/reports" element={<Protected><Reports /></Protected>} />
-      <Route path="/audit" element={<Protected><Audit /></Protected>} />
-      <Route path="/companies" element={<Protected><Companies /></Protected>} />
-      <Route path="/users" element={<Protected><Users /></Protected>} />
+      <Route path="/employees" element={<Guarded need={(a) => a.can("view_employee")}><Employees /></Guarded>} />
+      <Route path="/employees/:id" element={<Guarded need={(a) => a.can("view_employee")}><Employees /></Guarded>} />
+      <Route path="/my-profile" element={<Guarded need={(a) => a.isEmployee}><MyProfile /></Guarded>} />
+      <Route path="/renewals" element={<Guarded need={(a) => a.canRenewals}><Renewals /></Guarded>} />
+      <Route path="/structure" element={<Guarded need={(a) => a.canStructure}><CompanyStructure /></Guarded>} />
+      <Route path="/archive" element={<Guarded need={(a) => a.canArchive}><Archive /></Guarded>} />
+      <Route path="/attendance" element={
+        <Guarded need={(a) => a.isEmployee && a.can("record_attendance")}><Attendance /></Guarded>} />
+      <Route path="/attendance-review" element={<Guarded need={(a) => a.canReview}><AttendanceReview /></Guarded>} />
+      <Route path="/pro" element={<Guarded need={(a) => a.can("manage_permits")}><Pro /></Guarded>} />
+      <Route path="/operations" element={<Guarded need={(a) => a.canOperations}><Operations /></Guarded>} />
+      <Route path="/branches" element={<Guarded need={(a) => a.can("manage_branches")}><Branches /></Guarded>} />
+      <Route path="/eos" element={<Guarded need={(a) => a.can("calculate_eos")}><Eos /></Guarded>} />
+      <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")}><Templates /></Guarded>} />
+      <Route path="/payroll" element={<Guarded need={(a) => a.can("view_payroll")}><Payroll /></Guarded>} />
+      <Route path="/reports" element={<Guarded need={(a) => a.can("export_reports")}><Reports /></Guarded>} />
+      <Route path="/audit" element={<Guarded need={(a) => a.can("view_audit")}><Audit /></Guarded>} />
+      <Route path="/companies" element={<Guarded need={(a) => a.user?.role === "super_admin"}><Companies /></Guarded>} />
+      <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")}><Users /></Guarded>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

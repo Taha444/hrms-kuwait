@@ -82,6 +82,28 @@ def require_perm(perm: str):
     return checker
 
 
+def require_any_perm(*perms: str):
+    """مولّد تبعية يمرّ إن امتلك المستخدم أيًّا من الصلاحيات المذكورة.
+
+    يُستخدم لمراحل الطلبات التي يعالجها أكثر من دور واحد (مثل المندوب في
+    مرحلة إذن مغادرة البلاد، الذي يملك process_delegate_tasks لا approve_request).
+    """
+
+    def checker(
+        user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> models.User:
+        assigned = get_user_perms(user, db)
+        if not any(check_legacy(user.role, assigned, p) for p in perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"ليس لديك صلاحية: {' أو '.join(perms)}",
+            )
+        return user
+
+    return checker
+
+
 def require_page_action(page: str, action: str):
     """مولّد تبعية تتحقق من صلاحية (صفحة، فعل) دقيقة — للأفعال كالطباعة/التصدير."""
 
@@ -177,13 +199,22 @@ def get_branch_scope(user: models.User, db: Session) -> set[int] | None:
     return resolve_scope(user, db).branch_ids
 
 
-def assert_same_company(user: models.User, entity_company_id: int | None):
-    """يمنع الوصول لكيان خارج نطاق شركة المستخدم (إلا الإدارة العليا والمالك)."""
+def assert_same_company(user: models.User, entity_company_id: int | None,
+                        db: Session | None = None, request: Request | None = None):
+    """يمنع الوصول لكيان خارج نطاق شركة المستخدم (إلا الإدارة العليا والمالك).
+
+    إن مُرِّرت الجلسة db، تُسجَّل المحاولة في سجل التدقيق كـ FORBIDDEN_SCOPE_ACCESS
+    قبل الرفض (FIX-012) — تمريرها اختياري حفاظًا على توافق بقية نقاط الاستدعاء.
+    """
     from .permissions import CROSS_COMPANY_ROLES
 
     if user.role in CROSS_COMPANY_ROLES:
         return
     if entity_company_id != user.company_id:
+        if db is not None:
+            audit(db, user, "FORBIDDEN_SCOPE_ACCESS", detail=f"company_id={entity_company_id}",
+                 request=request)
+            db.commit()
         raise HTTPException(status_code=404, detail="غير موجود")  # 404 لإخفاء الوجود
 
 

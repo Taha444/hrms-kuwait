@@ -48,6 +48,11 @@ const dict: Record<string, { ar: string; en: string }> = {
   no_data: { ar: "لا توجد بيانات", en: "No data" },
   load_failed: { ar: "تعذّر تحميل البيانات", en: "Failed to load data" },
   retry: { ar: "إعادة المحاولة", en: "Retry" },
+  forbidden_title: { ar: "غير مصرَّح بالوصول", en: "Access denied" },
+  forbidden_body: { ar: "لا تملك الصلاحية اللازمة لعرض هذه الصفحة.",
+                   en: "You don't have permission to view this page." },
+  export_reason_prompt: { ar: "الرجاء كتابة سبب التصدير (يُسجَّل في سجل التدقيق):",
+                         en: "Please enter the export reason (recorded in the audit log):" },
   status: { ar: "الحالة", en: "Status" },
   language: { ar: "اللغة", en: "Language" },
   // لوحة التحكم

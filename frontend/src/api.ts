@@ -67,4 +67,12 @@ export async function downloadFile(path: string, params: any, fallbackName: stri
   URL.revokeObjectURL(url);
 }
 
+// تصدير تقرير حساس (رواتب/نهاية خدمة) — يتطلب سببًا صريحًا يُسجَّل في التدقيق (FIX-016)
+export async function downloadSensitiveReport(path: string, params: any, fallbackName: string,
+                                              promptText: string) {
+  const reason = window.prompt(promptText);
+  if (!reason || !reason.trim()) return;
+  return downloadFile(path, { ...params, reason }, fallbackName);
+}
+
 export default api;

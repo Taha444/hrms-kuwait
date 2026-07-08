@@ -54,11 +54,15 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     emp = db.get(models.Employee, emp_id)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
     sc = resolve_scope(user, db)
     if sc.branch_ids is not None and emp.branch_id not in sc.branch_ids:
+        audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "employee", emp.id, detail="branch_out_of_scope")
+        db.commit()
         raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خارج نطاق فرعك
     if sc.self_employee_id is not None and emp.id != sc.self_employee_id:
+        audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "employee", emp.id, detail="self_scope_only")
+        db.commit()
         raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خدمة ذاتية: سجله فقط
     return emp
 
@@ -246,10 +250,14 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
             {"id": d.id, "type": d.document_type_code, "title": d.title,
              "expiry_date": d.expiry_date, "version": d.version} for d in docs
         ],
+        # الخصومات: المبلغ حقل مالي حساس — يُخفى عمّن لا يملك view_actual_salary (FIX-013)
+        # المسؤول المباشر يرى السبب والتاريخ فقط دون المبلغ؛ المحاسب/الإدارة العليا يريان التفصيل الكامل.
         "deductions": [
-            {"id": x.id, "amount": x.amount, "reason": x.reason, "date": x.date}
+            {"id": x.id, "amount": x.amount if can_view_actual else None,
+             "reason": x.reason, "date": x.date}
             for x in deductions
         ],
+        "deductions_masked": not can_view_actual,
         "leaves": [
             {"id": l.id, "type": l.leave_type, "start_date": l.start_date,
              "end_date": l.end_date, "days": l.days, "status": l.status} for l in leaves

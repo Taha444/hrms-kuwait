@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api, { downloadFile } from "../api";
+import api, { downloadSensitiveReport } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { statusAr } from "../labels";
@@ -64,7 +64,7 @@ export default function Payroll() {
           </div>
           <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
             {runId && can("export_reports") && (
-              <button className="ghost" onClick={() => downloadFile(`/reports/payroll/${runId}`, { fmt: "xlsx" }, "payroll.xlsx")}>
+              <button className="ghost" onClick={() => downloadSensitiveReport(`/reports/payroll/${runId}`, { fmt: "xlsx" }, "payroll.xlsx", t("export_reason_prompt"))}>
                 <Icon name="doc" size={15} /> {t("payroll_export")}
               </button>
             )}
@@ -100,7 +100,7 @@ export default function Payroll() {
                 <td>{r.period}</td><td className="num">{r.employees_count}</td>
                 <td className="num">{r.totals?.net}</td>
                 <td><span className="pill success">{statusAr(r.status)}</span></td>
-                <td>{can("export_reports") && <button className="ghost sm" onClick={() => downloadFile(`/reports/payroll/${r.id}`, { fmt: "xlsx" }, "payroll.xlsx")}>Excel</button>}</td>
+                <td>{can("export_reports") && <button className="ghost sm" onClick={() => downloadSensitiveReport(`/reports/payroll/${r.id}`, { fmt: "xlsx" }, "payroll.xlsx", t("export_reason_prompt"))}>Excel</button>}</td>
               </tr>
             ))}
             {!runs.length && <tr><td colSpan={5} className="empty">لا توجد مسيّرات محفوظة</td></tr>}

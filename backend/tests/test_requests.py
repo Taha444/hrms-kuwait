@@ -81,9 +81,22 @@ def test_full_leave_workflow(client):
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "completed"
 
-    # المستند المُولَّد متاح
+    # المستند المُولَّد متاح، وهو PDF حقيقي (FIX-007)
     r = client.get(f"/api/requests/{req_id}/document/generated_pdf", headers=auth_headers(hr))
     assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:5] == b"%PDF-"
+
+    # دورة حياة الطباعة/الأرشفة (FIX-008): لا أرشفة قبل الطباعة
+    r = client.post(f"/api/requests/{req_id}/document/generated_pdf/mark-filed", headers=auth_headers(hr))
+    assert r.status_code == 409
+    r = client.post(f"/api/requests/{req_id}/document/generated_pdf/mark-printed", headers=auth_headers(hr))
+    assert r.status_code == 200 and r.json()["print_status"] == "printed"
+    r = client.post(f"/api/requests/{req_id}/document/generated_pdf/mark-filed", headers=auth_headers(hr))
+    assert r.status_code == 200 and r.json()["print_status"] == "filed"
+    docs = client.get(f"/api/requests/{req_id}", headers=auth_headers(hr)).json()["documents"]
+    gp = next(d for d in docs if d["kind"] == "generated_pdf")
+    assert gp["print_status"] == "filed" and gp["printed_at"] and gp["filed_at"]
 
 
 def test_manager_can_cancel_anytime(client):

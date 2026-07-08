@@ -2,13 +2,16 @@
 """التقارير والتصدير: الموظفون والرواتب والحضور إلى CSV / Excel (بدعم العربية)."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import exports, models
 from ..database import get_db
-from ..deps import assert_same_company, require_perm, resolve_scope, scope_company_id
+from ..deps import assert_same_company, audit, require_perm, resolve_scope, scope_company_id
+
+# التقارير الحساسة (رواتب/نهاية خدمة) تتطلب سببًا صريحًا قبل التصدير (FIX-016)
+_SENSITIVE_REASON_ERR = "سبب التصدير إلزامي لهذا التقرير الحساس"
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -47,24 +50,30 @@ def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = N
 
 
 @router.get("/employees")
-def export_employees(fmt: str = "xlsx", company_id: int | None = None, branch_id: int | None = None,
+def export_employees(request: Request, fmt: str = "xlsx", company_id: int | None = None,
+                     branch_id: int | None = None, reason: str | None = None,
                      user: models.User = Depends(require_perm("export_reports")),
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id))
+    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"employees:{reason or ''}", request=request)
+    db.commit()
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), "employees.csv", CSV_MIME)
     return _file(exports.to_xlsx("الموظفون", headers, rows), "employees.xlsx", XLSX_MIME)
 
 
 @router.get("/payroll/{run_id}")
-def export_payroll(run_id: int, fmt: str = "xlsx",
-                   user: models.User = Depends(require_perm("export_reports")),
+def export_payroll(run_id: int, request: Request, fmt: str = "xlsx", reason: str | None = None,
+                   # view_payroll (لا export_reports العام) — بيانات مالية حسّاسة (FIX-013)
+                   user: models.User = Depends(require_perm("view_payroll")),
                    db: Session = Depends(get_db)):
+    if not (reason and reason.strip()):
+        raise HTTPException(status_code=400, detail=_SENSITIVE_REASON_ERR)
     pr = db.get(models.PayrollRun, run_id)
     if not pr or not pr.totals_json:
         raise HTTPException(status_code=404, detail="المسيّر غير موجود")
-    assert_same_company(user, pr.company_id)
+    assert_same_company(user, pr.company_id, db=db, request=request)
     headers = ["الاسم", "المسمى", "الأساسي", "أيام الحضور", "أيام الغياب",
                "الإضافي", "خصم الغياب", "خصومات أخرى", "الإجمالي", "الصافي"]
     rows = [[p["name"], p["job_title"] or "", p["basic_salary"], p["present_days"],
@@ -72,21 +81,27 @@ def export_payroll(run_id: int, fmt: str = "xlsx",
              p["other_deductions"], p["gross"], p["net"]]
             for p in pr.totals_json.get("payslips", [])]
     name = f"payroll_{pr.period}"
+    audit(db, user, "EXPORT_REPORT", "payroll_run", run_id, detail=f"payroll:{reason}", request=request)
+    db.commit()
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), f"{name}.csv", CSV_MIME)
     return _file(exports.to_xlsx(f"رواتب {pr.period}", headers, rows), f"{name}.xlsx", XLSX_MIME)
 
 
 @router.get("/eos/{emp_id}")
-def export_eos(emp_id: int, fmt: str = "xlsx",
+def export_eos(emp_id: int, request: Request, fmt: str = "xlsx", reason: str | None = None,
                user: models.User = Depends(require_perm("calculate_eos")),
                db: Session = Depends(get_db)):
     """تصدير/طباعة تقرير مكافأة نهاية الخدمة المحفوظ للموظف (DEMO-014)."""
     import json
+    if not (reason and reason.strip()):
+        raise HTTPException(status_code=400, detail=_SENSITIVE_REASON_ERR)
     emp = db.get(models.Employee, emp_id)
     if not emp or not emp.eos_settlement_json:
         raise HTTPException(status_code=404, detail="لا توجد حسبة نهاية خدمة محفوظة")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db, request=request)
+    audit(db, user, "EXPORT_REPORT", "employee", emp_id, detail=f"eos:{reason}", request=request)
+    db.commit()
     s = json.loads(emp.eos_settlement_json)
     lv = s.get("leave", {})
     headers = ["البند", "القيمة"]
@@ -111,8 +126,9 @@ def export_eos(emp_id: int, fmt: str = "xlsx",
 
 
 @router.get("/attendance")
-def export_attendance(month: str | None = None, fmt: str = "csv", company_id: int | None = None,
-                      branch_id: int | None = None,
+def export_attendance(request: Request, month: str | None = None, fmt: str = "csv",
+                      company_id: int | None = None, branch_id: int | None = None,
+                      reason: str | None = None,
                       user: models.User = Depends(require_perm("export_reports")),
                       db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
@@ -135,6 +151,8 @@ def export_attendance(month: str | None = None, fmt: str = "csv", company_id: in
              r.check_in_at.strftime("%Y-%m-%d %H:%M") if r.check_in_at else "",
              r.check_out_at.strftime("%Y-%m-%d %H:%M") if r.check_out_at else "",
              r.status, r.worked_minutes, r.overtime_minutes] for r in recs]
+    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"attendance:{reason or ''}", request=request)
+    db.commit()
     if fmt == "xlsx":
         return _file(exports.to_xlsx(f"حضور {y}-{m:02d}", headers, rows),
                      f"attendance_{y}-{m:02d}.xlsx", XLSX_MIME)

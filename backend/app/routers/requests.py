@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from .. import models, schemas, workflow
 from ..config import settings
 from ..database import get_db
-from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
+from ..deps import (assert_same_company, audit, get_current_user, require_any_perm,
+                    require_perm, scope_company_id)
 from ..safe_files import read_limited, unique_path
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -19,8 +20,15 @@ router = APIRouter(prefix="/requests", tags=["requests"])
 
 # ----------------------------- أنواع الطلبات -----------------------------
 
+@router.get("/status-map")
+def status_map(user: models.User = Depends(get_current_user)):
+    """ربط الحالات الداخلية بحالات V1.3 الرسمية (FIX-009)."""
+    return workflow.STATUS_MAP
+
+
 @router.get("/types")
-def list_request_types(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_request_types(category: str | None = None,
+                       user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     cid = user.company_id
     q = select(models.RequestType).where(models.RequestType.is_active == True)  # noqa: E712
     rows = db.scalars(q).all()
@@ -31,9 +39,11 @@ def list_request_types(user: models.User = Depends(get_current_user), db: Sessio
         if rt.code in seen:
             continue
         seen.add(rt.code)
-        out.append({"code": rt.code, "name": rt.name,
+        out.append({"code": rt.code, "name": rt.name, "category": rt.category,
                     "chain": rt.approval_chain_json,
                     "produces_document": rt.produces_document})
+    if category:
+        out = [x for x in out if x["category"] == category]
     return out
 
 
@@ -78,7 +88,9 @@ def submit_request(data: schemas.RequestIn, request: Request,
     req = workflow.create_request(db, emp, user, rt, data.payload_json)
     audit(db, user, "submit_request", "request", req.id, detail=rt.code, request=request)
     db.commit()
-    return {"ok": True, "id": req.id, "status": req.status, "current_stage": req.current_stage}
+    st = workflow.status_info(req.status)
+    return {"ok": True, "id": req.id, "status": req.status, "status_label": st["label"],
+            "current_stage": req.current_stage}
 
 
 @router.get("/mine")
@@ -93,7 +105,8 @@ def my_requests(user: models.User = Depends(get_current_user), db: Session = Dep
 
 @router.get("/inbox")
 def approval_inbox(company_id: int | None = None,
-                   user: models.User = Depends(require_perm("approve_request")),
+                   user: models.User = Depends(
+                       require_any_perm("approve_request", "process_delegate_tasks")),
                    db: Session = Depends(get_db)):
     """بانتظار موافقتي — طلبات مرحلتها الحالية موجّهة لهذا المستخدم."""
     cid = scope_company_id(user, company_id)
@@ -110,7 +123,7 @@ def approval_inbox(company_id: int | None = None,
         if req.current_stage >= len(chain):
             continue
         stage = chain[req.current_stage]
-        if workflow.can_decide(db, req, user, stage):
+        if workflow.can_decide(db, req, user, stage, rt=rt):
             out.append(_serialize(db, req))
     return out
 
@@ -126,7 +139,8 @@ def get_request(req_id: int, user: models.User = Depends(get_current_user),
 
 @router.post("/{req_id}/decide")
 def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
-           user: models.User = Depends(require_perm("approve_request")),
+           user: models.User = Depends(
+               require_any_perm("approve_request", "process_delegate_tasks")),
            db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
     if req.status not in ("pending",):
@@ -134,13 +148,19 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt)
     stage = chain[req.current_stage]
-    if not workflow.can_decide(db, req, user, stage):
+    if not workflow.can_decide(db, req, user, stage, rt=rt):
         raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
     if data.decision not in ("approved", "rejected"):
         raise HTTPException(status_code=400, detail="قرار غير صالح")
+    if stage.get("kind") == "delegate_exit" and data.decision == "approved":
+        raise HTTPException(
+            status_code=400,
+            detail="هذه المرحلة تكتمل برفع إذن المغادرة (documents) لا بالاعتماد المباشر",
+        )
     req = workflow.decide(db, req, user, data.decision, data.note, rt)
     audit(db, user, f"request_{data.decision}", "request", req.id, request=request)
-    return {"ok": True, "status": req.status, "current_stage": req.current_stage}
+    st = workflow.status_info(req.status)
+    return {"ok": True, "status": req.status, "status_label": st["label"], "current_stage": req.current_stage}
 
 
 @router.post("/{req_id}/cancel")
@@ -240,9 +260,77 @@ def download_request_document(req_id: int, kind: str,
     ).order_by(models.RequestDocument.version.desc()))
     if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="المستند غير موجود")
-    media = "text/html" if doc.file_path.endswith(".html") else "application/octet-stream"
+    if doc.file_path.endswith(".pdf"):
+        media = "application/pdf"
+    elif doc.file_path.endswith(".html"):
+        media = "text/html"
+    else:
+        media = "application/octet-stream"
     return FileResponse(doc.file_path, media_type=media,
                         filename=os.path.basename(doc.file_path))
+
+
+# ----------------------- دورة حياة الطباعة/الأرشفة (FIX-008) -----------------------
+
+def _latest_doc(db: Session, req_id: int, kind: str) -> models.RequestDocument:
+    doc = db.scalar(select(models.RequestDocument).where(
+        models.RequestDocument.request_id == req_id, models.RequestDocument.kind == kind
+    ).order_by(models.RequestDocument.version.desc()))
+    if not doc:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    return doc
+
+
+@router.post("/{req_id}/document/{kind}/mark-printed")
+def mark_document_printed(req_id: int, kind: str, request: Request,
+                          user: models.User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    """READY_TO_PRINT → PRINTED: تسجّل من طبع المستند الفعلي ومتى."""
+    req = _get_req(db, user, req_id)
+    doc = _latest_doc(db, req.id, kind)
+    if doc.print_status not in ("ready_to_print", "printed"):
+        raise HTTPException(status_code=409, detail="لا يمكن تسجيل الطباعة في هذه الحالة")
+    doc.print_status = "printed"
+    doc.printed_at = datetime.now()
+    doc.printed_by = user.id
+    audit(db, user, "print_document", "request", req.id, detail=kind, request=request)
+    rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    if rt:
+        from ..notifications import notify_from_template
+        notify_from_template(
+            db, code="NTF-044", assignee_user_id=user.id, company_id=req.company_id,
+            context={"document_name": rt.name, "actor_name": user.full_name or user.role},
+            related_entity_type="request", related_entity_id=req.id,
+            dedup_key=f"print_done:{doc.id}",
+        )
+    db.commit()
+    return {"ok": True, "print_status": doc.print_status}
+
+
+@router.post("/{req_id}/document/{kind}/mark-filed")
+def mark_document_filed(req_id: int, kind: str, request: Request,
+                        user: models.User = Depends(require_perm("upload_documents")),
+                        db: Session = Depends(get_db)):
+    """PRINTED → FILED: أرشفة النسخة المعتمدة في ملف الموظف (ورقي/إلكتروني)."""
+    req = _get_req(db, user, req_id)
+    doc = _latest_doc(db, req.id, kind)
+    if doc.print_status != "printed":
+        raise HTTPException(status_code=409, detail="يجب تسجيل الطباعة أولًا قبل الأرشفة")
+    doc.print_status = "filed"
+    doc.filed_at = datetime.now()
+    doc.filed_by = user.id
+    audit(db, user, "file_document", "request", req.id, detail=kind, request=request)
+    rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    if rt:
+        from ..notifications import notify_from_template
+        notify_from_template(
+            db, code="NTF-045", assignee_user_id=user.id, company_id=req.company_id,
+            context={"document_name": rt.name},
+            related_entity_type="request", related_entity_id=req.id,
+            dedup_key=f"file_done:{doc.id}",
+        )
+    db.commit()
+    return {"ok": True, "print_status": doc.print_status}
 
 
 # ----------------------------- مساعدات -----------------------------
@@ -251,7 +339,21 @@ def _get_req(db: Session, user: models.User, req_id: int) -> models.Request:
     req = db.get(models.Request, req_id)
     if not req:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
-    assert_same_company(user, req.company_id)
+    assert_same_company(user, req.company_id, db=db)
+    is_self = req.employee_id == user.employee_id
+    rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+
+    # الطلبات السرّية (شكاوى/تظلمات، FIX-014): الاطلاع يقتصر على الإدارة العليا،
+    # معتمدي المرحلة الفعليين عبر السلسلة كاملة (مثل الشؤون القانونية)، وصاحب الطلب نفسه —
+    # لا تجاوز إداري عام حتى لا يطّلع المسؤول المشتكى به على الشكوى ضده.
+    if rt and rt.is_confidential:
+        if user.role == "super_admin" or is_self:
+            return req
+        for stage in workflow._chain(rt):
+            if any(u.id == user.id for u in workflow.resolve_stage_approvers(db, req, stage)):
+                return req
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
+
     # خدمة ذاتية: من لا يعتمد/يعالج الطلبات يرى طلباته هو فقط (لا طلبات الزملاء)
     from ..permissions import has_permission
     from ..deps import get_user_perms
@@ -259,7 +361,7 @@ def _get_req(db: Session, user: models.User, req_id: int) -> models.Request:
     is_handler = (user.role == "super_admin"
                   or has_permission(user.role, perms, "approve_request")
                   or has_permission(user.role, perms, "process_delegate_tasks"))
-    if not is_handler and req.employee_id != user.employee_id:
+    if not is_handler and not is_self:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
     return req
 
@@ -275,11 +377,13 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
     emp = db.get(models.Employee, req.employee_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt) if rt else []
+    st = workflow.status_info(req.status)
     data = {
         "id": req.id, "type": req.request_type_code,
         "type_name": rt.name if rt else req.request_type_code,
         "employee_id": req.employee_id, "employee_name": emp.name if emp else None,
-        "status": req.status, "current_stage": req.current_stage,
+        "status": req.status, "status_code": st["code"], "status_label": st["label"],
+        "current_stage": req.current_stage,
         "total_stages": len(chain),
         "payload": req.payload_json, "created_at": req.created_at,
     }
@@ -330,6 +434,8 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
              "decision": a.decision, "note": a.note, "at": a.decided_at} for a in approvals
         ]
         data["documents"] = [
-            {"kind": d.kind, "version": d.version, "created_at": d.created_at} for d in docs
+            {"kind": d.kind, "version": d.version, "created_at": d.created_at,
+             "print_status": d.print_status, "printed_at": d.printed_at, "filed_at": d.filed_at}
+            for d in docs
         ]
     return data

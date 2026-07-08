@@ -9,6 +9,10 @@ pyjwt==2.10.1
 apscheduler==3.11.0
 python-dotenv==1.0.1
 openpyxl==3.1.5
+# محرّك PDF عربي حقيقي (FIX-007) — إعادة تشكيل الحروف + ترتيب RTL
+reportlab==5.0.0
+arabic-reshaper==3.0.1
+python-bidi==0.6.11
 # قاعدة بيانات الإنتاج (PostgreSQL) — اختياري للتطوير
 psycopg2-binary==2.9.10
 # اختبارات

@@ -53,7 +53,7 @@ export default function Renewals() {
     const fd = new FormData();
     fd.append("decision", decision);
     if (rejectReason) fd.append("reject_reason", rejectReason);
-    await api.post(`/renewals/${sel.id}/decide`, fd, { params: { decision, reject_reason: rejectReason || undefined } });
+    await api.post(`/renewals/${sel.id}/decide`, fd);
     setRejectReason("");
   });
 
@@ -63,7 +63,7 @@ export default function Renewals() {
     const fd = new FormData();
     fd.append("doc_type", docType); fd.append("file", file);
     act(async () => {
-      await api.post(`/renewals/${sel.id}/upload`, fd, { params: { doc_type: docType } });
+      await api.post(`/renewals/${sel.id}/upload`, fd);
       if (fileRef.current) fileRef.current.value = "";
     });
   };

@@ -89,9 +89,11 @@ _COMPANY_ALL = {p for p in PERMISSIONS if p != "manage_companies"}
 
 ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "super_admin": _ALL | {"manage_companies"},
-    # المالك: دور رقابي للاطلاع فقط (متابعة الشركات/الفروع/الأداء/التقارير) — لا أعمال تشغيلية
+    # المالك: دور رقابي للاطلاع فقط (متابعة الشركات/الفروع/الأداء/التقارير) — لا أعمال تشغيلية.
+    # يشمل الاطلاع على سجل التدقيق والرواتب (رقابة/حوكمة) دون أي صلاحية تنفيذ (FIX-010).
     "company_owner": {"view_employee", "view_reports", "export_reports", "view_tasks",
-                      "view_actual_salary"},
+                      "view_actual_salary", "view_audit", "view_payroll", "view_documents",
+                      "view_attendance"},
     # مدير الشركة: التشغيل اليومي فقط — موظفون/فروع/إدارات/إجازات/طلبات/تقارير/مستخدمو شركته.
     # لا رواتب/خصومات (المحاسب)، لا EOS/إنهاء خدمة (HR)، لا إقامات/تراخيص (PRO)،
     # لا إعدادات نظام/شركات/قوالب/تدقيق/نقل بين الشركات (الإدارة العليا).
@@ -115,7 +117,8 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
            "view_documents", "upload_documents",
            "manage_leaves", "manage_deductions",
            "approve_request", "calculate_eos", "terminate_employee",
-           "manage_templates", "view_tasks"},
+           "manage_templates", "view_tasks",
+           "view_attendance", "manage_attendance"},  # تصحيح واعتماد سجلات الحضور (FIX-015)
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
     # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR.
     "delegate": {"view_employee", "create_employee", "view_documents", "upload_documents",

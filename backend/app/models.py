@@ -280,6 +280,9 @@ class Task(Base):
     dedup_key: Mapped[str | None] = mapped_column(String(120), index=True)  # لمنع التكرار
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # سجل التسليم (FIX-004): قالب الإشعار المُستخدَم والقناة الفعلية للإرسال
+    template_code: Mapped[str | None] = mapped_column(String(50))
+    channel: Mapped[str | None] = mapped_column(String(20))
 
 
 class RequestType(Base):
@@ -289,12 +292,18 @@ class RequestType(Base):
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
     code: Mapped[str] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(150))
+    # تصنيف النوع (حضور وإجازات / إقامة ومعاملات حكومية / بيانات وتوثيق / شهادات / مالية /
+    # شكاوى وتظلمات / عام / تطوير وظيفي / عقود وإنهاء خدمة / نماذج إدارية) — حزمة V1.3
+    category: Mapped[str | None] = mapped_column(String(60))
     # سلسلة المراحل: [{order, label, approver_role, produces_document, requires_signature, ...}]
     approval_chain_json: Mapped[list] = mapped_column(JSON, default=list)
     requires_physical_signature: Mapped[bool] = mapped_column(Boolean, default=False)
     produces_document: Mapped[bool] = mapped_column(Boolean, default=False)
     template_html: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # سرّية (FIX-014): يمنع تجاوز المدير العام/المالك الاعتيادي لمراحل هذا النوع، ويقصر
+    # الاطلاع والقرار على معتمدي المرحلة الفعليين (مثل الشؤون القانونية) + الإدارة العليا فقط.
+    is_confidential: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Request(Base):
@@ -336,6 +345,12 @@ class RequestDocument(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # دورة حياة الطباعة/الأرشفة (FIX-008): READY_TO_PRINT → PRINTED → FILED
+    print_status: Mapped[str] = mapped_column(String(20), default="ready_to_print")
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    printed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    filed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    filed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
 class Appointment(Base):
@@ -478,6 +493,39 @@ class ConsumedToken(Base):
     kind: Mapped[str] = mapped_column(String(20))  # qr / checkin_ticket
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class NotificationTemplate(Base):
+    """قالب إشعار مُسمّى (FIX-004) — 74 قالبًا تغطي كل أحداث دورة حياة الطلبات والنظام.
+
+    body_text يدعم متغيّرات {{...}} تُعبَّأ عند الإرسال (نفس أسلوب DocumentTemplate).
+    channel_default: in_app / whatsapp / sms / email. sla_hours: مهلة الاستجابة المتوقعة
+    (لتصعيد المهمة إن لم تُعالَج، تُستخدم من المسح اليومي).
+    """
+    __tablename__ = "notification_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(60))
+    event_type: Mapped[str] = mapped_column(String(40))  # يطابق Task.type
+    channel_default: Mapped[str] = mapped_column(String(20), default="in_app")
+    sla_hours: Mapped[int | None] = mapped_column(Integer)
+    body_text: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class NotificationPreference(Base):
+    """تفضيل تسليم الإشعارات لكل مستخدم حسب الفئة (قناة مفعّلة أم لا)."""
+    __tablename__ = "notification_preferences"
+    __table_args__ = (UniqueConstraint("user_id", "category", "channel", name="uq_notif_pref"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(60))
+    channel: Mapped[str] = mapped_column(String(20))  # in_app / whatsapp / sms / email
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class AuditLog(Base):

@@ -30,13 +30,73 @@ from .notifications import create_task, notify_employee_self, users_by_role
 # إلغاء الطلب إجراء تشغيلي → المالك (اطلاع فقط) مستبعَد
 CANCEL_ROLES = {"super_admin", "company_manager"}
 
+# ----------------------- ربط الحالات الداخلية بحالات V1.3 الرسمية (FIX-009) -----------------------
+# كل حالة داخلية (Request.status) تُعرَض دومًا عبر هذا الربط بدل الاسم التقني الخام،
+# حتى تكون واجهة/API الطلب متطابقة مع مسمّيات النسخة المعتمدة V1.3.
+STATUS_MAP: dict[str, dict[str, str]] = {
+    "pending": {"code": "PENDING_APPROVAL", "label": "قيد الاعتماد"},
+    "awaiting_signature": {"code": "AWAITING_SIGNATURE", "label": "بانتظار التوقيع"},
+    "awaiting_delegate": {"code": "AWAITING_DELEGATE", "label": "بانتظار إجراءات المندوب"},
+    "ready_for_pickup": {"code": "READY_FOR_PICKUP", "label": "جاهز للاستلام"},
+    "completed": {"code": "COMPLETED", "label": "مكتمل"},
+    "rejected": {"code": "REJECTED", "label": "مرفوض"},
+    "cancelled": {"code": "CANCELLED", "label": "ملغى"},
+}
+
+
+def status_info(status: str) -> dict[str, str]:
+    return STATUS_MAP.get(status, {"code": status.upper(), "label": status})
+
 
 # ----------------------- أنواع الطلبات الافتراضية (للـ seed) -----------------------
+
+# تصنيفات أنواع الطلبات (حزمة V1.3 — 49 نموذجًا رسميًا)
+CAT_ATTENDANCE = "الحضور والإجازات"
+CAT_RESIDENCY = "الإقامة والمعاملات الحكومية"
+CAT_EMP_DATA = "بيانات الموظف والمستندات"
+CAT_CERTIFICATES = "الشهادات والخطابات"
+CAT_FINANCIAL = "الطلبات المالية"
+CAT_GRIEVANCE = "الشكاوى والتظلمات"
+CAT_GENERAL = "طلبات عامة"
+CAT_CAREER = "التطوير الوظيفي"
+CAT_CONTRACTS = "العقود وإنهاء الخدمة"
+CAT_ADMIN = "نماذج إدارية"
+
+
+def _simple(code: str, name: str, category: str, roles: list[str],
+           produces_document: bool = False, requires_physical_signature: bool = True,
+           is_confidential: bool = False) -> dict:
+    """يبني نوع طلب بسلسلة موافقات خطّية بسيطة (مرحلة اعتماد لكل دور بالترتيب).
+
+    تُستخدم لتغطية أنواع V1.3 الـ44 المتبقية (المسار الرئيسي المذكور في كل نموذج)
+    دون تكرار منطق خاص — النوع الأول (leave) و(salary_certificate) وما شابه تبقى
+    بمسارها المخصص (hr_review/delegate_exit/pickup) لأنها مطبَّقة ومختبرة فعلًا.
+    """
+    chain = [
+        {"order": i, "label": f"اعتماد {ROLE_LABEL_AR.get(r, r)}", "role": r, "kind": "approval",
+         "produces_document": produces_document and i == len(roles) - 1}
+        for i, r in enumerate(roles)
+    ]
+    return {
+        "code": code, "name": name, "category": category,
+        "requires_physical_signature": requires_physical_signature,
+        "produces_document": produces_document,
+        "approval_chain_json": chain, "template_html": None,
+        "is_confidential": is_confidential,
+    }
+
+
+ROLE_LABEL_AR = {
+    "branch_supervisor": "المسؤول المباشر", "company_manager": "المدير العام",
+    "hr": "شؤون الموظفين/القانونية", "delegate": "المندوب", "accountant": "المحاسب",
+}
+
 
 DEFAULT_REQUEST_TYPES = [
     {
         "code": "leave",
         "name": "طلب إجازة",
+        "category": CAT_ATTENDANCE,
         "requires_physical_signature": True,
         "produces_document": True,
         "approval_chain_json": [
@@ -52,6 +112,7 @@ DEFAULT_REQUEST_TYPES = [
     {
         "code": "salary_certificate",
         "name": "طلب شهادة راتب",
+        "category": CAT_CERTIFICATES,
         "requires_physical_signature": False,
         "produces_document": True,
         "approval_chain_json": [
@@ -64,6 +125,7 @@ DEFAULT_REQUEST_TYPES = [
     {
         "code": "exit_permission",
         "name": "طلب إذن خروج/استئذان",
+        "category": CAT_ATTENDANCE,
         "requires_physical_signature": False,
         "produces_document": False,
         "approval_chain_json": [
@@ -75,6 +137,7 @@ DEFAULT_REQUEST_TYPES = [
     {
         "code": "advance",
         "name": "طلب سلفة",
+        "category": CAT_FINANCIAL,
         "requires_physical_signature": False,
         "produces_document": False,
         "approval_chain_json": [
@@ -86,6 +149,7 @@ DEFAULT_REQUEST_TYPES = [
     {
         "code": "loan",
         "name": "طلب قرض",
+        "category": CAT_FINANCIAL,
         "requires_physical_signature": False,
         "produces_document": False,
         "approval_chain_json": [
@@ -94,6 +158,123 @@ DEFAULT_REQUEST_TYPES = [
         ],
         "template_html": None,
     },
+
+    # ----------------- الـ 44 نوعًا الرسمية المتبقية من حزمة V1.3 (FIX-002) -----------------
+    # الحضور والإجازات
+    _simple("REQPER", "طلب إذن أثناء الدوام", CAT_ATTENDANCE,
+           ["branch_supervisor", "hr"], requires_physical_signature=False),
+    _simple("REQEXIT", "طلب مغادرة مبكرة", CAT_ATTENDANCE,
+           ["branch_supervisor", "hr"], requires_physical_signature=False),
+    _simple("REQLATE", "تبرير تأخير", CAT_ATTENDANCE,
+           ["branch_supervisor", "hr"], requires_physical_signature=False),
+    _simple("REQATT", "طلب تصحيح سجل حضور", CAT_ATTENDANCE,
+           ["branch_supervisor", "hr"], requires_physical_signature=False),
+    _simple("REQSHIFT", "طلب تغيير وردية", CAT_ATTENDANCE,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+    _simple("REQOT", "طلب عمل إضافي", CAT_ATTENDANCE,
+           ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False),
+    _simple("REQWLOC", "تكليف مؤقت بموقع أو فرع", CAT_ATTENDANCE,
+           ["branch_supervisor", "company_manager", "hr"], produces_document=True),
+    _simple("REQMIS", "طلب مهمة عمل خارجية", CAT_ATTENDANCE,
+           ["branch_supervisor", "company_manager"], produces_document=True),
+
+    # الإقامة والمعاملات الحكومية
+    _simple("REQRESE", "طلب تجديد إقامة مبكر", CAT_RESIDENCY,
+           ["hr", "company_manager", "delegate"], produces_document=True),
+    _simple("REQRESN", "طلب تجديد إقامة عادي", CAT_RESIDENCY,
+           ["delegate", "hr"], produces_document=True),
+    _simple("REQPASS", "طلب تحديث أو تجديد جواز السفر", CAT_RESIDENCY,
+           ["hr"], requires_physical_signature=False),
+    _simple("REQCID", "طلب تحديث أو تجديد البطاقة المدنية", CAT_RESIDENCY,
+           ["hr", "delegate"], requires_physical_signature=False),
+    _simple("REQWP", "طلب تجديد إذن عمل", CAT_RESIDENCY,
+           ["hr", "company_manager", "delegate"], produces_document=True),
+    _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
+           ["hr", "delegate"], requires_physical_signature=False),
+    _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
+           ["branch_supervisor", "hr", "company_manager"], produces_document=True),
+
+    # بيانات الموظف والمستندات
+    _simple("REQDOC", "رفع أو تحديث مستند موظف", CAT_EMP_DATA,
+           ["hr"], requires_physical_signature=False),
+    _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_DATA,
+           ["hr"], requires_physical_signature=False),
+    _simple("REQBANK", "طلب تغيير الحساب البنكي", CAT_EMP_DATA,
+           ["accountant", "company_manager"], requires_physical_signature=False),
+    _simple("REQCONTACT", "تحديث بيانات الاتصال والطوارئ", CAT_EMP_DATA,
+           ["hr"], requires_physical_signature=False),
+
+    # الشهادات والخطابات
+    _simple("REQCERTSAL", "طلب شهادة راتب (V1.3)", CAT_CERTIFICATES,
+           ["company_manager", "hr"], produces_document=True, requires_physical_signature=False),
+    _simple("REQCERTEMP", "طلب شهادة لمن يهمه الأمر", CAT_CERTIFICATES,
+           ["hr"], produces_document=True, requires_physical_signature=False),
+    _simple("REQCERTEXP", "طلب شهادة خبرة", CAT_CERTIFICATES,
+           ["hr", "company_manager"], produces_document=True, requires_physical_signature=False),
+    _simple("REQFILE", "طلب نسخة من ملف أو مستند", CAT_CERTIFICATES,
+           ["hr"], requires_physical_signature=False),
+
+    # الطلبات المالية
+    _simple("REQADV", "طلب سلفة أو قرض", CAT_FINANCIAL,
+           ["company_manager", "accountant"], requires_physical_signature=False),
+    _simple("REQEXP", "طلب استرداد مصروفات", CAT_FINANCIAL,
+           ["branch_supervisor", "accountant"], requires_physical_signature=False),
+    _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+    _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
+           ["accountant", "company_manager"], requires_physical_signature=False),
+    _simple("REQDED", "اعتراض على خصم", CAT_FINANCIAL,
+           ["accountant", "hr", "company_manager"], requires_physical_signature=False),
+
+    # الشكاوى والتظلمات
+    _simple("REQGRV", "شكوى أو تظلم", CAT_GRIEVANCE,
+           ["hr"], requires_physical_signature=False, is_confidential=True),
+    _simple("REQVIO", "اعتراض على مخالفة", CAT_GRIEVANCE,
+           ["hr", "company_manager"], requires_physical_signature=False),
+    _simple("REQWARN", "إقرار أو رد على إنذار", CAT_GRIEVANCE,
+           ["hr"], requires_physical_signature=False),
+
+    # طلبات عامة
+    _simple("REQGEN", "طلب عام أو اقتراح", CAT_GENERAL,
+           ["branch_supervisor"], requires_physical_signature=False),
+
+    # التطوير الوظيفي
+    _simple("REQTRN", "طلب تدريب", CAT_CAREER,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+    _simple("REQTRF", "طلب نقل داخلي", CAT_CAREER,
+           ["branch_supervisor", "company_manager"], produces_document=True),
+    _simple("REQPROMO", "طلب ترقية أو تعديل راتب", CAT_CAREER,
+           ["branch_supervisor", "company_manager"], produces_document=True),
+
+    # العقود وإنهاء الخدمة
+    _simple("REQCON", "تجديد عقد أو عدم تجديد", CAT_CONTRACTS,
+           ["hr", "company_manager"], produces_document=True),
+    _simple("REQRESIGN", "طلب استقالة", CAT_CONTRACTS,
+           ["company_manager", "hr"], produces_document=True),
+    _simple("REQEOS", "طلب احتساب وتسوية نهاية خدمة", CAT_CONTRACTS,
+           ["hr", "accountant", "company_manager"], produces_document=True),
+    _simple("REQCLR", "إخلاء طرف وتسليم عهدة", CAT_CONTRACTS,
+           ["accountant", "hr"], produces_document=True),
+
+    # نماذج إدارية
+    _simple("ADMEMP", "إضافة موظف جديد", CAT_ADMIN,
+           ["hr", "company_manager"], requires_physical_signature=False),
+    _simple("ADMACTUAL", "تعديل الراتب الفعلي أو مكان العمل الفعلي", CAT_ADMIN,
+           ["company_manager", "accountant"], requires_physical_signature=False),
+    _simple("ADMDED", "إصدار خصم", CAT_ADMIN,
+           ["hr", "accountant", "company_manager"], requires_physical_signature=False),
+    _simple("ADMVIO", "تسجيل مخالفة وظيفية", CAT_ADMIN,
+           ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False),
+    _simple("ADMWARN", "إصدار إنذار", CAT_ADMIN,
+           ["hr", "company_manager"], produces_document=True),
+    _simple("ADMTASK", "تكليف مندوب أو مهمة إدارية", CAT_ADMIN,
+           ["company_manager", "delegate", "hr"], requires_physical_signature=False),
+    _simple("ADMMISS", "إشعار نقص مستندات", CAT_ADMIN,
+           ["hr"], requires_physical_signature=False),
+    _simple("ADMLIC", "تجديد مستند شركة أو ترخيص", CAT_ADMIN,
+           ["hr", "company_manager", "delegate"], produces_document=True),
+    _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
+           ["company_manager", "hr"], requires_physical_signature=False),
 ]
 
 
@@ -143,13 +324,15 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
     return users_by_role(db, req.company_id, [role]) if role else []
 
 
-def can_decide(db: Session, req: models.Request, user: models.User, stage: dict) -> bool:
+def can_decide(db: Session, req: models.Request, user: models.User, stage: dict,
+              rt: models.RequestType | None = None) -> bool:
     if user.role == "super_admin":
         return True
     if user.company_id != req.company_id:
         return False
-    # المدير العام يستطيع التدخّل في أي مرحلة
-    if user.role in ("company_manager", "company_owner"):
+    # المدير العام يستطيع التدخّل في أي مرحلة — إلا في الطلبات السرّية (شكاوى/تظلمات، FIX-014):
+    # يقتصر القرار فيها على معتمدي المرحلة الفعليين دون تجاوز إداري، حفاظًا على السرّية.
+    if not (rt and rt.is_confidential) and user.role in ("company_manager", "company_owner"):
         return True
     approvers = resolve_stage_approvers(db, req, stage)
     return any(u.id == user.id for u in approvers)
@@ -381,9 +564,30 @@ def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
         )
 
 
+def _body_lines(rt, req, emp) -> list[str]:
+    """أسطر تفاصيل الطلب (نص صِرف) — تُستخدم في نسخة PDF ونسخة HTML معًا."""
+    p = req.payload_json or {}
+    if rt.code == "leave":
+        return [
+            f"نوع الإجازة: {p.get('leave_type','اعتيادية')}",
+            f"من تاريخ: {p.get('start_date','')} إلى تاريخ: {p.get('end_date','')} "
+            f"(عدد الأيام: {p.get('days','')})",
+            f"السبب: {p.get('reason','')}",
+        ]
+    if rt.code in ("salary_certificate", "REQCERTSAL"):
+        return [
+            f"الجهة المستفيدة: {p.get('addressed_to','')}",
+            f"الغرض: {p.get('purpose','')}",
+            f"الراتب الأساسي: {getattr(emp,'basic_salary',0)} د.ك",
+        ]
+    return [f"{k}: {v}" for k, v in p.items()] if p else []
+
+
 def generate_document(db: Session, req: models.Request, rt: models.RequestType,
                       kind: str, actor: models.User) -> models.RequestDocument:
-    """يولّد مستند الطلب (HTML قابل للطباعة) مع عبارة 'اعتمد من قبل'."""
+    """يولّد مستند الطلب المعتمَد كملف PDF حقيقي (application/pdf) — لا HTML (FIX-007)."""
+    from .pdf_export import render_request_pdf
+
     emp = db.get(models.Employee, req.employee_id)
     company = db.get(models.Company, req.company_id)
     approvals = db.scalars(
@@ -392,13 +596,13 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             models.RequestApproval.decision == "approved",
         )
     ).all()
-    html = render_document_html(rt, req, emp, company, approvals)
+    pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp))
 
     os.makedirs(settings.upload_dir, exist_ok=True)
-    fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.html"
+    fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
     fpath = os.path.join(settings.upload_dir, fname)
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(html)
+    with open(fpath, "wb") as f:
+        f.write(pdf_bytes)
 
     existing = db.scalars(
         select(models.RequestDocument).where(
@@ -415,28 +619,15 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
 
 
 def render_document_html(rt, req, emp, company, approvals) -> str:
+    """نسخة HTML للمعاينة على الشاشة فقط (المستند الرسمي المعتمد أصبح PDF حقيقيًا — FIX-007)."""
     from html import escape as e  # تهريب القيم لمنع حقن HTML/XSS
 
-    p = req.payload_json or {}
     rows = "".join(
         f"<li>اعتمد من قبل: <b>{e(a.stage_label or '')}</b> ({e(a.approver_role or '')}) بتاريخ "
         f"{a.decided_at.strftime('%Y-%m-%d %H:%M')}</li>"
         for a in approvals
     )
-    body_extra = ""
-    if rt.code == "leave":
-        body_extra = (
-            f"<p>نوع الإجازة: {e(str(p.get('leave_type','اعتيادية')))}</p>"
-            f"<p>من تاريخ: {e(str(p.get('start_date','')))} إلى تاريخ: {e(str(p.get('end_date','')))} "
-            f"(عدد الأيام: {e(str(p.get('days','')))})</p>"
-            f"<p>السبب: {e(str(p.get('reason','')))}</p>"
-        )
-    elif rt.code == "salary_certificate":
-        body_extra = (
-            f"<p>الجهة المستفيدة: {e(str(p.get('addressed_to','')))}</p>"
-            f"<p>الغرض: {e(str(p.get('purpose','')))}</p>"
-            f"<p>الراتب الأساسي: {getattr(emp,'basic_salary',0)} د.ك</p>"
-        )
+    body_extra = "".join(f"<p>{e(line)}</p>" for line in _body_lines(rt, req, emp))
     return f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <title>{e(rt.name)}</title>
 <style>

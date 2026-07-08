@@ -92,7 +92,8 @@ def test_terminate_employee_computes_eos(client):
     prof = client.get(f"/api/employees/{new['id']}/profile", headers=h).json()
     assert prof["saved_eos"] and prof["saved_eos"]["total_settlement"] > 0
     assert prof["termination_date"] == "2025-01-01"
-    exp = client.get(f"/api/reports/eos/{new['id']}", headers=h, params={"fmt": "xlsx"})
+    exp = client.get(f"/api/reports/eos/{new['id']}", headers=h,
+                     params={"fmt": "xlsx", "reason": "أرشفة"})
     assert exp.status_code == 200 and exp.content[:2] == b"PK"
 
 

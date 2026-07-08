@@ -106,8 +106,8 @@ def _serialize(db, rn, lang="ar") -> dict:
 # ----------------------------- إنشاء الطلب -----------------------------
 
 @router.post("", status_code=201)
-def create_renewal(employee_id: int | None = None, permit_id: int | None = None,
-                   reason: str | None = None, notes: str | None = None,
+def create_renewal(employee_id: int | None = Form(None), permit_id: int | None = Form(None),
+                   reason: str | None = Form(None), notes: str | None = Form(None),
                    request: Request = None,
                    user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """ينشئ طلب تجديد إقامة. مقدّم الطلب الموظف نفسه (أو المندوب نيابةً)."""
@@ -234,7 +234,7 @@ def get_renewal(rid: int, user: models.User = Depends(get_current_user), db: Ses
 # ----------------------------- موافقات (مبكر) -----------------------------
 
 @router.post("/{rid}/decide")
-def decide_renewal(rid: int, decision: str, reject_reason: str | None = None,
+def decide_renewal(rid: int, decision: str = Form(...), reject_reason: str | None = Form(None),
                    request: Request = None,
                    user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """موافقة/رفض مرحلة (المدير ثم الشؤون) للتجديد المبكر."""
@@ -291,7 +291,8 @@ def mark_renewing(rid: int, request: Request = None,
 # ----------------------------- رفع المستندات (يقود الحالة) -----------------------------
 
 @router.post("/{rid}/upload")
-async def upload_renewal_doc(rid: int, doc_kind: str = Form(...), file: UploadFile = File(...),
+async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type"),
+                             file: UploadFile = File(...),
                              request: Request = None,
                              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """يرفع مستندًا حسب المرحلة ويقود الحالة للأمام."""

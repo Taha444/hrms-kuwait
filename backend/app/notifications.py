@@ -11,12 +11,53 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+
+_TOKEN_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+
+def _render(body: str, ctx: dict) -> str:
+    return _TOKEN_RE.sub(lambda m: str(ctx.get(m.group(1), "................")), body)
+
+
+def _channel_enabled(db: Session, user_id: int, category: str, channel: str) -> bool:
+    pref = db.scalar(select(models.NotificationPreference).where(
+        models.NotificationPreference.user_id == user_id,
+        models.NotificationPreference.category == category,
+        models.NotificationPreference.channel == channel,
+    ))
+    return pref.enabled if pref else True  # الافتراضي: مفعّل ما لم يُعطَّل صراحةً
+
+
+def notify_from_template(db: Session, *, code: str, assignee_user_id: int, company_id: int | None,
+                         context: dict | None = None, related_entity_type: str | None = None,
+                         related_entity_id: int | None = None, dedup_key: str | None = None,
+                         severity: str = "info") -> models.Task | None:
+    """يرسل إشعارًا مبنيًّا على قالب مسمّى من كتالوج الـ74 قالبًا (FIX-004)،
+    مع احترام تفضيل المستخدم للقناة قبل الإنشاء."""
+    tpl = db.scalar(select(models.NotificationTemplate).where(
+        models.NotificationTemplate.code == code, models.NotificationTemplate.is_active == True))  # noqa: E712
+    if not tpl:
+        return None
+    channel = tpl.channel_default
+    if not _channel_enabled(db, assignee_user_id, tpl.category, channel):
+        return None
+    task = create_task(
+        db, company_id=company_id, assignee_user_id=assignee_user_id, type=tpl.event_type,
+        title=tpl.name, detail=_render(tpl.body_text, context or {}),
+        related_entity_type=related_entity_type, related_entity_id=related_entity_id,
+        severity=severity, dedup_key=dedup_key,
+    )
+    if task is not None:
+        task.template_code = code
+        task.channel = channel
+    return task
 
 
 def create_task(

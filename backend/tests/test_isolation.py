@@ -76,6 +76,16 @@ def test_owner_is_read_only_no_operational_actions(client):
     assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
 
 
+def test_owner_has_readonly_audit_and_payroll_visibility(client):
+    """FIX-010: المالك دور حوكمة — يطّلع على التدقيق والرواتب دون تنفيذ."""
+    token = login(client, "111111111111", "owner123")
+    h = auth_headers(token)
+    assert client.get("/api/audit", headers=h, params={"company_id": 1}).status_code == 200
+    assert client.get("/api/payroll/runs", headers=h, params={"company_id": 1}).status_code == 200
+    # لا يزال ممنوعًا من تشغيل الرواتب فعليًا
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
+
+
 def test_dashboard_scopes_to_selected_company(client):
     token = login(client, "000000000000", "admin123")
     h = auth_headers(token)

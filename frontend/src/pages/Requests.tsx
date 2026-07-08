@@ -24,7 +24,8 @@ export default function Requests() {
     setState("loading");
     api.get("/requests/mine").then((r) => { setMine(r.data); setState("ok"); })
       .catch(() => setState("error"));
-    if (can("approve_request")) api.get("/requests/inbox").then((r) => setInbox(r.data)).catch(() => {});
+    if (can("approve_request") || can("process_delegate_tasks"))
+      api.get("/requests/inbox").then((r) => setInbox(r.data)).catch(() => {});
   };
   useEffect(() => {
     load();
@@ -112,7 +113,7 @@ export default function Requests() {
 
       <div className="row" style={{ marginBottom: 12 }}>
         <button className={tab === "mine" ? "" : "ghost"} onClick={() => setTab("mine")}>{t("my_requests")}</button>
-        {can("approve_request") && (
+        {(can("approve_request") || can("process_delegate_tasks")) && (
           <button className={tab === "inbox" ? "" : "ghost"} onClick={() => setTab("inbox")}>
             {t("approval_inbox")} {inbox.length ? `(${inbox.length})` : ""}
           </button>

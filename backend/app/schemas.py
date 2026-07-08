@@ -228,10 +228,12 @@ class TaskOut(BaseModel):
 class RequestTypeIn(BaseModel):
     code: str
     name: str
+    category: str | None = None
     approval_chain_json: list[dict[str, Any]] = []
     requires_physical_signature: bool = False
     produces_document: bool = False
     template_html: str | None = None
+    is_confidential: bool = False
 
 
 class RequestIn(BaseModel):

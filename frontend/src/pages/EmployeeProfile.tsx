@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import api, { downloadFile } from "../api";
+import api, { downloadSensitiveReport } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { attAr, statusAr } from "../labels";
@@ -301,7 +301,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <h3 style={{ margin: 0 }}>{settlement ? t("epf_settlement_title") : t("eos_saved_title")}</h3>
                   {can("calculate_eos") && (
-                    <button className="ghost sm" onClick={() => downloadFile(`/reports/eos/${id}`, { fmt: "xlsx" }, `eos_${id}.xlsx`)}>
+                    <button className="ghost sm" onClick={() => downloadSensitiveReport(`/reports/eos/${id}`, { fmt: "xlsx" }, `eos_${id}.xlsx`, t("export_reason_prompt"))}>
                       {t("eos_export")}
                     </button>
                   )}
