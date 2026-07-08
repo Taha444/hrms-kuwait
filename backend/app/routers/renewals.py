@@ -15,7 +15,8 @@ from .. import models, renewal as R
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, get_user_perms
-from ..notifications import create_task, notify_employee_self, notify_roles
+from ..notifications import (create_task, notify_employee_self, notify_from_template,
+                             notify_roles, users_by_role)
 from ..permissions import has_permission
 from ..safe_files import read_limited, unique_path
 
@@ -33,7 +34,7 @@ def _get_renewal(db, user, rid) -> models.ResidencyRenewal:
     rn = db.get(models.ResidencyRenewal, rid)
     if not rn:
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
-    assert_same_company(user, rn.company_id)
+    assert_same_company(user, rn.company_id, db=db)
     return rn
 
 
@@ -118,7 +119,7 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
     emp = db.get(models.Employee, eid)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
     # الصلاحية: الموظف نفسه أو المندوب نيابةً
     if user.employee_id != eid and not _is_pro(user, perms):
         raise HTTPException(status_code=403, detail="لا يمكنك تقديم الطلب لهذا الموظف")
@@ -162,29 +163,33 @@ def _notify_stage(db, rn):
     """إشعار المسؤول عن المرحلة الحالية."""
     name = (db.get(models.Employee, rn.employee_id).name if rn.employee_id else "")
     if rn.status == R.PENDING_MANAGER:
-        notify_roles(db, rn.company_id, ["company_manager"], type="request_stage",
-                     title=f"طلب تجديد إقامة (مبكر): {name}",
-                     detail="بانتظار موافقتك على طلب تجديد الإقامة المبكر.",
-                     related_entity_type="renewal", related_entity_id=rn.id,
-                     dedup_key=f"renewal_mgr:{rn.id}")
+        for u in users_by_role(db, rn.company_id, ["company_manager"]):
+            notify_from_template(
+                db, code="NTF-033", assignee_user_id=u.id, company_id=rn.company_id,
+                context={"request_type": "تجديد إقامة مبكر", "employee_name": name},
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_mgr:{rn.id}:u{u.id}")
     elif rn.status == R.PENDING_HR:
-        notify_roles(db, rn.company_id, ["hr"], type="request_stage",
-                     title=f"طلب تجديد إقامة بانتظار الشؤون: {name}",
-                     detail="بانتظار موافقة شؤون الموظفين.",
-                     related_entity_type="renewal", related_entity_id=rn.id,
-                     dedup_key=f"renewal_hr:{rn.id}")
+        for u in users_by_role(db, rn.company_id, ["hr"]):
+            notify_from_template(
+                db, code="NTF-033", assignee_user_id=u.id, company_id=rn.company_id,
+                context={"request_type": "تجديد إقامة مبكر (شؤون الموظفين)", "employee_name": name},
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_hr:{rn.id}:u{u.id}")
     elif rn.status == R.AWAITING_CONTRACTS:
-        notify_roles(db, rn.company_id, ["delegate"], type="renew_residency",
-                     title=f"تجديد إقامة — ارفع العقود: {name}",
-                     detail="حُوّلت المعاملة إليك. ارفع عقد العمل الحكومي والعقد الداخلي.",
-                     related_entity_type="renewal", related_entity_id=rn.id,
-                     dedup_key=f"renewal_pro:{rn.id}")
+        for u in users_by_role(db, rn.company_id, ["delegate"]):
+            notify_from_template(
+                db, code="NTF-015", assignee_user_id=u.id, company_id=rn.company_id,
+                context={"employee_name": name},
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_pro:{rn.id}:u{u.id}")
     elif rn.status == R.AWAITING_SIGNATURE:
-        notify_employee_self(db, rn.employee_id, type="doc_expiring",
-                             title="عقود التجديد بانتظار توقيعك",
-                             detail="حمّل العقدين، وقّعهما، ثم ارفع النسختين الموقّعتين.",
-                             related_entity_type="renewal", related_entity_id=rn.id,
-                             dedup_key=f"renewal_sign:{rn.id}")
+        emp_user = db.scalar(select(models.User).where(models.User.employee_id == rn.employee_id))
+        if emp_user:
+            notify_from_template(
+                db, code="NTF-016", assignee_user_id=emp_user.id, company_id=rn.company_id,
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_sign:{rn.id}")
     elif rn.status == R.CONTRACTS_SIGNED:
         notify_roles(db, rn.company_id, ["delegate"], type="renew_residency",
                      title=f"تم رفع العقود الموقّعة: {name}",
@@ -192,12 +197,12 @@ def _notify_stage(db, rn):
                      related_entity_type="renewal", related_entity_id=rn.id,
                      dedup_key=f"renewal_signed:{rn.id}")
     elif rn.status == R.AWAITING_CIVIL_CARD:
-        notify_employee_self(db, rn.employee_id, type="doc_expiring",
-                             title="تم تجديد الإقامة — ارفع البطاقة المدنية",
-                             detail=("تم الانتهاء من إجراءات تجديد الإقامة. يرجى دفع رسوم البطاقة "
-                                     "المدنية واستخراج البطاقة الجديدة ثم رفع صورة منها على النظام."),
-                             related_entity_type="renewal", related_entity_id=rn.id,
-                             dedup_key=f"renewal_card:{rn.id}")
+        emp_user = db.scalar(select(models.User).where(models.User.employee_id == rn.employee_id))
+        if emp_user:
+            notify_from_template(
+                db, code="NTF-017", assignee_user_id=emp_user.id, company_id=rn.company_id,
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_card:{rn.id}")
     elif rn.status == R.COMPLETED:
         notify_roles(db, rn.company_id, ["delegate", "hr"], type="request_update",
                      title=f"اكتملت معاملة تجديد الإقامة: {name}",

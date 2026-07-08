@@ -39,7 +39,7 @@ def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None
     emp = db.get(models.Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
     if not emp.hire_date:
         raise HTTPException(status_code=400, detail="تاريخ التعيين غير مُسجّل")
     company = db.get(models.Company, emp.company_id)
@@ -66,7 +66,7 @@ def for_employee(data: schemas.EosForEmployeeIn,
     emp = db.get(models.Employee, data.employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
     company = db.get(models.Company, emp.company_id)
     try:
         result = eos_engine.calculate_eos(

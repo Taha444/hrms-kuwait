@@ -55,19 +55,19 @@ async def upload_document(
         emp = db.get(models.Employee, entity_id)
         if not emp:
             raise HTTPException(status_code=404, detail="الموظف غير موجود")
-        assert_same_company(user, emp.company_id)
+        assert_same_company(user, emp.company_id, db=db)
         company_id = emp.company_id
     elif entity_type == "company":
         company = db.get(models.Company, entity_id)
         if not company:
             raise HTTPException(status_code=404, detail="الشركة غير موجودة")
-        assert_same_company(user, company.id)
+        assert_same_company(user, company.id, db=db)
         company_id = company.id
     elif entity_type == "branch":
         branch = db.get(models.Branch, entity_id)
         if not branch:
             raise HTTPException(status_code=404, detail="الفرع غير موجود")
-        assert_same_company(user, branch.company_id)
+        assert_same_company(user, branch.company_id, db=db)
         company_id = branch.company_id
     else:
         company_id = user.company_id
@@ -137,7 +137,7 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
     ))
     if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
-    assert_same_company(user, doc.company_id)
+    assert_same_company(user, doc.company_id, db=db)
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 

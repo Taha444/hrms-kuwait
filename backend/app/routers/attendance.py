@@ -70,7 +70,7 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
     # العزل + أهلية الموظف لهذا الفرع
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     if emp.branch_id not in (None, branch.id):
         raise HTTPException(status_code=403, detail="أنت غير مُسجَّل على هذا الفرع")
 
@@ -332,7 +332,7 @@ def branch_attendance(branch_id: int,
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     rows = db.scalars(
         select(models.AttendanceRecord)
         .where(models.AttendanceRecord.branch_id == branch_id)

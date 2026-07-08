@@ -85,7 +85,7 @@ def branch_archive(branch_id: int,
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     return {
         "branch": {"id": branch.id, "name": branch.name, "address": branch.address},
         "doc_types": [{"code": c, "name": n} for c, n in BRANCH_DOC_TYPES],

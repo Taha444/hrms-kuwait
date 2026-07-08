@@ -72,7 +72,7 @@ def submit_request(data: schemas.RequestIn, request: Request,
     emp = db.get(models.Employee, emp_id)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
 
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
@@ -322,6 +322,19 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
     audit(db, user, "file_document", "request", req.id, detail=kind, request=request)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     if rt:
+        # أرشفة فعلية في ملف الموظف العام (جدول Document) — لا يبقى الأثر داخل الطلب فقط
+        type_code = f"request_{req.request_type_code}"
+        prev = db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee", models.Document.entity_id == req.employee_id,
+            models.Document.document_type_code == type_code, models.Document.is_current == True,  # noqa: E712
+        )).all()
+        for d in prev:
+            d.is_current = False
+        db.add(models.Document(
+            company_id=req.company_id, entity_type="employee", entity_id=req.employee_id,
+            document_type_code=type_code, title=rt.name, file_path=doc.file_path,
+            mime="application/pdf", version=len(prev) + 1, is_current=True, uploaded_by=user.id,
+        ))
         from ..notifications import notify_from_template
         notify_from_template(
             db, code="NTF-045", assignee_user_id=user.id, company_id=req.company_id,

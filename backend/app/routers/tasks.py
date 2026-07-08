@@ -36,7 +36,8 @@ def my_tasks(status: str | None = "open", category: str | None = None,
     out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
             "detail": t.detail, "status": t.status, "severity": t.severity,
             "due_date": t.due_date, "related_entity_type": t.related_entity_type,
-            "related_entity_id": t.related_entity_id, "created_at": t.created_at} for t in rows]
+            "related_entity_id": t.related_entity_id, "created_at": t.created_at,
+            "template_code": t.template_code, "channel": t.channel} for t in rows]
     if category:
         out = [x for x in out if x["category"] == category]
     return out

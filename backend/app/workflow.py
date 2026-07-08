@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .config import settings
-from .notifications import create_task, notify_employee_self, users_by_role
+from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
 
 # إلغاء الطلب إجراء تشغيلي → المالك (اطلاع فقط) مستبعَد
 CANCEL_ROLES = {"super_admin", "company_manager"}
@@ -425,10 +425,9 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
     if kind in ("approval", "hr_review"):
         req.status = "pending"
         for u in resolve_stage_approvers(db, req, stage):
-            create_task(
-                db, company_id=req.company_id, assignee_user_id=u.id, type="request_stage",
-                title=f"بانتظار موافقتك: {rt.name} — {name}",
-                detail=f"المرحلة: {label}. اطّلع على الطلب لاعتماده أو رفضه.",
+            notify_from_template(
+                db, code="NTF-033", assignee_user_id=u.id, company_id=req.company_id,
+                context={"request_type": rt.name, "employee_name": name, "stage_label": label},
                 related_entity_type="request", related_entity_id=req.id,
                 severity="info", dedup_key=f"req_stage:{req.id}:{req.current_stage}:u{u.id}",
             )
@@ -436,11 +435,11 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
         req.status = "awaiting_delegate"
         p = req.payload_json or {}
         for u in users_by_role(db, req.company_id, ["delegate"]):
-            create_task(
-                db, company_id=req.company_id, assignee_user_id=u.id, type="exit_permit",
-                title=f"إجراءات إذن مغادرة البلاد: {name}",
-                detail=(f"تم منح {name} إجازة من {p.get('start_date','')} إلى {p.get('end_date','')}، "
-                        "برجاء البدء في إجراءات إذن مغادرة البلاد ورفعه على النظام."),
+            notify_from_template(
+                db, code="NTF-065", assignee_user_id=u.id, company_id=req.company_id,
+                context={"task": f"إجراءات إذن مغادرة البلاد لـ{name} "
+                                 f"({p.get('start_date','')} إلى {p.get('end_date','')})",
+                        "request_no": req.id},
                 related_entity_type="request", related_entity_id=req.id,
                 severity="warning", dedup_key=f"req_exit:{req.id}",
             )
@@ -449,29 +448,33 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
         # يُنفّذ الطلب الدور المحدَّد في المرحلة (hr افتراضيًا، أو accountant للسلف/القروض)
         executor = stage.get("role") or "hr"
         for u in users_by_role(db, req.company_id, [executor]):
-            create_task(
-                db, company_id=req.company_id, assignee_user_id=u.id, type="pickup_ready",
-                title=f"طلب معتمَد بانتظار التنفيذ: {rt.name} — {name}",
-                detail="تم اعتماد الطلب. استكمل التنفيذ/التسليم.",
+            notify_from_template(
+                db, code="NTF-039", assignee_user_id=u.id, company_id=req.company_id,
+                context={"request_type": f"{rt.name} — {name}"},
                 related_entity_type="request", related_entity_id=req.id,
                 dedup_key=f"req_pickup:{req.id}",
             )
-        notify_employee_self(
-            db, req.employee_id, type="pickup_ready",
-            title=f"{rt.name} جاهزة للاستلام",
-            detail="يرجى استلام المستند من مكتب شؤون الموظفين.",
-            related_entity_type="request", related_entity_id=req.id,
+        _notify_employee_from_template(
+            db, req, code="NTF-039", context={"request_type": rt.name},
             dedup_key=f"req_pickup_emp:{req.id}",
         )
 
     # إشعار العامل بالتقدّم
-    notify_employee_self(
-        db, req.employee_id, type="request_update",
-        title=f"تحديث على طلبك: {rt.name}",
-        detail=f"وصل طلبك إلى مرحلة: {label}.",
-        related_entity_type="request", related_entity_id=req.id,
+    _notify_employee_from_template(
+        db, req, code="NTF-034", context={"request_type": rt.name, "stage_label": label},
         dedup_key=f"req_progress:{req.id}:{req.current_stage}",
     )
+
+
+def _notify_employee_from_template(db: Session, req: models.Request, code: str,
+                                   context: dict | None = None, **kwargs) -> None:
+    """يُشعر العامل نفسه (خدمة ذاتية) عبر قالب مسمّى من الكتالوج — إن كان له حساب."""
+    user = db.scalar(select(models.User).where(models.User.employee_id == req.employee_id))
+    if user:
+        notify_from_template(
+            db, code=code, assignee_user_id=user.id, company_id=req.company_id,
+            context=context, related_entity_type="request", related_entity_id=req.id, **kwargs,
+        )
 
 
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
@@ -499,11 +502,8 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
         # يولّد المستند وينتقل لحالة انتظار التوقيع (لا يتقدّم حتى رفع الموقّع)
         generate_document(db, req, rt, kind="generated_pdf", actor=user)
         req.status = "awaiting_signature"
-        notify_employee_self(
-            db, req.employee_id, type="appointment",
-            title="مطلوب حضورك للتوقيع",
-            detail="برجاء مراجعة مسؤول شؤون الموظفين في مقر الشركة لإتمام طلبك بالتوقيع.",
-            related_entity_type="request", related_entity_id=req.id,
+        _notify_employee_from_template(
+            db, req, code="NTF-038", context={"scheduled_at": "أقرب وقت ممكن"},
             dedup_key=f"req_sign:{req.id}",
         )
         db.commit()
@@ -528,11 +528,8 @@ def upload_signed_scan_done(db: Session, req: models.Request, rt: models.Request
 def upload_exit_permit_done(db: Session, req: models.Request, rt: models.RequestType) -> None:
     """يُستدعى بعد رفع إذن المغادرة في مرحلة delegate_exit → يكتمل الطلب."""
     name = _employee_name(db, req)
-    notify_employee_self(
-        db, req.employee_id, type="exit_permit",
-        title="إذن مغادرة البلاد جاهز",
-        detail=f"تم إنهاء إجراءات إذن المغادرة الخاص بـ {name}. يمكنك طباعته والسفر.",
-        related_entity_type="request", related_entity_id=req.id,
+    _notify_employee_from_template(
+        db, req, code="NTF-018", context={"employee_name": name},
         dedup_key=f"req_exit_ready:{req.id}",
     )
     _advance(db, req, rt)
@@ -555,11 +552,9 @@ def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
 def _finalize(db: Session, req: models.Request) -> None:
     req.status = "completed"
     req.closed_at = datetime.now(timezone.utc)
-    notify_employee_self(
-        db, req.employee_id, type="request_update",
-        title="اكتمل طلبك",
-        detail="تم إنهاء جميع مراحل طلبك بنجاح.",
-        related_entity_type="request", related_entity_id=req.id,
+    rt = get_request_type(db, req.company_id, req.request_type_code)
+    _notify_employee_from_template(
+        db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
         dedup_key=f"req_done:{req.id}",
     )
 
@@ -587,11 +582,9 @@ def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
     word = "رفض" if kind == "rejected" else "إلغاء"
     reason = f" السبب: {note}" if note else ""
     # العامل
-    notify_employee_self(
-        db, req.employee_id, type="request_update",
-        title=f"تم {word} طلبك: {rt.name}",
-        detail=f"تم {word} الطلب من قبل {actor.full_name or actor.role}.{reason}",
-        related_entity_type="request", related_entity_id=req.id,
+    emp_code = "NTF-035" if kind == "rejected" else "NTF-036"
+    _notify_employee_from_template(
+        db, req, code=emp_code, context={"request_type": rt.name, "reason": note or ""},
         dedup_key=f"req_term_emp:{req.id}",
     )
     # كل من اعتمد سابقًا

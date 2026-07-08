@@ -107,7 +107,7 @@ def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     # مسؤول الفرع لا يطّلع على إحصائيات فرع خارج نطاقه
     bids = resolve_scope(user, db).branch_ids
     if bids is not None and branch_id not in bids:
@@ -140,7 +140,7 @@ def branch_qr(branch_id: int, user: models.User = Depends(get_current_user),
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     return {
         "branch_id": branch.id, "branch_name": branch.name,
         "code": current_code(branch.qr_secret),
@@ -156,7 +156,7 @@ def rotate_kiosk_key(branch_id: int, request: Request,
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     branch.kiosk_key = secrets.token_urlsafe(24)
     audit(db, user, "rotate_kiosk_key", "branch", branch.id, request=request)
     db.commit()
@@ -174,7 +174,7 @@ def get_kiosk_url(branch_id: int,
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     if not branch.kiosk_key:
         return {"branch_id": branch.id, "kiosk_path": None}
     return {"branch_id": branch.id, "kiosk_key": branch.kiosk_key,
@@ -188,7 +188,7 @@ def add_supervisor(branch_id: int, user_id: int, request: Request,
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    assert_same_company(user, branch.company_id)
+    assert_same_company(user, branch.company_id, db=db)
     target = db.get(models.User, user_id)
     if not target or target.company_id != branch.company_id:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")

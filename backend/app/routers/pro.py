@@ -74,7 +74,7 @@ def renew_permit(permit_id: int, expiry_date: date, request: Request,
     p = db.get(models.Permit, permit_id)
     if not p:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
-    assert_same_company(user, p.company_id)
+    assert_same_company(user, p.company_id, db=db)
     old_expiry = p.expiry_date
     p.expiry_date = expiry_date
     if number:
@@ -105,7 +105,7 @@ def renew_license(license_id: int, expiry_date: date, request: Request, note: st
     lic = db.get(models.License, license_id)
     if not lic:
         raise HTTPException(status_code=404, detail="الترخيص غير موجود")
-    assert_same_company(user, lic.company_id)
+    assert_same_company(user, lic.company_id, db=db)
     old = lic.expiry_date
     lic.expiry_date = expiry_date
     lic.status = "active"
@@ -127,7 +127,7 @@ def add_note(entity_type: str, entity_id: int, note: str, request: Request,
     entity = db.get(models.Permit if entity_type == "permit" else models.License, entity_id)
     if not entity:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
-    assert_same_company(user, entity.company_id)
+    assert_same_company(user, entity.company_id, db=db)
     log = models.GovLog(company_id=entity.company_id, entity_type=entity_type,
                         entity_id=entity_id, action="note", note=note, created_by=user.id)
     db.add(log)

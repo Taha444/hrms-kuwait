@@ -31,11 +31,15 @@ def _company(user: models.User, company_id: int | None) -> int:
 
 
 @router.get("/preview")
-def preview(period: str, company_id: int | None = None,
+def preview(period: str, request: Request, company_id: int | None = None,
             user: models.User = Depends(require_perm("view_payroll")),
             db: Session = Depends(get_db)):
     y, m = _parse_period(period)
-    return payroll_engine.compute_payroll(db, _company(user, company_id), y, m)
+    cid = _company(user, company_id)
+    result = payroll_engine.compute_payroll(db, cid, y, m)
+    audit(db, user, "view_payroll_preview", "company", cid, detail=result["period"], request=request)
+    db.commit()
+    return result
 
 
 @router.post("/run")
@@ -85,5 +89,5 @@ def get_run(run_id: int, user: models.User = Depends(require_perm("view_payroll"
     if not pr:
         raise HTTPException(status_code=404, detail="المسيّر غير موجود")
     from ..deps import assert_same_company
-    assert_same_company(user, pr.company_id)
+    assert_same_company(user, pr.company_id, db=db)
     return pr.totals_json or {}

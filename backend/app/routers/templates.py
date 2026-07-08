@@ -78,7 +78,7 @@ def get_template(tpl_id: int, user: models.User = Depends(require_perm("manage_t
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
     if t.company_id is not None:
-        assert_same_company(user, t.company_id)
+        assert_same_company(user, t.company_id, db=db)
     return {"id": t.id, "name": t.name, "category": t.category, "body_html": t.body_html,
             "placeholders": sorted(set(_TOKEN_RE.findall(t.body_html)))}
 
@@ -153,9 +153,9 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
     emp = db.get(models.Employee, data.employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    assert_same_company(user, emp.company_id)
+    assert_same_company(user, emp.company_id, db=db)
     if t.company_id is not None:
-        assert_same_company(user, t.company_id)
+        assert_same_company(user, t.company_id, db=db)
 
     ctx = _build_context(db, emp)
     ctx.update({k: str(v) for k, v in (data.extra or {}).items()})  # حقول مخصّصة يدخلها المستخدم
