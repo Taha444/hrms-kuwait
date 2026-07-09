@@ -175,6 +175,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   req_months: { ar: "عدد الأشهر", en: "Months" },
   req_date: { ar: "التاريخ", en: "Date" },
   req_purpose: { ar: "الغرض", en: "Purpose" },
+  req_details: { ar: "تفاصيل / سبب الطلب", en: "Details / Reason" },
+  req_details_hint: { ar: "اترك الحقول غير المناسبة لنوع الطلب فارغة", en: "Leave fields that don't apply to this request type blank" },
   // مركز العمليات
   ops_eyebrow: { ar: "المتابعة والامتثال", en: "Compliance & Monitoring" },
   ops_sub: { ar: "كل ما يحتاج إجراءً في مكان واحد — إقامات وتراخيص وطلبات ومهام", en: "Everything needing action in one place" },
@@ -516,6 +518,14 @@ const dict: Record<string, { ar: string; en: string }> = {
   rd_appt_set: { ar: "تم تحديد الموعد", en: "Appointment set" },
   rd_received_done: { ar: "تم تسجيل الاستلام", en: "Receipt recorded" },
   rd_doc_uploaded: { ar: "تم رفع المستند", en: "Document uploaded" },
+  rd_print_status: { ar: "حالة الطباعة", en: "Print Status" },
+  rd_print_ready: { ar: "جاهز للطباعة", en: "Ready to Print" },
+  rd_print_printed: { ar: "تمت الطباعة", en: "Printed" },
+  rd_print_filed: { ar: "مؤرشف", en: "Filed" },
+  rd_mark_printed: { ar: "تسجيل الطباعة", en: "Mark as Printed" },
+  rd_mark_filed: { ar: "تسجيل الأرشفة", en: "Mark as Filed" },
+  rd_marked_printed: { ar: "تم تسجيل الطباعة", en: "Print recorded" },
+  rd_marked_filed: { ar: "تم تسجيل الأرشفة", en: "Filing recorded" },
   // المستخدمون والصلاحيات — مفاتيح إضافية
   users_title: { ar: "المستخدمون والصلاحيات", en: "Users & Permissions" },
   user_civil_id: { ar: "الرقم المدني", en: "Civil ID" }, user_name: { ar: "الاسم", en: "Name" },

@@ -232,8 +232,9 @@ td.num, th.num { font-variant-numeric: tabular-nums; }
 .pill.info { background: var(--info-bg); color: var(--info); }
 .pill.warning, .pill.warn { background: var(--warning-bg); color: var(--warning); }
 .pill.critical, .pill.rejected, .pill.cancelled, .pill.danger { background: var(--danger-bg); color: var(--danger); }
-.pill.success, .pill.completed, .pill.approved, .pill.active { background: var(--success-bg); color: var(--success); }
-.pill.pending, .pill.awaiting_signature, .pill.awaiting_delegate, .pill.ready_for_pickup, .pill.neutral {
+.pill.success, .pill.completed, .pill.approved, .pill.active, .pill.filed { background: var(--success-bg); color: var(--success); }
+.pill.printed { background: var(--gold-soft); color: #8a6d10; }
+.pill.pending, .pill.awaiting_signature, .pill.awaiting_delegate, .pill.ready_for_pickup, .pill.ready_to_print, .pill.neutral {
   background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
 .pill.gold { background: var(--gold-soft); color: #8a6d10; }
 

@@ -45,7 +45,16 @@ export default function RequestDetail() {
     window.open(`/api/requests/${id}/document/${kind}`, "_blank");
   };
 
+  const markPrinted = (kind: string) =>
+    act(() => api.post(`/requests/${id}/document/${kind}/mark-printed`), t("rd_marked_printed"));
+  const markFiled = (kind: string) =>
+    act(() => api.post(`/requests/${id}/document/${kind}/mark-filed`), t("rd_marked_filed"));
+
   const isManager = user?.role && ["company_manager", "company_owner", "super_admin"].includes(user.role);
+  const genDoc = req.documents?.find((d: any) => d.kind === "generated_pdf");
+  const printStatusLabel: Record<string, string> = {
+    ready_to_print: t("rd_print_ready"), printed: t("rd_print_printed"), filed: t("rd_print_filed"),
+  };
 
   return (
     <div>
@@ -55,10 +64,25 @@ export default function RequestDetail() {
           <div>
             <p><b>{t("rd_employee")}:</b> {req.employee_name}</p>
             <p><b>{t("rd_status")}:</b> <span className={`pill ${req.status}`}>{statusAr(req.status)}</span></p>
+            {genDoc && (
+              <p><b>{t("rd_print_status")}:</b>{" "}
+                <span className={`pill ${genDoc.print_status}`}>
+                  {printStatusLabel[genDoc.print_status] || genDoc.print_status}
+                </span>
+              </p>
+            )}
             <p className="muted">{t("rd_data")}: {JSON.stringify(req.payload)}</p>
           </div>
-          {req.documents?.some((d: any) => d.kind === "generated_pdf") && (
-            <button onClick={() => downloadDoc("generated_pdf")}>{t("rd_print_doc")}</button>
+          {genDoc && (
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              <button onClick={() => downloadDoc("generated_pdf")}>{t("rd_print_doc")}</button>
+              {isManager && genDoc.print_status === "ready_to_print" && (
+                <button className="ghost" onClick={() => markPrinted("generated_pdf")}>{t("rd_mark_printed")}</button>
+              )}
+              {can("upload_documents") && genDoc.print_status === "printed" && (
+                <button className="ghost" onClick={() => markFiled("generated_pdf")}>{t("rd_mark_filed")}</button>
+              )}
+            </div>
           )}
         </div>
       </div>

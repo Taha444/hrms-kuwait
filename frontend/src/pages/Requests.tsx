@@ -35,7 +35,10 @@ export default function Requests() {
   const submit = async () => {
     setErr("");
     try {
-      await api.post("/requests", { request_type_code: typeCode, payload_json: payload });
+      const clean = Object.fromEntries(
+        Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
+      );
+      await api.post("/requests", { request_type_code: typeCode, payload_json: clean });
       setShowNew(false); setPayload({}); load();
     } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
@@ -105,6 +108,19 @@ export default function Requests() {
               <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
                 <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </div>
+          )}
+          {!["leave", "salary_certificate", "exit_permission", "advance", "loan"].includes(typeCode) && typeCode && (
+            <>
+              <div className="row">
+                <div className="field" style={{ flex: 1 }}><label>{t("req_date")}</label>
+                  <input type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
+                <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
+                  <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: e.target.value ? +e.target.value : undefined })} /></div>
+              </div>
+              <div className="field"><label>{t("req_details")}</label>
+                <textarea rows={3} onChange={(e) => setPayload({ ...payload, details: e.target.value })} /></div>
+              <p className="muted">{t("req_details_hint")}</p>
+            </>
           )}
           {err && <div className="err">{err}</div>}
           <button onClick={submit}>{t("submit")}</button>
