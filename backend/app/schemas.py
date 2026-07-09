@@ -277,6 +277,7 @@ class EosForEmployeeIn(BaseModel):
 
 class DocumentTemplateIn(BaseModel):
     name: str
+    name_en: str | None = None
     category: str = "عام"
     body_html: str
     code: str | None = None

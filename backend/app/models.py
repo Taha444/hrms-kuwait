@@ -463,6 +463,7 @@ class DocumentTemplate(Base):
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
     code: Mapped[str | None] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(200))
+    name_en: Mapped[str | None] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(60), default="عام")
     body_html: Mapped[str] = mapped_column(Text)  # نص الصيغة مع متغيّرات {{...}}
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

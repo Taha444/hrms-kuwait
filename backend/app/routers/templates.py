@@ -28,8 +28,11 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 # المتغيّرات التلقائية المتاحة (المفتاح: الوصف العربي)
 PLACEHOLDERS = {
     "employee_name": "اسم الموظف",
+    "employee_name_en": "اسم الموظف (إنجليزي)",
+    "employee_id": "الرقم الوظيفي",
     "civil_id": "الرقم المدني",
     "job_title": "المسمى الوظيفي",
+    "department": "القسم/الإدارة",
     "nationality": "الجنسية",
     "basic_salary": "الراتب الأساسي",
     "hire_date": "تاريخ التعيين",
@@ -65,7 +68,7 @@ def list_templates(company_id: int | None = None,
             continue
         if cid is not None and t.company_id not in (None, cid):
             continue
-        out.append({"id": t.id, "name": t.name, "category": t.category,
+        out.append({"id": t.id, "name": t.name, "name_en": t.name_en, "category": t.category,
                     "is_global": t.company_id is None,
                     "placeholders": sorted(set(_TOKEN_RE.findall(t.body_html)))})
     return out
@@ -79,7 +82,7 @@ def get_template(tpl_id: int, user: models.User = Depends(require_perm("manage_t
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
     if t.company_id is not None:
         assert_same_company(user, t.company_id, db=db)
-    return {"id": t.id, "name": t.name, "category": t.category, "body_html": t.body_html,
+    return {"id": t.id, "name": t.name, "name_en": t.name_en, "category": t.category, "body_html": t.body_html,
             "placeholders": sorted(set(_TOKEN_RE.findall(t.body_html)))}
 
 
@@ -88,7 +91,7 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
                     user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
     # إنشاء النماذج حصري للإدارة العليا؛ باقي المستخدمين يختارون من الموجود
-    t = models.DocumentTemplate(company_id=None, name=data.name, category=data.category,
+    t = models.DocumentTemplate(company_id=None, name=data.name, name_en=data.name_en, category=data.category,
                                 body_html=data.body_html, code=data.code, created_by=user.id)
     db.add(t)
     db.flush()
@@ -104,7 +107,7 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
-    t.name, t.category, t.body_html = data.name, data.category, data.body_html
+    t.name, t.name_en, t.category, t.body_html = data.name, data.name_en, data.category, data.body_html
     audit(db, user, "update_template", "template", t.id, request=request)
     db.commit()
     return {"ok": True}
@@ -124,10 +127,14 @@ def delete_template(tpl_id: int, user: models.User = Depends(require_super_admin
 def _build_context(db: Session, emp: models.Employee) -> dict:
     company = db.get(models.Company, emp.company_id)
     branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
+    department = db.get(models.Department, emp.department_id) if emp.department_id else None
     return {
         "employee_name": emp.name or "",
+        "employee_name_en": emp.name_en or "",
+        "employee_id": str(emp.id),
         "civil_id": emp.civil_id or "",
         "job_title": emp.job_title or "",
+        "department": department.name if department else "",
         "nationality": emp.nationality or "",
         "basic_salary": f"{emp.basic_salary:.3f} د.ك" if emp.basic_salary else "",
         "hire_date": emp.hire_date.isoformat() if emp.hire_date else "",
@@ -166,7 +173,7 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
         return html.escape(str(ctx.get(key, "................")))
 
     filled = _TOKEN_RE.sub(repl, t.body_html)
-    rendered = _wrap_printable(t.name, filled)
+    rendered = _wrap_printable(t, ctx, filled)
 
     document_id = None
     if data.save:
@@ -189,18 +196,65 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
     return {"html": rendered, "filename": f"{t.name} - {emp.name}.html", "document_id": document_id}
 
 
-def _wrap_printable(title: str, body: str) -> str:
+def _wrap_printable(t: "models.DocumentTemplate", ctx: dict, body: str) -> str:
+    """يبني هيكل الصفحة ثنائي اللغة الموحّد (ترويسة الشركة، العنوان، صف المرجع/التاريخ،
+    صف الشركة/الفرع/الحالة، شبكة بيانات الموظف)، ويضع محتوى الصيغة الخاص بها (body) في الوسط."""
+    title_en = t.name_en or ""
+    ref_no = html.escape(str(ctx.get("ref_no", "")))
+    date_today = html.escape(str(ctx.get("date_today", "")))
+    company_name = html.escape(str(ctx.get("company_name", "")))
+    company_name_en = html.escape(str(ctx.get("company_name_en", "")))
+    branch_name = html.escape(str(ctx.get("branch_name", "")))
+
+    def cell(ar_label, en_label, value):
+        v = html.escape(str(value)) if value else "................"
+        return f"<td><span class='muted'>{ar_label} / {en_label}</span><br>{v}</td>"
+
+    info_grid = f"""
+<table class="info-grid">
+<tr>{cell('اسم الموظف', 'Employee Name', ctx.get('employee_name'))}
+{cell('الرقم المدني', 'Civil ID', ctx.get('civil_id'))}</tr>
+<tr>{cell('الرقم الوظيفي', 'Employee ID', ctx.get('employee_id'))}
+{cell('المسمى الوظيفي', 'Job Title', ctx.get('job_title'))}</tr>
+<tr>{cell('القسم', 'Department', ctx.get('department'))}
+{cell('الفرع', 'Branch', ctx.get('branch_name'))}</tr>
+</table>"""
+
     return f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<title>{title}</title>
+<title>{html.escape(t.name)}</title>
 <style>
-@page {{ size: A4; margin: 2.2cm; }}
-body {{ font-family: "Tajawal","Segoe UI",Tahoma,Arial; color:#111; line-height:1.9; font-size:15px; }}
-h1,h2,h3 {{ text-align:center; }}
-.doc {{ max-width: 820px; margin: 0 auto; }}
-table {{ width:100%; border-collapse: collapse; }} td,th {{ border:1px solid #999; padding:8px; }}
+@page {{ size: A4; margin: 1.8cm; }}
+body {{ font-family: "Tajawal","Segoe UI",Tahoma,Arial; color:#111; line-height:1.8; font-size:14px; }}
+.doc {{ max-width: 860px; margin: 0 auto; }}
+.header-row {{ display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:10px; }}
+.company-block {{ text-align:right; }} .company-block .en {{ direction:ltr; color:#555; font-size:13px; }}
+h1 {{ text-align:center; font-size:20px; margin:6px 0 0; }}
+h1 .en {{ display:block; direction:ltr; font-size:15px; color:#555; font-weight:normal; }}
+table {{ width:100%; border-collapse: collapse; margin-bottom:10px; }}
+td,th {{ border:1px solid #999; padding:6px 8px; font-size:13px; vertical-align:top; }}
+.muted {{ color:#666; font-size:11px; }}
+.meta-row td {{ background:#f7f7f7; }}
+.info-grid td {{ width:33%; }}
+.sig-row td {{ text-align:center; height:70px; vertical-align:bottom; }}
+.footer {{ margin-top:18px; border-top:1px solid #ccc; padding-top:8px; font-size:11px; color:#777; text-align:center; }}
 .noprint {{ position:fixed; top:12px; left:12px; }}
 @media print {{ .noprint {{ display:none; }} }}
 </style></head><body>
 <button class="noprint" onclick="window.print()">🖨️ طباعة</button>
-<div class="doc">{body}</div>
+<div class="doc">
+<div class="header-row">
+<div class="company-block">{company_name}<div class="en">{company_name_en}</div></div>
+<div><span class="muted">كود: {html.escape(t.code or '')}</span></div>
+</div>
+<h1>{html.escape(t.name)}<span class="en">{title_en}</span></h1>
+<table class="meta-row"><tr>
+<td>التاريخ / Date: {date_today}</td><td>المرجع / Reference No.: {ref_no}</td>
+</tr><tr>
+<td>الشركة / الفرع — Company / Branch: {company_name} / {branch_name}</td>
+<td>الحالة / Status: صادر — Issued</td>
+</tr></table>
+{info_grid}
+{body}
+<div class="footer">رمز التحقق / Verification Code: {ref_no} — Verification Code / QR</div>
+</div>
 </body></html>"""
