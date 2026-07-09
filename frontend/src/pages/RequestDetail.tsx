@@ -41,8 +41,15 @@ export default function RequestDetail() {
     await act(() => api.post(`/requests/${id}/documents`, fd), t("rd_doc_uploaded"));
   };
 
-  const downloadDoc = (kind: string) => {
-    window.open(`/api/requests/${id}/document/${kind}`, "_blank");
+  const downloadDoc = async (kind: string) => {
+    setErr("");
+    try {
+      // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 — نجلب الملف بالرمز ونعرضه كـ blob
+      const res = await api.get(`/requests/${id}/document/${kind}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
 
   const markPrinted = (kind: string) =>
