@@ -102,10 +102,12 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
                         "manage_users"},
-    # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)
+    # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
+    # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
     "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
-                   "view_reports", "export_reports", "view_tasks"},
+                   "view_reports", "export_reports", "view_tasks",
+                   "submit_request", "record_attendance"},
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
     "branch_supervisor": {"view_employee", "view_attendance", "approve_request",

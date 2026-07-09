@@ -412,10 +412,20 @@ def build_company(db, cfg) -> dict:
     deleg2 = staff(4, "delegate", "المندوب الثاني", PW["delegate"])
     sup1 = staff(5, "branch_supervisor", f"مسؤول {cfg['branches'][0][0]}", PW["supervisor"])
     sup2 = staff(6, "branch_supervisor", f"مسؤول {cfg['branches'][1][0]}", PW["supervisor"])
-    accountant = staff(7, "accountant", f"محاسب {cfg['name']}", PW["accountant"])  # noqa: F841
+    accountant = staff(7, "accountant", f"محاسب {cfg['name']}", PW["accountant"])
     db.flush()
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[0].id, user_id=sup1.id))
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[1].id, user_id=sup2.id))
+
+    # المحاسب موظف أيًضا (له ملف وحضور خاص به مثل أي موظف)، بمسمى وظيفي "محاسب"
+    accountant_emp = models.Employee(
+        company_id=company.id, civil_id=civ(p, 7), name=accountant.full_name,
+        nationality="كويتي", worker_type="موظف", job_title="محاسب", basic_salary=750,
+        hire_date=d(-500), status="active", license_id=license_.id, branch_id=branches[0].id,
+        shift_id=shift.id, attendance_mode="both", annual_leave_balance=30)
+    db.add(accountant_emp)
+    db.flush()
+    accountant.employee_id = accountant_emp.id
 
     # موظفون
     emps = []

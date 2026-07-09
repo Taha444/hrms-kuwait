@@ -92,8 +92,8 @@ def test_dashboard_scopes_to_selected_company(client):
     c1 = client.get("/api/dashboard", headers=h, params={"company_id": 1}).json()
     c2 = client.get("/api/dashboard", headers=h, params={"company_id": 2}).json()
     all_ = client.get("/api/dashboard", headers=h).json()  # كل الشركات
-    assert c1["employees"] == 6 and c2["employees"] == 6  # لكل شركة 6 موظفين
-    assert all_["employees"] == 12  # المجموع عند اختيار "كل الشركات"
+    assert c1["employees"] == 7 and c2["employees"] == 7  # 6 موظفين + المحاسب لكل شركة
+    assert all_["employees"] == 14  # المجموع عند اختيار "كل الشركات"
     assert c1["branches"] == 2 and c2["branches"] == 2
 
 
