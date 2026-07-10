@@ -440,6 +440,26 @@ def build_company(db, cfg) -> dict:
         emps.append(e)
     db.flush()
 
+    # هيكل تنظيمي (P0-07): إدارات فعلية + مدير مباشر لكل موظف — بيانات ديمو كانت بلا
+    # أقسام ولا مديرين إطلاًقا رغم وجود الحقول (Employee.department_id/direct_manager_id).
+    depts = [
+        models.Department(company_id=company.id, branch_id=branches[0].id,
+                          name="المبيعات والتشغيل", manager_user_id=manager.id),
+        models.Department(company_id=company.id, branch_id=branches[1].id,
+                          name="الشؤون الفنية", manager_user_id=manager.id),
+        models.Department(company_id=company.id, branch_id=branches[0].id,
+                          name="الإدارة والحسابات", manager_user_id=manager.id),
+    ]
+    for dept in depts:
+        db.add(dept)
+    db.flush()
+    # أول موظف بمسمى إشرافي (مدير فرع/مشرف/مدير مشروع) يصبح المدير المباشر للبقية
+    lead = next((e for e in emps if any(w in e.job_title for w in ("مدير", "مشرف"))), None)
+    for i, e in enumerate(emps):
+        e.department_id = depts[i % len(depts)].id
+        if lead and e.id != lead.id:
+            e.direct_manager_id = lead.id
+
     # حسابات خدمة ذاتية لأول موظفين (لتجربة الحضور)
     for e in emps[:2]:
         db.add(models.User(civil_id=e.civil_id, password_hash=hash_password(PW["employee"]),
@@ -475,9 +495,10 @@ def build_company(db, cfg) -> dict:
         emps[0].actual_salary = emps[0].basic_salary + 50
     if len(emps) > 1:
         emps[1].actual_salary = emps[1].basic_salary
-    # سجلات حضور تجريبية لأول موظفين متتبَّعين
+    # سجلات حضور تجريبية (P0-07: توسيع التغطية لتشمل أكثر من موظفَين فقط)
     _add_attendance(db, emps[0], emps[0].branch_id, 5, late_on=2)
     _add_attendance(db, emps[1], emps[1].branch_id, 4)
+    _add_attendance(db, emps[3], emps[3].branch_id, 3)
     # إجازة معتمدة لموظف ثالث (تظهر في مراجعة الحضور)
     today = date.today()
     ls = today.replace(day=min(10, 28))
@@ -503,7 +524,7 @@ def run():
                   models.Document, models.DocumentType, models.DocumentTemplate,
                   models.Permit, models.BranchSupervisor,
                   models.Shift, models.Branch, models.Transfer, models.UserPermission,
-                  models.Employee, models.License, models.User, models.Company):
+                  models.Employee, models.Department, models.License, models.User, models.Company):
         db.execute(delete(model))
     db.commit()
 
