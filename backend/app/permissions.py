@@ -97,11 +97,13 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # مدير الشركة: التشغيل اليومي فقط — موظفون/فروع/إدارات/إجازات/طلبات/تقارير/مستخدمو شركته.
     # لا رواتب/خصومات (المحاسب)، لا EOS/إنهاء خدمة (HR)، لا إقامات/تراخيص (PRO)،
     # لا إعدادات نظام/شركات/قوالب/تدقيق/نقل بين الشركات (الإدارة العليا).
+    # submit_request إلزامي (P0-05): مدير الشركة يبدأ نيابًة عن الموظف طلبات إدارية/داخلية
+    # كثيرة (ترقية، نقل، تجديد عقد...)، وبدونها كان /requests (POST) يرفضه بـ403.
     "company_manager": {"view_employee", "create_employee", "edit_employee", "delete_employee",
                         "view_documents", "upload_documents", "manage_leaves", "view_attendance",
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
-                        "manage_users"},
+                        "manage_users", "submit_request"},
     # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
     # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
     # approve_request إلزامي (P0-01): المحاسب معتمِد فعلي في مراحل كثيرة (السلف/القروض
@@ -114,21 +116,28 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                    "submit_request", "record_attendance", "approve_request"},
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
+    # submit_request (P0-05): يبدأ طلبات تشغيلية عن موظفيه (تغيير وردية، مهمة خارجية...).
     "branch_supervisor": {"view_employee", "view_attendance", "approve_request",
-                          "view_tasks", "view_reports", "export_reports"},
+                          "view_tasks", "view_reports", "export_reports", "submit_request"},
     # الشؤون القانونية/HR: مسؤول عن الموظفين فقط (لا حكومة/إقامات/تراخيص).
     # دورة حياة الموظف: إضافة/تعديل/عقود (مستندات)/إجازات/إنذارات/خصومات/EOS + خطابات الإنذار (قوالب).
     # approve_request مطلوب لأن HR مرحلة في سلسلة طلبات الموظفين (مراجعة/توقيع/استلام).
+    # submit_request إلزامي (P0-05): HR هو من يبدأ فعليًا معظم الإجراءات الداخلية (REQEOS،
+    # REQCLR، ADMEMP/ADMACTUAL/ADMDED/ADMVIO/ADMWARN/ADMTASK/ADMMISS/ADMSIGN) نيابًة عن
+    # الموظف؛ بدونها لم يكن أي منها قابًلا للإنشاء أصًلا (لا HR ولا company_manager كان
+    # يملك submit_request)، وهو السبب الحقيقي وراء توقّف REQEOS/REQCLR (P0-05).
     "hr": {"view_employee", "create_employee", "edit_employee",
            "view_documents", "upload_documents",
            "manage_leaves", "manage_deductions",
            "approve_request", "calculate_eos", "terminate_employee",
            "manage_templates", "view_tasks",
-           "view_attendance", "manage_attendance"},  # تصحيح واعتماد سجلات الحضور (FIX-015)
+           "view_attendance", "manage_attendance",  # تصحيح واعتماد سجلات الحضور (FIX-015)
+           "submit_request"},
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
-    # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR.
+    # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR. submit_request (P0-05): يبدأ معاملات
+    # حكومية (ADMLIC، REQWP...) نيابًة عن الموظف.
     "delegate": {"view_employee", "create_employee", "view_documents", "upload_documents",
-                 "manage_permits", "manage_licenses", "process_delegate_tasks",
+                 "manage_permits", "manage_licenses", "process_delegate_tasks", "submit_request",
                  "view_tasks", "manage_tasks"},
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
     "admin_employee": set(),

@@ -530,6 +530,10 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
         approver_user_id=user.id, decision=decision, note=note,
     )
     db.add(approval)
+    # autoflush=False على مستوى الجلسة (database.py) — بدون flush صريح هنا لا يرى استعلام
+    # generate_document() اعتماد هذه المرحلة نفسها، فتخرج آخر مرحلة (المكتمِلة للمستند)
+    # غائبة عن سلسلة الاعتماد داخل مستندها نفسه (P0-05).
+    db.flush()
 
     if decision == "rejected":
         req.status = "rejected"
@@ -711,6 +715,12 @@ PAYLOAD_KEY_LABELS_AR: dict[str, str] = {
     "target_entity": "الجهة", "language": "اللغة", "effective_month": "شهر السريان",
     "proof": "الإثبات", "old_civil": "الرقم المدني السابق", "new_civil": "الرقم المدني الجديد",
     "old_passport": "الجواز السابق", "new_passport": "الجواز الجديد", "expiry": "تاريخ الانتهاء",
+    # REQEOS (تسوية نهاية الخدمة، P0-05)
+    "hire_date": "تاريخ التعيين", "last_day": "آخر يوم عمل", "salary_basis": "أساس احتساب الراتب",
+    "service_duration": "مدة الخدمة", "entitlements": "المستحقات (د.ك)", "deductions": "الاستقطاعات (د.ك)",
+    "net": "صافي المستحقات (د.ك)",
+    # REQCLR (إخلاء الطرف، P0-05)
+    "finance_status": "الحالة المالية", "department_signoffs": "توقيعات الأقسام",
 }
 
 

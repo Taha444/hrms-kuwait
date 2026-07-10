@@ -28,6 +28,96 @@ def test_advance_request_flows_to_accountant(client):
     acc = login(client, "100000000007", "account123")
     tasks = client.get("/api/tasks/my", headers=auth_headers(acc)).json()
     assert any(tk.get("related_entity_id") == rid for tk in tasks)
+    # P0-01: المحاسب يملك approve_request فعليًا فيقدر يُنهي استلام السلفة (كان 403 قبل الإصلاح)
+    r = client.post(f"/api/requests/{rid}/received", headers=auth_headers(acc))
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "completed"
+
+
+def test_accountant_can_decide_approval_stage_assigned_to_them(client):
+    """P0-01: أي مرحلة اعتماد (لا pickup فقط) مسندة للمحاسب يجب أن يقدر يعتمدها/يرفضها."""
+    emp = login(client, "100000000101", "emp12345")
+    rid = client.post("/api/requests", headers=auth_headers(emp), json={
+        "request_type_code": "REQPAY", "payload_json": {"period": "2026-06", "reason": "خطأ حساب"},
+    }).json()["id"]
+    acc = login(client, "100000000007", "account123")
+    r = client.post(f"/api/requests/{rid}/decide", headers=auth_headers(acc), json={"decision": "approved"})
+    assert r.status_code == 200, r.text
+
+
+def test_hr_can_submit_request_on_employees_behalf(client):
+    """P0-05: HR كان بلا submit_request إطلاًقا فلا يقدر ينشئ REQEOS/REQCLR/ADM* نيابًة عن الموظف."""
+    emp_id = _emp_id(client)
+    hr = login(client, "100000000002", "hr12345")
+    r = client.post("/api/requests", headers=auth_headers(hr), json={
+        "request_type_code": "REQEOS", "employee_id": emp_id,
+        "payload_json": {"hire_date": "2020-01-15", "last_day": "2026-07-01", "salary_basis": 480,
+                         "service_duration": "6 سنوات", "entitlements": 1450.5, "deductions": 120,
+                         "net": 1330.5},
+    })
+    assert r.status_code == 201, r.text
+
+
+def test_reqeos_and_reqclr_complete_with_full_pdf(client):
+    """P0-05: REQEOS/REQCLR يكتملان فعليًا (لا يتوقفان عند المحاسب) وتصدر لهما PDF كاملة
+    تضم كل مراحل الاعتماد بما فيها المرحلة الأخيرة المولّدة للمستند نفسها (كانت تُفقد بسبب
+    autoflush=False قبل db.flush() المضافة في decide())."""
+    emp_id = _emp_id(client)
+    hr = login(client, "100000000002", "hr12345")
+    acc = login(client, "100000000007", "account123")
+    mgr = login(client, "100000000001", "manager123")
+
+    rid = client.post("/api/requests", headers=auth_headers(hr), json={
+        "request_type_code": "REQEOS", "employee_id": emp_id,
+        "payload_json": {"hire_date": "2020-01-15", "last_day": "2026-07-01", "salary_basis": 480,
+                         "service_duration": "6 سنوات", "entitlements": 1450.5, "deductions": 120,
+                         "net": 1330.5},
+    }).json()["id"]
+    client.post(f"/api/requests/{rid}/decide", headers=auth_headers(hr), json={"decision": "approved"})
+    client.post(f"/api/requests/{rid}/decide", headers=auth_headers(acc), json={"decision": "approved"})
+    r = client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
+    assert r.status_code == 200 and r.json()["status"] == "completed"
+
+    detail = client.get(f"/api/requests/{rid}", headers=auth_headers(hr)).json()
+    assert any(d["kind"] == "generated_pdf" for d in detail["documents"])
+
+    rid2 = client.post("/api/requests", headers=auth_headers(hr), json={
+        "request_type_code": "REQCLR", "employee_id": emp_id,
+        "payload_json": {"assets": "لابتوب", "finance_status": "لا التزامات",
+                         "department_signoffs": "تم"},
+    }).json()["id"]
+    client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(acc), json={"decision": "approved"})
+    r2 = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(hr), json={"decision": "approved"})
+    assert r2.status_code == 200 and r2.json()["status"] == "completed"
+
+
+def test_generated_document_body_has_no_raw_payload_keys_or_role_codes(client):
+    """P0-03/P0-04: نص المستند المولَّد يستخدم تسميات عربية للحقول وأدوار الاعتماد،
+    لا مفاتيح payload الخام (مثل amount/purpose) ولا رموز الأدوار التقنية (company_manager)."""
+    from app import workflow
+
+    class _FakeReq:
+        payload_json = {"amount": 200, "purpose": "سبب ما", "destination": "دبي"}
+        code = "REQGEN"
+
+    class _FakeRt:
+        code = "REQGEN"
+
+    lines = workflow._body_lines(_FakeRt(), _FakeReq(), None)
+    text = " ".join(lines)
+    assert "amount:" not in text and "purpose:" not in text and "destination:" not in text
+    assert "المبلغ" in text and "الغرض" in text and "جهة السفر" in text
+
+
+def test_employee_sees_curated_self_service_catalog_not_all_types(client):
+    """P0-06: الموظف يرى قائمة مصفّاة (خدمة ذاتية) لا كل الأنواع — لا يظهر له ADMEMP الداخلي."""
+    emp = login(client, "100000000101", "emp12345")
+    admin = login(client, "000000000000", "admin123")
+    emp_codes = {x["code"] for x in client.get("/api/requests/types", headers=auth_headers(emp)).json()}
+    all_codes = {x["code"] for x in client.get("/api/requests/types", headers=auth_headers(admin)).json()}
+    assert len(emp_codes) < len(all_codes)
+    assert "ADMEMP" not in emp_codes and "ADMWARN" not in emp_codes
+    assert "leave" in emp_codes and "REQGRV" in emp_codes
 
 
 def test_full_leave_workflow(client):
