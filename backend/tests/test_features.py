@@ -43,6 +43,30 @@ def test_payroll_requires_permission(client):
     assert r.status_code == 403
 
 
+def test_payroll_rejects_future_period_without_force(client):
+    """P1-03: لا تشغيل شهر مستقبلي بلا استثناء صريح force_future."""
+    acc = login(client, "100000000007", "account123")
+    h = auth_headers(acc)
+    future = f"{date.today().year + 5}-01"
+    r = client.post("/api/payroll/run", headers=h, params={"period": future})
+    assert r.status_code == 400
+    r2 = client.post("/api/payroll/run", headers=h, params={"period": future, "force_future": True})
+    assert r2.status_code == 200, r2.text
+
+
+def test_payroll_lock_prevents_rerun(client):
+    """P1-03: بعد قفل المسيّر (locked) لا يمكن إعادة تشغيله فوق نفسه."""
+    acc = login(client, "100000000007", "account123")
+    h = auth_headers(acc)
+    period = f"{date.today().year}-{date.today().month:02d}"
+    r = client.post("/api/payroll/run", headers=h, params={"period": period})
+    run_id = r.json()["run_id"]
+    lock = client.post(f"/api/payroll/runs/{run_id}/lock", headers=h)
+    assert lock.status_code == 200 and lock.json()["status"] == "locked"
+    r2 = client.post("/api/payroll/run", headers=h, params={"period": period})
+    assert r2.status_code == 409
+
+
 # ----------------------------- التصدير -----------------------------
 
 def test_export_employees_xlsx_and_csv(client):

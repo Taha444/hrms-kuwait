@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """مسيّر الرواتب: حساب شهري + حفظ المسيّر + عرض القسائم."""
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -11,6 +11,10 @@ from ..database import get_db
 from ..deps import audit, require_perm, scope_company_id
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+# دورة حياة المسيّر (P1-03): draft → finalized → locked. الأخيرة نهائية — لا يمكن إعادة
+# تشغيلها فوق نفسها (Lock يمنع الكتابة الصامتة على شهر مُعتمد سابًقا).
+LOCKED_STATUS = "locked"
 
 
 def _parse_period(period: str) -> tuple[int, int]:
@@ -43,15 +47,25 @@ def preview(period: str, request: Request, company_id: int | None = None,
 
 
 @router.post("/run")
-def run(period: str, request: Request, company_id: int | None = None,
+def run(period: str, request: Request, company_id: int | None = None, force_future: bool = False,
         user: models.User = Depends(require_perm("run_payroll")),
         db: Session = Depends(get_db)):
     y, m = _parse_period(period)
     cid = _company(user, company_id)
     result = payroll_engine.compute_payroll(db, cid, y, m)
 
+    # P1-03: لا تشغيل شهر مستقبلي بلا استثناء صريح (force_future) — منع تشغيل رواتب لفترة
+    # لم تبدأ بعد، وقد لا تعكس بيانات حضور/خصومات حقيقية.
+    today = date.today()
+    if (y, m) > (today.year, today.month) and not force_future:
+        raise HTTPException(status_code=400,
+                            detail="لا يمكن تشغيل مسيّر لشهر مستقبلي دون تأكيد صريح (force_future)")
+
     existing = db.scalar(select(models.PayrollRun).where(
         models.PayrollRun.company_id == cid, models.PayrollRun.period == result["period"]))
+    if existing and existing.status == LOCKED_STATUS:
+        raise HTTPException(status_code=409,
+                            detail="هذا المسيّر مقفَل (locked) ولا يمكن إعادة تشغيله فوق نفسه")
     if existing:
         existing.totals_json = result
         existing.status = "finalized"
@@ -65,6 +79,26 @@ def run(period: str, request: Request, company_id: int | None = None,
     audit(db, user, "run_payroll", "payroll_run", run_id, detail=result["period"], request=request)
     db.commit()
     return {"ok": True, "run_id": run_id, **result}
+
+
+@router.post("/runs/{run_id}/lock")
+def lock_run(run_id: int, request: Request,
+            user: models.User = Depends(require_perm("run_payroll")),
+            db: Session = Depends(get_db)):
+    """يقفل المسيّر نهائًيا (finalized → locked، P1-03) — بعدها لا يمكن إعادة تشغيله فوق
+    نفسه بالخطأ؛ يمثّل اعتماد الرواتب النهائي لهذا الشهر."""
+    from ..deps import assert_same_company
+
+    pr = db.get(models.PayrollRun, run_id)
+    if not pr:
+        raise HTTPException(status_code=404, detail="المسيّر غير موجود")
+    assert_same_company(user, pr.company_id, db=db)
+    if pr.status != "finalized":
+        raise HTTPException(status_code=409, detail="يجب أن يكون المسيّر بحالة finalized قبل القفل")
+    pr.status = LOCKED_STATUS
+    audit(db, user, "lock_payroll_run", "payroll_run", pr.id, detail=pr.period, request=request)
+    db.commit()
+    return {"ok": True, "status": pr.status}
 
 
 @router.get("/runs")
