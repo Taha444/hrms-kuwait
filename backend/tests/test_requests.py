@@ -109,6 +109,21 @@ def test_generated_document_body_has_no_raw_payload_keys_or_role_codes(client):
     assert "المبلغ" in text and "الغرض" in text and "جهة السفر" in text
 
 
+def test_sensitive_documents_include_explicit_legal_note(client):
+    """P1-02: المستندات التأديبية/الحساسة (ADMWARN مثًلا) تضم ملاحظة قانونية صريحة معنونة
+    فوق نص REQUEST_OFFICIAL_TEXT الحذر أصًلا، تؤكد حق الرد وتفصل الاستلام عن الإقرار."""
+    from app import workflow
+
+    class _FakeReq:
+        payload_json = {}
+
+    class _FakeRt:
+        code = "ADMWARN"
+
+    lines = workflow._body_lines(_FakeRt(), _FakeReq(), None)
+    assert any(line.startswith("ملاحظة قانونية:") for line in lines)
+
+
 def test_employee_sees_curated_self_service_catalog_not_all_types(client):
     """P0-06: الموظف يرى قائمة مصفّاة (خدمة ذاتية) لا كل الأنواع — لا يظهر له ADMEMP الداخلي."""
     emp = login(client, "100000000101", "emp12345")
