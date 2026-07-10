@@ -43,9 +43,14 @@ def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def create_access_token(subject: int, role: str, company_id: int | None) -> str:
+def create_access_token(subject: int, role: str, company_id: int | None,
+                        impersonator_id: int | None = None) -> str:
+    claims = {"sub": str(subject), "role": role, "company_id": company_id}
+    if impersonator_id is not None:
+        # يتيح تسجيل impersonate_end لاحًقا (P1-04) بمعرفة من بدأ الانتحال فعًلا
+        claims["impersonator_id"] = impersonator_id
     return _create_token(
-        {"sub": str(subject), "role": role, "company_id": company_id},
+        claims,
         timedelta(minutes=settings.access_token_expire_minutes),
         "access",
     )

@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config import settings
 from ..database import get_db
-from ..deps import audit, get_user_perms, require_perm, require_super_admin, scope_company_id
+from ..deps import (
+    audit, get_current_user, get_user_perms, require_perm, require_super_admin, scope_company_id,
+)
 from ..permissions import (
     ACTIONS_AR,
     CROSS_COMPANY_ROLES,
@@ -130,6 +132,7 @@ def set_data_scope(user_id: int, level: str | None = None, branch_id: int | None
     from ..deps import SCOPE_LEVELS
 
     target = _get_scoped_user(db, user, user_id)
+    old_level, old_branch = target.scope_level, target.scope_branch_id
 
     # توافق خلفي: استنتاج المستوى من المُدخل القديم
     if level is None:
@@ -163,7 +166,8 @@ def set_data_scope(user_id: int, level: str | None = None, branch_id: int | None
 
     target.scope_level = level
     audit(db, user, "set_data_scope", "user", target.id,
-          detail=f"level={level} branch={branch_id} multi={branch_ids}", request=request)
+          detail=f"قبل: level={old_level} branch={old_branch} ← بعد: level={level} "
+                 f"branch={branch_id} multi={branch_ids}", request=request)
     db.commit()
     return {"ok": True, "scope_level": level, "scope_branch_id": target.scope_branch_id}
 
@@ -184,10 +188,33 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
           detail=f"reason={reason or '-'}", request=request)
     db.commit()
     return {
-        "access_token": create_access_token(target.id, target.role, target.company_id),
+        "access_token": create_access_token(target.id, target.role, target.company_id,
+                                            impersonator_id=actor.id),
         "refresh_token": create_refresh_token(target.id),
         "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
     }
+
+
+@router.post("/impersonate-end")
+def impersonate_end(request: Request,
+                    user: models.User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """يسجّل انتهاء الانتحال (P1-04) — يُستدعى من الواجهة قبل استعادة رمز الإدارة العليا
+    الأصلي مباشرًة، ويحتاج claim خاص (impersonator_id) موجود فقط في رمز مُنتحَل فعًلا."""
+    from ..security import decode_token
+
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="بيانات اعتماد غير صالحة")
+    impersonator_id = payload.get("impersonator_id")
+    if not impersonator_id:
+        raise HTTPException(status_code=400, detail="هذا الرمز ليس رمز انتحال")
+    actor = db.get(models.User, impersonator_id)
+    audit(db, actor, "impersonate_end", "user", user.id, request=request)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/{user_id}/permissions")

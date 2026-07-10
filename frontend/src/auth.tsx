@@ -24,7 +24,7 @@ type AuthCtx = {
   setActiveCompany: (id: string | null) => void;
   impersonatingName: string | null;
   impersonate: (userId: number, reason?: string) => Promise<void>;
-  stopImpersonating: () => void;
+  stopImpersonating: () => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx>({} as AuthCtx);
@@ -86,7 +86,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("active_company_id");
     window.location.href = "/";
   };
-  const stopImpersonating = () => {
+  const stopImpersonating = async () => {
+    // يسجّل impersonate_end بمعرفة المُنتحِل الفعلي (P1-04) قبل استعادة رمز الإدارة العليا —
+    // بعد الاستعادة لا يعود الرمز الحالي يحمل claim الانتحال فيصبح استدعاؤه بلا معنى.
+    try { await api.post("/users/impersonate-end"); } catch { /* لا نمنع الخروج لو فشل التسجيل */ }
     const a = localStorage.getItem("imp_backup_access");
     const rf = localStorage.getItem("imp_backup_refresh");
     setTokens(a, rf || null);
