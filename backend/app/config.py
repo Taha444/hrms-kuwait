@@ -4,6 +4,9 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# مفاتيح SECRET_KEY الافتراضية المعروفة في الكود (يجب رفض تشغيل الإنتاج بها)
+DEFAULT_SECRET_KEYS = ("dev-secret-change-me", "change-this-to-a-long-random-secret-in-production")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -41,6 +44,13 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        """لا يوجد متغيّر بيئة صريح (مثل ENV=production) في هذا المشروع، لذا نعتمد على مؤشر
+        واقعي: أي نشر حقيقي يستخدم قاعدة بيانات حقيقية (PostgreSQL مثلاً) بدل SQLite
+        الافتراضية للتطوير المحلي/الاختبارات."""
+        return not self.database_url.startswith("sqlite")
 
 
 @lru_cache

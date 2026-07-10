@@ -2,12 +2,26 @@
 """مخططات Pydantic للتحقق من المدخلات وتسلسل المخرجات."""
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ----------------------------- المصادقة -----------------------------
+
+
+def _check_password_strength(v: str) -> str:
+    """سياسة كلمة مرور دنيا (تدقيق أمني): 8 أحرف على الأقل، وتحتوي حرًفا ورقًما معًا —
+    تمنع كلمات مرور ضعيفة مثل أرقام بحتة أو كلمات قصيرة يسهل تخمينها."""
+    if len(v) < 8:
+        raise ValueError("كلمة المرور يجب ألا تقل عن 8 أحرف")
+    if not re.search(r"[A-Za-z؀-ۿ]", v):
+        raise ValueError("كلمة المرور يجب أن تحتوي حرًفا واحدًا على الأقل")
+    if not re.search(r"\d", v):
+        raise ValueError("كلمة المرور يجب أن تحتوي رقًما واحدًا على الأقل")
+    return v
+
 
 class LoginIn(BaseModel):
     civil_id: str
@@ -31,12 +45,19 @@ class RefreshIn(BaseModel):
 
 class ChangePasswordIn(BaseModel):
     old_password: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=8)
+
+    _check_new_password = field_validator("new_password")(_check_password_strength)
 
 
 class ResetPasswordIn(BaseModel):
     user_id: int
     new_password: str | None = None  # إن لم تُحدّد تُستخدم الافتراضية
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_new_password(cls, v: str | None) -> str | None:
+        return _check_password_strength(v) if v else v
 
 
 # ----------------------------- الشركات -----------------------------
@@ -69,6 +90,11 @@ class UserIn(BaseModel):
     phone: str | None = None
     employee_id: int | None = None
     password: str | None = None  # إن لم تُحدّد تُستخدم الافتراضية
+
+    @field_validator("password")
+    @classmethod
+    def _check_password(cls, v: str | None) -> str | None:
+        return _check_password_strength(v) if v else v
 
 
 class UserOut(BaseModel):

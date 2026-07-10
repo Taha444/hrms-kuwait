@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .config import settings
+from .config import DEFAULT_SECRET_KEYS, settings
 from .database import init_db
 from .routers import (
     archive,
@@ -44,8 +44,14 @@ logger = logging.getLogger("hrms")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # تحذير أمني: مفتاح JWT الافتراضي يجب تغييره في الإنتاج
-    if settings.secret_key in ("dev-secret-change-me", "change-this-to-a-long-random-secret-in-production"):
+    # أمان: مفتاح JWT الافتراضي يجب تغييره قبل أي نشر حقيقي — نرفض الإقلاع كليًا في
+    # بيئة تبدو إنتاجية (قاعدة بيانات حقيقية لا SQLite)، ونكتفي بتحذير في التطوير المحلي.
+    if settings.secret_key in DEFAULT_SECRET_KEYS:
+        if settings.is_production:
+            raise RuntimeError(
+                "SECRET_KEY افتراضي وغير آمن في بيئة إنتاج (DATABASE_URL يشير لقاعدة بيانات "
+                "حقيقية). اضبط SECRET_KEY بقيمة عشوائية طويلة في .env قبل التشغيل."
+            )
         logger.warning("⚠ SECRET_KEY افتراضي — غيّره في .env قبل الإنتاج!")
     # إنشاء الجداول للتطوير (في الإنتاج تُدار عبر Alembic)
     init_db()
