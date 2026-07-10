@@ -30,6 +30,16 @@ const META: Record<string, { key: string; icon: string; accent?: boolean }> = {
   my_active_requests: { key: "kpi_my_requests", icon: "requests" },
 };
 const ORDER = Object.keys(META);
+// وجهة كل مؤشّر عند النقر عليه (P1-05: KPI drilldown) — كانت البطاقات ثابتة بلا تنقّل
+const LINK_TO: Record<string, string> = {
+  companies: "/companies", employees: "/employees", branch_employees: "/employees",
+  branches: "/branches", expiring_permits: "/pro", expired_residencies: "/pro",
+  residencies_expiring_30: "/pro", expiring_residencies: "/pro", expiring_work_permits: "/pro",
+  expiring_licenses: "/operations", open_transactions: "/operations", gov_tasks: "/operations",
+  pending_requests: "/requests", on_leave: "/employees", notifications: "/tasks",
+  contracts: "/employees", warnings: "/employees", open_tasks: "/tasks",
+  my_open_tasks: "/tasks", my_active_requests: "/requests",
+};
 
 export default function Dashboard() {
   const { t } = useI18n();
@@ -91,18 +101,23 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="grid stats">
-          <div className="stat"><div className="stat-ico"><Icon name="employees" size={20} /></div>
-            <div className="num">{data.employees}</div><div className="lbl">{t("kpi_employees")}</div></div>
-          <div className="stat"><div className="stat-ico"><Icon name="branches" size={20} /></div>
-            <div className="num">{data.branches}</div><div className="lbl">{t("kpi_branches")}</div></div>
-          <div className="stat accent"><div className="stat-ico"><Icon name="attendance" size={20} /></div>
+          <Link to="/employees" className="stat" style={{ textDecoration: "none" }}>
+            <div className="stat-ico"><Icon name="employees" size={20} /></div>
+            <div className="num">{data.employees}</div><div className="lbl">{t("kpi_employees")}</div></Link>
+          <Link to="/branches" className="stat" style={{ textDecoration: "none" }}>
+            <div className="stat-ico"><Icon name="branches" size={20} /></div>
+            <div className="num">{data.branches}</div><div className="lbl">{t("kpi_branches")}</div></Link>
+          <Link to="/pro" className="stat accent" style={{ textDecoration: "none" }}>
+            <div className="stat-ico"><Icon name="attendance" size={20} /></div>
             <div className="num">{data.residencies}</div><div className="lbl">{t("kpi_residencies")}</div>
-            {data.residencies_expiring > 0 && <div className="muted" style={{ fontSize: 11 }}>{t("kpi_expiring_suffix", { n: data.residencies_expiring })}</div>}</div>
-          <div className="stat accent"><div className="stat-ico"><Icon name="doc" size={20} /></div>
+            {data.residencies_expiring > 0 && <div className="muted" style={{ fontSize: 11 }}>{t("kpi_expiring_suffix", { n: data.residencies_expiring })}</div>}</Link>
+          <Link to="/operations" className="stat accent" style={{ textDecoration: "none" }}>
+            <div className="stat-ico"><Icon name="doc" size={20} /></div>
             <div className="num">{data.licenses}</div><div className="lbl">{t("kpi_licenses_active")}</div>
-            {data.licenses_expiring > 0 && <div className="muted" style={{ fontSize: 11 }}>{t("kpi_expiring_suffix", { n: data.licenses_expiring })}</div>}</div>
-          <div className="stat"><div className="stat-ico"><Icon name="tasks" size={20} /></div>
-            <div className="num">{data.notifications}</div><div className="lbl">{t("kpi_notifications")}</div></div>
+            {data.licenses_expiring > 0 && <div className="muted" style={{ fontSize: 11 }}>{t("kpi_expiring_suffix", { n: data.licenses_expiring })}</div>}</Link>
+          <Link to="/tasks" className="stat" style={{ textDecoration: "none" }}>
+            <div className="stat-ico"><Icon name="tasks" size={20} /></div>
+            <div className="num">{data.notifications}</div><div className="lbl">{t("kpi_notifications")}</div></Link>
         </div>
 
         <div className="card">
@@ -128,13 +143,20 @@ export default function Dashboard() {
         </div>
       </div>
       <div className="grid stats">
-        {keys.map((k) => (
-          <div className={`stat ${META[k].accent ? "accent" : ""}`} key={k}>
+        {keys.map((k) => {
+          const to = LINK_TO[k];
+          const body = <>
             <div className="stat-ico"><Icon name={META[k].icon} size={20} /></div>
             <div className="num">{data[k]}</div>
             <div className="lbl">{t(META[k].key)}</div>
-          </div>
-        ))}
+          </>;
+          return to ? (
+            <Link to={to} className={`stat ${META[k].accent ? "accent" : ""}`} key={k}
+              style={{ textDecoration: "none", cursor: "pointer" }}>{body}</Link>
+          ) : (
+            <div className={`stat ${META[k].accent ? "accent" : ""}`} key={k}>{body}</div>
+          );
+        })}
       </div>
     </div>
   );
