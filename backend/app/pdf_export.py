@@ -14,6 +14,9 @@ import re
 
 import arabic_reshaper
 from bidi.algorithm import get_display
+from reportlab.graphics import renderPDF
+from reportlab.graphics.barcode import qr
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
@@ -132,13 +135,30 @@ class ArabicPDF:
             self.c.line(cx - col_w / 2 + 0.3 * cm, self.y - 0.6 * cm, cx + col_w / 2 - 0.3 * cm, self.y - 0.6 * cm)
         self.y -= 1.4 * cm
 
+    def verification(self, code: str) -> None:
+        """رمز QR + رمز نصي أسفل المستند (P2-01) — يتيح لطرف خارجي (بنك/سفارة) التحقق من
+        صحة المستند عبر GET /api/verify/{code} دون حاجة لحساب في النظام."""
+        self._line_break(0.6 * cm)
+        size = 2.2 * cm
+        widget = qr.QrCodeWidget(code)
+        b = widget.getBounds()
+        w, h = b[2] - b[0], b[3] - b[1]
+        d = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
+        d.add(widget)
+        renderPDF.draw(d, self.c, self.left, self.y - size + 0.3 * cm)
+        self.c.setFont(self.font, 8.5)
+        self.c.drawString(self.left + size + 0.3 * cm, self.y - size / 2,
+                          _shape(f"رمز التحقق / Verification Code: {code}"))
+        self.y -= size
+
     def bytes(self) -> bytes:
         self.c.showPage()
         self.c.save()
         return self.buf.getvalue()
 
 
-def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str]) -> bytes:
+def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
+                       verification_code: str | None = None) -> bytes:
     """يبني PDF فعليًا لمستند طلب معتمَد (بديل render_document_html)."""
     doc = ArabicPDF(
         title=(company.name if company else ""),
@@ -163,4 +183,6 @@ def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str]) 
     else:
         doc.bullet("—")
     doc.signatures(["توقيع الموظف", "توقيع/ختم الشركة"])
+    if verification_code:
+        doc.verification(verification_code)
     return doc.bytes()

@@ -12,6 +12,16 @@ def _emp_id(client):
     return next(e["id"] for e in emps if e["civil_id"] == "100000000101")
 
 
+def test_produces_document_types_have_default_template_code(client):
+    """P0-02/P2-02: كل نوع طلب produces_document=True مرتبط بأحد قوالب HRMS-PR الرسمية
+    (أو None صراحًة حين لا يوجد قالب مطابق فعليًا بين الـ42 — لا يُهمَل الحقل بصمت)."""
+    from app import workflow
+
+    for rt in workflow.DEFAULT_REQUEST_TYPES:
+        if rt.get("produces_document"):
+            assert "default_template_code" in rt, f"{rt['code']} missing default_template_code key"
+
+
 def test_new_request_types_available(client):
     emp = login(client, "100000000101", "emp12345")
     codes = {x["code"] for x in client.get("/api/requests/types", headers=auth_headers(emp)).json()}
@@ -56,6 +66,41 @@ def test_hr_can_submit_request_on_employees_behalf(client):
                          "net": 1330.5},
     })
     assert r.status_code == 201, r.text
+
+
+def test_generated_document_has_working_verification_code(client):
+    """P2-01: كل مستند مُولَّد يحمل رمز تحقق يمكن لأي طرف خارجي (بلا حساب) التأكد منه
+    عبر GET /verify/{code} — تُعاد بيانات غير حساسة فقط (نوع الطلب/الشركة/الحالة)."""
+    emp = login(client, "100000000101", "emp12345")
+    rid = client.post("/api/requests", headers=auth_headers(emp), json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"}}).json()["id"]
+    mgr = login(client, "100000000001", "manager123")
+    client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
+
+    detail = client.get(f"/api/requests/{rid}", headers=auth_headers(mgr)).json()
+    doc = next(d for d in detail["documents"] if d["kind"] == "generated_pdf")
+
+    from app import verification
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        doc_row = db.query(models.RequestDocument).filter(
+            models.RequestDocument.request_id == rid, models.RequestDocument.kind == "generated_pdf"
+        ).first()
+        code = verification.generate_code(doc_row.id, rid)
+    finally:
+        db.close()
+
+    r = client.get(f"/api/verify/{code}")  # بلا أي رمز دخول — تحقق عمومي
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert "company_name" in body and "request_type" in body
+
+    bad = client.get(f"/api/verify/{code}xx")
+    assert bad.json()["valid"] is False
 
 
 def test_reqeos_and_reqclr_complete_with_full_pdf(client):

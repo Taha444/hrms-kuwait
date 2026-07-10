@@ -33,6 +33,7 @@ from .routers import (
     tasks,
     templates,
     users,
+    verify,
 )
 
 
@@ -83,7 +84,8 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 
 for r in (auth, companies, users, employees, org, attendance, kiosk, documents, tasks,
           requests_router, templates, payroll_router, reports, pro, archive, search,
-          operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings):
+          operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
+          verify):
     app.include_router(r.router, prefix="/api")
 
 

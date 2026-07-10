@@ -755,6 +755,7 @@ def _humanize_key(key: str) -> str:
 def generate_document(db: Session, req: models.Request, rt: models.RequestType,
                       kind: str, actor: models.User) -> models.RequestDocument:
     """يولّد مستند الطلب المعتمَد كملف PDF حقيقي (application/pdf) — لا HTML (FIX-007)."""
+    from . import verification
     from .pdf_export import render_request_pdf
 
     emp = db.get(models.Employee, req.employee_id)
@@ -765,13 +766,6 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             models.RequestApproval.decision == "approved",
         )
     ).all()
-    pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp))
-
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
-    fpath = os.path.join(settings.upload_dir, fname)
-    with open(fpath, "wb") as f:
-        f.write(pdf_bytes)
 
     existing = db.scalars(
         select(models.RequestDocument).where(
@@ -779,11 +773,25 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             models.RequestDocument.kind == kind,
         )
     ).all()
+    # يُنشأ السجل أوًلا (بلا file_path) للحصول على doc.id، لازم لتوليد رمز التحقق
+    # المُشتق منه (P2-01) قبل رسم الـPDF نفسه.
     doc = models.RequestDocument(
-        request_id=req.id, kind=kind, file_path=fpath,
+        request_id=req.id, kind=kind, file_path=None,
         version=len(existing) + 1, uploaded_by=actor.id,
     )
     db.add(doc)
+    db.flush()
+
+    verification_code = verification.generate_code(doc.id, req.id)
+    pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp),
+                                   verification_code=verification_code)
+
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
+    fpath = os.path.join(settings.upload_dir, fname)
+    with open(fpath, "wb") as f:
+        f.write(pdf_bytes)
+    doc.file_path = fpath
     return doc
 
 
