@@ -14,11 +14,16 @@ export default function Requests() {
   const [mine, setMine] = useState<any[]>([]);
   const [inbox, setInbox] = useState<any[]>([]);
   const [types, setTypes] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [onBehalfOf, setOnBehalfOf] = useState<number | "">("");
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [showNew, setShowNew] = useState(false);
   const [typeCode, setTypeCode] = useState("");
   const [payload, setPayload] = useState<any>({});
   const [err, setErr] = useState("");
+  // من يملك view_employee (HR/مدير/مشرف/مندوب/محاسب) قد يقدّم طلًبا نيابًة عن موظف آخر —
+  // كان النموذج يقدّم دائًما عن حساب المستخدم نفسه فقط (P1-01)
+  const canActOnBehalf = can("view_employee");
 
   const load = () => {
     setState("loading");
@@ -30,6 +35,7 @@ export default function Requests() {
   useEffect(() => {
     load();
     api.get("/requests/types").then((r) => { setTypes(r.data); setTypeCode(r.data[0]?.code || ""); });
+    if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
   const submit = async () => {
@@ -38,7 +44,9 @@ export default function Requests() {
       const clean = Object.fromEntries(
         Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
       );
-      await api.post("/requests", { request_type_code: typeCode, payload_json: clean });
+      const body: any = { request_type_code: typeCode, payload_json: clean };
+      if (onBehalfOf) body.employee_id = onBehalfOf;
+      await api.post("/requests", body);
       setShowNew(false); setPayload({}); load();
     } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
   };
@@ -61,6 +69,15 @@ export default function Requests() {
               {types.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
           </div>
+          {canActOnBehalf && (
+            <div className="field">
+              <label>{t("req_on_behalf_of")}</label>
+              <select value={onBehalfOf} onChange={(e) => setOnBehalfOf(e.target.value ? +e.target.value : "")}>
+                <option value="">{t("req_myself")}</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
+              </select>
+            </div>
+          )}
           {typeCode === "leave" && (
             <>
               <div className="row">
@@ -109,7 +126,49 @@ export default function Requests() {
                 <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </div>
           )}
-          {!["leave", "salary_certificate", "exit_permission", "advance", "loan"].includes(typeCode) && typeCode && (
+          {typeCode === "REQADV" && (
+            <div className="row">
+              <div className="field" style={{ width: 150 }}><label>{t("req_subtype")}</label>
+                <select onChange={(e) => setPayload({ ...payload, subtype: e.target.value })}>
+                  <option value="advance">{t("req_subtype_advance")}</option>
+                  <option value="loan">{t("req_subtype_loan")}</option>
+                </select></div>
+              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
+                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              <div className="field" style={{ width: 140 }}><label>{t("req_installments")}</label>
+                <input type="number" min={1} onChange={(e) => setPayload({ ...payload, installments: +e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
+                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+            </div>
+          )}
+          {typeCode === "REQBANK" && (
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{t("req_bank_name")}</label>
+                <input onChange={(e) => setPayload({ ...payload, bank_name: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label>{t("req_iban")}</label>
+                <input onChange={(e) => setPayload({ ...payload, iban: e.target.value })} /></div>
+            </div>
+          )}
+          {typeCode === "REQEXP" && (
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
+                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label>{t("req_receipt_ref")}</label>
+                <input onChange={(e) => setPayload({ ...payload, receipt_ref: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label>{t("req_description")}</label>
+                <input onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
+            </div>
+          )}
+          {typeCode === "REQWARN" && (
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{t("req_warning_ref")}</label>
+                <input onChange={(e) => setPayload({ ...payload, warning_ref: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label>{t("req_response")}</label>
+                <input onChange={(e) => setPayload({ ...payload, response: e.target.value })} /></div>
+            </div>
+          )}
+          {!["leave", "salary_certificate", "exit_permission", "advance", "loan",
+            "REQADV", "REQBANK", "REQEXP", "REQWARN"].includes(typeCode) && typeCode && (
             <>
               <div className="row">
                 <div className="field" style={{ flex: 1 }}><label>{t("req_date")}</label>
