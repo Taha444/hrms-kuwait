@@ -304,6 +304,12 @@ class RequestType(Base):
     # سرّية (FIX-014): يمنع تجاوز المدير العام/المالك الاعتيادي لمراحل هذا النوع، ويقصر
     # الاطلاع والقرار على معتمدي المرحلة الفعليين (مثل الشؤون القانونية) + الإدارة العليا فقط.
     is_confidential: Mapped[bool] = mapped_column(Boolean, default=False)
+    # هل يظهر هذا النوع في قائمة "طلب جديد" للموظف كخدمة ذاتية (P0-06)؟ الإجراءات الداخلية
+    # (نماذج ADM* وما يبدأ من HR/الإدارة/المندوب/PRO بشأن الموظف) لا تظهر له لأنه لا يبدأها بنفسه.
+    visible_to_employee: Mapped[bool] = mapped_column(Boolean, default=False)
+    # ربط تتبّعي اختياري بأحد قوالب الطباعة الرسمية HRMS-PR-001..042 (P0-02) — ليس كل نوع
+    # طلب له قالب مطابق (49+ نوعًا مقابل 42 قالبًا)، فيبقى None حين لا يوجد تطابق مناسب.
+    default_template_code: Mapped[str | None] = mapped_column(String(20))
 
 
 class Request(Base):

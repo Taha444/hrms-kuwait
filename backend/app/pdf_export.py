@@ -20,6 +20,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+from .permissions import ROLE_LABEL_AR
+
 _FONT_NAME = "Amiri"
 _FONT_PATH = os.path.join(os.path.dirname(__file__), "assets", "fonts", "Amiri-Regular.ttf")
 _registered = False
@@ -153,8 +155,9 @@ def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str]) 
     doc.section("سلسلة الاعتماد")
     if approvals:
         for a in approvals:
+            role_label = ROLE_LABEL_AR.get(a.approver_role or "", a.approver_role or "")
             doc.bullet(
-                f"{a.stage_label or ''} ({a.approver_role or ''}) — "
+                f"{a.stage_label or ''} ({role_label}) — "
                 f"{a.decided_at.strftime('%Y-%m-%d %H:%M')}"
             )
     else:

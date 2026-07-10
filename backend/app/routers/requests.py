@@ -38,6 +38,10 @@ def list_request_types(category: str | None = None,
             continue
         if rt.code in seen:
             continue
+        # الموظف (خدمة ذاتية) يرى فقط الأنواع الموسومة له — لا نماذج ADM* الداخلية ولا ما
+        # يبدأ من HR/الإدارة بشأنه (P0-06: تنظيم كتالوج الطلبات حسب الدور)
+        if user.role == "employee" and not rt.visible_to_employee:
+            continue
         seen.add(rt.code)
         out.append({"code": rt.code, "name": rt.name, "category": rt.category,
                     "chain": rt.approval_chain_json,

@@ -234,6 +234,8 @@ class RequestTypeIn(BaseModel):
     produces_document: bool = False
     template_html: str | None = None
     is_confidential: bool = False
+    visible_to_employee: bool = False
+    default_template_code: str | None = None
 
 
 class RequestIn(BaseModel):

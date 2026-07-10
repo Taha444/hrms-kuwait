@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from . import models
 from .config import settings
 from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
+from .permissions import ROLE_LABEL_AR
 
 # إلغاء الطلب إجراء تشغيلي → المالك (اطلاع فقط) مستبعَد
 CANCEL_ROLES = {"super_admin", "company_manager"}
@@ -119,12 +120,18 @@ CAT_ADMIN = "نماذج إدارية"
 
 def _simple(code: str, name: str, category: str, roles: list[str],
            produces_document: bool = False, requires_physical_signature: bool = True,
-           is_confidential: bool = False) -> dict:
+           is_confidential: bool = False, visible_to_employee: bool = False,
+           default_template_code: str | None = None) -> dict:
     """يبني نوع طلب بسلسلة موافقات خطّية بسيطة (مرحلة اعتماد لكل دور بالترتيب).
 
     تُستخدم لتغطية أنواع V1.3 الـ44 المتبقية (المسار الرئيسي المذكور في كل نموذج)
     دون تكرار منطق خاص — النوع الأول (leave) و(salary_certificate) وما شابه تبقى
     بمسارها المخصص (hr_review/delegate_exit/pickup) لأنها مطبَّقة ومختبرة فعلًا.
+
+    visible_to_employee افتراضيًا False (P0-06): معظم الـ44 نوعًا إجراءات داخلية
+    تبدأ من HR/الإدارة/المندوب/PRO لا من الموظف نفسه (خاصة كل ما يبدأ بـADM)، فتُستبعد
+    من قائمة "طلب جديد" كخدمة ذاتية إلا ما صُرِّح صراحًة أنه يبدأ من الموظف.
+    default_template_code (P0-02): ربط اختياري بأحد قوالب HRMS-PR-001..042 للتتبّع.
     """
     chain = [
         {"order": i, "label": f"اعتماد {ROLE_LABEL_AR.get(r, r)}", "role": r, "kind": "approval",
@@ -136,14 +143,9 @@ def _simple(code: str, name: str, category: str, roles: list[str],
         "requires_physical_signature": requires_physical_signature,
         "produces_document": produces_document,
         "approval_chain_json": chain, "template_html": None,
-        "is_confidential": is_confidential,
+        "is_confidential": is_confidential, "visible_to_employee": visible_to_employee,
+        "default_template_code": default_template_code,
     }
-
-
-ROLE_LABEL_AR = {
-    "branch_supervisor": "المسؤول المباشر", "company_manager": "المدير العام",
-    "hr": "شؤون الموظفين/القانونية", "delegate": "المندوب", "accountant": "المحاسب",
-}
 
 
 DEFAULT_REQUEST_TYPES = [
@@ -162,6 +164,7 @@ DEFAULT_REQUEST_TYPES = [
              "kind": "delegate_exit"},
         ],
         "template_html": None,
+        "visible_to_employee": True, "default_template_code": "HRMS-PR-015",
     },
     {
         "code": "salary_certificate",
@@ -175,6 +178,7 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 1, "label": "جاهزة للاستلام من شؤون الموظفين", "role": "hr", "kind": "pickup"},
         ],
         "template_html": None,
+        "visible_to_employee": True, "default_template_code": "HRMS-PR-001",
     },
     {
         "code": "exit_permission",
@@ -187,6 +191,7 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 1, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
         ],
         "template_html": None,
+        "visible_to_employee": True, "default_template_code": "HRMS-PR-018",
     },
     {
         "code": "advance",
@@ -199,6 +204,7 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
         ],
         "template_html": None,
+        "visible_to_employee": True,
     },
     {
         "code": "loan",
@@ -211,82 +217,105 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
         ],
         "template_html": None,
+        "visible_to_employee": True,
     },
 
     # ----------------- الـ 44 نوعًا الرسمية المتبقية من حزمة V1.3 (FIX-002) -----------------
     # الحضور والإجازات
     _simple("REQPER", "طلب إذن أثناء الدوام", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQEXIT", "طلب مغادرة مبكرة", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQLATE", "تبرير تأخير", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-031"),
     _simple("REQATT", "طلب تصحيح سجل حضور", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-030"),
     _simple("REQSHIFT", "طلب تغيير وردية", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-037"),
     _simple("REQOT", "طلب عمل إضافي", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False),
+           ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-038"),
     _simple("REQWLOC", "تكليف مؤقت بموقع أو فرع", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager", "hr"], produces_document=True),
     _simple("REQMIS", "طلب مهمة عمل خارجية", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager"], produces_document=True),
+           ["branch_supervisor", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-036"),
 
     # الإقامة والمعاملات الحكومية
     _simple("REQRESE", "طلب تجديد إقامة مبكر", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], produces_document=True),
+           ["hr", "company_manager", "delegate"], produces_document=True, visible_to_employee=True,
+           default_template_code="HRMS-PR-021"),
     _simple("REQRESN", "طلب تجديد إقامة عادي", CAT_RESIDENCY,
-           ["delegate", "hr"], produces_document=True),
+           ["delegate", "hr"], produces_document=True,
+           default_template_code="HRMS-PR-021"),
     _simple("REQPASS", "طلب تحديث أو تجديد جواز السفر", CAT_RESIDENCY,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-024"),
     _simple("REQCID", "طلب تحديث أو تجديد البطاقة المدنية", CAT_RESIDENCY,
-           ["hr", "delegate"], requires_physical_signature=False),
+           ["hr", "delegate"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-023"),
     _simple("REQWP", "طلب تجديد إذن عمل", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], produces_document=True),
+           ["hr", "company_manager", "delegate"], produces_document=True,
+           default_template_code="HRMS-PR-022"),
     _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
-           ["hr", "delegate"], requires_physical_signature=False),
+           ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
-           ["branch_supervisor", "hr", "company_manager"], produces_document=True),
+           ["branch_supervisor", "hr", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-007"),
 
     # بيانات الموظف والمستندات
     _simple("REQDOC", "رفع أو تحديث مستند موظف", CAT_EMP_DATA,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_DATA,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-039"),
     _simple("REQBANK", "طلب تغيير الحساب البنكي", CAT_EMP_DATA,
-           ["accountant", "company_manager"], requires_physical_signature=False),
+           ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-004"),
     _simple("REQCONTACT", "تحديث بيانات الاتصال والطوارئ", CAT_EMP_DATA,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-039"),
 
     # الشهادات والخطابات
     _simple("REQCERTSAL", "طلب شهادة راتب (V1.3)", CAT_CERTIFICATES,
-           ["company_manager", "hr"], produces_document=True, requires_physical_signature=False),
+           ["company_manager", "hr"], produces_document=True, requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-001"),
     _simple("REQCERTEMP", "طلب شهادة لمن يهمه الأمر", CAT_CERTIFICATES,
-           ["hr"], produces_document=True, requires_physical_signature=False),
+           ["hr"], produces_document=True, requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-002"),
     _simple("REQCERTEXP", "طلب شهادة خبرة", CAT_CERTIFICATES,
-           ["hr", "company_manager"], produces_document=True, requires_physical_signature=False),
+           ["hr", "company_manager"], produces_document=True, requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-003"),
     _simple("REQFILE", "طلب نسخة من ملف أو مستند", CAT_CERTIFICATES,
            ["hr"], requires_physical_signature=False),
 
     # الطلبات المالية
     _simple("REQADV", "طلب سلفة أو قرض", CAT_FINANCIAL,
-           ["company_manager", "accountant"], requires_physical_signature=False),
+           ["company_manager", "accountant"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQEXP", "طلب استرداد مصروفات", CAT_FINANCIAL,
-           ["branch_supervisor", "accountant"], requires_physical_signature=False),
+           ["branch_supervisor", "accountant"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False),
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
-           ["accountant", "company_manager"], requires_physical_signature=False),
+           ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-032"),
     _simple("REQDED", "اعتراض على خصم", CAT_FINANCIAL,
-           ["accountant", "hr", "company_manager"], requires_physical_signature=False),
+           ["accountant", "hr", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
+           default_template_code="HRMS-PR-033"),
 
     # الشكاوى والتظلمات
     _simple("REQGRV", "شكوى أو تظلم", CAT_GRIEVANCE,
-           ["hr"], requires_physical_signature=False, is_confidential=True),
+           ["hr"], requires_physical_signature=False, is_confidential=True, visible_to_employee=True,
+           default_template_code="HRMS-PR-041"),
     _simple("REQVIO", "اعتراض على مخالفة", CAT_GRIEVANCE,
-           ["hr", "company_manager"], requires_physical_signature=False),
+           ["hr", "company_manager"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-013"),
     _simple("REQWARN", "إقرار أو رد على إنذار", CAT_GRIEVANCE,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-014"),
 
     # طلبات عامة
     _simple("REQGEN", "طلب عام أو اقتراح", CAT_GENERAL,
@@ -294,41 +323,55 @@ DEFAULT_REQUEST_TYPES = [
 
     # التطوير الوظيفي
     _simple("REQTRN", "طلب تدريب", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRF", "طلب نقل داخلي", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], produces_document=True),
+           ["branch_supervisor", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-007"),
     _simple("REQPROMO", "طلب ترقية أو تعديل راتب", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], produces_document=True),
+           ["branch_supervisor", "company_manager"], produces_document=True, visible_to_employee=True,
+           default_template_code="HRMS-PR-008"),
 
     # العقود وإنهاء الخدمة
     _simple("REQCON", "تجديد عقد أو عدم تجديد", CAT_CONTRACTS,
-           ["hr", "company_manager"], produces_document=True),
+           ["hr", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-006"),
     _simple("REQRESIGN", "طلب استقالة", CAT_CONTRACTS,
-           ["company_manager", "hr"], produces_document=True),
+           ["company_manager", "hr"], produces_document=True, visible_to_employee=True,
+           default_template_code="HRMS-PR-025"),
     _simple("REQEOS", "طلب احتساب وتسوية نهاية خدمة", CAT_CONTRACTS,
-           ["hr", "accountant", "company_manager"], produces_document=True),
+           ["hr", "accountant", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-028"),
     _simple("REQCLR", "إخلاء طرف وتسليم عهدة", CAT_CONTRACTS,
-           ["accountant", "hr"], produces_document=True),
+           ["accountant", "hr"], produces_document=True,
+           default_template_code="HRMS-PR-026"),
 
     # نماذج إدارية
     _simple("ADMEMP", "إضافة موظف جديد", CAT_ADMIN,
            ["hr", "company_manager"], requires_physical_signature=False),
     _simple("ADMACTUAL", "تعديل الراتب الفعلي أو مكان العمل الفعلي", CAT_ADMIN,
-           ["company_manager", "accountant"], requires_physical_signature=False),
+           ["company_manager", "accountant"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-009"),
     _simple("ADMDED", "إصدار خصم", CAT_ADMIN,
-           ["hr", "accountant", "company_manager"], requires_physical_signature=False),
+           ["hr", "accountant", "company_manager"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-012"),
     _simple("ADMVIO", "تسجيل مخالفة وظيفية", CAT_ADMIN,
-           ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False),
+           ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-013"),
     _simple("ADMWARN", "إصدار إنذار", CAT_ADMIN,
-           ["hr", "company_manager"], produces_document=True),
+           ["hr", "company_manager"], produces_document=True,
+           default_template_code="HRMS-PR-010"),
     _simple("ADMTASK", "تكليف مندوب أو مهمة إدارية", CAT_ADMIN,
-           ["company_manager", "delegate", "hr"], requires_physical_signature=False),
+           ["company_manager", "delegate", "hr"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-019"),
     _simple("ADMMISS", "إشعار نقص مستندات", CAT_ADMIN,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-020"),
     _simple("ADMLIC", "تجديد مستند شركة أو ترخيص", CAT_ADMIN,
-           ["hr", "company_manager", "delegate"], produces_document=True),
+           ["hr", "company_manager", "delegate"], produces_document=True,
+           default_template_code="HRMS-PR-022"),
     _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
-           ["company_manager", "hr"], requires_physical_signature=False),
+           ["company_manager", "hr"], requires_physical_signature=False,
+           default_template_code="HRMS-PR-040"),
 ]
 
 
@@ -636,8 +679,43 @@ def _body_lines(rt, req, emp) -> list[str]:
             f"الراتب الأساسي: {getattr(emp,'basic_salary',0)} د.ك",
         ]
     elif p:
-        lines += [f"{k}: {v}" for k, v in p.items()]
+        lines += [f"{PAYLOAD_KEY_LABELS_AR.get(k, _humanize_key(k))}: {v}" for k, v in p.items()]
     return lines
+
+
+# تسمية عربية لكل مفتاح payload معروف (P0-03) — تمنع ظهور مفاتيح تقنية خام مثل
+# amount/months/purpose/destination داخل نص المستند المطبوع؛ أي مفتاح غير مدرَج هنا
+# يُحوَّل عبر _humanize_key() (استبدال الشرطة السفلية بمسافة) بدل عرضه كما هو.
+PAYLOAD_KEY_LABELS_AR: dict[str, str] = {
+    "date": "التاريخ", "amount": "المبلغ (د.ك)", "details": "التفاصيل", "reason": "السبب",
+    "start_date": "من تاريخ", "end_date": "إلى تاريخ", "days": "عدد الأيام",
+    "leave_type": "نوع الإجازة", "replacement_employee_id": "الموظف البديل",
+    "purpose": "الغرض", "addressed_to": "الجهة المستفيدة", "destination": "جهة السفر",
+    "months": "عدد الأشهر", "subtype": "نوع الطلب", "installments": "عدد الأقساط",
+    "installments_count": "عدد الأقساط", "first_deduction_month": "شهر أول استقطاع",
+    "employee_ack": "إقرار الموظف",
+    "receipt_ref": "مرجع الفاتورة", "receipt_attachment": "مرفق الفاتورة",
+    "category": "الفئة", "description": "الوصف",
+    "iban": "رقم الحساب (IBAN)", "bank_name": "اسم البنك",
+    "warning_ref": "مرجع الإنذار", "response": "الرد", "attachment": "المرفق",
+    "termination_reason": "سبب إنهاء الخدمة", "last_working_day": "آخر يوم عمل",
+    "resignation_date": "تاريخ تقديم الاستقالة", "notice_period": "مدة الإشعار",
+    "assets": "العهد", "hours": "عدد الساعات", "rate": "المعدل",
+    "period": "فترة الراتب", "disputed_amount": "المبلغ محل الاعتراض",
+    "evidence": "الإثباتات", "deduction_ref": "مرجع الخصم",
+    "employee_response": "رد الموظف", "travel_required": "يتطلب سفرًا",
+    "old_title": "المسمى السابق", "requested_title": "المسمى المطلوب",
+    "current_title": "المسمى الحالي", "salary": "الراتب", "justification": "المبررات",
+    "subject": "الموضوع", "course": "الدورة التدريبية", "provider": "الجهة المقدّمة",
+    "cost": "التكلفة", "dates": "المواعيد", "against_person": "الطرف المشتكى منه",
+    "target_entity": "الجهة", "language": "اللغة", "effective_month": "شهر السريان",
+    "proof": "الإثبات", "old_civil": "الرقم المدني السابق", "new_civil": "الرقم المدني الجديد",
+    "old_passport": "الجواز السابق", "new_passport": "الجواز الجديد", "expiry": "تاريخ الانتهاء",
+}
+
+
+def _humanize_key(key: str) -> str:
+    return key.replace("_", " ").strip() or key
 
 
 def generate_document(db: Session, req: models.Request, rt: models.RequestType,
@@ -675,36 +753,3 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     return doc
 
 
-def render_document_html(rt, req, emp, company, approvals) -> str:
-    """نسخة HTML للمعاينة على الشاشة فقط (المستند الرسمي المعتمد أصبح PDF حقيقيًا — FIX-007)."""
-    from html import escape as e  # تهريب القيم لمنع حقن HTML/XSS
-
-    rows = "".join(
-        f"<li>اعتمد من قبل: <b>{e(a.stage_label or '')}</b> ({e(a.approver_role or '')}) بتاريخ "
-        f"{a.decided_at.strftime('%Y-%m-%d %H:%M')}</li>"
-        for a in approvals
-    )
-    body_extra = "".join(f"<p>{e(line)}</p>" for line in _body_lines(rt, req, emp))
-    return f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<title>{e(rt.name)}</title>
-<style>
-body{{font-family:'Segoe UI',Tahoma,Arial;margin:40px;color:#111}}
-.header{{text-align:center;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:24px}}
-.muted{{color:#666;font-size:13px}} .sign{{margin-top:60px}}
-ul{{line-height:1.9}} @media print{{.noprint{{display:none}}}}
-</style></head><body>
-<div class="header">
-  <h2>{e(company.name) if company else ''}</h2>
-  <h3>{e(rt.name)}</h3>
-  <div class="muted">رقم الطلب: {req.id} — تاريخ: {datetime.now().strftime('%Y-%m-%d')}</div>
-</div>
-<p>الموظف: <b>{e(emp.name) if emp else ''}</b> — الرقم المدني: {e(getattr(emp,'civil_id','') or '')}</p>
-<p>الوظيفة: {e(getattr(emp,'job_title','') or '')}</p>
-{body_extra}
-<hr><h4>سلسلة الاعتماد</h4><ul>{rows or '<li>—</li>'}</ul>
-<div class="sign">
-  <p>توقيع الموظف: ............................</p>
-  <p>توقيع/ختم الشركة: ............................</p>
-</div>
-<button class="noprint" onclick="window.print()">طباعة</button>
-</body></html>"""

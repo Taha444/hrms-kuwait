@@ -104,10 +104,14 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         "manage_users"},
     # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
     # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
+    # approve_request إلزامي (P0-01): المحاسب معتمِد فعلي في مراحل كثيرة (السلف/القروض
+    # والاعتماد المالي في REQOT/REQBANK/REQADV/REQEXP/REQPAY/REQDED/ADMDED/REQCLR/REQEOS)،
+    # وبدونها كان /decide و/received يرفضانه بـ403 فتتوقف الطلبات المالية عنده للأبد رغم
+    # أن can_decide يتحقق أصًلا من كونه معتمِد المرحلة الفعلي.
     "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks",
-                   "submit_request", "record_attendance"},
+                   "submit_request", "record_attendance", "approve_request"},
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
     "branch_supervisor": {"view_employee", "view_attendance", "approve_request",
@@ -152,6 +156,14 @@ ATTENDANCE_ROLES = {"employee"}
 
 # الأدوار التي ترى كل الشركات (تختار بينها)
 CROSS_COMPANY_ROLES = {"super_admin", "company_owner"}
+
+# تسمية عربية لكل دور — تُستخدم لعرض سلسلة الاعتماد في المستندات المطبوعة (PDF/HTML) بدل
+# رمز الدور التقني الخام (P0-04: لا يظهر company_manager/hr/branch_supervisor في مستند رسمي).
+ROLE_LABEL_AR: dict[str, str] = {
+    "branch_supervisor": "المسؤول المباشر", "company_manager": "المدير العام",
+    "hr": "شؤون الموظفين/القانونية", "delegate": "المندوب", "accountant": "المحاسب",
+    "company_owner": "صاحب الشركة", "super_admin": "الإدارة العليا", "employee": "الموظف",
+}
 
 
 def role_level(role: str) -> int:
