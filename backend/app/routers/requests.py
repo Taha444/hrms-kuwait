@@ -17,6 +17,34 @@ from ..safe_files import read_limited, unique_path
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
+# حقول إلزامية لكل نوع طلب له نموذج مخصّص في الواجهة (Requests.tsx) — تمنع حفظ طلب فارغ
+# `{}` يدخل مسار الاعتماد الفعلي (QA-P0-WF-01). الأنواع غير المدرجة هنا (نموذج عام، أو
+# طلبات تُنشأ برمجيًا مثل REQEOS/REQCLR بحمولة خاصة بها) تُفحص فقط بألا تكون فارغة تمامًا.
+REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
+    "leave": ["start_date", "end_date"],
+    "salary_certificate": ["addressed_to", "purpose"],
+    "exit_permission": ["date", "reason"],
+    "advance": ["amount"],
+    "loan": ["amount", "months"],
+    "REQADV": ["subtype", "amount"],
+    "REQBANK": ["bank_name", "iban"],
+    "REQEXP": ["amount", "description"],
+    "REQWARN": ["warning_ref", "response"],
+}
+
+
+def _missing_required_fields(code: str, payload: dict) -> list[str]:
+    def _blank(v):
+        return v is None or (isinstance(v, str) and not v.strip())
+
+    required = REQUIRED_PAYLOAD_FIELDS.get(code)
+    if required is not None:
+        return [k for k in required if _blank(payload.get(k))]
+    # لا نموذج مخصّص لهذا النوع: يكفي ألا تكون الحمولة فارغة تمامًا
+    if not payload or all(_blank(v) for v in payload.values()):
+        return ["details"]
+    return []
+
 
 # ----------------------------- أنواع الطلبات -----------------------------
 
@@ -82,6 +110,12 @@ def submit_request(data: schemas.RequestIn, request: Request,
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
 
+    # منع تقديم طلب فارغ يدخل مسار الاعتماد الفعلي (QA-P0-WF-01)
+    missing = _missing_required_fields(data.request_type_code, data.payload_json or {})
+    if missing:
+        labels = [workflow.PAYLOAD_KEY_LABELS_AR.get(k, workflow._humanize_key(k)) for k in missing]
+        raise HTTPException(status_code=400, detail=f"الحقول التالية مطلوبة: {'، '.join(labels)}")
+
     # تحقّق منطق التواريخ لطلبات الإجازة
     if data.request_type_code == "leave":
         p = data.payload_json or {}
@@ -90,7 +124,7 @@ def submit_request(data: schemas.RequestIn, request: Request,
             raise HTTPException(status_code=400, detail="تاريخ نهاية الإجازة قبل بدايتها")
 
     req = workflow.create_request(db, emp, user, rt, data.payload_json)
-    audit(db, user, "submit_request", "request", req.id, detail=rt.code, request=request)
+    audit(db, user, "submit_request", "request", req.id, detail=rt.code, request=request, company_id=emp.company_id)
     db.commit()
     st = workflow.status_info(req.status)
     return {"ok": True, "id": req.id, "status": req.status, "status_label": st["label"],
@@ -154,15 +188,21 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     stage = chain[req.current_stage]
     if not workflow.can_decide(db, req, user, stage, rt=rt):
         raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
-    if data.decision not in ("approved", "rejected"):
+    if data.decision not in ("approved", "rejected", "returned"):
         raise HTTPException(status_code=400, detail="قرار غير صالح")
+    if data.decision == "returned":
+        # إرجاع للتصحيح متاح فقط بالمرحلتين الأولى والثانية، ويلزم توضيح السبب (QA-P2-WF-03)
+        if req.current_stage >= 2:
+            raise HTTPException(status_code=400, detail="الإرجاع للتصحيح متاح فقط في المرحلتين الأولى والثانية")
+        if not (data.note and data.note.strip()):
+            raise HTTPException(status_code=400, detail="يجب توضيح سبب الإرجاع في الملاحظة")
     if stage.get("kind") == "delegate_exit" and data.decision == "approved":
         raise HTTPException(
             status_code=400,
             detail="هذه المرحلة تكتمل برفع إذن المغادرة (documents) لا بالاعتماد المباشر",
         )
     req = workflow.decide(db, req, user, data.decision, data.note, rt)
-    audit(db, user, f"request_{data.decision}", "request", req.id, request=request)
+    audit(db, user, f"request_{data.decision}", "request", req.id, request=request, company_id=req.company_id)
     st = workflow.status_info(req.status)
     return {"ok": True, "status": req.status, "status_label": st["label"], "current_stage": req.current_stage}
 
@@ -176,7 +216,7 @@ def cancel(req_id: int, request: Request, note: str | None = None,
         req = workflow.cancel(db, req, user, note, rt)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    audit(db, user, "request_cancel", "request", req.id, request=request)
+    audit(db, user, "request_cancel", "request", req.id, request=request, company_id=req.company_id)
     return {"ok": True, "status": req.status}
 
 
@@ -201,7 +241,7 @@ def set_appointment(req_id: int, data: schemas.AppointmentIn, request: Request,
         related_entity_type="request", related_entity_id=req.id,
         dedup_key=f"appt:{appt.request_id}:{int(data.scheduled_at.timestamp())}",
     )
-    audit(db, user, "set_appointment", "request", req.id, request=request)
+    audit(db, user, "set_appointment", "request", req.id, request=request, company_id=req.company_id)
     db.commit()
     return {"ok": True}
 
@@ -237,7 +277,7 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
     else:
         db.commit()
 
-    audit(db, user, "upload_request_doc", "request", req.id, detail=kind, request=request)
+    audit(db, user, "upload_request_doc", "request", req.id, detail=kind, request=request, company_id=req.company_id)
     db.commit()
     return {"ok": True, "status": req.status}
 
@@ -297,7 +337,7 @@ def mark_document_printed(req_id: int, kind: str, request: Request,
     doc.print_status = "printed"
     doc.printed_at = datetime.now()
     doc.printed_by = user.id
-    audit(db, user, "print_document", "request", req.id, detail=kind, request=request)
+    audit(db, user, "print_document", "request", req.id, detail=kind, request=request, company_id=req.company_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     if rt:
         from ..notifications import notify_from_template
@@ -323,7 +363,7 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
     doc.print_status = "filed"
     doc.filed_at = datetime.now()
     doc.filed_by = user.id
-    audit(db, user, "file_document", "request", req.id, detail=kind, request=request)
+    audit(db, user, "file_document", "request", req.id, detail=kind, request=request, company_id=req.company_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     if rt:
         # أرشفة فعلية في ملف الموظف العام (جدول Document) — لا يبقى الأثر داخل الطلب فقط
@@ -408,8 +448,10 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
         approvals = db.scalars(select(models.RequestApproval).where(
             models.RequestApproval.request_id == req.id)
             .order_by(models.RequestApproval.decided_at)).all()
-        by_stage = {a.stage_order: a for a in approvals if a.decision != "rejected"}
-        rejected = {a.stage_order for a in approvals if a.decision == "rejected"}
+        # كل قرار حسب مرحلته (للعرض: من قرّر، متى، وبأي ملاحظة) بصرف النظر عن نوع القرار
+        by_stage = {a.stage_order: a for a in approvals}
+        # القرار السلبي لكل مرحلة (رفض أو إرجاع للتصحيح، QA-P2-WF-03) — يحدد لون/نص المرحلة بدقة
+        negative = {a.stage_order: a.decision for a in approvals if a.decision in ("rejected", "returned")}
         docs = db.scalars(select(models.RequestDocument).where(
             models.RequestDocument.request_id == req.id)).all()
 
@@ -425,8 +467,8 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
                 state = "done"
             elif req.status == "cancelled":
                 state = "done" if i < req.current_stage else ("cancelled" if i == req.current_stage else "skipped")
-            elif i in rejected:
-                state = "rejected"
+            elif i in negative:
+                state = negative[i]
             elif i < req.current_stage:
                 state = "done"
             elif i == req.current_stage:

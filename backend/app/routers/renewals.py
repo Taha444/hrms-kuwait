@@ -8,6 +8,7 @@ import os
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -234,6 +235,32 @@ def get_renewal(rid: int, user: models.User = Depends(get_current_user), db: Ses
             and user.employee_id != rn.employee_id and user.role not in ("super_admin", "company_owner"):
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
     return _serialize(db, rn)
+
+
+@router.get("/{rid}/document/{doc_type}")
+def download_renewal_document(rid: int, doc_type: str,
+                              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """تنزيل مستند تجديد (عقد/موقّع) أو مستند الموظف المرتبط (إذن عمل/بطاقة مدنية)."""
+    rn = _get_renewal(db, user, rid)
+    perms = get_user_perms(user, db)
+    if not _is_pro(user, perms) and not has_permission(user.role, perms, "approve_request") \
+            and user.employee_id != rn.employee_id and user.role not in ("super_admin", "company_owner"):
+        raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
+
+    if doc_type in R.CONTRACT_DOCS + R.SIGNED_DOCS:
+        entity_type, entity_id = "renewal", rn.id
+    elif doc_type in (R.DOC_WORK_PERMIT, R.DOC_CIVIL_CARD):
+        entity_type, entity_id = "employee", rn.employee_id
+    else:
+        raise HTTPException(status_code=400, detail="نوع مستند غير معروف")
+
+    doc = db.scalar(select(models.Document).where(
+        models.Document.entity_type == entity_type, models.Document.entity_id == entity_id,
+        models.Document.document_type_code == doc_type, models.Document.is_current == True))  # noqa: E712
+    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+                        media_type=doc.mime or "application/octet-stream")
 
 
 # ----------------------------- موافقات (مبكر) -----------------------------

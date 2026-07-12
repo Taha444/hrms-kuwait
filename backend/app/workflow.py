@@ -96,6 +96,7 @@ STATUS_MAP: dict[str, dict[str, str]] = {
     "completed": {"code": "COMPLETED", "label": "مكتمل"},
     "rejected": {"code": "REJECTED", "label": "مرفوض"},
     "cancelled": {"code": "CANCELLED", "label": "ملغى"},
+    "returned": {"code": "RETURNED", "label": "أُعيد للمقدّم للتصحيح"},
 }
 
 
@@ -520,6 +521,19 @@ def _notify_employee_from_template(db: Session, req: models.Request, code: str,
         )
 
 
+def _close_open_tasks(db: Session, req: models.Request) -> None:
+    """يغلق تلقائيًا أي مهام مفتوحة مرتبطة بطلب وصل لحالة نهائية (رُفض/أُلغي/اكتمل) —
+    كانت تبقى «مفتوحة» في صندوق المهام رغم انتهاء الطلب المرتبطة به (QA-P1-TASK-01)."""
+    open_tasks = db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "request",
+        models.Task.related_entity_id == req.id,
+        models.Task.status == "open",
+    )).all()
+    for t in open_tasks:
+        t.status = "dismissed"
+        t.completed_at = datetime.now(timezone.utc)
+
+
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
            note: str | None, rt: models.RequestType) -> models.Request:
     chain = _chain(rt)
@@ -539,6 +553,18 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
         req.status = "rejected"
         req.closed_at = datetime.now(timezone.utc)
         _notify_terminated(db, req, rt, "rejected", user, note)
+        _close_open_tasks(db, req)
+        db.commit()
+        db.refresh(req)
+        return req
+
+    if decision == "returned":
+        # إرجاع للمقدّم للتصحيح — بديل عن الرفض النهائي في المرحلتين الأولى والثانية
+        # (QA-P2-WF-03): يوثّق سبب الإرجاع بوضوح ويترك للموظف تقديم طلب مصحَّح.
+        req.status = "returned"
+        req.closed_at = datetime.now(timezone.utc)
+        _notify_terminated(db, req, rt, "returned", user, note)
+        _close_open_tasks(db, req)
         db.commit()
         db.refresh(req)
         return req
@@ -604,6 +630,7 @@ def _finalize(db: Session, req: models.Request) -> None:
         db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
         dedup_key=f"req_done:{req.id}",
     )
+    _close_open_tasks(db, req)
 
 
 def cancel(db: Session, req: models.Request, user: models.User, note: str | None,
@@ -618,6 +645,7 @@ def cancel(db: Session, req: models.Request, user: models.User, note: str | None
         approver_role=user.role, approver_user_id=user.id, decision="rejected", note=note,
     ))
     _notify_terminated(db, req, rt, "cancelled", user, note)
+    _close_open_tasks(db, req)
     db.commit()
     db.refresh(req)
     return req
@@ -625,11 +653,11 @@ def cancel(db: Session, req: models.Request, user: models.User, note: str | None
 
 def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
                        kind: str, actor: models.User, note: str | None) -> None:
-    """يُشعر العامل وكل من اعتمد أو كان سيعتمد بالرفض/الإلغاء."""
-    word = "رفض" if kind == "rejected" else "إلغاء"
+    """يُشعر العامل وكل من اعتمد أو كان سيعتمد بالرفض/الإلغاء/الإرجاع للتصحيح."""
+    word = {"rejected": "رفض", "cancelled": "إلغاء", "returned": "إرجاع"}.get(kind, kind)
     reason = f" السبب: {note}" if note else ""
     # العامل
-    emp_code = "NTF-035" if kind == "rejected" else "NTF-036"
+    emp_code = {"rejected": "NTF-035", "cancelled": "NTF-036"}.get(kind, "NTF-035")
     _notify_employee_from_template(
         db, req, code=emp_code, context={"request_type": rt.name, "reason": note or ""},
         dedup_key=f"req_term_emp:{req.id}",

@@ -185,7 +185,7 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
     if target.role == "super_admin":
         raise HTTPException(status_code=400, detail="لا يمكن انتحال إدارة عليا")
     audit(db, actor, "impersonate_start", "user", target.id,
-          detail=f"reason={reason or '-'}", request=request)
+          detail=f"reason={reason or '-'}", request=request, company_id=target.company_id)
     db.commit()
     return {
         "access_token": create_access_token(target.id, target.role, target.company_id,
@@ -212,7 +212,7 @@ def impersonate_end(request: Request,
     if not impersonator_id:
         raise HTTPException(status_code=400, detail="هذا الرمز ليس رمز انتحال")
     actor = db.get(models.User, impersonator_id)
-    audit(db, actor, "impersonate_end", "user", user.id, request=request)
+    audit(db, actor, "impersonate_end", "user", user.id, request=request, company_id=user.company_id)
     db.commit()
     return {"ok": True}
 

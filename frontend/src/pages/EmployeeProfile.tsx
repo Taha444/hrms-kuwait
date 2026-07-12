@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import api, { downloadSensitiveReport } from "../api";
+import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { attAr, statusAr } from "../labels";
+import { attAr, statusAr, contractTypeAr } from "../labels";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
 // يقبل id كخاصية (وضع مُضمَّن) أو يقرأه من المسار (صفحة مستقلة).
@@ -31,6 +31,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const EMP_STATUS: Record<string, string> = {
     active: t("empst_active"), vacation: t("empst_vacation"), suspended: t("empst_suspended"),
     resigned: t("empst_resigned"), terminated: t("empst_terminated"), retired: t("empst_retired"),
+    // أرشفة (QA-P2-DATA-01): كانت غير متاحة من الواجهة رغم دعم الخادم لها — تتيح استبعاد
+    // سجلات تجريبية/غير مرتبطة من التقارير والتصدير دون حذف فعلي للبيانات
+    archived: t("empst_archived"),
   };
   const EV_AR: Record<string, string> = {
     warning: t("ev_warning"), penalty: t("ev_penalty"), bonus: t("ev_bonus"),
@@ -59,6 +62,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     setLeaveBal(r.data);
   };
   const changeStatus = async (status: string) => {
+    if (status === "archived" && !confirm(t("epf_archive_confirm"))) return;
     await api.post(`/employees/${id}/status`, null, { params: { status } });
     setMsg(t("epf_status_changed")); load(); onChanged?.();
   };
@@ -115,8 +119,21 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     if (fileRef.current) fileRef.current.value = "";
     load();
   };
-  const downloadLatest = (type: string) =>
-    window.open(`/api/documents/latest?entity_type=employee&entity_id=${id}&document_type_code=${type}`, "_blank");
+  const downloadLatest = async (type: string) => {
+    // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 (QA-P1-DOC-01) — نجلب الملف
+    // بالرمز عبر api ونعرضه كـ blob، بنفس نمط RequestDetail.tsx
+    try {
+      const res = await api.get("/documents/latest", {
+        params: { entity_type: "employee", entity_id: id, document_type_code: type },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data as Blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      setMsg(errMsg(e, t("error")));
+    }
+  };
 
   if (!id) return <div className="md-empty">{t("emp_select_prompt")}</div>;
   if (!p) return <div className="empty">{t("loading")}</div>;
@@ -168,22 +185,22 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                             onClick={() => { setActualEdit(true); setActualVal(String(p.actual_salary ?? "")); }}>
                             {t("edit")}</button>}</>
                     : <span className="row" style={{ display: "inline-flex", gap: 6 }}>
-                        <input type="number" min={0} value={actualVal} style={{ width: 110 }}
+                        <input aria-label={t("fld_actual_salary")} type="number" min={0} value={actualVal} style={{ width: 110 }}
                           onChange={(ev) => setActualVal(ev.target.value)} />
                         <button className="sm" onClick={saveActualSalary}>{t("save")}</button>
                         <button className="ghost sm" onClick={() => setActualEdit(false)}>{t("cancel")}</button>
                       </span>}
                   <br /></>
               )}
-              <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br /><b>{t("epf_contract")}:</b> {e.contract_type}<br />
+              <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br /><b>{t("epf_contract")}:</b> {contractTypeAr(e.contract_type)}<br />
               <b>{t("epf_att_mode")}:</b> {e.attendance_mode}
               {p.created_by_name && <><br /><span className="muted" style={{ fontSize: 12 }}>{t("emp_created_by")}: {p.created_by_name}</span></>}
             </div>
             <div className="card">
               {can("edit_employee") && (
                 <div className="field" style={{ margin: 0 }}>
-                  <label>{t("emp_status")}</label>
-                  <select value={e.status} onChange={(ev) => changeStatus(ev.target.value)}>
+                  <label htmlFor="epf-status">{t("emp_status")}</label>
+                  <select id="epf-status" value={e.status} onChange={(ev) => changeStatus(ev.target.value)}>
                     {Object.entries(EMP_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
@@ -228,13 +245,13 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
               <h4>{t("epf_upload_title")}</h4>
               <div className="row">
-                <select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ width: 200 }}>
+                <select aria-label={t("epf_col_type")} value={docType} onChange={(e) => setDocType(e.target.value)} style={{ width: 200 }}>
                   <option value="passport">{t("epf_doc_passport")}</option>
                   <option value="civil_id">{t("epf_doc_civil")}</option>
                   <option value="residency">{t("epf_doc_residency")}</option>
                   <option value="contract">{t("epf_doc_contract")}</option>
                 </select>
-                <input type="file" ref={fileRef} onChange={(e) => e.target.files && ocrPreview(e.target.files[0])} />
+                <input aria-label={t("epf_upload_title")} type="file" ref={fileRef} onChange={(e) => e.target.files && ocrPreview(e.target.files[0])} />
                 <button onClick={upload}>{t("epf_upload_save")}</button>
               </div>
               {suggested && (
@@ -257,8 +274,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
           <h3>{t("emp_leave_bal")}</h3>
           <p className="muted">{t("epf_leave_hint")}</p>
           <div className="row">
-            <div className="field" style={{ width: 200 }}><label>{t("leave_consumed")}</label>
-              <input type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
+            <div className="field" style={{ width: 200 }}><label htmlFor="epf-leave-consumed">{t("leave_consumed")}</label>
+              <input id="epf-leave-consumed" type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
             <div className="field" style={{ alignSelf: "flex-end" }}>
               <button onClick={calcLeave}>{t("leave_calc")}</button></div>
           </div>
@@ -269,6 +286,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               <div className="stat accent"><div className="num">{leaveBal.remaining_days}</div><div className="lbl">{t("leave_remaining")}</div></div>
             </div>
           )}
+          {leaveBal?.advance_note && <p className="err">⚠ {leaveBal.advance_note}</p>}
         </div>
       )}
 
@@ -280,14 +298,14 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               <h3>{t("emp_terminate")}</h3>
               <p className="muted">{t("epf_leave_hint")}</p>
               <div className="row">
-                <div className="field" style={{ flex: 1 }}><label>{t("epf_term_end_date")}</label>
-                  <input type="date" value={term.end_date} onChange={(ev) => setTerm({ ...term, end_date: ev.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label>{t("epf_reason")}</label>
-                  <select value={term.reason} onChange={(ev) => setTerm({ ...term, reason: ev.target.value })}>
+                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-end">{t("epf_term_end_date")}</label>
+                  <input id="epf-term-end" type="date" value={term.end_date} onChange={(ev) => setTerm({ ...term, end_date: ev.target.value })} /></div>
+                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-reason">{t("epf_reason")}</label>
+                  <select id="epf-term-reason" value={term.reason} onChange={(ev) => setTerm({ ...term, reason: ev.target.value })}>
                     {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select></div>
-                <div className="field" style={{ flex: 1 }}><label>{t("eos_used_leave")}</label>
-                  <input type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
+                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-used-leave">{t("eos_used_leave")}</label>
+                  <input id="epf-term-used-leave" type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
                 <div className="field" style={{ alignSelf: "flex-end" }}>
                   <button className="danger" onClick={terminate}>{t("epf_term_btn")}</button></div>
               </div>
@@ -315,6 +333,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <p className="muted">{t("eos_leave_detail", {
                     accrued: s.leave.accrued_days, used: s.leave.used_days, remaining: s.leave.remaining_days })}</p>
                 )}
+                {s.leave?.advance_note && <p className="err">⚠ {s.leave.advance_note}</p>}
                 <p className="muted">{s.service?.text} · {s.factor_note}</p>
                 <p className="muted">{s.disclaimer}</p>
               </div>
@@ -330,11 +349,11 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             <h3>{t("emp_hr_log")}</h3>
             {can("edit_employee") && (
               <div className="row" style={{ marginBottom: 10 }}>
-                <select value={evForm.kind} onChange={(e) => setEvForm({ ...evForm, kind: e.target.value })} style={{ width: 130 }}>
+                <select aria-label={t("epf_col_type")} value={evForm.kind} onChange={(e) => setEvForm({ ...evForm, kind: e.target.value })} style={{ width: 130 }}>
                   {Object.entries(EV_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
-                <input placeholder={t("epf_ev_title_ph")} value={evForm.title} onChange={(e) => setEvForm({ ...evForm, title: e.target.value })} style={{ flex: 1 }} />
-                <input type="number" placeholder={t("epf_ev_amount_ph")} value={evForm.amount} onChange={(e) => setEvForm({ ...evForm, amount: e.target.value })} style={{ width: 140 }} />
+                <input aria-label={t("epf_ev_title_ph")} placeholder={t("epf_ev_title_ph")} value={evForm.title} onChange={(e) => setEvForm({ ...evForm, title: e.target.value })} style={{ flex: 1 }} />
+                <input aria-label={t("epf_ev_amount_ph")} type="number" placeholder={t("epf_ev_amount_ph")} value={evForm.amount} onChange={(e) => setEvForm({ ...evForm, amount: e.target.value })} style={{ width: 140 }} />
                 <button onClick={addEvent}>{t("add")}</button>
               </div>
             )}

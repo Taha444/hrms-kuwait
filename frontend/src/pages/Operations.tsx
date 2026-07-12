@@ -33,7 +33,7 @@ export default function Operations() {
           <h2 style={{ margin: "2px 0 0" }}>{t("operations")}</h2>
           <div className="sub">{t("ops_sub")}</div>
         </div>
-        <select value={branch} onChange={(e) => { setBranch(e.target.value); load(e.target.value); }} style={{ maxWidth: 200 }}>
+        <select aria-label={t("all_branches")} value={branch} onChange={(e) => { setBranch(e.target.value); load(e.target.value); }} style={{ maxWidth: 200 }}>
           <option value="">{t("all_branches")}</option>
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>

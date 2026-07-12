@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import Icon from "../Icon";
+import { useI18n } from "../i18n";
 
 // البحث الشامل من الشريط العلوي — يبحث في كل الكيانات ويُصنّف النتائج.
-const CAT_AR: Record<string, string> = {
-  employees: "الموظفون", companies: "الشركات", branches: "الفروع",
-  licenses: "التراخيص", permits: "الإقامات",
-};
-
 export default function GlobalSearch() {
+  const { t } = useI18n();
+  const CAT_LABEL: Record<string, string> = {
+    employees: t("employees"), companies: t("companies"), branches: t("kpi_branches"),
+    licenses: t("gs_cat_licenses"), permits: t("gs_cat_permits"),
+  };
   const nav = useNavigate();
   const [q, setQ] = useState("");
   const [res, setRes] = useState<any>(null);
@@ -43,7 +44,7 @@ export default function GlobalSearch() {
           <Icon name="scan" size={16} />
         </span>
         <input value={q} onChange={(e) => onChange(e.target.value)} onFocus={() => res && setOpen(true)}
-          placeholder="بحث شامل: موظف · شركة · فرع · ترخيص · إقامة"
+          placeholder={t("gs_placeholder")}
           style={{ paddingInlineStart: 36, background: "var(--surface-2)" }} />
       </div>
       {open && res && (
@@ -52,10 +53,10 @@ export default function GlobalSearch() {
           background: "#fff", border: "1px solid var(--line)", borderRadius: 12,
           boxShadow: "var(--shadow)", zIndex: 50, maxHeight: 420, overflowY: "auto", padding: 6,
         }}>
-          {res.total === 0 && <div className="muted" style={{ padding: 14, textAlign: "center" }}>لا نتائج لـ «{res.query}»</div>}
+          {res.total === 0 && <div className="muted" style={{ padding: 14, textAlign: "center" }}>{t("gs_no_results")} «{res.query}»</div>}
           {Object.entries(res.results).map(([cat, items]: any) => items.length > 0 && (
             <div key={cat}>
-              <div className="muted" style={{ fontSize: 11, fontWeight: 700, padding: "8px 10px 4px" }}>{CAT_AR[cat] || cat}</div>
+              <div className="muted" style={{ fontSize: 11, fontWeight: 700, padding: "8px 10px 4px" }}>{CAT_LABEL[cat] || cat}</div>
               {items.map((it: any, i: number) => (
                 <div key={i} onClick={() => goto(it.link)} style={{ padding: "8px 10px", borderRadius: 8, cursor: "pointer" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}

@@ -44,7 +44,7 @@ export default function AttendanceReview() {
           <div className="sub">{t("att_review_sub")}</div>
         </div>
         <div className="row">
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 170 }} />
+          <input aria-label={t("att_review_title")} type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 170 }} />
           <button className="ghost" onClick={load}>{t("refresh")}</button>
         </div>
       </div>

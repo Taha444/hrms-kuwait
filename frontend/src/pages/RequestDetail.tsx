@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import RequestSteps, { ProgressMini } from "../components/RequestSteps";
@@ -23,15 +23,22 @@ export default function RequestDetail() {
   const act = async (fn: () => Promise<any>, ok: string) => {
     setErr(""); setMsg("");
     try { await fn(); setMsg(ok); load(); }
-    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
-  const decide = (decision: string) =>
+  const decide = (decision: string) => {
+    // الإرجاع للتصحيح يلزم توضيح السبب دائًما (QA-P2-WF-03)، خلافًا للاعتماد/الرفض
+    if (decision === "returned" && !note.trim()) { setErr(t("rd_return_note_required")); return; }
     act(() => api.post(`/requests/${id}/decide`, { decision, note }), t("rd_decided"));
+  };
   const cancel = () =>
     act(() => api.post(`/requests/${id}/cancel`, null, { params: { note } }), t("rd_cancelled"));
-  const setAppointment = () =>
+  const setAppointment = () => {
+    // منع إرسال تاريخ فارغ للخادم (QA-P0-WF-02): "" لا يمكن تحويله لـ datetime فيرجع
+    // 422 بمصفوفة أخطاء تحقق — تحقق واضح هنا بدل الاعتماد على معالجة الخطأ لاحقًا
+    if (!appt.scheduled_at) { setErr(t("rd_appt_required")); return; }
     act(() => api.post(`/requests/${id}/appointment`, appt), t("rd_appt_set"));
+  };
   const received = () => act(() => api.post(`/requests/${id}/received`), t("rd_received_done"));
 
   const uploadDoc = async (kind: string, file: File) => {
@@ -49,7 +56,7 @@ export default function RequestDetail() {
       const url = URL.createObjectURL(res.data as Blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   const markPrinted = (kind: string) =>
@@ -107,13 +114,16 @@ export default function RequestDetail() {
 
       <div className="card">
         <h3>{t("rd_actions")}</h3>
-        <div className="field"><label>{t("rd_note_optional")}</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        <div className="field"><label htmlFor="rd-note">{t("rd_note_optional")}</label>
+          <input id="rd-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
 
         {req.status === "pending" && can("approve_request") && (
           <div className="row">
             <button onClick={() => decide("approved")}>{t("rd_approve")}</button>
             <button className="danger" onClick={() => decide("rejected")}>{t("rd_reject")}</button>
+            {req.current_stage < 2 && (
+              <button className="warn" onClick={() => decide("returned")}>{t("rd_return")}</button>
+            )}
           </div>
         )}
 
@@ -121,23 +131,24 @@ export default function RequestDetail() {
           <div className="card" style={{ background: "#f8fafc" }}>
             <h4>{t("rd_sign_title")}</h4>
             <div className="row">
-              <div className="field"><label>{t("rd_review_appt")}</label>
-                <input type="datetime-local" onChange={(e) => setAppt({ ...appt, scheduled_at: e.target.value })} /></div>
-              <div className="field"><label>{t("rd_location")}</label>
-                <input value={appt.location} onChange={(e) => setAppt({ ...appt, location: e.target.value })} /></div>
+              <div className="field"><label htmlFor="rd-appt-when">{t("rd_review_appt")} *</label>
+                <input id="rd-appt-when" type="datetime-local" required value={appt.scheduled_at}
+                  onChange={(e) => setAppt({ ...appt, scheduled_at: e.target.value })} /></div>
+              <div className="field"><label htmlFor="rd-appt-location">{t("rd_location")}</label>
+                <input id="rd-appt-location" value={appt.location} onChange={(e) => setAppt({ ...appt, location: e.target.value })} /></div>
             </div>
             <button onClick={setAppointment}>{t("rd_set_appt")}</button>
             <div className="field" style={{ marginTop: 12 }}>
-              <label>{t("rd_upload_signed")}</label>
-              <input type="file" onChange={(e) => e.target.files && uploadDoc("signed_scan", e.target.files[0])} />
+              <label htmlFor="rd-upload-signed">{t("rd_upload_signed")}</label>
+              <input id="rd-upload-signed" type="file" onChange={(e) => e.target.files && uploadDoc("signed_scan", e.target.files[0])} />
             </div>
           </div>
         )}
 
         {req.status === "awaiting_delegate" && user?.role === "delegate" && (
           <div className="field">
-            <label>{t("rd_upload_exit")}</label>
-            <input type="file" onChange={(e) => e.target.files && uploadDoc("exit_permit", e.target.files[0])} />
+            <label htmlFor="rd-upload-exit">{t("rd_upload_exit")}</label>
+            <input id="rd-upload-exit" type="file" onChange={(e) => e.target.files && uploadDoc("exit_permit", e.target.files[0])} />
           </div>
         )}
 
@@ -145,7 +156,7 @@ export default function RequestDetail() {
           <button onClick={received}>{t("rd_mark_received")}</button>
         )}
 
-        {isManager && !["completed", "rejected", "cancelled"].includes(req.status) && (
+        {isManager && !["completed", "rejected", "cancelled", "returned"].includes(req.status) && (
           <div style={{ marginTop: 12 }}>
             <button className="warn" onClick={cancel}>{t("rd_cancel_mgr")}</button>
           </div>

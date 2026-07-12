@@ -76,7 +76,11 @@ function Sidebar({ open }: { open: boolean }) {
     canOperations, canArchive, canStructure, canRenewals } = useAccess();
 
   useEffect(() => {
-    api.get("/tasks/count").then((r) => setTaskCount(r.data.open)).catch(() => {});
+    const refresh = () => api.get("/tasks/count").then((r) => setTaskCount(r.data.open)).catch(() => {});
+    refresh();
+    // تحديث فوري عند إكمال/تجاهل مهمة من صفحة المهام، لا عند تغيير المسار فقط (QA-P1-TASK-01)
+    window.addEventListener("tasks:changed", refresh);
+    return () => window.removeEventListener("tasks:changed", refresh);
   }, [loc.pathname]);
 
   const Item = ({ to, icon, label, badge }: any) => (
@@ -240,7 +244,9 @@ function Layout({ children }: { children: React.ReactNode }) {
       <div className="main">
         <ImpersonationBanner />
         <Topbar onMenu={() => setNavOpen((o) => !o)} />
-        <div className="content">{children}</div>
+        {/* main landmark مفقود كان يخفض a11y score (QA-P2-A11Y-01) — يحدد لقارئات الشاشة
+            المحتوى الرئيسي للصفحة بمعزل عن الشريط الجانبي/العلوي */}
+        <main className="content">{children}</main>
       </div>
     </div>
   );

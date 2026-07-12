@@ -95,8 +95,8 @@ export default function Archive() {
                 <p className="muted" style={{ margin: "4px 0" }}>{t("arch_commercial_reg")}: {data.company.commercial_reg || "—"} · {t("arch_entity_type")}: {data.company.entity_type || "—"}</p>
               </div>
               <div className="row" style={{ alignItems: "flex-end" }}>
-                <div className="field" style={{ margin: 0 }}><label>{t("arch_file_number")}</label>
-                  <input value={fileNo} onChange={(e) => setFileNo(e.target.value)} style={{ width: 200 }} /></div>
+                <div className="field" style={{ margin: 0 }}><label htmlFor="arch-file-no">{t("arch_file_number")}</label>
+                  <input id="arch-file-no" value={fileNo} onChange={(e) => setFileNo(e.target.value)} style={{ width: 200 }} /></div>
                 {can("manage_company") && <button onClick={saveFileNo}>{t("save")}</button>}
               </div>
             </div>
@@ -109,8 +109,8 @@ export default function Archive() {
       {tab === "branch" && (
         <>
           <div className="field" style={{ maxWidth: 320 }}>
-            <label>{t("arch_select_branch")}</label>
-            <select value={branchId} onChange={(e) => { const id = +e.target.value; setBranchId(id); loadBranch(id); }}>
+            <label htmlFor="arch-branch">{t("arch_select_branch")}</label>
+            <select id="arch-branch" value={branchId} onChange={(e) => { const id = +e.target.value; setBranchId(id); loadBranch(id); }}>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>

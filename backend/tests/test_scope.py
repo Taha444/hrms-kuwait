@@ -56,7 +56,8 @@ def test_scope_self_sees_only_own_record(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)
     emp_id = client.post("/api/employees", headers=ah, json={
-        "name": "موظف الخدمة الذاتية", "company_id": 1, "branch_id": 1}).json()["id"]
+        "name": "موظف الخدمة الذاتية", "civil_id": "199900011122", "basic_salary": 400,
+        "company_id": 1, "branch_id": 1}).json()["id"]
     uid, tok = _mk_user(client, ah, "666000222000", employee_id=emp_id)
     client.post(f"/api/users/{uid}/scope", headers=ah, params={"level": "self"})
     rows = client.get("/api/employees", headers=auth_headers(tok)).json()

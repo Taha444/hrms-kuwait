@@ -67,6 +67,19 @@ export async function downloadFile(path: string, params: any, fallbackName: stri
   URL.revokeObjectURL(url);
 }
 
+// يستخرج رسالة خطأ نصية آمنة من استجابة الخادم (QA-P0-WF-02): أخطاء تحقق FastAPI (422)
+// تُعيد detail كمصفوفة كائنات لا كنص، وعرضها مباشرة في JSX يُسقط الواجهة بشاشة بيضاء
+// (Objects are not valid as a React child) — هذا يضمن أن الناتج نص دائًما.
+export function errMsg(e: any, fallback: string): string {
+  const d = e?.response?.data?.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map((it: any) => (typeof it === "string" ? it : it?.msg || JSON.stringify(it))).join("، ");
+  }
+  if (d && typeof d === "object") return (d as any).msg || JSON.stringify(d);
+  return fallback;
+}
+
 // تصدير تقرير حساس (رواتب/نهاية خدمة) — يتطلب سببًا صريحًا يُسجَّل في التدقيق (FIX-016)
 export async function downloadSensitiveReport(path: string, params: any, fallbackName: string,
                                               promptText: string) {

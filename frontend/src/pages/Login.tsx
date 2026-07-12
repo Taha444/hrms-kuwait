@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
+import { errMsg } from "../api";
 
 export default function Login() {
   const { login } = useAuth();
@@ -20,7 +21,7 @@ export default function Login() {
       const u = await login(civilId.trim(), password);
       nav(u.must_change_password ? "/change-password" : (u.is_cross_company ? "/select-company" : "/"));
     } catch (e: any) {
-      setErr(e.response?.data?.detail || t("login_failed"));
+      setErr(errMsg(e, t("login_failed")));
     } finally {
       setBusy(false);
     }
@@ -35,13 +36,13 @@ export default function Login() {
           <span className="muted">{t("app_tagline")}</span>
         </div>
         <div className="field">
-          <label>{t("civil_id")}</label>
-          <input value={civilId} onChange={(e) => setCivilId(e.target.value)} inputMode="numeric"
+          <label htmlFor="login-civil-id">{t("civil_id")}</label>
+          <input id="login-civil-id" value={civilId} onChange={(e) => setCivilId(e.target.value)} inputMode="numeric"
             placeholder="٠٠٠٠٠٠٠٠٠٠٠٠" autoFocus dir="ltr" style={{ textAlign: "center", letterSpacing: 2 }} />
         </div>
         <div className="field">
-          <label>{t("password")}</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
+          <label htmlFor="login-password">{t("password")}</label>
+          <input id="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
         </div>
         {err && <div className="err">{err}</div>}
         <button style={{ width: "100%", marginTop: 4 }} disabled={busy}>

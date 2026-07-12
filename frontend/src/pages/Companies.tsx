@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 import { statusAr } from "../labels";
 
@@ -16,7 +16,7 @@ export default function Companies() {
   const create = async () => {
     setErr("");
     try { await api.post("/companies", form); setShowNew(false); load(); }
-    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
   const setStatus = async (id: number, status: string) => {
     await api.post(`/companies/${id}/status?status=${status}`); load();
@@ -31,12 +31,12 @@ export default function Companies() {
       {showNew && (
         <div className="card">
           <div className="row">
-            <div className="field" style={{ flex: 2 }}><label>{t("col_name")}</label>
-              <input onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>{t("company_reg")}</label>
-              <input onChange={(e) => setForm({ ...form, commercial_reg: e.target.value })} /></div>
-            <div className="field" style={{ width: 120 }}><label>{t("eos")}</label>
-              <select value={form.eos_day_divisor} onChange={(e) => setForm({ ...form, eos_day_divisor: +e.target.value })}>
+            <div className="field" style={{ flex: 2 }}><label htmlFor="co-name">{t("col_name")}</label>
+              <input id="co-name" onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="co-reg">{t("company_reg")}</label>
+              <input id="co-reg" onChange={(e) => setForm({ ...form, commercial_reg: e.target.value })} /></div>
+            <div className="field" style={{ width: 120 }}><label htmlFor="co-eos-divisor">{t("eos")}</label>
+              <select id="co-eos-divisor" value={form.eos_day_divisor} onChange={(e) => setForm({ ...form, eos_day_divisor: +e.target.value })}>
                 <option value={26}>26</option><option value={30}>30</option></select></div>
           </div>
           {err && <div className="err">{err}</div>}

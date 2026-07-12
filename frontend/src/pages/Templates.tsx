@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
@@ -49,7 +49,7 @@ export default function Templates() {
       if (editing.id) await api.put(`/templates/${editing.id}`, editing);
       else await api.post("/templates", editing);
       setEditing(null); setMsg(t("tpl_saved")); load();
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   const remove = async (id: number) => {
@@ -73,7 +73,7 @@ export default function Templates() {
       const w = window.open("", "_blank");
       if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
       setMsg(t("tpl_rendered"));
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   return (
@@ -99,10 +99,10 @@ export default function Templates() {
         <div className="card">
           <h3>{editing.id ? t("tpl_edit") : t("tpl_new_title")}</h3>
           <div className="row">
-            <div className="field" style={{ flex: 2 }}><label>{t("tpl_name")}</label>
-              <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>{t("tpl_category")}</label>
-              <input value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })} /></div>
+            <div className="field" style={{ flex: 2 }}><label htmlFor="tpl-name">{t("tpl_name")}</label>
+              <input id="tpl-name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="tpl-category">{t("tpl_category")}</label>
+              <input id="tpl-category" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })} /></div>
           </div>
           <label>{t("tpl_auto_vars")}</label>
           <div className="row" style={{ marginBottom: 10 }}>
@@ -113,8 +113,8 @@ export default function Templates() {
             ))}
           </div>
           <div className="field">
-            <label>{t("tpl_body_label")}</label>
-            <textarea ref={bodyRef} rows={12} value={editing.body_html}
+            <label htmlFor="tpl-body">{t("tpl_body_label")}</label>
+            <textarea id="tpl-body" ref={bodyRef} rows={12} value={editing.body_html}
               onChange={(e) => setEditing({ ...editing, body_html: e.target.value })}
               style={{ fontFamily: "monospace", lineHeight: 1.7 }} />
           </div>
@@ -131,8 +131,8 @@ export default function Templates() {
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
           <h3>{t("tpl_fill_print")}: {filling.name}</h3>
           <div className="field" style={{ maxWidth: 360 }}>
-            <label>{t("tpl_select_emp")}</label>
-            <select value={empId} onChange={(e) => setEmpId(+e.target.value)}>
+            <label htmlFor="tpl-emp">{t("tpl_select_emp")}</label>
+            <select id="tpl-emp" value={empId} onChange={(e) => setEmpId(+e.target.value)}>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
             </select>
           </div>
@@ -142,8 +142,8 @@ export default function Templates() {
               <div className="row">
                 {filling.customKeys.map((k: string) => (
                   <div className="field" key={k} style={{ flex: 1, minWidth: 200 }}>
-                    <label>{k}</label>
-                    <input value={extra[k] || ""} onChange={(e) => setExtra({ ...extra, [k]: e.target.value })} />
+                    <label htmlFor={`tpl-extra-${k}`}>{k}</label>
+                    <input id={`tpl-extra-${k}`} value={extra[k] || ""} onChange={(e) => setExtra({ ...extra, [k]: e.target.value })} />
                   </div>
                 ))}
               </div>

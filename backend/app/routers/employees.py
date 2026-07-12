@@ -105,7 +105,7 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
 
 
 @router.post("", response_model=schemas.EmployeeOut, status_code=201)
-def create_employee(data: schemas.EmployeeIn, request: Request,
+def create_employee(data: schemas.EmployeeCreateIn, request: Request,
                     user: models.User = Depends(require_perm("create_employee")),
                     db: Session = Depends(get_db)):
     from ..permissions import CROSS_COMPANY_ROLES
@@ -133,7 +133,7 @@ def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_emp
 
 
 @router.put("/{emp_id}", response_model=schemas.EmployeeOut)
-def update_employee(emp_id: int, data: schemas.EmployeeIn, request: Request,
+def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Request,
                     user: models.User = Depends(require_perm("edit_employee")),
                     db: Session = Depends(get_db)):
     emp = _get_emp(db, user, emp_id)

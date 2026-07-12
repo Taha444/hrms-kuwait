@@ -35,7 +35,7 @@ def test_preferences_default_enabled_and_updatable(client):
 def test_print_and_file_send_template_driven_notification(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "loan", "payload_json": {"amount": 100, "reason": "ظرف"}})
+        "request_type_code": "loan", "payload_json": {"amount": 100, "months": 6, "reason": "ظرف"}})
     rid = r.json()["id"]
     mgr = auth_headers(login(client, "100000000001", "manager123"))
     client.post(f"/api/requests/{rid}/decide", headers=mgr, json={"decision": "approved"})

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 
 export default function Eos() {
@@ -18,7 +18,7 @@ export default function Eos() {
   const calc = async () => {
     setErr("");
     try { const r = await api.post("/eos/calculate", form); setRes(r.data); }
-    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   return (
@@ -26,33 +26,33 @@ export default function Eos() {
       <h2>{t("eos_title")}</h2>
       <div className="card">
         <div className="row">
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_basic_salary")}</label>
-            <input type="number" value={form.basic_salary}
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-basic">{t("eos_basic_salary")}</label>
+            <input id="eos-basic" type="number" min={0.001} step="0.001" required value={form.basic_salary}
               onChange={(e) => setForm({ ...form, basic_salary: +e.target.value })} /></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_hire_date")}</label>
-            <input type="date" value={form.hire_date}
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-hire">{t("eos_hire_date")}</label>
+            <input id="eos-hire" type="date" value={form.hire_date}
               onChange={(e) => setForm({ ...form, hire_date: e.target.value })} /></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_end_date")}</label>
-            <input type="date" value={form.end_date}
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-end">{t("eos_end_date")}</label>
+            <input id="eos-end" type="date" value={form.end_date}
               onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
         </div>
         <div className="row">
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_reason")}</label>
-            <select value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}>
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-reason">{t("eos_reason")}</label>
+            <select id="eos-reason" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}>
               {Object.entries(reasons).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_contract_type")}</label>
-            <select value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })}>
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-contract">{t("eos_contract_type")}</label>
+            <select id="eos-contract" value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })}>
               <option value="indefinite">{t("eos_indefinite")}</option><option value="definite">{t("eos_definite")}</option>
             </select></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_used_leave")}</label>
-            <input type="number" min={0} step={1} value={form.used_leave_days}
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-used-leave">{t("eos_used_leave")}</label>
+            <input id="eos-used-leave" type="number" min={0} step={1} value={form.used_leave_days}
               onChange={(e) => setForm({ ...form, used_leave_days: +e.target.value })} /></div>
-          <div className="field" style={{ flex: 1 }}><label>{t("eos_annual_leave")}</label>
-            <input type="number" min={0} step={1} value={form.annual_leave_days}
+          <div className="field" style={{ flex: 1 }}><label htmlFor="eos-annual-leave">{t("eos_annual_leave")}</label>
+            <input id="eos-annual-leave" type="number" min={0} step={1} value={form.annual_leave_days}
               onChange={(e) => setForm({ ...form, annual_leave_days: +e.target.value })} /></div>
-          <div className="field" style={{ width: 100 }}><label>{t("eos_divisor")}</label>
-            <select value={form.day_divisor} onChange={(e) => setForm({ ...form, day_divisor: +e.target.value })}>
+          <div className="field" style={{ width: 100 }}><label htmlFor="eos-divisor">{t("eos_divisor")}</label>
+            <select id="eos-divisor" value={form.day_divisor} onChange={(e) => setForm({ ...form, day_divisor: +e.target.value })}>
               <option value={26}>26</option><option value={30}>30</option></select></div>
         </div>
         {err && <div className="err">{err}</div>}
@@ -73,6 +73,7 @@ export default function Eos() {
             <p><b>{t("eos_leave_breakdown")}</b> {t("eos_leave_detail", {
               accrued: res.leave.accrued_days, used: res.leave.used_days, remaining: res.leave.remaining_days })}</p>
           )}
+          {res.leave?.advance_note && <p className="err">⚠ {res.leave.advance_note}</p>}
           <p><b>{t("eos_factor")}</b> {(res.entitlement_factor * 100).toFixed(2)}% — {res.factor_note}</p>
           {res.cap_applied && <p className="err">{t("eos_cap")}</p>}
           <p className="muted">{res.disclaimer}</p>

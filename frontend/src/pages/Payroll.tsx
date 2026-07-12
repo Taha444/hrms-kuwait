@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api, { downloadSensitiveReport } from "../api";
+import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { statusAr } from "../labels";
@@ -26,7 +26,7 @@ export default function Payroll() {
   const preview = async () => {
     setErr(""); setRunId(null);
     try { setData((await api.get("/payroll/preview", { params: { period } })).data); }
-    catch (e: any) { setErr(e.response?.data?.detail || "خطأ"); }
+    catch (e: any) { setErr(errMsg(e, "خطأ")); }
   };
   const run = async () => {
     setErr("");
@@ -34,7 +34,7 @@ export default function Payroll() {
       const r = await api.post("/payroll/run", null, { params: { period } });
       setData(r.data); setRunId(r.data.run_id); setMsg("تم تشغيل المسيّر وحفظه");
       loadRuns();
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   return (
@@ -46,7 +46,7 @@ export default function Payroll() {
           <div className="sub">{t("rep_attendance_sub")}</div>
         </div>
         <div className="row">
-          <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: 160 }} />
+          <input aria-label={t("payroll")} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: 160 }} />
           <button className="ghost" onClick={preview}>{t("payroll_preview")}</button>
           {can("run_payroll") && <button onClick={run}>{t("payroll_run")}</button>}
         </div>

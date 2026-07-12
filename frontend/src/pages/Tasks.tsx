@@ -26,11 +26,14 @@ export default function Tasks() {
   const setTaskStatus = async (id: number, s: string) => {
     await api.post(`/tasks/${id}/status?status=${s}`);
     load();
+    // يُحدّث عداد المهام في الشريط الجانبي فورًا بدل انتظار تغيير المسار (QA-P1-TASK-01)
+    window.dispatchEvent(new Event("tasks:changed"));
   };
   const runScan = async () => {
     const r = await api.post("/tasks/run-scan");
     setMsg(t("scan_generated", { n: r.data.generated }));
     load();
+    window.dispatchEvent(new Event("tasks:changed"));
   };
 
   return (
@@ -41,11 +44,11 @@ export default function Tasks() {
           <h2 style={{ margin: "2px 0 0" }}>{t("tasks")}</h2>
         </div>
         <div className="row">
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: 150 }}>
+          <select aria-label={t("tasks_all_categories")} value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: 150 }}>
             <option value="">{t("tasks_all_categories")}</option>
             {CATS.map((c) => <option key={c} value={c}>{t(`cat_${c}`)}</option>)}
           </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 150 }}>
+          <select aria-label={t("status")} value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 150 }}>
             <option value="open">{t("tasks_open")}</option>
             <option value="done">{t("tasks_done")}</option>
             <option value="dismissed">{t("tasks_dismissed")}</option>

@@ -164,6 +164,13 @@ def calculate_eos(
     remaining_leave = accrued_leave - used_leave_days
     # لا يُدفع عن رصيد سالب (استهلاك زائد)؛ يُعرض المتبقّي الحقيقي للشفافية
     leave_payout = daily_wage * max(remaining_leave, 0.0)
+    # تحذير صريح بدل ترك الرقم السالب بلا تفسير (QA-P2-EOS-02): السياسة الحالية لا تخصم
+    # الاستهلاك الزائد من المكافأة — تُصفَّر بدل الإجازات فقط دون أي خصم إضافي على المستحقات.
+    leave_advance_note = (
+        f"الموظف استهلك {abs(round(remaining_leave, 2))} يوم إجازة أكثر من رصيده المستحق "
+        "(سلفة إجازة). لم يُخصم مقابل هذا الاستهلاك الزائد من المكافأة — بدل الإجازات صُفِّر "
+        "فقط. لتطبيق خصم فعلي يلزم قرار وسياسة موثقة من الإدارة."
+    ) if remaining_leave < 0 else None
 
     total_settlement = indemnity + leave_payout
 
@@ -185,6 +192,7 @@ def calculate_eos(
             "accrued_days": round(accrued_leave, 2),
             "used_days": round(used_leave_days, 2),
             "remaining_days": round(remaining_leave, 2),
+            "advance_note": leave_advance_note,
         },
         "service": {
             "years": years,

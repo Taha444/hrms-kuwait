@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { attAr } from "../labels";
 import { useI18n } from "../i18n";
 
@@ -82,7 +82,7 @@ export default function Attendance() {
       setMsg(t("att_verified_msg", { branch: r.data.branch.name }));
       startSelfieCam();
     } catch (e: any) {
-      setErr(e.response?.data?.detail || t("att_invalid_qr"));
+      setErr(errMsg(e, t("att_invalid_qr")));
       // استئناف المسح
       scanningRef.current = true; setScanningUI(true); scanLoop();
     }
@@ -119,7 +119,7 @@ export default function Attendance() {
         ? t("att_checkin_done", { status: attAr(r.data.status) })
         : t("att_checkout_done", { minutes: r.data.worked_minutes }));
       reset(); loadRecords();
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   const reset = () => {

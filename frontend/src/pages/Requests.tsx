@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { ProgressMini } from "../components/RequestSteps";
@@ -38,17 +38,39 @@ export default function Requests() {
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
+  // حقول إلزامية لكل نوع بنموذج مخصّص — يطابق REQUIRED_PAYLOAD_FIELDS في requests.py
+  // (QA-P0-WF-01: منع تقديم طلب فارغ برسالة واضحة قرب الحقول قبل وصوله للخادم أصًلا)
+  const REQUIRED_FIELDS: Record<string, [string, string][]> = {
+    leave: [["start_date", t("req_from")], ["end_date", t("req_to")]],
+    salary_certificate: [["addressed_to", t("req_addressed")], ["purpose", t("req_purpose")]],
+    exit_permission: [["date", t("req_date")], ["reason", t("req_reason")]],
+    advance: [["amount", t("req_amount")]],
+    loan: [["amount", t("req_amount")], ["months", t("req_months")]],
+    REQADV: [["subtype", t("req_subtype")], ["amount", t("req_amount")]],
+    REQBANK: [["bank_name", t("req_bank_name")], ["iban", t("req_iban")]],
+    REQEXP: [["amount", t("req_amount")], ["description", t("req_description")]],
+    REQWARN: [["warning_ref", t("req_warning_ref")], ["response", t("req_response")]],
+  };
+
   const submit = async () => {
     setErr("");
+    const clean = Object.fromEntries(
+      Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
+    );
+    const required = REQUIRED_FIELDS[typeCode];
+    const missing = required
+      ? required.filter(([k]) => clean[k] === undefined || clean[k] === "").map(([, label]) => label)
+      : Object.keys(clean).length === 0 ? [t("req_details")] : [];
+    if (missing.length) {
+      setErr(`${t("req_missing_fields")}: ${missing.join("، ")}`);
+      return;
+    }
     try {
-      const clean = Object.fromEntries(
-        Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
-      );
       const body: any = { request_type_code: typeCode, payload_json: clean };
       if (onBehalfOf) body.employee_id = onBehalfOf;
       await api.post("/requests", body);
       setShowNew(false); setPayload({}); load();
-    } catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   const list = tab === "mine" ? mine : inbox;
@@ -64,15 +86,15 @@ export default function Requests() {
         <div className="card">
           <h3>{t("new_request")}</h3>
           <div className="field">
-            <label>{t("req_type")}</label>
-            <select value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
+            <label htmlFor="req-type">{t("req_type")}</label>
+            <select id="req-type" value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
               {types.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
           </div>
           {canActOnBehalf && (
             <div className="field">
-              <label>{t("req_on_behalf_of")}</label>
-              <select value={onBehalfOf} onChange={(e) => setOnBehalfOf(e.target.value ? +e.target.value : "")}>
+              <label htmlFor="req-on-behalf">{t("req_on_behalf_of")}</label>
+              <select id="req-on-behalf" value={onBehalfOf} onChange={(e) => setOnBehalfOf(e.target.value ? +e.target.value : "")}>
                 <option value="">{t("req_myself")}</option>
                 {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
               </select>
@@ -82,102 +104,102 @@ export default function Requests() {
             <>
               <div className="row">
                 <div className="field" style={{ flex: 1 }}>
-                  <label>{t("req_from")}</label>
-                  <input type="date" onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
+                  <label htmlFor="req-leave-from">{t("req_from")} *</label>
+                  <input id="req-leave-from" type="date" required onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
-                  <label>{t("req_to")}</label>
-                  <input type="date" onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
+                  <label htmlFor="req-leave-to">{t("req_to")} *</label>
+                  <input id="req-leave-to" type="date" required onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ width: 100 }}>
-                  <label>{t("req_days")}</label>
-                  <input type="number" onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
+                  <label htmlFor="req-leave-days">{t("req_days")}</label>
+                  <input id="req-leave-days" type="number" onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
                 </div>
               </div>
-              <div className="field"><label>{t("req_reason")}</label>
-                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+              <div className="field"><label htmlFor="req-leave-reason">{t("req_reason")}</label>
+                <input id="req-leave-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </>
           )}
           {typeCode === "salary_certificate" && (
             <>
-              <div className="field"><label>{t("req_addressed")}</label>
-                <input onChange={(e) => setPayload({ ...payload, addressed_to: e.target.value })} /></div>
-              <div className="field"><label>{t("req_purpose")}</label>
-                <input onChange={(e) => setPayload({ ...payload, purpose: e.target.value })} /></div>
+              <div className="field"><label htmlFor="req-sc-addressed">{t("req_addressed")} *</label>
+                <input id="req-sc-addressed" required onChange={(e) => setPayload({ ...payload, addressed_to: e.target.value })} /></div>
+              <div className="field"><label htmlFor="req-sc-purpose">{t("req_purpose")} *</label>
+                <input id="req-sc-purpose" required onChange={(e) => setPayload({ ...payload, purpose: e.target.value })} /></div>
             </>
           )}
           {typeCode === "exit_permission" && (
             <div className="row">
-              <div className="field" style={{ flex: 1 }}><label>{t("req_date")}</label>
-                <input type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
-                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exit-date">{t("req_date")} *</label>
+                <input id="req-exit-date" type="date" required onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label htmlFor="req-exit-reason">{t("req_reason")} *</label>
+                <input id="req-exit-reason" required onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </div>
           )}
           {(typeCode === "advance" || typeCode === "loan") && (
             <div className="row">
-              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
-                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-adv-amount">{t("req_amount")} *</label>
+                <input id="req-adv-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
               {typeCode === "loan" && (
-                <div className="field" style={{ width: 120 }}><label>{t("req_months")}</label>
-                  <input type="number" min={1} onChange={(e) => setPayload({ ...payload, months: +e.target.value })} /></div>
+                <div className="field" style={{ width: 120 }}><label htmlFor="req-adv-months">{t("req_months")} *</label>
+                  <input id="req-adv-months" type="number" min={1} required onChange={(e) => setPayload({ ...payload, months: +e.target.value })} /></div>
               )}
-              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
-                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label htmlFor="req-adv-reason">{t("req_reason")}</label>
+                <input id="req-adv-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </div>
           )}
           {typeCode === "REQADV" && (
             <div className="row">
-              <div className="field" style={{ width: 150 }}><label>{t("req_subtype")}</label>
-                <select onChange={(e) => setPayload({ ...payload, subtype: e.target.value })}>
+              <div className="field" style={{ width: 150 }}><label htmlFor="req-reqadv-subtype">{t("req_subtype")} *</label>
+                <select id="req-reqadv-subtype" required onChange={(e) => setPayload({ ...payload, subtype: e.target.value })}>
                   <option value="advance">{t("req_subtype_advance")}</option>
                   <option value="loan">{t("req_subtype_loan")}</option>
                 </select></div>
-              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
-                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
-              <div className="field" style={{ width: 140 }}><label>{t("req_installments")}</label>
-                <input type="number" min={1} onChange={(e) => setPayload({ ...payload, installments: +e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label>{t("req_reason")}</label>
-                <input onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-reqadv-amount">{t("req_amount")} *</label>
+                <input id="req-reqadv-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              <div className="field" style={{ width: 140 }}><label htmlFor="req-reqadv-installments">{t("req_installments")}</label>
+                <input id="req-reqadv-installments" type="number" min={1} onChange={(e) => setPayload({ ...payload, installments: +e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label htmlFor="req-reqadv-reason">{t("req_reason")}</label>
+                <input id="req-reqadv-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
             </div>
           )}
           {typeCode === "REQBANK" && (
             <div className="row">
-              <div className="field" style={{ flex: 1 }}><label>{t("req_bank_name")}</label>
-                <input onChange={(e) => setPayload({ ...payload, bank_name: e.target.value })} /></div>
-              <div className="field" style={{ flex: 1 }}><label>{t("req_iban")}</label>
-                <input onChange={(e) => setPayload({ ...payload, iban: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-bank-name">{t("req_bank_name")} *</label>
+                <input id="req-bank-name" required onChange={(e) => setPayload({ ...payload, bank_name: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-bank-iban">{t("req_iban")} *</label>
+                <input id="req-bank-iban" required onChange={(e) => setPayload({ ...payload, iban: e.target.value })} /></div>
             </div>
           )}
           {typeCode === "REQEXP" && (
             <div className="row">
-              <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
-                <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
-              <div className="field" style={{ flex: 1 }}><label>{t("req_receipt_ref")}</label>
-                <input onChange={(e) => setPayload({ ...payload, receipt_ref: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label>{t("req_description")}</label>
-                <input onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exp-amount">{t("req_amount")} *</label>
+                <input id="req-exp-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exp-receipt">{t("req_receipt_ref")}</label>
+                <input id="req-exp-receipt" onChange={(e) => setPayload({ ...payload, receipt_ref: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label htmlFor="req-exp-description">{t("req_description")} *</label>
+                <input id="req-exp-description" required onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
             </div>
           )}
           {typeCode === "REQWARN" && (
             <div className="row">
-              <div className="field" style={{ flex: 1 }}><label>{t("req_warning_ref")}</label>
-                <input onChange={(e) => setPayload({ ...payload, warning_ref: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label>{t("req_response")}</label>
-                <input onChange={(e) => setPayload({ ...payload, response: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="req-warn-ref">{t("req_warning_ref")} *</label>
+                <input id="req-warn-ref" required onChange={(e) => setPayload({ ...payload, warning_ref: e.target.value })} /></div>
+              <div className="field" style={{ flex: 2 }}><label htmlFor="req-warn-response">{t("req_response")} *</label>
+                <input id="req-warn-response" required onChange={(e) => setPayload({ ...payload, response: e.target.value })} /></div>
             </div>
           )}
           {!["leave", "salary_certificate", "exit_permission", "advance", "loan",
             "REQADV", "REQBANK", "REQEXP", "REQWARN"].includes(typeCode) && typeCode && (
             <>
               <div className="row">
-                <div className="field" style={{ flex: 1 }}><label>{t("req_date")}</label>
-                  <input type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label>{t("req_amount")}</label>
-                  <input type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: e.target.value ? +e.target.value : undefined })} /></div>
+                <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-date">{t("req_date")}</label>
+                  <input id="req-generic-date" type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
+                <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-amount">{t("req_amount")}</label>
+                  <input id="req-generic-amount" type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: e.target.value ? +e.target.value : undefined })} /></div>
               </div>
-              <div className="field"><label>{t("req_details")}</label>
-                <textarea rows={3} onChange={(e) => setPayload({ ...payload, details: e.target.value })} /></div>
+              <div className="field"><label htmlFor="req-generic-details">{t("req_details")} *</label>
+                <textarea id="req-generic-details" rows={3} required onChange={(e) => setPayload({ ...payload, details: e.target.value })} /></div>
               <p className="muted">{t("req_details_hint")}</p>
             </>
           )}

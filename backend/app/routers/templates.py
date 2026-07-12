@@ -6,6 +6,7 @@ import os
 import re
 from datetime import date, datetime
 
+import bleach
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -47,6 +48,21 @@ PLACEHOLDERS = {
 }
 
 _TOKEN_RE = re.compile(r"\{\{\s*([\w]+)\s*\}\}")
+
+# وسوم تنسيق نصي/جدولي فقط لمحتوى الصيغ، وسمتان آمنتان فقط (class/dir يستخدمهما تصميم حزمة
+# HRMS-PR-001..042 ثنائي اللغة) — بلا event handlers أو href/src أو style أو
+# iframe/script/style tags (QA-P0-SEC-01: XSS مخزّن عبر body_html المحفوظ).
+_ALLOWED_TPL_TAGS = [
+    "p", "br", "b", "strong", "i", "em", "u", "s", "small", "sup", "sub",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "table", "thead", "tbody", "tr", "td", "th",
+    "ul", "ol", "li", "span", "div", "hr", "blockquote",
+]
+_ALLOWED_TPL_ATTRS = {"*": ["class", "dir"]}
+
+
+def _sanitize_body_html(raw: str) -> str:
+    return bleach.clean(raw or "", tags=_ALLOWED_TPL_TAGS, attributes=_ALLOWED_TPL_ATTRS, strip=True)
 
 
 @router.get("/placeholders")
@@ -92,7 +108,7 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
                     db: Session = Depends(get_db)):
     # إنشاء النماذج حصري للإدارة العليا؛ باقي المستخدمين يختارون من الموجود
     t = models.DocumentTemplate(company_id=None, name=data.name, name_en=data.name_en, category=data.category,
-                                body_html=data.body_html, code=data.code, created_by=user.id)
+                                body_html=_sanitize_body_html(data.body_html), code=data.code, created_by=user.id)
     db.add(t)
     db.flush()
     audit(db, user, "create_template", "template", t.id, request=request)
@@ -107,7 +123,8 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
-    t.name, t.name_en, t.category, t.body_html = data.name, data.name_en, data.category, data.body_html
+    t.name, t.name_en, t.category = data.name, data.name_en, data.category
+    t.body_html = _sanitize_body_html(data.body_html)
     audit(db, user, "update_template", "template", t.id, request=request)
     db.commit()
     return {"ok": True}
@@ -172,7 +189,8 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
         # تهريب القيم المُدرجة (بيانات الموظف/المدخلات) لمنع حقن HTML/XSS
         return html.escape(str(ctx.get(key, "................")))
 
-    filled = _TOKEN_RE.sub(repl, t.body_html)
+    # تعقيم دفاعي إضافي عند العرض أيضًا (يحيّد أي قوالب محفوظة قبل هذا الإصلاح)
+    filled = _TOKEN_RE.sub(repl, _sanitize_body_html(t.body_html))
     rendered = _wrap_printable(t, ctx, filled)
 
     document_id = None

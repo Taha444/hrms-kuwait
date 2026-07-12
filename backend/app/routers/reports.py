@@ -56,11 +56,11 @@ def export_employees(request: Request, fmt: str = "xlsx", company_id: int | None
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id))
-    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"employees:{reason or ''}", request=request)
+    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"employees:{reason or ''}", request=request, company_id=cid)
     db.commit()
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), "employees.csv", CSV_MIME)
-    return _file(exports.to_xlsx("الموظفون", headers, rows), "employees.xlsx", XLSX_MIME)
+    return _file(exports.to_xlsx("الموظفون", headers, rows, text_columns={1}), "employees.xlsx", XLSX_MIME)
 
 
 @router.get("/payroll/{run_id}")
@@ -81,7 +81,7 @@ def export_payroll(run_id: int, request: Request, fmt: str = "xlsx", reason: str
              p["other_deductions"], p["gross"], p["net"]]
             for p in pr.totals_json.get("payslips", [])]
     name = f"payroll_{pr.period}"
-    audit(db, user, "EXPORT_REPORT", "payroll_run", run_id, detail=f"payroll:{reason}", request=request)
+    audit(db, user, "EXPORT_REPORT", "payroll_run", run_id, detail=f"payroll:{reason}", request=request, company_id=pr.company_id)
     db.commit()
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), f"{name}.csv", CSV_MIME)
@@ -100,7 +100,7 @@ def export_eos(emp_id: int, request: Request, fmt: str = "xlsx", reason: str | N
     if not emp or not emp.eos_settlement_json:
         raise HTTPException(status_code=404, detail="لا توجد حسبة نهاية خدمة محفوظة")
     assert_same_company(user, emp.company_id, db=db, request=request)
-    audit(db, user, "EXPORT_REPORT", "employee", emp_id, detail=f"eos:{reason}", request=request)
+    audit(db, user, "EXPORT_REPORT", "employee", emp_id, detail=f"eos:{reason}", request=request, company_id=emp.company_id)
     db.commit()
     s = json.loads(emp.eos_settlement_json)
     lv = s.get("leave", {})
@@ -151,7 +151,7 @@ def export_attendance(request: Request, month: str | None = None, fmt: str = "cs
              r.check_in_at.strftime("%Y-%m-%d %H:%M") if r.check_in_at else "",
              r.check_out_at.strftime("%Y-%m-%d %H:%M") if r.check_out_at else "",
              r.status, r.worked_minutes, r.overtime_minutes] for r in recs]
-    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"attendance:{reason or ''}", request=request)
+    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"attendance:{reason or ''}", request=request, company_id=cid)
     db.commit()
     if fmt == "xlsx":
         return _file(exports.to_xlsx(f"حضور {y}-{m:02d}", headers, rows),

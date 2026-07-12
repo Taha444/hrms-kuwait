@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { roleAr } from "../labels";
@@ -63,7 +63,7 @@ export default function Users() {
   const create = async () => {
     setErr("");
     try { await api.post("/users", form); setShowNew(false); load(); }
-    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
   const toggle = async (id: number) => { await api.post(`/users/${id}/toggle`); load(); };
   const reset = async (id: number) => {
@@ -97,12 +97,12 @@ export default function Users() {
       {showNew && (
         <div className="card">
           <div className="row">
-            <div className="field" style={{ flex: 1 }}><label>{t("user_civil_id")}</label>
-              <input onChange={(e) => setForm({ ...form, civil_id: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>{t("user_name")}</label>
-              <input onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>{t("user_role")}</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="usr-civil-id">{t("user_civil_id")}</label>
+              <input id="usr-civil-id" onChange={(e) => setForm({ ...form, civil_id: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="usr-name">{t("user_name")}</label>
+              <input id="usr-name" onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="usr-role">{t("user_role")}</label>
+              <select id="usr-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 {(catalog.assignable_roles || catalog.roles).map((r: string) => <option key={r} value={r}>{roleAr(r)}</option>)}
               </select></div>
           </div>
@@ -119,7 +119,7 @@ export default function Users() {
             <tr key={u.id}><td className="num">{u.civil_id}</td><td>{u.full_name}</td>
               <td><span className="pill info">{roleAr(u.role)}</span></td>
               <td>
-                <select value={u.status || "active"} onChange={async (e) => {
+                <select aria-label={t("status")} value={u.status || "active"} onChange={async (e) => {
                   await api.post(`/users/${u.id}/status`, null, { params: { status: e.target.value } }); load();
                 }} style={{ width: 110, padding: "4px 8px" }}>
                   {Object.entries(USER_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -148,7 +148,7 @@ export default function Users() {
           <p className="muted">{t("user_matrix_hint")}</p>
           <div className="row" style={{ marginBottom: 10, flexWrap: "wrap" }}>
             <span className="muted">{t("user_data_scope")}</span>
-            <select value={sel.scope_level || "company"}
+            <select aria-label={t("user_data_scope")} value={sel.scope_level || "company"}
               onChange={(e) => {
                 const lvl = e.target.value;
                 // company/self لا يحتاجان فرعًا؛ branch يبدأ بأول فرع متاح
@@ -161,7 +161,7 @@ export default function Users() {
               <option value="self">{t("scope_self")}</option>
             </select>
             {sel.scope_level === "branch" && (
-              <select value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, "branch", e.target.value)} style={{ width: 200 }}>
+              <select aria-label={t("scope_branch")} value={sel.scope_branch_id || ""} onChange={(e) => setScope(sel.id, "branch", e.target.value)} style={{ width: 200 }}>
                 <option value="" disabled>{t("opt_choose")}</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>

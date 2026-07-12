@@ -42,7 +42,7 @@ export default function Branches() {
           </div>
           {links[b.id] && (
             <div className="row" style={{ marginTop: 10 }}>
-              <input readOnly value={links[b.id]} onFocus={(e) => e.target.select()} />
+              <input aria-label={t("br_copy")} readOnly value={links[b.id]} onFocus={(e) => e.target.select()} />
               <button className="ghost" onClick={() => copy(links[b.id])}>{t("br_copy")}</button>
             </div>
           )}

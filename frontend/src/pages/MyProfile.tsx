@@ -1,21 +1,31 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
-import { statusAr } from "../labels";
+import { statusAr, contractTypeAr } from "../labels";
 
 // الخدمة الذاتية: ملف الموظف الشخصي — بياناته/عقده/مستنداته/إجازاته/إنذاراته فقط.
 export default function MyProfile() {
   const { t, lang } = useI18n();
   const [p, setP] = useState<any>(null);
   const [err, setErr] = useState("");
+  const [dlErr, setDlErr] = useState("");
 
   useEffect(() => {
     api.get("/me/profile").then((r) => setP(r.data))
-      .catch((e) => setErr(e.response?.data?.detail || t("error")));
+      .catch((e) => setErr(errMsg(e, t("error"))));
   }, []);
 
-  const download = (type: string) =>
-    window.open(`/api/me/document/${encodeURIComponent(type)}`, "_blank");
+  const download = async (type: string) => {
+    // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 (QA-P1-DOC-01)
+    try {
+      const res = await api.get(`/me/document/${encodeURIComponent(type)}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      setDlErr(errMsg(e, t("error")));
+    }
+  };
 
   if (err) return <div className="card empty">{err}</div>;
   if (!p) return <div className="empty">{t("loading")}</div>;
@@ -47,13 +57,14 @@ export default function MyProfile() {
           <b>{t("epf_job")}:</b> {e.job_title || "—"}<br />
           <b>{t("epf_salary")}:</b> {e.basic_salary} {kwd}<br />
           <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br />
-          <b>{t("epf_contract")}:</b> {e.contract_type}<br />
+          <b>{t("epf_contract")}:</b> {contractTypeAr(e.contract_type)}<br />
           <b>{t("epf_passport")}:</b> {e.passport_number || "—"}
         </div>
       </div>
 
       <div className="card">
         <h3>{t("my_documents")}</h3>
+        {dlErr && <div className="err">{dlErr}</div>}
         <table>
           <thead><tr><th>{t("epf_col_type")}</th><th>{t("col_title")}</th><th>{t("epf_col_version")}</th><th>{t("pro_col_expiry")}</th><th></th></tr></thead>
           <tbody>

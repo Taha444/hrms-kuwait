@@ -188,6 +188,35 @@ class EmployeeOut(EmployeeIn):
     status: str
 
 
+class EmployeeCreateIn(EmployeeIn):
+    """مخطط الإنشاء/التعديل — يفرض هوية وبيانات وظيفية أساسية (QA-P1-EMP-01): لا يُستخدم
+    للعرض (EmployeeOut) حتى لا تُطبَّق هذه القيود الصارمة على سجلات قديمة مقروءة من القاعدة
+    قد تسبق هذا التشديد وتكسر استجابة القراءة بالكامل."""
+    civil_id: str
+    name: str
+
+    @field_validator("civil_id")
+    @classmethod
+    def _civil_required(cls, v):
+        if not v or not v.strip() or not (v.isdigit() and 6 <= len(v) <= 12):
+            raise ValueError("الرقم المدني مطلوب ويجب أن يكون أرقامًا (6 إلى 12 خانة)")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def _name_required(cls, v):
+        if not v or not v.strip():
+            raise ValueError("اسم الموظف مطلوب")
+        return v.strip()
+
+    @field_validator("basic_salary")
+    @classmethod
+    def _salary_required(cls, v):
+        if not v or v <= 0:
+            raise ValueError("الراتب الأساسي مطلوب ويجب أن يكون أكبر من صفر")
+        return v
+
+
 class OcrApplyIn(BaseModel):
     """بيانات OCR بعد مراجعة المستخدم — تُطبَّق على ملف الموظف."""
     name: str | None = None
@@ -292,6 +321,21 @@ class EosIn(BaseModel):
     annual_leave_days: int = 30       # سياسة الأيام السنوية (افتراضي 30)
     day_divisor: int | None = None
     max_months: int | None = None
+
+    @field_validator("basic_salary")
+    @classmethod
+    def _salary_positive(cls, v):
+        # راتب سالب/صفري ينتج مكافأة/تسوية سالبة غير منطقية (QA-P1-EOS-01)
+        if v is None or v <= 0:
+            raise ValueError("الراتب الأساسي يجب أن يكون أكبر من صفر")
+        return v
+
+    @field_validator("used_leave_days", "annual_leave_days")
+    @classmethod
+    def _leave_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("عدد أيام الإجازة لا يمكن أن يكون سالبًا")
+        return v
 
 
 class EosForEmployeeIn(BaseModel):

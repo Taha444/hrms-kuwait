@@ -77,14 +77,14 @@ export default function Pro() {
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
           <h3>{renew.type === "permit" ? t("pro_renew_permit") : t("pro_renew_license")}</h3>
           <div className="row">
-            <div className="field" style={{ flex: 1 }}><label>{t("pro_new_expiry")}</label>
-              <input type="date" value={renew.expiry} onChange={(e) => setRenew({ ...renew, expiry: e.target.value })} /></div>
+            <div className="field" style={{ flex: 1 }}><label htmlFor="pro-renew-expiry">{t("pro_new_expiry")}</label>
+              <input id="pro-renew-expiry" type="date" value={renew.expiry} onChange={(e) => setRenew({ ...renew, expiry: e.target.value })} /></div>
             {renew.type === "permit" && (
-              <div className="field" style={{ flex: 1 }}><label>{t("pro_new_number")}</label>
-                <input value={renew.number || ""} onChange={(e) => setRenew({ ...renew, number: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label htmlFor="pro-renew-number">{t("pro_new_number")}</label>
+                <input id="pro-renew-number" value={renew.number || ""} onChange={(e) => setRenew({ ...renew, number: e.target.value })} /></div>
             )}
-            <div className="field" style={{ flex: 2 }}><label>{t("pro_note_optional")}</label>
-              <input value={renew.note || ""} onChange={(e) => setRenew({ ...renew, note: e.target.value })} /></div>
+            <div className="field" style={{ flex: 2 }}><label htmlFor="pro-renew-note">{t("pro_note_optional")}</label>
+              <input id="pro-renew-note" value={renew.note || ""} onChange={(e) => setRenew({ ...renew, note: e.target.value })} /></div>
           </div>
           <div className="row">
             <button onClick={submitRenew} disabled={!renew.expiry}>{t("pro_save_renew")}</button>
@@ -101,7 +101,7 @@ export default function Pro() {
             <button className="ghost sm" onClick={() => setNotesFor(null)}>{t("close")}</button>
           </div>
           <div className="row" style={{ margin: "10px 0" }}>
-            <input value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={t("pro_add_note_ph")} />
+            <input aria-label={t("pro_add_note_ph")} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={t("pro_add_note_ph")} />
             <button onClick={addNote}>{t("add")}</button>
           </div>
           {notes.map((n, i) => (

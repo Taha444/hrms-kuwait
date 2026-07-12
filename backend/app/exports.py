@@ -17,8 +17,12 @@ def to_csv(headers: list[str], rows: list[list]) -> bytes:
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
-def to_xlsx(title: str, headers: list[str], rows: list[list]) -> bytes:
-    """ملف Excel منسّق مع رأس ملوّن."""
+def to_xlsx(title: str, headers: list[str], rows: list[list], text_columns: set[int] | None = None) -> bytes:
+    """ملف Excel منسّق مع رأس ملوّن.
+
+    text_columns: فهارس أعمدة (0-based) تُفرض كنص صراحة (تنسيق '@') — تمنع تحويل
+    Excel أرقام هوية طويلة (الرقم المدني) تلقائيًا لصيغة علمية مثل 1E+11 (QA-P1-RPT-01).
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = title[:31] or "Sheet"
@@ -31,6 +35,14 @@ def to_xlsx(title: str, headers: list[str], rows: list[list]) -> bytes:
         cell.font = header_font
     for r in rows:
         ws.append(r)
+    if text_columns:
+        for col_idx in text_columns:
+            col_letter = ws.cell(row=1, column=col_idx + 1).column_letter
+            for row_idx in range(2, ws.max_row + 1):
+                cell = ws[f"{col_letter}{row_idx}"]
+                cell.number_format = "@"
+                if cell.value is not None:
+                    cell.value = str(cell.value)
     # عرض الأعمدة تلقائيًا (تقديري)
     for i, h in enumerate(headers, start=1):
         width = max(len(str(h)), *(len(str(r[i - 1])) for r in rows)) if rows else len(str(h))

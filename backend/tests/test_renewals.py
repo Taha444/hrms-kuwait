@@ -61,6 +61,37 @@ def test_normal_renewal_full_flow(client):
     assert any(d["type"] == "work_permit" for d in final["documents"])
 
 
+def test_renewal_document_download(client):
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/renewals", headers=emp)
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+
+    pro = auth_headers(login(client, *PRO))
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "renewal_contract_gov"}, files=_f(b"gov-contract"))
+
+    # المندوب يمكنه تنزيل عقد رفعه
+    r = client.get(f"/api/renewals/{rid}/document/renewal_contract_gov", headers=pro)
+    assert r.status_code == 200
+    assert r.content == b"gov-contract"
+
+    # الموظف صاحب الطلب يمكنه تنزيله أيضًا
+    r = client.get(f"/api/renewals/{rid}/document/renewal_contract_gov", headers=emp)
+    assert r.status_code == 200
+
+    # نوع مستند غير معروف → 400
+    assert client.get(f"/api/renewals/{rid}/document/bogus_type", headers=pro).status_code == 400
+
+    # مستند غير مرفوع بعد → 404
+    assert client.get(f"/api/renewals/{rid}/document/renewal_signed_gov", headers=pro).status_code == 404
+
+    # موظف آخر لا صلة له بالمعاملة → 404
+    other_emp = auth_headers(login(client, "100000000102", "emp12345"))
+    r = client.get(f"/api/renewals/{rid}/document/renewal_contract_gov", headers=other_emp)
+    assert r.status_code == 404
+
+
 def test_early_renewal_approval_chain(client):
     pro = auth_headers(login(client, *PRO))
     early_emp = _emp_with_days(client, pro, 31, 90)   # مبكر

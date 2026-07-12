@@ -40,7 +40,7 @@ export default function Reports() {
           <h2 style={{ margin: "2px 0 0" }}>{t("reports")}</h2>
           <div className="sub">{t("reports_sub")}</div>
         </div>
-        <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ maxWidth: 200 }}>
+        <select aria-label={t("all_branches")} value={branch} onChange={(e) => setBranch(e.target.value)} style={{ maxWidth: 200 }}>
           <option value="">{t("all_branches")}</option>
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
@@ -56,7 +56,7 @@ export default function Reports() {
       </Card>
 
       <Card title={t("rep_attendance")} desc={t("rep_attendance_sub")}>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 160 }} />
+        <input aria-label={t("rep_attendance")} type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 160 }} />
         <button disabled={busy === "att_x"} onClick={() => dl("att_x", "/reports/attendance", { month, fmt: "xlsx", ...br }, "attendance.xlsx")}>
           <Icon name="doc" size={15} /> Excel
         </button>

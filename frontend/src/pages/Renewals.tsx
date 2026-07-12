@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 
@@ -31,13 +31,13 @@ export default function Renewals() {
   const load = () => api.get("/renewals").then((r) => {
     setItems(r.data);
     if (sel) { const u = r.data.find((x: any) => x.id === sel.id); if (u) setSel(u); }
-  }).catch((e) => setErr(e.response?.data?.detail || t("error")));
+  }).catch((e) => setErr(errMsg(e, t("error"))));
   useEffect(() => { load(); }, []);
 
   const act = async (fn: () => Promise<any>, ok?: string) => {
     setErr(""); setMsg("");
     try { await fn(); if (ok) setMsg(ok); await load(); }
-    catch (e: any) { setErr(e.response?.data?.detail || t("error")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   const createMine = () => act(async () => {
@@ -69,7 +69,16 @@ export default function Renewals() {
   };
 
   const setRenewing = () => act(() => api.post(`/renewals/${sel.id}/renewing`));
-  const download = (dt: string) => window.open(`/api/renewals/${sel.id}/document/${dt}`, "_blank");
+  const download = async (dt: string) => {
+    setErr("");
+    try {
+      // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 — نجلب الملف بالرمز ونعرضه كـ blob
+      const res = await api.get(`/renewals/${sel.id}/document/${dt}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
   const hasDoc = (dt: string) => sel?.documents?.some((d: any) => d.type === dt);
 
   // زر رفع بملف مخفي
@@ -97,10 +106,10 @@ export default function Renewals() {
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
           <h3 style={{ marginTop: 0 }}>{t("rnw_new")}</h3>
           <p className="muted">{t("rnw_new_hint")}</p>
-          <div className="field"><label>{t("rnw_reason")}</label>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("rnw_reason_ph")} /></div>
-          <div className="field"><label>{t("rnw_notes")}</label>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+          <div className="field"><label htmlFor="rnw-reason">{t("rnw_reason")}</label>
+            <input id="rnw-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("rnw_reason_ph")} /></div>
+          <div className="field"><label htmlFor="rnw-notes">{t("rnw_notes")}</label>
+            <input id="rnw-notes" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <button onClick={createMine}>{t("rnw_new")}</button>
         </div>
       )}
@@ -151,12 +160,12 @@ export default function Renewals() {
                 {/* موافقات المبكر */}
                 {isMgr && sel.status === "pending_manager" && (
                   <><button onClick={() => decide("approved")}>{t("rnw_approve")}</button>
-                    <input placeholder={t("rnw_reject_reason")} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ maxWidth: 220 }} />
+                    <input aria-label={t("rnw_reject_reason")} placeholder={t("rnw_reject_reason")} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ maxWidth: 220 }} />
                     <button className="danger" onClick={() => decide("rejected")}>{t("rnw_reject")}</button></>
                 )}
                 {isHr && sel.status === "pending_hr" && (
                   <><button onClick={() => decide("approved")}>{t("rnw_approve")}</button>
-                    <input placeholder={t("rnw_reject_reason")} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ maxWidth: 220 }} />
+                    <input aria-label={t("rnw_reject_reason")} placeholder={t("rnw_reject_reason")} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ maxWidth: 220 }} />
                     <button className="danger" onClick={() => decide("rejected")}>{t("rnw_reject")}</button></>
                 )}
                 {/* المندوب: العقود */}

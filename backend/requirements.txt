@@ -9,6 +9,8 @@ pyjwt==2.10.1
 apscheduler==3.11.0
 python-dotenv==1.0.1
 openpyxl==3.1.5
+# تعقيم HTML للصيغ/القوالب المحفوظة (QA-P0-SEC-01) — يمنع XSS مخزّن في محتوى القوالب
+bleach==6.4.0
 # محرّك PDF عربي حقيقي (FIX-007) — إعادة تشكيل الحروف + ترتيب RTL
 reportlab==5.0.0
 arabic-reshaper==3.0.1

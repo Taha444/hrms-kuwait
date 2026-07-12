@@ -30,7 +30,7 @@ export default function Audit() {
           <h2 style={{ margin: "2px 0 0" }}>{t("audit_title")}</h2>
           <div className="sub">{t("audit_sub")}</div>
         </div>
-        <select value={action} onChange={(e) => setAction(e.target.value)} style={{ width: 200 }}>
+        <select aria-label={t("audit_all")} value={action} onChange={(e) => setAction(e.target.value)} style={{ width: 200 }}>
           <option value="">{t("audit_all")}</option>
           {actions.map((a) => <option key={a} value={a}>{actionLabel(a)}</option>)}
         </select>

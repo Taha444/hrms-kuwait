@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 import { useAuth } from "../auth";
 import Icon from "../Icon";
@@ -21,7 +21,7 @@ export default function CompanyStructure() {
           api.get(`/branches/${b.id}/stats`).then((s) =>
             setStats((prev) => ({ ...prev, [b.id]: s.data }))).catch(() => {}));
       })
-      .catch((e) => setErr(e.response?.data?.detail || "تعذّر تحميل الهيكل (اختر شركة أولًا)"));
+      .catch((e) => setErr(errMsg(e, "تعذّر تحميل الهيكل (اختر شركة أولًا)")));
   }, []);
 
   if (err) return <div className="card empty">{err}</div>;

@@ -219,10 +219,16 @@ def assert_same_company(user: models.User, entity_company_id: int | None,
 
 
 def audit(db: Session, user: models.User | None, action: str, entity_type: str | None = None,
-          entity_id: int | None = None, detail: str | None = None, request: Request | None = None):
-    """تسجيل عملية في سجل التدقيق."""
+          entity_id: int | None = None, detail: str | None = None, request: Request | None = None,
+          company_id: int | None = None):
+    """تسجيل عملية في سجل التدقيق.
+
+    company_id: تجاوز اختياري لشركة الفاعل (user.company_id) — ضروري حين ينفّذ فاعل بلا
+    شركة (super_admin) عملية تخص شركة محددة (كالانتحال)، وإلا يُسجَّل الحدث بـ company_id
+    فارغ فيُستبعد من عرض سجل التدقيق كلما اختير عرض شركة محددة (QA-P1-AUD-02).
+    """
     log = models.AuditLog(
-        company_id=user.company_id if user else None,
+        company_id=company_id if company_id is not None else (user.company_id if user else None),
         user_id=user.id if user else None,
         action=action,
         entity_type=entity_type,

@@ -151,6 +151,6 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
     target.must_change_password = True
     target.failed_attempts = 0
     target.locked_until = None
-    audit(db, actor, "reset_password", "user", target.id, request=request)
+    audit(db, actor, "reset_password", "user", target.id, request=request, company_id=target.company_id)
     db.commit()
     return {"ok": True, "message": "تمت إعادة تعيين كلمة المرور", "temporary_password": new_pw}

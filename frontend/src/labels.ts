@@ -19,6 +19,7 @@ export const statusAr = M({
   dismissed: { ar: "متجاهَلة", en: "Dismissed" }, suspended: { ar: "موقوف", en: "Suspended" },
   locked: { ar: "مقفل", en: "Locked" }, resigned: { ar: "مستقيل", en: "Resigned" },
   retired: { ar: "متقاعد", en: "Retired" }, vacation: { ar: "في إجازة", en: "On Vacation" },
+  returned: { ar: "أُعيد للتصحيح", en: "Returned for Correction" },
 });
 
 export const roleAr = M({
@@ -46,6 +47,12 @@ export const taskAr = M({
 
 export const severityAr = M({
   info: { ar: "معلومة", en: "Info" }, warning: { ar: "تحذير", en: "Warning" }, critical: { ar: "حرج", en: "Critical" },
+});
+
+// نوع العقد (QA-P2-LOC-01): كانت قيمة indefinite/definite الخام تظهر داخل شاشات عربية
+export const contractTypeAr = M({
+  indefinite: { ar: "غير محدد المدة", en: "Indefinite" },
+  definite: { ar: "محدد المدة", en: "Definite" },
 });
 
 export const urgencyAr = M({

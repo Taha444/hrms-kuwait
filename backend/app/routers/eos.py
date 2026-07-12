@@ -48,6 +48,11 @@ def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None
     per_year = float(company.annual_leave_days or 30)
     accrued = round(per_year * decimal_years, 2)
     remaining = round(accrued - float(consumed_days or 0), 2)
+    # تحذير صريح بدل رصيد سالب بلا تفسير (QA-P2-EOS-02)
+    advance_note = (
+        f"استهلك {abs(remaining)} يوم إجازة أكثر من رصيده المستحق (سلفة إجازة) — "
+        "يلزم قرار وسياسة موثقة من الإدارة قبل أي خصم."
+    ) if remaining < 0 else None
     return {
         "employee_id": emp.id, "name": emp.name,
         "service_years": round(decimal_years, 2),
@@ -55,6 +60,7 @@ def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None
         "accrued_days": accrued,
         "consumed_days": float(consumed_days or 0),
         "remaining_days": remaining,
+        "advance_note": advance_note,
         "as_of": end.isoformat(),
     }
 
