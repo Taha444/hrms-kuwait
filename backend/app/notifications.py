@@ -255,3 +255,57 @@ def daily_scan(db: Session) -> dict:
 
     db.commit()
     return {"generated": created, "scanned_at": today.isoformat()}
+
+
+def sla_scan(db: Session) -> dict:
+    """يفحص المهام المفتوحة ضد مهلة (sla_hours) القالب المرتبط بها، ويصعّد أي مهمة تجاوزت
+    المهلة بإنشاء إشعار عالي الخطورة للمدير المباشر أو الموارد البشرية (V1.4 P1-NOTIF-01)."""
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    escalated = 0
+
+    templates_by_code = {
+        t.code: t for t in db.scalars(
+            select(models.NotificationTemplate).where(models.NotificationTemplate.sla_hours.isnot(None))
+        ).all()
+    }
+    if not templates_by_code:
+        return {"escalated": 0, "scanned_at": now.isoformat()}
+
+    open_tasks = db.scalars(
+        select(models.Task).where(
+            models.Task.status.in_(("open", "in_progress")),
+            models.Task.template_code.in_(list(templates_by_code.keys())),
+        )
+    ).all()
+
+    for task in open_tasks:
+        tpl = templates_by_code.get(task.template_code or "")
+        if not tpl or not tpl.sla_hours:
+            continue
+        # تحويل created_at (naive UTC) للمقارنة الآمنة
+        created = task.created_at if task.created_at.tzinfo else task.created_at.replace(tzinfo=timezone.utc)
+        overdue_by = now - (created + timedelta(hours=tpl.sla_hours))
+        if overdue_by.total_seconds() <= 0:
+            continue
+        # منع التصعيد المتكرر بمفتاح ثبات
+        dk = f"sla_escalation:{task.id}"
+        already = db.scalar(select(models.Task.id).where(models.Task.dedup_key == dk))
+        if already:
+            continue
+        # صعّد لمن يستطيع التدخل: مدير الشركة أو الموارد البشرية
+        notify_roles(
+            db, task.company_id, ["hr", "company_manager"],
+            type="sla_escalation",
+            title=f"مهمة متأخرة (SLA): {task.title}",
+            detail=(f"تجاوزت المهمة #{task.id} مهلتها ({tpl.sla_hours} ساعة) بمقدار "
+                    f"{int(overdue_by.total_seconds() // 3600)} ساعة."),
+            related_entity_type=task.related_entity_type,
+            related_entity_id=task.related_entity_id,
+            severity="critical", dedup_key=dk,
+        )
+        escalated += 1
+
+    db.commit()
+    return {"escalated": escalated, "scanned_at": now.isoformat()}

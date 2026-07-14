@@ -213,6 +213,9 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     can_gov = is_admin or has_permission(user.role, perms, "manage_permits")
     can_view_actual = is_admin or has_permission(user.role, perms, "view_actual_salary")
     can_edit_actual = is_admin or has_permission(user.role, perms, "edit_actual_salary")
+    # PII (رقم مدني، جواز): يراها بالكامل الموارد البشرية والمندوب فقط، ويُخفى جزئيًا لباقي
+    # الأدوار (V1.4 RBAC.Field-Level Permissions). لا يُخفى للموظف نفسه.
+    can_view_pii = is_admin or user.role in ("hr", "delegate") or (user.employee_id == emp.id)
     permits = db.scalars(select(models.Permit).where(
         models.Permit.employee_id == emp_id)).all() if can_gov else []
     docs = db.scalars(
@@ -229,8 +232,14 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         .where(models.AttendanceRecord.employee_id == emp_id)
         .order_by(models.AttendanceRecord.check_in_at.desc()).limit(30)
     ).all()
+    from ..masking import mask_civil_id, mask_passport
+    emp_out = schemas.EmployeeOut.model_validate(emp).model_dump()
+    if not can_view_pii:
+        emp_out["civil_id"] = mask_civil_id(emp_out.get("civil_id"))
+        emp_out["passport_number"] = mask_passport(emp_out.get("passport_number"))
     return {
-        "employee": schemas.EmployeeOut.model_validate(emp),
+        "employee": emp_out,
+        "pii_masked": not can_view_pii,
         # الراتب الفعلي يُعرَض/يُعدَّل حسب الصلاحية المالية فقط
         "actual_salary": emp.actual_salary if can_view_actual else None,
         "can_view_actual_salary": can_view_actual,

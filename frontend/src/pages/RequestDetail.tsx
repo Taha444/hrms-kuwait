@@ -127,6 +127,16 @@ export default function RequestDetail() {
           </div>
         )}
 
+        {req.status === "returned" && req.requester_user_id === user?.id && (
+          <div className="card" style={{ background: "#fffbea", borderInlineStart: "3px solid var(--gold)" }}>
+            <h4>{t("rd_resubmit_title")}</h4>
+            <p className="muted">{t("rd_resubmit_hint")}</p>
+            <button onClick={() => act(() => api.post(`/requests/${id}/resubmit`, {}), t("rd_resubmitted"))}>
+              {t("rd_resubmit")}
+            </button>
+          </div>
+        )}
+
         {req.status === "awaiting_signature" && can("approve_request") && (
           <div className="card" style={{ background: "#f8fafc" }}>
             <h4>{t("rd_sign_title")}</h4>

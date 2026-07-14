@@ -220,6 +220,23 @@ def cancel(req_id: int, request: Request, note: str | None = None,
     return {"ok": True, "status": req.status}
 
 
+@router.post("/{req_id}/resubmit")
+def resubmit_request(req_id: int, request: Request, data: dict | None = None,
+                     user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """إعادة تقديم طلب بعد إرجاعه للتصحيح (V1.4 NEEDS_INFO): يقبل حمولة معدّلة اختيارية،
+    ويعيد الطلب لمرحلة الاعتماد الأولى دون إنشاء طلب جديد."""
+    req = _get_req(db, user, req_id)
+    rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    try:
+        req = workflow.resubmit(db, req, user, (data or {}).get("payload_json"), rt)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    audit(db, user, "request_resubmit", "request", req.id, request=request, company_id=req.company_id)
+    return {"ok": True, "status": req.status, "current_stage": req.current_stage}
+
+
 # ----------------------------- مواعيد ومستندات -----------------------------
 
 @router.post("/{req_id}/appointment")

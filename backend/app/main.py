@@ -100,6 +100,34 @@ def health():
     return {"status": "ok", "service": "hrms-kuwait"}
 
 
+# Evidence Pack (V1.4 EVIDENCE section): commit hash + build metadata يُفتح للجميع (بلا مصادقة)
+# ليمكن للـ QA/UAT توثيق أن الـ deployment مرتبط بالـ build المتفق عليه في تقرير القبول النهائي.
+# القيم تُقرأ من متغيرات بيئة تُضبط عند البناء (Railway/CI)؛ إن غابت، تُقرأ من `git rev-parse` محليًا.
+@app.get("/api/version")
+def version():
+    import subprocess
+    from datetime import datetime, timezone
+
+    commit = os.environ.get("GIT_COMMIT") or os.environ.get("RAILWAY_GIT_COMMIT_SHA") or ""
+    if not commit:
+        try:
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=os.path.dirname(__file__),
+                stderr=subprocess.DEVNULL, timeout=2,
+            ).decode().strip()
+        except Exception:
+            commit = "unknown"
+    build_time = os.environ.get("BUILD_TIME") or datetime.now(timezone.utc).isoformat()
+    return {
+        "service": "hrms-kuwait",
+        "version": app.version,
+        "commit": commit[:12] if commit and commit != "unknown" else commit,
+        "commit_full": commit,
+        "build_time": build_time,
+        "environment": "production" if settings.is_production else "development",
+    }
+
+
 # ---------------------------------------------------------------------------
 # تقديم الواجهة الأمامية المبنية (frontend/dist) من نفس الخادم — بلا بروكسي.
 # يُفعَّل تلقائيًا متى وُجد مجلد dist (بعد `npm run build`).

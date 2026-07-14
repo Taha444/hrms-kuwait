@@ -96,7 +96,7 @@ STATUS_MAP: dict[str, dict[str, str]] = {
     "completed": {"code": "COMPLETED", "label": "مكتمل"},
     "rejected": {"code": "REJECTED", "label": "مرفوض"},
     "cancelled": {"code": "CANCELLED", "label": "ملغى"},
-    "returned": {"code": "RETURNED", "label": "أُعيد للمقدّم للتصحيح"},
+    "returned": {"code": "NEEDS_INFO", "label": "بحاجة معلومات إضافية"},
 }
 
 
@@ -646,6 +646,30 @@ def cancel(db: Session, req: models.Request, user: models.User, note: str | None
     ))
     _notify_terminated(db, req, rt, "cancelled", user, note)
     _close_open_tasks(db, req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def resubmit(db: Session, req: models.Request, user: models.User, updated_payload: dict | None,
+             rt: models.RequestType) -> models.Request:
+    """إعادة تقديم طلب أُعيد للتصحيح (V1.4 NEEDS_INFO/returned): يعدّل المقدّم الأصلي حقول
+    الحمولة ثم يعيد الطلب من المرحلة صفر بلا إنشاء طلب جديد — يحافظ على سلسلة التاريخ
+    (approval history + timeline) كما يشترط الـ spec."""
+    if req.status != "returned":
+        raise ValueError("هذا الطلب ليس في حالة إعادة للتصحيح")
+    if req.requester_user_id != user.id and user.role not in ("hr", "super_admin"):
+        raise PermissionError("إعادة التقديم مقتصرة على مقدّم الطلب أو الموارد البشرية")
+    if updated_payload:
+        req.payload_json = {**(req.payload_json or {}), **updated_payload}
+    req.status = "pending"
+    req.current_stage = 0
+    req.closed_at = None
+    db.add(models.RequestApproval(
+        request_id=req.id, stage_order=-1, stage_label="إعادة تقديم بعد التصحيح",
+        approver_role=user.role, approver_user_id=user.id, decision="resubmitted",
+    ))
+    enter_stage(db, req, rt)
     db.commit()
     db.refresh(req)
     return req
