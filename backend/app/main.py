@@ -100,15 +100,36 @@ def health():
     return {"status": "ok", "service": "hrms-kuwait"}
 
 
-# Evidence Pack (V1.4 EVIDENCE section): commit hash + build metadata يُفتح للجميع (بلا مصادقة)
-# ليمكن للـ QA/UAT توثيق أن الـ deployment مرتبط بالـ build المتفق عليه في تقرير القبول النهائي.
-# القيم تُقرأ من متغيرات بيئة تُضبط عند البناء (Railway/CI)؛ إن غابت، تُقرأ من `git rev-parse` محليًا.
+# Evidence Pack + V1.5 Manifest: يُنشر بلا مصادقة لتوثيق أن الـ deployment مربوط بالـ build
+# المتفق عليه في تقرير القبول النهائي، ولإثبات نسخة سجل الترحيل النشطة (V1.5 §3 Manifest).
+# القيم تُقرأ من متغيرات بيئة تُضبط عند البناء (Railway/CI)؛ إن غابت، تُقرأ محليًا من git.
+_DEPLOY_STARTED_AT: str | None = None
+
+
 @app.get("/api/version")
 def version():
+    """اختصار للتوافق العكسي — يعيد الحقول الأساسية فقط. للتفاصيل الكاملة راجع /api/manifest."""
+    m = manifest()
+    return {k: m[k] for k in ("service", "version", "commit", "commit_full", "build_time", "environment")}
+
+
+@app.get("/api/manifest")
+def manifest():
+    """V1.5 Manifest: version + commit + build_time + deploy_time + migration_version + registry stats.
+
+    يمكن للمهندس/الاختبار التحقق فورًا أن الـ backend المنشور:
+    - يشغل الـ commit الصحيح
+    - يستخدم النسخة الحالية من Migration Registry
+    - عدد الـ canonical workflows/documents/reports مطابق للـ spec (29/25/6/2/9)
+    """
     import subprocess
     from datetime import datetime, timezone
+    global _DEPLOY_STARTED_AT
+    if _DEPLOY_STARTED_AT is None:
+        _DEPLOY_STARTED_AT = datetime.now(timezone.utc).isoformat()
 
-    commit = os.environ.get("GIT_COMMIT") or os.environ.get("RAILWAY_GIT_COMMIT_SHA") or ""
+    commit = (os.environ.get("GIT_COMMIT") or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+              or os.environ.get("SOURCE_VERSION") or "")
     if not commit:
         try:
             commit = subprocess.check_output(
@@ -117,14 +138,23 @@ def version():
             ).decode().strip()
         except Exception:
             commit = "unknown"
-    build_time = os.environ.get("BUILD_TIME") or datetime.now(timezone.utc).isoformat()
+    build_time = os.environ.get("BUILD_TIME") or _DEPLOY_STARTED_AT
+
+    from .v15_registry import summary as v15_summary
     return {
         "service": "hrms-kuwait",
         "version": app.version,
         "commit": commit[:12] if commit and commit != "unknown" else commit,
         "commit_full": commit,
         "build_time": build_time,
+        "deploy_time": _DEPLOY_STARTED_AT,
         "environment": "production" if settings.is_production else "development",
+        "spec": {
+            "current_spec": "V1.5 Consolidated Revision 2",
+            "supersedes": ["V1.3", "V1.4"],
+            "management_approval": "V1.6 Executive Review Book",
+        },
+        "registry": v15_summary(),
     }
 
 

@@ -50,8 +50,25 @@ def _missing_required_fields(code: str, payload: dict) -> list[str]:
 
 @router.get("/status-map")
 def status_map(user: models.User = Depends(get_current_user)):
-    """ربط الحالات الداخلية بحالات V1.3 الرسمية (FIX-009)."""
+    """ربط الحالات الداخلية بحالات V1.3/V1.4/V1.5 الرسمية (FIX-009 + V1.5)."""
     return workflow.STATUS_MAP
+
+
+@router.get("/registry")
+def registry(user: models.User = Depends(get_current_user)):
+    """V1.5 Migration Registry: canonical workflows/documents + legacy aliases.
+    يمكن للفرونت-إند استخدامه ليعرض الاسم الجديد الرسمي (WF-XXX) بجانب الكود القديم في
+    الطلبات المحفوظة قبل الترحيل."""
+    from .. import v15_registry
+    return {
+        "canonical_workflows": v15_registry.CANONICAL_WORKFLOWS,
+        "layouts": v15_registry.LAYOUTS,
+        "reports": v15_registry.REPORTS,
+        "system_records": v15_registry.SYSTEM_RECORDS,
+        "legacy_request_aliases": v15_registry.LEGACY_REQUEST_ALIASES,
+        "legacy_template_aliases": v15_registry.LEGACY_PRN_ALIASES,
+        "summary": v15_registry.summary(),
+    }
 
 
 @router.get("/types")

@@ -377,23 +377,42 @@ DEFAULT_REQUEST_TYPES = [
 
 
 def get_request_type(db: Session, company_id: int, code: str) -> models.RequestType | None:
-    """يبحث عن نوع الطلب الخاص بالشركة أولًا ثم العام (company_id=None)."""
-    rt = db.scalar(
-        select(models.RequestType).where(
-            models.RequestType.code == code,
-            models.RequestType.company_id == company_id,
-            models.RequestType.is_active == True,  # noqa: E712
+    """يبحث عن نوع الطلب الخاص بالشركة أولًا ثم العام (company_id=None).
+
+    توافقًا مع V1.5 Migration Registry: إن كان الكود المُمرَّر canonical جديد (WF-XXX أو
+    OD-XXX) ولم يوجد في القاعدة (لأن seed لسه على الأكواد القديمة)، نبحث عن أي كود legacy
+    مربوط بالـ canonical عبر LEGACY_REQUEST_ALIASES. هذا يسمح للعميل الحديث أن يمرر
+    الكود الجديد فورًا دون كسر البيانات المخزنة."""
+    def _lookup(c: str) -> models.RequestType | None:
+        rt = db.scalar(
+            select(models.RequestType).where(
+                models.RequestType.code == c,
+                models.RequestType.company_id == company_id,
+                models.RequestType.is_active == True,  # noqa: E712
+            )
         )
-    )
+        if rt:
+            return rt
+        return db.scalar(
+            select(models.RequestType).where(
+                models.RequestType.code == c,
+                models.RequestType.company_id.is_(None),
+                models.RequestType.is_active == True,  # noqa: E712
+            )
+        )
+
+    rt = _lookup(code)
     if rt:
         return rt
-    return db.scalar(
-        select(models.RequestType).where(
-            models.RequestType.code == code,
-            models.RequestType.company_id.is_(None),
-            models.RequestType.is_active == True,  # noqa: E712
-        )
-    )
+    # V1.5 forward-compat: canonical → legacy fallback
+    from .v15_registry import LEGACY_REQUEST_ALIASES, CANONICAL_WORKFLOWS
+    if code in CANONICAL_WORKFLOWS:
+        for legacy_code, info in LEGACY_REQUEST_ALIASES.items():
+            if info.get("canonical") == code:
+                rt = _lookup(legacy_code)
+                if rt:
+                    return rt
+    return None
 
 
 def _chain(rt: models.RequestType) -> list[dict]:
