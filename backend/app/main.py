@@ -17,6 +17,7 @@ from .routers import (
     dashboard,
     delegations,
     documents,
+    feature_flags as feature_flags_router,
     employees,
     eos,
     kiosk,
@@ -92,7 +93,7 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 for r in (auth, companies, users, employees, org, attendance, kiosk, documents, tasks,
           requests_router, templates, payroll_router, reports, pro, archive, search,
           operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
-          verify, delegations):
+          verify, delegations, feature_flags_router):
     app.include_router(r.router, prefix="/api")
 
 

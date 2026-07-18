@@ -295,6 +295,28 @@ class Task(Base):
     escalation_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
 
 
+class FeatureFlag(Base):
+    """V1.5 Phase 5 — Feature flag لكل شركة (V1.5 §3 الترحيل الآمن).
+
+    كل شركة تُدار مستقلة خلال فترة الانتقال من التصميم القديم إلى canonical V1.5:
+    - `key`: اسم الميزة (`v15_canonical_display`, `v15_status_labels`, ...)
+    - `company_id`: NULL للتفعيل العام؛ رقم شركة للتفعيل الخاص بها فقط
+    - `value`: "on" / "off" / JSON لتكوينات معقّدة
+    - القاعدة: القيمة الخاصة بالشركة تعلو على العام؛ والعام يعلو على default الكود
+
+    يُدير القيم super_admin فقط عبر `/api/feature-flags`؛ لا يتعامل معها المستخدم مباشرة.
+    """
+    __tablename__ = "feature_flags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(60), index=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+    value: Mapped[str] = mapped_column(String(500))
+    note: Mapped[str | None] = mapped_column(String(250))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
 class ApprovalDelegation(Base):
     """V1.5 Phase 3 — تفويض مؤقت لصلاحية الاعتماد (V2.2 Approver actions: تفويض مؤقت).
 

@@ -89,6 +89,17 @@ def list_request_types(category: str | None = None,
     cid = user.company_id
     q = select(models.RequestType).where(models.RequestType.is_active == True)  # noqa: E712
     rows = db.scalars(q).all()
+
+    # V1.5 Phase 5 dual-read: كل نوع طلب يحمل الكود القديم والـ canonical معًا. الفلاجز
+    # يقرر أيّهما "الأساسي" (primary):
+    # - v15_canonical_display=on: الكود canonical أساسي، والقديم legacy_code
+    # - افتراضيًا (default): الكود القديم أساسي، والـ canonical معلومة إضافية
+    # - v15_legacy_catalog_hidden=on: يخفي الأنواع التي canonical لها = None (غير مصنّفة)
+    from .. import feature_flags as ff
+    from .. import v15_registry
+    canonical_display = ff.is_enabled(db, cid, ff.V15_CANONICAL_DISPLAY)
+    hide_legacy = ff.is_enabled(db, cid, ff.V15_LEGACY_CATALOG_HIDDEN)
+
     seen, out = set(), []
     for rt in sorted(rows, key=lambda r: (r.code, r.company_id is None)):
         if rt.company_id not in (None, cid):
@@ -100,9 +111,24 @@ def list_request_types(category: str | None = None,
         if user.role == "employee" and not rt.visible_to_employee:
             continue
         seen.add(rt.code)
-        out.append({"code": rt.code, "name": rt.name, "category": rt.category,
-                    "chain": rt.approval_chain_json,
-                    "produces_document": rt.produces_document})
+        canonical_info = v15_registry.resolve_request(rt.code)
+        canonical_code = canonical_info.get("canonical")
+        if hide_legacy and not canonical_code:
+            continue
+        entry: dict = {
+            "code": rt.code, "name": rt.name, "category": rt.category,
+            "chain": rt.approval_chain_json,
+            "produces_document": rt.produces_document,
+            "canonical_code": canonical_code,
+            "canonical_subtype": canonical_info.get("subtype"),
+        }
+        if canonical_display and canonical_code:
+            entry["primary_code"] = canonical_code
+            entry["legacy_code"] = rt.code
+        else:
+            entry["primary_code"] = rt.code
+            entry["legacy_code"] = None
+        out.append(entry)
     if category:
         out = [x for x in out if x["category"] == category]
     return out
