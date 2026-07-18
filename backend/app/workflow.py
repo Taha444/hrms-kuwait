@@ -442,10 +442,18 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
             users = [db.get(models.User, uid) for uid in sup_ids]
             users = [u for u in users if u and u.is_active]
             if users:
-                return users
+                # V1.5 Phase 3: يوسّع القائمة لتشمل أي مفوَّض إليهم نشطين
+                from .delegation import expand_approvers_with_delegates
+                return expand_approvers_with_delegates(db, users, req.company_id)
         # لا يوجد مسؤول فرع → يتجاوز للمدير العام
-        return users_by_role(db, req.company_id, ["company_manager"])
-    return users_by_role(db, req.company_id, [role]) if role else []
+        base = users_by_role(db, req.company_id, ["company_manager"])
+        from .delegation import expand_approvers_with_delegates
+        return expand_approvers_with_delegates(db, base, req.company_id)
+    if not role:
+        return []
+    base = users_by_role(db, req.company_id, [role])
+    from .delegation import expand_approvers_with_delegates
+    return expand_approvers_with_delegates(db, base, req.company_id)
 
 
 def can_decide(db: Session, req: models.Request, user: models.User, stage: dict,

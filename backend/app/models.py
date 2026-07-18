@@ -283,6 +283,40 @@ class Task(Base):
     # سجل التسليم (FIX-004): قالب الإشعار المُستخدَم والقناة الفعلية للإرسال
     template_code: Mapped[str | None] = mapped_column(String(50))
     channel: Mapped[str | None] = mapped_column(String(20))
+    # V1.5 Phase 3 — Claim/Delegate/SLA (V2.2 §3.2 Approver/Executor lifecycle):
+    # المهمة الموزعة على مجموعة أدوار (مثل all HR) يجب أن "يلتقطها" مستخدم واحد قبل
+    # التنفيذ لمنع التكرار — القيمة تُملأ عبر POST /api/tasks/{id}/claim.
+    claimed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # مهلة الاستجابة المتوقعة (SLA) — يُملأ من قالب الإشعار عند الإنشاء؛ يستخدمه
+    # المجدول لإصدار مهام تصعيد إن انقضى دون تنفيذ.
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    escalation_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+
+
+class ApprovalDelegation(Base):
+    """V1.5 Phase 3 — تفويض مؤقت لصلاحية الاعتماد (V2.2 Approver actions: تفويض مؤقت).
+
+    مثال استخدام: مدير في إجازة لفترة محددة يفوّض نائبه لاعتماد طلبات فريقه فقط —
+    محرك الـ workflow يعامل التفويض كإضافة للـ approvers الحاليين لكل مسار، مع تسجيل
+    كل قرار باسم المفوَّض إليه وذكر أن التفويض من الأصلي في سجل التدقيق.
+    """
+    __tablename__ = "approval_delegations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    delegator_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    delegate_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    reason: Mapped[str | None] = mapped_column(String(250))
+    starts_at: Mapped[datetime] = mapped_column(DateTime)
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    # نطاق التفويض: 'all' لجميع الطلبات ضمن صلاحيات المفوِّض، أو قائمة أنواع طلب محددة
+    scope: Mapped[str] = mapped_column(String(20), default="all")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
 class RequestType(Base):

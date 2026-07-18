@@ -69,3 +69,50 @@ def update_status(task_id: int, status: str,
 def run_scan(user: models.User = Depends(require_perm("manage_tasks")), db: Session = Depends(get_db)):
     """تشغيل المسح اليومي يدويًا لتوليد المهام (يستخدمه HR/المدير عند الحاجة)."""
     return daily_scan(db)
+
+
+@router.post("/{task_id}/claim")
+def claim_task(task_id: int, user: models.User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """V1.5 Phase 3 — التقاط مهمة موزعة على مجموعة أدوار قبل التنفيذ لمنع التكرار.
+
+    يفشل بـ409 إن كانت المهمة مُلتقَطة من مستخدم آخر ولم تُطلَق بعد.
+    """
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    if task.status not in ("open", "in_progress"):
+        raise HTTPException(status_code=400, detail="لا يمكن التقاط مهمة غير مفتوحة")
+    if task.claimed_by_user_id and task.claimed_by_user_id != user.id:
+        raise HTTPException(status_code=409,
+                            detail="المهمة ملتقطة من مستخدم آخر — انتظر إطلاقها أو تنفيذها")
+    task.claimed_by_user_id = user.id
+    task.claimed_at = datetime.now()
+    task.status = "in_progress"
+    db.commit()
+    return {"ok": True, "claimed_by_user_id": user.id,
+            "claimed_at": task.claimed_at.isoformat()}
+
+
+@router.post("/{task_id}/release")
+def release_task(task_id: int, user: models.User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """يُطلق التقاط المهمة ليتمكن مستخدم آخر من التقاطها. متاح للمالك أو HR."""
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    if task.claimed_by_user_id and task.claimed_by_user_id != user.id and user.role not in ("hr", "super_admin"):
+        raise HTTPException(status_code=403, detail="لا يمكنك إطلاق مهمة ملتقطة من مستخدم آخر")
+    task.claimed_by_user_id = None
+    task.claimed_at = None
+    task.status = "open"
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/run-sla-scan")
+def run_sla_scan(user: models.User = Depends(require_perm("manage_tasks")),
+                 db: Session = Depends(get_db)):
+    """تشغيل مسح SLA يدويًا لتصعيد المهام المتأخرة (اختياري — يعمل تلقائيًا كل ساعة)."""
+    from ..notifications import sla_scan
+    return sla_scan(db)

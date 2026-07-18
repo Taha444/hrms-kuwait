@@ -73,8 +73,13 @@ def create_task(
     severity: str = "info",
     due_date: date | None = None,
     dedup_key: str | None = None,
+    template_code: str | None = None,
 ) -> models.Task | None:
-    """ينشئ مهمة. إن وُجد dedup_key لمهمة مفتوحة مطابقة لا يُكرّرها."""
+    """ينشئ مهمة. إن وُجد dedup_key لمهمة مفتوحة مطابقة لا يُكرّرها.
+
+    V1.5 Phase 3 — sla_due_at يُملأ تلقائيًا إن كان قالب الإشعار (template_code)
+    يحدد sla_hours، ليمكن للمجدول تصعيد المهام المتأخرة.
+    """
     if dedup_key:
         existing = db.scalar(
             select(models.Task).where(
@@ -84,11 +89,19 @@ def create_task(
         )
         if existing:
             return existing
+    from datetime import datetime, timedelta, timezone
+    sla_due_at: datetime | None = None
+    if template_code:
+        tpl = db.scalar(select(models.NotificationTemplate).where(
+            models.NotificationTemplate.code == template_code
+        ))
+        if tpl and tpl.sla_hours:
+            sla_due_at = datetime.now(timezone.utc) + timedelta(hours=int(tpl.sla_hours))
     task = models.Task(
         company_id=company_id, type=type, title=title, detail=detail,
         assignee_user_id=assignee_user_id, related_entity_type=related_entity_type,
         related_entity_id=related_entity_id, severity=severity, due_date=due_date,
-        dedup_key=dedup_key,
+        dedup_key=dedup_key, template_code=template_code, sla_due_at=sla_due_at,
     )
     db.add(task)
     # إرسال عبر القنوات الخارجية (واتساب/SMS) إن فُعّلت — best-effort
