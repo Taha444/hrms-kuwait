@@ -1,0 +1,106 @@
+{
+  "global": {
+    "v15_canonical_display": {
+      "value": false,
+      "source": "default",
+      "description_ar": "يُعرض كود canonical WF-* في الواجهة بدل الكود القديم (leave, salary_certificate...)",
+      "default": false
+    },
+    "v15_status_labels": {
+      "value": false,
+      "source": "default",
+      "description_ar": "يُعرض label V1.5 (IN_REVIEW/NEEDS_INFO/...) كأساسي بدل labels V1.3",
+      "default": false
+    },
+    "v15_document_lifecycle": {
+      "value": false,
+      "source": "default",
+      "description_ar": "يُعرض lifecycle_status الجديد (GENERATED/SIGNED/...) بدل print_status القديم",
+      "default": false
+    },
+    "v15_step_type_actions": {
+      "value": false,
+      "source": "default",
+      "description_ar": "الواجهة تُظهر الأزرار حسب step_type (DECISION/VALIDATION/EXECUTION)",
+      "default": false
+    },
+    "v15_legacy_catalog_hidden": {
+      "value": false,
+      "source": "default",
+      "description_ar": "يخفي أكواد PRN-* وREQ-* القديمة من كتالوج الطلبات — يعرض canonical فقط",
+      "default": false
+    }
+  },
+  "per_company": {
+    "شركة الخليج للتجارة": {
+      "id": 1,
+      "flags": {
+        "v15_canonical_display": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض كود canonical WF-* في الواجهة بدل الكود القديم (leave, salary_certificate...)",
+          "default": false
+        },
+        "v15_status_labels": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض label V1.5 (IN_REVIEW/NEEDS_INFO/...) كأساسي بدل labels V1.3",
+          "default": false
+        },
+        "v15_document_lifecycle": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض lifecycle_status الجديد (GENERATED/SIGNED/...) بدل print_status القديم",
+          "default": false
+        },
+        "v15_step_type_actions": {
+          "value": false,
+          "source": "default",
+          "description_ar": "الواجهة تُظهر الأزرار حسب step_type (DECISION/VALIDATION/EXECUTION)",
+          "default": false
+        },
+        "v15_legacy_catalog_hidden": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يخفي أكواد PRN-* وREQ-* القديمة من كتالوج الطلبات — يعرض canonical فقط",
+          "default": false
+        }
+      }
+    },
+    "الوطنية للمقاولات": {
+      "id": 2,
+      "flags": {
+        "v15_canonical_display": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض كود canonical WF-* في الواجهة بدل الكود القديم (leave, salary_certificate...)",
+          "default": false
+        },
+        "v15_status_labels": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض label V1.5 (IN_REVIEW/NEEDS_INFO/...) كأساسي بدل labels V1.3",
+          "default": false
+        },
+        "v15_document_lifecycle": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يُعرض lifecycle_status الجديد (GENERATED/SIGNED/...) بدل print_status القديم",
+          "default": false
+        },
+        "v15_step_type_actions": {
+          "value": false,
+          "source": "default",
+          "description_ar": "الواجهة تُظهر الأزرار حسب step_type (DECISION/VALIDATION/EXECUTION)",
+          "default": false
+        },
+        "v15_legacy_catalog_hidden": {
+          "value": false,
+          "source": "default",
+          "description_ar": "يخفي أكواد PRN-* وREQ-* القديمة من كتالوج الطلبات — يعرض canonical فقط",
+          "default": false
+        }
+      }
+    }
+  }
+}

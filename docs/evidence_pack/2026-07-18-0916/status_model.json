@@ -1,0 +1,249 @@
+{
+  "request_lifecycle": {
+    "DRAFT": {
+      "label_ar": "مسودة",
+      "label_en": "Draft",
+      "next": [
+        "SUBMITTED",
+        "CANCELLED"
+      ],
+      "actor": "requester",
+      "note": "لم يُرسَل بعد؛ يعدّل المقدّم كما يشاء."
+    },
+    "SUBMITTED": {
+      "label_ar": "مُرسَل",
+      "label_en": "Submitted",
+      "next": [
+        "IN_REVIEW",
+        "REJECTED",
+        "CANCELLED"
+      ],
+      "actor": "system",
+      "note": "دخل الكتالوج وينتظر التوجيه لمرحلة أولى."
+    },
+    "IN_REVIEW": {
+      "label_ar": "قيد المراجعة",
+      "label_en": "In Review",
+      "next": [
+        "APPROVED",
+        "REJECTED",
+        "NEEDS_INFO"
+      ],
+      "actor": "approver_or_validator",
+      "note": "خطوة قرار أو تحقق نشطة الآن."
+    },
+    "NEEDS_INFO": {
+      "label_ar": "بحاجة معلومات إضافية",
+      "label_en": "Needs Info",
+      "next": [
+        "SUBMITTED",
+        "CANCELLED"
+      ],
+      "actor": "requester",
+      "note": "أُعيد للمقدّم لاستكمال بيانات؛ يُعاد التقديم دون إنشاء طلب جديد."
+    },
+    "APPROVED": {
+      "label_ar": "معتمَد",
+      "label_en": "Approved",
+      "next": [
+        "IN_EXECUTION",
+        "COMPLETED"
+      ],
+      "actor": "system",
+      "note": "اكتمل القرار الإداري؛ إن كان يتطلب أثرًا تنفيذيًا يدخل IN_EXECUTION."
+    },
+    "IN_EXECUTION": {
+      "label_ar": "قيد التنفيذ",
+      "label_en": "In Execution",
+      "next": [
+        "COMPLETED",
+        "FAILED"
+      ],
+      "actor": "executor",
+      "note": "خطوة تنفيذ (Payroll / Delegate / Document Generation) نشطة."
+    },
+    "COMPLETED": {
+      "label_ar": "مكتمل",
+      "label_en": "Completed",
+      "next": [],
+      "actor": "system",
+      "note": "حالة نهائية — كل الخطوات تمّت والوثائق المطلوبة صدرت.",
+      "terminal": true
+    },
+    "REJECTED": {
+      "label_ar": "مرفوض",
+      "label_en": "Rejected",
+      "next": [],
+      "actor": "approver",
+      "note": "حالة نهائية — رفض مسبَّب من صاحب القرار.",
+      "terminal": true
+    },
+    "CANCELLED": {
+      "label_ar": "ملغى",
+      "label_en": "Cancelled",
+      "next": [],
+      "actor": "requester_or_manager",
+      "note": "حالة نهائية — إلغاء من المقدّم قبل القرار، أو من المدير في أي مرحلة.",
+      "terminal": true
+    },
+    "FAILED": {
+      "label_ar": "فشل التنفيذ",
+      "label_en": "Execution Failed",
+      "next": [
+        "IN_EXECUTION"
+      ],
+      "actor": "system",
+      "note": "توليد وثيقة/توقيع فشل تقنيًا؛ يبقى في IN_EXECUTION مع علامة خطأ لإعادة المحاولة."
+    }
+  },
+  "document_lifecycle": {
+    "NOT_REQUIRED": {
+      "label_ar": "لا يتطلب مستند",
+      "label_en": "Not Required",
+      "next": [],
+      "note": "الطلب لا يُنتج مستندًا رسميًا (مثل استئذان أثناء الدوام).",
+      "terminal": true
+    },
+    "QUEUED": {
+      "label_ar": "بانتظار التوليد",
+      "label_en": "Queued",
+      "next": [
+        "GENERATING",
+        "GENERATION_FAILED"
+      ],
+      "note": "قرار الاعتماد اكتمل؛ المستند في طابور التوليد."
+    },
+    "GENERATING": {
+      "label_ar": "يجري التوليد",
+      "label_en": "Generating",
+      "next": [
+        "GENERATED",
+        "GENERATION_FAILED"
+      ],
+      "note": "محرك القوالب يعالج البيانات وينتج PDF."
+    },
+    "GENERATED": {
+      "label_ar": "تم التوليد",
+      "label_en": "Generated",
+      "next": [
+        "SIGNED",
+        "DELIVERED",
+        "ARCHIVED"
+      ],
+      "note": "PDF جاهز؛ ينتظر توقيع إلكتروني أو تسليم مباشر."
+    },
+    "SIGNED": {
+      "label_ar": "موقّع إلكترونيًا",
+      "label_en": "Electronically Signed",
+      "next": [
+        "DELIVERED",
+        "ARCHIVED"
+      ],
+      "note": "تم توثيق التوقيع في SYS-001 Signature Evidence Record."
+    },
+    "DELIVERED": {
+      "label_ar": "تم التسليم",
+      "label_en": "Delivered",
+      "next": [
+        "ARCHIVED"
+      ],
+      "note": "استُلم من المقدّم/الجهة الخارجية عبر تنزيل موثّق."
+    },
+    "ARCHIVED": {
+      "label_ar": "مؤرشف",
+      "label_en": "Archived",
+      "next": [],
+      "note": "الحالة النهائية — محفوظ في أرشيف الشركة/الموظف.",
+      "terminal": true
+    },
+    "GENERATION_FAILED": {
+      "label_ar": "فشل التوليد",
+      "label_en": "Generation Failed",
+      "next": [
+        "QUEUED"
+      ],
+      "note": "خطأ تقني عند التوليد؛ يُعاد للطابور للمعالجة."
+    }
+  },
+  "step_types": {
+    "DECISION": {
+      "label_ar": "قرار",
+      "label_en": "Decision",
+      "who_acts": "approver",
+      "actions": [
+        "approve",
+        "reject",
+        "needs_info"
+      ],
+      "note": "خطوة قرار إداري أو مالي يتحمل صاحبها المسؤولية.",
+      "example": "المدير يعتمد إجازة أو تكلفة تدريب."
+    },
+    "VALIDATION": {
+      "label_ar": "تحقق",
+      "label_en": "Validation",
+      "who_acts": "validator",
+      "actions": [
+        "valid",
+        "invalid",
+        "return_for_correction"
+      ],
+      "note": "فحص حقيقة أو سياسة أو مستند دون قرار إداري.",
+      "example": "HR يتحقق من رصيد الإجازة قبل الاعتماد."
+    },
+    "EXECUTION": {
+      "label_ar": "تنفيذ",
+      "label_en": "Execution",
+      "who_acts": "executor",
+      "actions": [
+        "executed",
+        "execution_failed"
+      ],
+      "note": "ينفّذ الأثر بعد اكتمال القرار (Payroll / PRO / Document generation).",
+      "example": "المحاسب يجدول السلفة في Payroll."
+    },
+    "ACKNOWLEDGEMENT": {
+      "label_ar": "إقرار استلام",
+      "label_en": "Acknowledgement",
+      "who_acts": "acknowledger",
+      "actions": [
+        "acknowledged",
+        "objection_recorded"
+      ],
+      "note": "إثبات علم أو استلام، وليس حق تعطيل القرار.",
+      "example": "الموظف يقرّ باستلام إنذار أو تسوية."
+    },
+    "NOTIFICATION": {
+      "label_ar": "إشعار",
+      "label_en": "Notification",
+      "who_acts": "system",
+      "actions": [
+        "delivered",
+        "read"
+      ],
+      "note": "إبلاغ بلا مهمة قرار — يتم تلقائيًا.",
+      "example": "إخطار الموظف باكتمال إصدار الشهادة."
+    },
+    "AUTOMATION": {
+      "label_ar": "أتمتة",
+      "label_en": "Automation",
+      "who_acts": "system",
+      "actions": [
+        "auto_completed",
+        "auto_failed"
+      ],
+      "note": "قاعدة حتمية لا تحتاج تدخلًا بشريًا.",
+      "example": "توليد شهادة من بيانات معتمدة أو تحديث رصيد."
+    }
+  },
+  "internal_to_v15": {
+    "pending": "IN_REVIEW",
+    "awaiting_signature": "IN_EXECUTION",
+    "awaiting_delegate": "IN_EXECUTION",
+    "ready_for_pickup": "IN_EXECUTION",
+    "completed": "COMPLETED",
+    "rejected": "REJECTED",
+    "cancelled": "CANCELLED",
+    "returned": "NEEDS_INFO"
+  },
+  "spec_reference": "V1.5 Consolidated Revision 2, §3 (Status Model) + V2.2 §3.2-§3.3"
+}
