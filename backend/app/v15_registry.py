@@ -37,6 +37,115 @@ LAYOUTS: dict[str, dict] = {
 
 
 # ==============================================================================
+# 25 Canonical Documents (OD-001..OD-025) — المستندات الرسمية (V1.5 pages 10-11)
+# كل OD يستخدم layout واحد ويحدد الحقول الإلزامية وطبيعة السرية.
+# ==============================================================================
+CANONICAL_DOCUMENTS: dict[str, dict] = {
+    "OD-001": {"name_ar": "شهادة راتب", "name_en": "Salary Certificate", "layout": "LAY-01",
+               "required": ["employee_name", "civil_id", "job_title", "hire_date", "gross_salary", "target_entity"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-002": {"name_ar": "شهادة لمن يهمه الأمر / خبرة / NOC", "name_en": "NOC / Experience / To Whom It May Concern",
+               "layout": "LAY-01",
+               "required": ["employee_name", "job_title", "hire_date", "target_entity", "purpose"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-003": {"name_ar": "خطاب موجه لجهة رسمية", "name_en": "Official Entity Letter", "layout": "LAY-01",
+               "required": ["employee_name", "target_entity", "subject"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-004": {"name_ar": "عرض وظيفي", "name_en": "Employment Offer Letter", "layout": "LAY-01",
+               "required": ["candidate_name", "job_title", "basic_salary", "start_date"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-005": {"name_ar": "قرار تغيير وظيفي (نقل/راتب/موقع/ترقية)",
+               "name_en": "Employment Change Decision", "layout": "LAY-02",
+               "required": ["employee_name", "old_state", "new_state", "effective_date", "reason"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10,
+               "legal_note_ar": "قرار إداري رسمي — لا ينفذ الأثر المالي قبل اعتماد المالية."},
+    "OD-006": {"name_ar": "قرار إنذار / مخالفة", "name_en": "Warning / Violation Decision", "layout": "LAY-02",
+               "required": ["employee_name", "incident_date", "incident_summary", "policy_reference"],
+               "produces_pdf": True, "confidential": True, "spec_page": 10,
+               "legal_note_ar": "توقيع الموظف يفيد العلم والاستلام فقط، ولا يعد إقرارًا بصحة الواقعة."},
+    "OD-007": {"name_ar": "محضر تحقيق إداري", "name_en": "Administrative Investigation Minutes",
+               "layout": "LAY-04",
+               "required": ["employee_name", "investigation_date", "subject", "attendees", "result"],
+               "produces_pdf": True, "confidential": True, "spec_page": 10,
+               "legal_note_ar": "يحفظ حق الدفاع؛ لا يعد قرارًا نهائيًا حتى اعتماد الجهة المختصة."},
+    "OD-008": {"name_ar": "قرار خصم", "name_en": "Deduction Decision", "layout": "LAY-02",
+               "required": ["employee_name", "deduction_amount", "reason", "payroll_month"],
+               "produces_pdf": True, "confidential": True, "spec_page": 10,
+               "legal_note_ar": "لا ينفذ الخصم قبل اكتمال موافقة HR والمالية وإتاحة حق الاعتراض."},
+    "OD-009": {"name_ar": "إقرار / رد الموظف", "name_en": "Employee Acknowledgement / Reply",
+               "layout": "LAY-03",
+               "required": ["employee_name", "received_at", "warning_reference", "response"],
+               "produces_pdf": True, "confidential": True, "spec_page": 10},
+    "OD-010": {"name_ar": "قرار / نتيجة تظلم", "name_en": "Grievance Decision", "layout": "LAY-02",
+               "required": ["employee_name", "against_person", "subject", "decision"],
+               "produces_pdf": True, "confidential": True, "spec_page": 10,
+               "legal_note_ar": "ملف محدود الاطلاع (Restricted Audit) — يمنع الاطلاع الجانبي."},
+    "OD-011": {"name_ar": "قرار اعتماد إجازة", "name_en": "Leave Approval Decision", "layout": "LAY-02",
+               "required": ["employee_name", "leave_type", "start_date", "end_date", "days_count"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-012": {"name_ar": "إفادة مالية للسفر", "name_en": "Financial Clearance for Travel", "layout": "LAY-06",
+               "required": ["employee_name", "financial_status", "approved_at"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10},
+    "OD-013": {"name_ar": "غلاف متابعة معاملة حكومية", "name_en": "Government Transaction Cover Sheet",
+               "layout": "LAY-07",
+               "required": ["employee_name", "transaction_type", "government_entity", "reference_no"],
+               "produces_pdf": True, "confidential": False, "spec_page": 10,
+               "legal_note_ar": "غلاف متابعة داخلي — النظام لا يُصدر مستندًا حكوميًا مزيفًا؛ الأصل يُرفع من الجهة."},
+    "OD-014": {"name_ar": "محضر تسليم/استلام (عهدة أو مستندات)",
+               "name_en": "Asset / Document Handover Record", "layout": "LAY-06",
+               "required": ["employee_name", "items_list", "condition", "handover_date"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-015": {"name_ar": "قبول استقالة / إنهاء عقد", "name_en": "Resignation Acceptance / Contract End",
+               "layout": "LAY-02",
+               "required": ["employee_name", "resignation_date", "last_working_day", "notice_period"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-016": {"name_ar": "شهادة إخلاء طرف", "name_en": "Clearance Certificate", "layout": "LAY-06",
+               "required": ["employee_name", "assets_status", "documents_status", "finance_status", "department_signoffs"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11,
+               "legal_note_ar": "لا يغلق بدون توقيع كل الإدارات المعنية."},
+    "OD-017": {"name_ar": "تسوية نهاية خدمة", "name_en": "End of Service Settlement", "layout": "LAY-05",
+               "required": ["employee_name", "hire_date", "last_working_day", "salary_basis",
+                            "entitlements_total", "deductions_total", "net_amount"],
+               "produces_pdf": True, "confidential": True, "spec_page": 11,
+               "legal_note_ar": "نتيجة مبدئية قابلة للمراجعة قبل الاعتماد النهائي."},
+    "OD-018": {"name_ar": "إيصال / تأكيد إجراء (استئذان/تصحيح حضور/إضافي/عودة)",
+               "name_en": "Action Receipt / Confirmation", "layout": "LAY-08",
+               "required": ["employee_name", "action_type", "reference_id", "effective_date"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-019": {"name_ar": "إقرار استلام عهدة",
+               "name_en": "Asset Receipt Acknowledgement", "layout": "LAY-03",
+               "required": ["employee_name", "assets_list", "received_at"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-020": {"name_ar": "طلب / نتيجة تدريب", "name_en": "Training Request / Outcome",
+               "layout": "LAY-02",
+               "required": ["employee_name", "course", "provider", "dates", "cost"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-021": {"name_ar": "إشعار تحديث بيانات (شخصية/بنك/جهة اتصال)",
+               "name_en": "Data Update Notice", "layout": "LAY-08",
+               "required": ["employee_name", "changed_fields", "updated_at", "approved_by"],
+               "produces_pdf": True, "confidential": True, "spec_page": 11},
+    "OD-022": {"name_ar": "اتفاقية سلفة / قرض", "name_en": "Advance / Loan Agreement",
+               "layout": "LAY-03",
+               "required": ["employee_name", "amount", "installments_count", "first_deduction_month",
+                            "employee_ack"],
+               "produces_pdf": True, "confidential": True, "spec_page": 11,
+               "legal_note_ar": "توقيع الموظف يعد إقرارًا صريحًا بجدول الاستقطاع."},
+    "OD-023": {"name_ar": "إيصال مصروفات", "name_en": "Expense Reimbursement Receipt", "layout": "LAY-05",
+               "required": ["employee_name", "amount", "category", "date", "receipt_ref"],
+               "produces_pdf": True, "confidential": False, "spec_page": 11},
+    "OD-024": {"name_ar": "قرار اعتراض راتب / خصم", "name_en": "Payroll / Deduction Objection Decision",
+               "layout": "LAY-02",
+               "required": ["employee_name", "period", "disputed_amount", "decision", "reason"],
+               "produces_pdf": True, "confidential": True, "spec_page": 11},
+    "OD-025": {"name_ar": "قسيمة راتب", "name_en": "Payslip", "layout": "LAY-05",
+               "required": ["employee_name", "period", "basic_salary", "allowances_total",
+                            "deductions_total", "net_salary"],
+               "produces_pdf": True, "confidential": True, "spec_page": 11,
+               "legal_note_ar": "بيانات مالية شخصية — يُخفى IBAN جزئيًا للأدوار بلا صلاحية view_actual."},
+}
+
+
+# ==============================================================================
 # 6 Reports (RPT-001..RPT-006) — تقارير مستقلة عن مستندات المستخدم (V1.5 ص 12)
 # ==============================================================================
 REPORTS: dict[str, dict] = {
@@ -252,7 +361,7 @@ def summary() -> dict:
     """يعيد ملخص إحصائي لسجل الترحيل — يُستخدم في /api/manifest."""
     return {
         "canonical_workflows": len(CANONICAL_WORKFLOWS),
-        "canonical_documents": 25,  # OD-001..OD-025
+        "canonical_documents": len(CANONICAL_DOCUMENTS),
         "reports": len(REPORTS),
         "system_records": len(SYSTEM_RECORDS),
         "layouts": len(LAYOUTS),
@@ -260,3 +369,15 @@ def summary() -> dict:
         "legacy_template_aliases": len(LEGACY_PRN_ALIASES),
         "migration_version": migration_version(),
     }
+
+
+def resolve_canonical_document(code: str) -> dict | None:
+    """يعيد OD متصفة كاملة لكود canonical أو legacy PRN."""
+    if not code:
+        return None
+    if code in CANONICAL_DOCUMENTS:
+        return {"od_code": code, **CANONICAL_DOCUMENTS[code]}
+    od = LEGACY_PRN_ALIASES.get(code)
+    if od and od in CANONICAL_DOCUMENTS:
+        return {"od_code": od, "legacy_alias": code, **CANONICAL_DOCUMENTS[od]}
+    return None

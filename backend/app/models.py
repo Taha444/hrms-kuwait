@@ -391,6 +391,11 @@ class RequestDocument(Base):
     printed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     filed_at: Mapped[datetime | None] = mapped_column(DateTime)
     filed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # V1.5 Phase 4 — canonical document code (OD-001..OD-025) بجانب legacy print_status
+    od_code: Mapped[str | None] = mapped_column(String(10), index=True)
+    # دورة حياة المستند V1.5 (منفصلة عن حالة الطلب):
+    # NOT_REQUIRED → QUEUED → GENERATING → GENERATED → SIGNED → DELIVERED → ARCHIVED
+    lifecycle_status: Mapped[str] = mapped_column(String(20), default="GENERATED")
 
 
 class Appointment(Base):

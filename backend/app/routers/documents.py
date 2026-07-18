@@ -19,6 +19,35 @@ from ..safe_files import read_limited, unique_path
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+# ==============================================================================
+# V1.5 Phase 4 — Canonical Documents catalog (public, no auth needed)
+# ==============================================================================
+@router.get("/canonical")
+def canonical_catalog():
+    """يعرض 9 layouts + 25 canonical documents (OD-001..OD-025) + خريطة الأكواد
+    القديمة (PRN → OD) — يستخدمه الفرونت لعرض التسمية الرسمية بجانب الكود القديم."""
+    from .. import v15_registry
+    return {
+        "layouts": v15_registry.LAYOUTS,
+        "canonical_documents": v15_registry.CANONICAL_DOCUMENTS,
+        "reports": v15_registry.REPORTS,
+        "system_records": v15_registry.SYSTEM_RECORDS,
+        "legacy_prn_aliases": v15_registry.LEGACY_PRN_ALIASES,
+        "counts": v15_registry.summary(),
+    }
+
+
+@router.get("/canonical/{od_code}")
+def canonical_document_detail(od_code: str):
+    """تفاصيل OD واحد + معلومات الـ layout المرتبط + قائمة الحقول الإلزامية."""
+    from .. import v15_registry
+    od = v15_registry.resolve_canonical_document(od_code)
+    if not od:
+        raise HTTPException(status_code=404, detail="canonical document not found")
+    layout = v15_registry.LAYOUTS.get(od["layout"])
+    return {**od, "layout_info": layout}
+
+
 @router.post("/ocr-preview")
 async def ocr_preview(document_type_code: str = Form(...), file: UploadFile = File(...),
                       user: models.User = Depends(require_perm("upload_documents"))):

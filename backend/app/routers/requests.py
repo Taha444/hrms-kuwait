@@ -546,7 +546,10 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
         ]
         data["documents"] = [
             {"kind": d.kind, "version": d.version, "created_at": d.created_at,
-             "print_status": d.print_status, "printed_at": d.printed_at, "filed_at": d.filed_at}
+             "print_status": d.print_status, "printed_at": d.printed_at, "filed_at": d.filed_at,
+             # V1.5 Phase 4: canonical OD code + lifecycle status (منفصل عن print_status)
+             "od_code": d.od_code,
+             "lifecycle_status": d.lifecycle_status}
             for d in docs
         ]
     return data

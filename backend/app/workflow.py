@@ -861,9 +861,13 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     ).all()
     # يُنشأ السجل أوًلا (بلا file_path) للحصول على doc.id، لازم لتوليد رمز التحقق
     # المُشتق منه (P2-01) قبل رسم الـPDF نفسه.
+    # V1.5 Phase 4: نستخرج od_code من default_template_code (HRMS-PR-XXX → OD-YYY)
+    from . import v15_registry
+    od_code = v15_registry.resolve_template(rt.default_template_code) if rt.default_template_code else None
     doc = models.RequestDocument(
         request_id=req.id, kind=kind, file_path=None,
         version=len(existing) + 1, uploaded_by=actor.id,
+        od_code=od_code, lifecycle_status="GENERATING",
     )
     db.add(doc)
     db.flush()
@@ -878,6 +882,7 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     with open(fpath, "wb") as f:
         f.write(pdf_bytes)
     doc.file_path = fpath
+    doc.lifecycle_status = "GENERATED"  # V1.5 Phase 4: انتهى التوليد بنجاح
     return doc
 
 
