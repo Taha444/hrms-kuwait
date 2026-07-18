@@ -85,23 +85,26 @@ REQUEST_OFFICIAL_TEXT: dict[str, str] = {
     "ADMSIGN": "يستخدم هذا السجل لإثبات الاعتماد أو التوقيع الإلكتروني على المستند المحدد، مع بيان هوية الموّقع وتاريخ ووقت التوقيع ومعرف العملية. سجل تدقيق.",
 }
 
-# ----------------------- ربط الحالات الداخلية بحالات V1.3 الرسمية (FIX-009) -----------------------
-# كل حالة داخلية (Request.status) تُعرَض دومًا عبر هذا الربط بدل الاسم التقني الخام،
-# حتى تكون واجهة/API الطلب متطابقة مع مسمّيات النسخة المعتمدة V1.3.
+# ----------------------- ربط الحالات الداخلية بحالات V1.3 و V1.5 الرسمية -----------------------
+# كل حالة داخلية (Request.status) تُعرَض عبر هذا الربط بدل الاسم التقني الخام.
+# - `code`: اسم V1.3 التاريخي (FIX-009) للتوافق العكسي مع الواجهة القديمة.
+# - `v15`: اسم V1.5 canonical (DRAFT/SUBMITTED/IN_REVIEW/NEEDS_INFO/APPROVED/IN_EXECUTION/
+#   COMPLETED/REJECTED/CANCELLED) للعرض في الواجهة الحديثة.
+# - `label`: النص العربي المعروض للمستخدم.
 STATUS_MAP: dict[str, dict[str, str]] = {
-    "pending": {"code": "PENDING_APPROVAL", "label": "قيد الاعتماد"},
-    "awaiting_signature": {"code": "AWAITING_SIGNATURE", "label": "بانتظار التوقيع"},
-    "awaiting_delegate": {"code": "AWAITING_DELEGATE", "label": "بانتظار إجراءات المندوب"},
-    "ready_for_pickup": {"code": "READY_FOR_PICKUP", "label": "جاهز للاستلام"},
-    "completed": {"code": "COMPLETED", "label": "مكتمل"},
-    "rejected": {"code": "REJECTED", "label": "مرفوض"},
-    "cancelled": {"code": "CANCELLED", "label": "ملغى"},
-    "returned": {"code": "NEEDS_INFO", "label": "بحاجة معلومات إضافية"},
+    "pending": {"code": "PENDING_APPROVAL", "v15": "IN_REVIEW", "label": "قيد الاعتماد"},
+    "awaiting_signature": {"code": "AWAITING_SIGNATURE", "v15": "IN_EXECUTION", "label": "بانتظار التوقيع"},
+    "awaiting_delegate": {"code": "AWAITING_DELEGATE", "v15": "IN_EXECUTION", "label": "بانتظار إجراءات المندوب"},
+    "ready_for_pickup": {"code": "READY_FOR_PICKUP", "v15": "IN_EXECUTION", "label": "جاهز للاستلام"},
+    "completed": {"code": "COMPLETED", "v15": "COMPLETED", "label": "مكتمل"},
+    "rejected": {"code": "REJECTED", "v15": "REJECTED", "label": "مرفوض"},
+    "cancelled": {"code": "CANCELLED", "v15": "CANCELLED", "label": "ملغى"},
+    "returned": {"code": "NEEDS_INFO", "v15": "NEEDS_INFO", "label": "بحاجة معلومات إضافية"},
 }
 
 
 def status_info(status: str) -> dict[str, str]:
-    return STATUS_MAP.get(status, {"code": status.upper(), "label": status})
+    return STATUS_MAP.get(status, {"code": status.upper(), "v15": status.upper(), "label": status})
 
 
 # ----------------------- أنواع الطلبات الافتراضية (للـ seed) -----------------------
@@ -134,8 +137,12 @@ def _simple(code: str, name: str, category: str, roles: list[str],
     من قائمة "طلب جديد" كخدمة ذاتية إلا ما صُرِّح صراحًة أنه يبدأ من الموظف.
     default_template_code (P0-02): ربط اختياري بأحد قوالب HRMS-PR-001..042 للتتبّع.
     """
+    # V1.5 Phase 2: كل خطوة تحمل step_type canonical (DECISION للـ approval العادية،
+    # AUTOMATION للخطوة النهائية إن كانت produces_document عبر النظام). الحقل اختياري
+    # للتوافق مع الخطوات القديمة (kind="approval"/"hr_review"/"delegate_exit"/"pickup").
     chain = [
         {"order": i, "label": f"اعتماد {ROLE_LABEL_AR.get(r, r)}", "role": r, "kind": "approval",
+         "step_type": "DECISION",
          "produces_document": produces_document and i == len(roles) - 1}
         for i, r in enumerate(roles)
     ]

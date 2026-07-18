@@ -54,6 +54,18 @@ def status_map(user: models.User = Depends(get_current_user)):
     return workflow.STATUS_MAP
 
 
+@router.get("/status-model")
+def status_model(user: models.User = Depends(get_current_user)):
+    """V1.5 Phase 2 — الـ canonical status taxonomy الكامل:
+    - request_lifecycle: DRAFT/SUBMITTED/IN_REVIEW/NEEDS_INFO/APPROVED/IN_EXECUTION/COMPLETED
+    - document_lifecycle: NOT_REQUIRED/QUEUED/GENERATING/GENERATED/SIGNED/DELIVERED/ARCHIVED
+    - step_types: DECISION/VALIDATION/EXECUTION/ACKNOWLEDGEMENT/NOTIFICATION/AUTOMATION
+    - internal_to_v15: خريطة الحالات الداخلية القديمة → V1.5 canonical
+    """
+    from .. import v15_status
+    return v15_status.as_dict()
+
+
 @router.get("/registry")
 def registry(user: models.User = Depends(get_current_user)):
     """V1.5 Migration Registry: canonical workflows/documents + legacy aliases.
@@ -469,11 +481,17 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt) if rt else []
     st = workflow.status_info(req.status)
+    # V1.5 canonical resolver: يعرض الكود الجديد للطلب بجانب الكود القديم في seed
+    from .. import v15_registry
+    canonical_info = v15_registry.resolve_request(req.request_type_code)
     data = {
         "id": req.id, "type": req.request_type_code,
         "type_name": rt.name if rt else req.request_type_code,
+        "canonical_workflow": canonical_info.get("canonical"),  # V1.5 WF-XXX (قد يكون None)
+        "canonical_subtype": canonical_info.get("subtype"),
         "employee_id": req.employee_id, "employee_name": emp.name if emp else None,
         "status": req.status, "status_code": st["code"], "status_label": st["label"],
+        "status_v15": st.get("v15"),  # V1.5 canonical (IN_REVIEW/NEEDS_INFO/...)
         "current_stage": req.current_stage,
         "total_stages": len(chain),
         "payload": req.payload_json, "created_at": req.created_at,
