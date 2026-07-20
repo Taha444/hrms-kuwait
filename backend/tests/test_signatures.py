@@ -8,21 +8,29 @@ import zlib
 from tests.conftest import auth_headers, login
 
 
-def _minimal_png(width: int = 200, height: int = 60) -> bytes:
-    """يبني صورة PNG صغيرة بيضاء صالحة للاختبار — لا نعتمد على Pillow."""
-    def _chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(
-            ">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+def _signature_png(width: int = 200, height: int = 60) -> bytes:
+    """يبني صورة PNG بها ink داكن (خطوط سوداء) على خلفية بيضاء — ليمر معالج SIG-02."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    # يرسم خطوط سوداء تحاكي توقيع
+    draw.line([(20, 30), (60, 20), (100, 40), (140, 25), (180, 35)], fill=(0, 0, 0), width=3)
+    draw.line([(30, 45), (80, 50), (130, 45)], fill=(30, 30, 30), width=2)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
-    sig = b"\x89PNG\r\n\x1a\n"
-    ihdr = _chunk(b"IHDR",
-                  struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-    # raw pixels: rows of (filter=0 + width*3 bytes of RGB white)
-    row = b"\x00" + b"\xff" * (width * 3)
-    raw = row * height
-    idat = _chunk(b"IDAT", zlib.compress(raw))
-    iend = _chunk(b"IEND", b"")
-    return sig + ihdr + idat + iend
+
+def _blank_png(width: int = 200, height: int = 60) -> bytes:
+    """صورة بيضاء تمامًا بلا ink — يجب رفضها بواسطة المعالج."""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), (255, 255, 255)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# alias للـ tests القديمة (لتصبح استدعاءاتها ذات ink حقيقي)
+_minimal_png = _signature_png
 
 
 def test_get_signature_returns_false_when_none_uploaded(client):
@@ -46,11 +54,11 @@ def test_upload_signature_png_succeeds(client):
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["ok"] is True
-    assert body["size_bytes"] == len(png)
-    # الآن get يرجع has_signature=True
+    # الحجم بعد المعالجة (processed) وحجم الخام
+    assert body["size_bytes"] > 0
+    assert body["raw_size_bytes"] == len(png)
     info = client.get("/api/me/signature", headers=emp).json()
     assert info["has_signature"] is True
-    # صورة التوقيع تتنزل بنفس الحجم تقريبًا
     img_r = client.get("/api/me/signature/image", headers=emp)
     assert img_r.status_code == 200
     assert img_r.headers["content-type"] == "image/png"
@@ -118,6 +126,61 @@ def test_signature_isolated_per_user(client):
                 files={"file": ("s.png", _minimal_png(), "image/png")})
     info_b = client.get("/api/me/signature", headers=b).json()
     assert info_b["has_signature"] is False
+
+
+def test_upload_processes_photo_removes_background_saves_transparent_png(client):
+    """SIG-02: صورة الرفع تُعالج → PNG شفاف الخلفية بحجم متناسب مع الـ ink فقط."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    raw_png = _signature_png(width=400, height=300)  # صورة كبيرة بها ink صغير
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("sig.png", raw_png, "image/png")})
+    assert r.status_code == 201
+    body = r.json()
+    # الحجم المعالَج غالبًا أصغر من الخام (لأنه cropped) والنوع دائمًا PNG
+    from app.database import SessionLocal
+    from app import models
+    from PIL import Image
+    db = SessionLocal()
+    try:
+        u = db.query(models.User).filter_by(civil_id="100000000101").one()
+        assert u.signature_path.endswith(".png")
+        img = Image.open(u.signature_path)
+        # التصميم يحفظ RGBA بشفافية
+        assert img.mode == "RGBA"
+        # الأبعاد أصغر من 400×300 (لأن الصورة اتقصت حول ink فقط)
+        assert img.width < 400 or img.height < 300
+    finally:
+        db.close()
+
+
+def test_upload_rejects_blank_image_no_ink_detected(client):
+    """صورة بيضاء تمامًا بدون ink → يرفضها المعالج برسالة واضحة."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    # نمسح التوقيع الحالي (لو موجود من اختبار سابق)
+    client.delete("/api/me/signature", headers=emp)
+    blank = _blank_png()
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("blank.png", blank, "image/png")})
+    assert r.status_code == 400
+    assert "توقيع" in r.json()["detail"]
+
+
+def test_signature_image_returns_png_regardless_of_input(client):
+    """حتى لو المستخدم رفع JPG، المعالج يحفظ PNG بشفافية."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    # نبني JPG بها ink
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (200, 60), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.line([(20, 30), (180, 30)], fill=(0, 0, 0), width=3)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("sig.jpg", buf.getvalue(), "image/jpeg")})
+    assert r.status_code == 201, r.text
+    # الـ content-type للاستجابة PNG دائمًا
+    img_r = client.get("/api/me/signature/image", headers=emp)
+    assert img_r.headers["content-type"] == "image/png"
 
 
 def test_generated_pdf_embeds_signature_when_available(client):

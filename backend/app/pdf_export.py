@@ -125,19 +125,35 @@ class ArabicPDF:
         self._text(f"• {text}", size=10.5, bold_gap=0.7 * cm, wrap=True)
 
     def signatures(self, labels: list[str], images: list[str | None] | None = None) -> None:
-        """يرسم صف توقيعات. لو مُرِّرت صور (SIG-01) تُحقن فوق سطر التوقيع لكل خانة —
+        """يرسم صف توقيعات بترتيب رسمي (من الأعلى للأسفل):
+            1. عنوان الحقل (مثل "توقيع الموظف")
+            2. خط أفقي
+            3. صورة التوقيع (لو مرِّرت)
         الفهارس تتطابق مع labels: images[i] = مسار صورة توقيع للخانة i (أو None).
-        الصور تُقصّ ضمن ارتفاع 1.2cm لتبقى فوق السطر بلا تداخل."""
-        self._line_break(1.8 * cm)
-        self.c.setFont(self.font, 10.5)
+        الصور تُقصّ ضمن ارتفاع 1.5cm لتبقى تحت السطر بلا تداخل مع الصف التالي."""
+        self._line_break(1.2 * cm)
         n = len(labels) or 1
         col_w = (self.right - self.left) / n
-        sig_h = 1.2 * cm
+        sig_h = 1.5 * cm
         sig_max_w = col_w - 0.8 * cm
         images = images or [None] * n
+
+        # الصف 1 (أعلى): العناوين
+        self.c.setFont(self.font, 10.5)
         for i, label in enumerate(labels):
             cx = self.right - i * col_w - col_w / 2
-            # رسم صورة التوقيع فوق السطر إن وجدت
+            self.c.drawCentredString(cx, self.y, _shape(label))
+
+        # الصف 2 (وسط): الخط الأفقي — أسفل العناوين
+        line_y = self.y - 0.5 * cm
+        for i in range(n):
+            cx = self.right - i * col_w - col_w / 2
+            self.c.line(cx - col_w / 2 + 0.3 * cm, line_y,
+                        cx + col_w / 2 - 0.3 * cm, line_y)
+
+        # الصف 3 (أسفل): صورة التوقيع — تحت الخط مباشرة
+        for i in range(n):
+            cx = self.right - i * col_w - col_w / 2
             sig_path = images[i] if i < len(images) else None
             if sig_path and os.path.exists(sig_path):
                 try:
@@ -147,14 +163,13 @@ class ArabicPDF:
                     if ih > 0 and iw > 0:
                         scale = min(sig_max_w / iw, sig_h / ih)
                         dw, dh = iw * scale, ih * scale
-                        self.c.drawImage(sig_path, cx - dw / 2, self.y + 0.1 * cm,
+                        self.c.drawImage(sig_path, cx - dw / 2,
+                                         line_y - dh - 0.1 * cm,
                                          width=dw, height=dh, mask="auto")
                 except Exception:
-                    pass  # فشل قراءة الصورة (مسار غير صالح/تلف) — يُطبع السطر فارغًا كما لو لم يوجد توقيع
-            self.c.drawCentredString(cx, self.y - 1.0 * cm, _shape(label))
-            self.c.line(cx - col_w / 2 + 0.3 * cm, self.y - 0.4 * cm,
-                        cx + col_w / 2 - 0.3 * cm, self.y - 0.4 * cm)
-        self.y -= 2.4 * cm
+                    pass  # فشل قراءة الصورة — يُترك المكان فارغًا كما لو لم يوجد توقيع
+
+        self.y = line_y - sig_h - 0.4 * cm
 
     def verification(self, code: str) -> None:
         """رمز QR + رمز نصي أسفل المستند (P2-01) — يتيح لطرف خارجي (بنك/سفارة) التحقق من
