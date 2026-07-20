@@ -124,16 +124,37 @@ class ArabicPDF:
     def bullet(self, text: str) -> None:
         self._text(f"• {text}", size=10.5, bold_gap=0.7 * cm, wrap=True)
 
-    def signatures(self, labels: list[str]) -> None:
-        self._line_break(1.2 * cm)
+    def signatures(self, labels: list[str], images: list[str | None] | None = None) -> None:
+        """يرسم صف توقيعات. لو مُرِّرت صور (SIG-01) تُحقن فوق سطر التوقيع لكل خانة —
+        الفهارس تتطابق مع labels: images[i] = مسار صورة توقيع للخانة i (أو None).
+        الصور تُقصّ ضمن ارتفاع 1.2cm لتبقى فوق السطر بلا تداخل."""
+        self._line_break(1.8 * cm)
         self.c.setFont(self.font, 10.5)
         n = len(labels) or 1
         col_w = (self.right - self.left) / n
+        sig_h = 1.2 * cm
+        sig_max_w = col_w - 0.8 * cm
+        images = images or [None] * n
         for i, label in enumerate(labels):
             cx = self.right - i * col_w - col_w / 2
-            self.c.drawCentredString(cx, self.y, _shape(label))
-            self.c.line(cx - col_w / 2 + 0.3 * cm, self.y - 0.6 * cm, cx + col_w / 2 - 0.3 * cm, self.y - 0.6 * cm)
-        self.y -= 1.4 * cm
+            # رسم صورة التوقيع فوق السطر إن وجدت
+            sig_path = images[i] if i < len(images) else None
+            if sig_path and os.path.exists(sig_path):
+                try:
+                    from reportlab.lib.utils import ImageReader
+                    img = ImageReader(sig_path)
+                    iw, ih = img.getSize()
+                    if ih > 0 and iw > 0:
+                        scale = min(sig_max_w / iw, sig_h / ih)
+                        dw, dh = iw * scale, ih * scale
+                        self.c.drawImage(sig_path, cx - dw / 2, self.y + 0.1 * cm,
+                                         width=dw, height=dh, mask="auto")
+                except Exception:
+                    pass  # فشل قراءة الصورة (مسار غير صالح/تلف) — يُطبع السطر فارغًا كما لو لم يوجد توقيع
+            self.c.drawCentredString(cx, self.y - 1.0 * cm, _shape(label))
+            self.c.line(cx - col_w / 2 + 0.3 * cm, self.y - 0.4 * cm,
+                        cx + col_w / 2 - 0.3 * cm, self.y - 0.4 * cm)
+        self.y -= 2.4 * cm
 
     def verification(self, code: str) -> None:
         """رمز QR + رمز نصي أسفل المستند (P2-01) — يتيح لطرف خارجي (بنك/سفارة) التحقق من
@@ -158,8 +179,13 @@ class ArabicPDF:
 
 
 def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
-                       verification_code: str | None = None) -> bytes:
-    """يبني PDF فعليًا لمستند طلب معتمَد (بديل render_document_html)."""
+                       verification_code: str | None = None,
+                       employee_signature: str | None = None,
+                       company_signature: str | None = None) -> bytes:
+    """يبني PDF فعليًا لمستند طلب معتمَد (بديل render_document_html).
+
+    SIG-01 — لو مرِّرت مسارات صور توقيع (employee_signature أو company_signature)،
+    تُحقن فوق سطر التوقيع في خانتها المناسبة تلقائيًا."""
     doc = ArabicPDF(
         title=(company.name if company else ""),
         subtitle=rt.name,
@@ -182,7 +208,9 @@ def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
             )
     else:
         doc.bullet("—")
-    doc.signatures(["توقيع الموظف", "توقيع/ختم الشركة"])
+    # SIG-01: نمرّر الصور بنفس ترتيب labels — [توقيع الموظف, توقيع الشركة]
+    doc.signatures(["توقيع الموظف", "توقيع/ختم الشركة"],
+                   images=[employee_signature, company_signature])
     if verification_code:
         doc.verification(verification_code)
     return doc.bytes()

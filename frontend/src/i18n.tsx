@@ -194,6 +194,25 @@ const dict: Record<string, { ar: string; en: string }> = {
   req_warning_ref: { ar: "مرجع الإنذار", en: "Warning Reference" },
   req_response: { ar: "الرد", en: "Response" },
   req_missing_fields: { ar: "الحقول التالية مطلوبة", en: "The following fields are required" },
+  // SIG-01 — التوقيع الرقمي
+  sig_title: { ar: "توقيعك الرقمي", en: "Your Digital Signature" },
+  sig_hint: {
+    ar: "ارفع صورة (PNG/JPG) لتوقيعك اليدوي على ورقة بيضاء (بحد أقصى 500KB). يتم استخدامها تلقائيًا في كل مستند رسمي منسوب إليك، وتقدر تستبدلها في أي وقت.",
+    en: "Upload a picture (PNG/JPG) of your handwritten signature on white paper (max 500KB). It will be embedded automatically in every official document issued for you, and you can replace it anytime.",
+  },
+  sig_upload: { ar: "رفع التوقيع", en: "Upload signature" },
+  sig_replace: { ar: "استبدال التوقيع", en: "Replace signature" },
+  sig_delete: { ar: "حذف التوقيع", en: "Delete signature" },
+  sig_confirm_delete: {
+    ar: "هل أنت متأكد من حذف التوقيع؟ المستندات الجديدة ستطبع بسطر توقيع فارغ.",
+    en: "Delete signature? Future documents will print with a blank signature line.",
+  },
+  sig_uploaded: { ar: "تم رفع التوقيع بنجاح", en: "Signature uploaded successfully" },
+  sig_deleted: { ar: "تم حذف التوقيع", en: "Signature deleted" },
+  sig_none: { ar: "لم يتم رفع توقيع بعد", en: "No signature uploaded yet" },
+  sig_preview: { ar: "معاينة التوقيع", en: "Signature preview" },
+  sig_updated_at: { ar: "آخر تحديث", en: "Last updated" },
+  sig_too_large: { ar: "حجم الصورة يتجاوز 500KB — استخدم صورة أصغر", en: "File exceeds 500KB — use a smaller image" },
   // مركز العمليات
   ops_eyebrow: { ar: "المتابعة والامتثال", en: "Compliance & Monitoring" },
   ops_sub: { ar: "كل ما يحتاج إجراءً في مكان واحد — إقامات وتراخيص وطلبات ومهام", en: "Everything needing action in one place" },

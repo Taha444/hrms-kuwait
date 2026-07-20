@@ -873,8 +873,24 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     db.flush()
 
     verification_code = verification.generate_code(doc.id, req.id)
+    # SIG-01: صورة توقيع الموظف مقدّم الطلب (المستخدم المرتبط بسجله)
+    emp_sig = None
+    if emp and emp.id:
+        emp_user = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+        if emp_user and emp_user.signature_path and os.path.exists(emp_user.signature_path):
+            emp_sig = emp_user.signature_path
+    # توقيع "الشركة" = آخر معتمِد للطلب (المدير العام أو من في صلاحيته)
+    company_sig = None
+    if approvals:
+        last = approvals[-1]
+        if last.approver_user_id:
+            last_user = db.get(models.User, last.approver_user_id)
+            if last_user and last_user.signature_path and os.path.exists(last_user.signature_path):
+                company_sig = last_user.signature_path
     pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp),
-                                   verification_code=verification_code)
+                                   verification_code=verification_code,
+                                   employee_signature=emp_sig,
+                                   company_signature=company_sig)
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"

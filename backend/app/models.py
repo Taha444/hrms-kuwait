@@ -70,6 +70,11 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
     last_login: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # SIG-01 — التوقيع الشخصي: مسار صورة PNG/JPG يرفعها المستخدم مرة واحدة، ويحقنها
+    # محرك PDF فوق سطر التوقيع في كل مستند رسمي مطبوع منسوب إليه (شهادات، إنذارات،
+    # إخلاء طرف، إلخ). يتحمل المستخدم مسؤولية التوقيع كما لو كان يوقّع بيده على ورقة.
+    signature_path: Mapped[str | None] = mapped_column(String(400))
+    signature_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     permissions: Mapped[list[UserPermission]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
