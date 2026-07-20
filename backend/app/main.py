@@ -87,6 +87,60 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ============================================================================
+# SEC-HEADERS — ترويسات أمان لكل استجابة (يعالج فشل فحص Mozilla Observatory)
+# ============================================================================
+# مصفوفة الترويسات مبنية على تقرير الفحص + توصيات OWASP:
+#   - HSTS: يجبر HTTPS لمدة سنة (max-age=31536000) للنطاق والفروع الفرعية
+#   - X-Content-Type-Options: nosniff — يمنع browser من "تخمين" نوع المحتوى
+#   - Referrer-Policy: strict-origin-when-cross-origin — يمنع تسريب URLs كاملة
+#   - Permissions-Policy: تعطيل واجهات المتصفح الحساسة (payment, USB, ...)
+#   - CSP: default-src 'self' + object-src 'none' + base-uri 'self' + form-action 'self'
+#     — يمنع Stored/Reflected XSS، clickjacking، وحقن نماذج
+#   - Cross-Origin-*-Policy: عزل مصدر الاستجابة (COOP + CORP)
+# CSP لا يحوي 'unsafe-inline' في script-src — كل JS يأتي كـ bundle خارجي من Vite.
+# 'unsafe-inline' في style-src لأن React styled inline attributes تحتاجها.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "media-src 'self' blob:; "
+    "worker-src 'self' blob:; "
+    "manifest-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'self'; "
+    "upgrade-insecure-requests"
+)
+
+_STATIC_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # قائمة سماح صريحة: نُتيح الكاميرا والموقع فقط (للحضور بـ QR والسيلفي) ونمنع الباقي
+    "Permissions-Policy": (
+        "camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), "
+        "magnetometer=(), gyroscope=(), accelerometer=(), interest-cohort=()"
+    ),
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Content-Security-Policy": _CSP,
+}
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    for k, v in _STATIC_HEADERS.items():
+        response.headers.setdefault(k, v)
+    return response
+
 # ملاحظة أمنية: لا نكشف مجلد uploads كملفات عامة (يحوي سيلفي ومستندات حسّاسة).
 # تنزيل أي ملف يمرّ عبر نقطة موثّقة تتحقق من العزل والصلاحية.
 os.makedirs(settings.upload_dir, exist_ok=True)
