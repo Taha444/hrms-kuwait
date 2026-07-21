@@ -37,6 +37,81 @@ def _signatures_folder() -> str:
     return os.path.join(settings.upload_dir, "signatures")
 
 
+def _find_signature_bbox(alpha):
+    """SIG-03: يعزل التوقيع عن ضوضاء الخلفية (رنجات نوت-بوك، ثقوب، نص جانبي).
+
+    الفكرة: التوقيع الحقيقي يشكّل "شريط ink كثيف" مستمر رأسيًا، بينما الرنجات
+    والثقوب تشكّل أشرطة منفصلة. نقسّم الصورة إلى أشرطة أفقية بحسب صفوف الحبر،
+    ونختار الشريط الأكثر كثافة (أعلى total ink) — لأنه الأرجح أنه التوقيع.
+    ثم نعمل نفس التحليل عموديًا داخل ذلك الشريط لإيجاد يمين/يسار التوقيع بالضبط.
+
+    القياسات تعتمد على PIL.Image.reduce (C-implemented) → سريعة حتى لصور 4K.
+    """
+    w, h = alpha.size
+    if w == 0 or h == 0:
+        return None
+
+    # 1. متوسط الحبر لكل صف: نقلّص عرض الصورة إلى 1 → صورة 1×h بها متوسط ألفا لكل صف
+    row_col = alpha.reduce((max(w, 1), 1))  # حجم الخرج: (1, h)
+    row_avgs = list(row_col.getdata())
+
+    # 2. شريط = صفوف متتالية بها ink؛ نسمح بفجوات صغيرة داخل التوقيع نفسه
+    MIN_ROW = 4  # صف بمتوسط < 4/255 يعتبر فارغًا
+    GAP = max(6, h // 25)  # فجوة أكبر من هذا تفصل بين شريطين مختلفين
+
+    bands: list[tuple[int, int, int]] = []  # (start_y, end_y, total_ink)
+    start = None
+    ink_sum = 0
+    gap_count = 0
+    for y, v in enumerate(row_avgs):
+        if v > MIN_ROW:
+            if start is None:
+                start = y
+            ink_sum += v
+            gap_count = 0
+        else:
+            if start is not None:
+                gap_count += 1
+                if gap_count >= GAP:
+                    bands.append((start, y - gap_count, ink_sum))
+                    start = None
+                    ink_sum = 0
+                    gap_count = 0
+    if start is not None:
+        bands.append((start, h - 1, ink_sum))
+
+    if not bands:
+        return None
+
+    # 3. الشريط الأكثر total ink = التوقيع. لو فيه شريط أكبر بكثير من الباقي
+    # (مثل الرنجات لو كانت كثيفة) لكن قصير جدًا رأسيًا، نتجاهله لصالح شريط
+    # أطول رأسيًا. نستخدم مقياس مركّب: total_ink مضروب في ارتفاع الشريط.
+    def score(b):
+        top, bot, total = b
+        height = bot - top + 1
+        # نفضّل الأشرطة الأطول (توقيع فعلي) على الأشرطة القصيرة العالية الكثافة (رنجات)
+        return total * (height ** 0.5)
+
+    band_top, band_bottom, _ = max(bands, key=score)
+
+    # 4. داخل الشريط، نجد أقصى يمين وأقصى يسار عبر تحليل عمودي
+    strip = alpha.crop((0, band_top, w, band_bottom + 1))
+    strip_h = max(strip.height, 1)
+    col_row = strip.reduce((1, strip_h))  # حجم الخرج: (w, 1)
+    col_avgs = list(col_row.getdata())
+
+    left = None
+    right = 0
+    for x, v in enumerate(col_avgs):
+        if v > MIN_ROW:
+            if left is None:
+                left = x
+            right = x
+    if left is None:
+        return None
+    return (left, band_top, right + 1, band_bottom + 1)
+
+
 def _process_signature(input_bytes: bytes) -> bytes:
     """يستخرج التوقيع من صورة ورقة/شاشة ويحوّله لـ PNG أسود شفاف الخلفية.
 
@@ -46,7 +121,7 @@ def _process_signature(input_bytes: bytes) -> bytes:
     3. Auto-contrast لتوحيد الإضاءة (نور شمس vs نور غرفة)
     4. Threshold تدريجي (0..THRESHOLD → alpha 255..0) لحفظ حواف ناعمة للـ ink
     5. RGBA بـ ink أسود + alpha channel + خلفية شفافة
-    6. Crop للـ bounding box حول ink فقط (+ padding) — يشيل الورقة والحواف الفارغة
+    6. SIG-03: قص ذكي يعزل التوقيع عن رنجات النوت-بوك والثقوب والحدود
     """
     from PIL import Image, ImageOps
     img = Image.open(io.BytesIO(input_bytes))
@@ -66,20 +141,23 @@ def _process_signature(input_bytes: bytes) -> bytes:
     black = Image.new("L", gray.size, 0)
     out = Image.merge("RGBA", (black, black, black, alpha))
 
-    # Crop حول ink فعلي فقط
-    bbox = alpha.getbbox()
-    if bbox:
-        left, top, right, bottom = bbox
-        pad = 20
-        left = max(0, left - pad)
-        top = max(0, top - pad)
-        right = min(alpha.width, right + pad)
-        bottom = min(alpha.height, bottom + pad)
-        out = out.crop((left, top, right, bottom))
-    else:
-        # مافيش ink مكتشف — الصورة كلها فاتحة (فراغ) — نرفض
+    # SIG-03: نستخدم "شريط ink الأكثر كثافة" بدل bounding box الكامل — يشيل الرنجات
+    # والثقوب اللي كانت تظهر فوق التوقيع في الـ PDF. لو تعذّر (مثلاً صورة نظيفة
+    # بشريط واحد فقط) نرجع للـ bbox العادي كـ fallback.
+    smart_bbox = _find_signature_bbox(alpha)
+    if smart_bbox is None:
+        smart_bbox = alpha.getbbox()
+    if smart_bbox is None:
         raise HTTPException(status_code=400,
                             detail="لم يتم اكتشاف توقيع في الصورة — استخدم قلم أغمق أو صورة أوضح")
+
+    left, top, right, bottom = smart_bbox
+    pad = 12  # padding أقل بعد التحسن في الدقة
+    left = max(0, left - pad)
+    top = max(0, top - pad)
+    right = min(alpha.width, right + pad)
+    bottom = min(alpha.height, bottom + pad)
+    out = out.crop((left, top, right, bottom))
 
     buf = io.BytesIO()
     out.save(buf, format="PNG", optimize=True)

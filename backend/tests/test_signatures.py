@@ -128,6 +128,47 @@ def test_signature_isolated_per_user(client):
     assert info_b["has_signature"] is False
 
 
+def test_upload_isolates_signature_from_notebook_rings(client):
+    """SIG-03: صورة بها رنجات نوت-بوك أعلى + توقيع أسفل → القص يشمل التوقيع فقط."""
+    from PIL import Image, ImageDraw
+    # نبني صورة 400×600: رنجات في أعلى 100 بكسل، فراغ، توقيع في المنتصف
+    img = Image.new("RGB", (400, 600), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    # رنجات: خطوط أفقية متقطعة سوداء في أعلى 80 بكسل
+    for x in range(0, 400, 25):
+        draw.rectangle([(x, 20), (x + 15, 80)], fill=(20, 20, 20))
+    # توقيع في المنتصف السفلي (y=350..430)
+    draw.line([(50, 380), (100, 370), (150, 400), (200, 375), (250, 395)],
+              fill=(0, 0, 0), width=4)
+    draw.line([(60, 410), (180, 415), (240, 405)], fill=(20, 20, 20), width=3)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    client.delete("/api/me/signature", headers=emp)
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("with_rings.png", buf.getvalue(), "image/png")})
+    assert r.status_code == 201, r.text
+
+    # الآن نفحص أبعاد الصورة المعالَجة — لازم تكون قريبة من ارتفاع التوقيع (~80px + padding)
+    # مش قريبة من ارتفاع الصورة الكاملة (600px)
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        u = db.query(models.User).filter_by(civil_id="100000000101").one()
+        processed = Image.open(u.signature_path)
+        # ارتفاع الصورة المعالَجة يجب أن يكون أقل بكثير من ارتفاع الصورة الأصلية
+        # لأن الرنجات كانت في أعلى الصورة والتوقيع في المنتصف
+        assert processed.height < 300, (
+            f"expected tight crop around signature only, got height={processed.height}"
+        )
+        # ولازم يكون فيه ارتفاع معقول (لسه فيه التوقيع)
+        assert processed.height > 20
+    finally:
+        db.close()
+
+
 def test_upload_processes_photo_removes_background_saves_transparent_png(client):
     """SIG-02: صورة الرفع تُعالج → PNG شفاف الخلفية بحجم متناسب مع الـ ink فقط."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
