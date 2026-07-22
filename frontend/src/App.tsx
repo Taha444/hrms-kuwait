@@ -239,14 +239,21 @@ function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => { setNavOpen(false); }, [loc.pathname]);
   return (
     <div className="app">
+      <a href="#main-content" className="skip-link" style={{
+        position: "absolute", left: "-9999px", top: 0, zIndex: 1000,
+      }} onFocus={(e) => { e.currentTarget.style.left = "8px"; e.currentTarget.style.top = "8px"; }}
+         onBlur={(e) => { e.currentTarget.style.left = "-9999px"; }}>
+        تخطّي إلى المحتوى الرئيسي
+      </a>
       <Sidebar open={navOpen} />
-      {navOpen && <div className="nav-overlay" onClick={() => setNavOpen(false)} />}
+      {navOpen && <div className="nav-overlay" onClick={() => setNavOpen(false)}
+                       role="button" aria-label="إغلاق القائمة الجانبية" tabIndex={-1} />}
       <div className="main">
         <ImpersonationBanner />
         <Topbar onMenu={() => setNavOpen((o) => !o)} />
         {/* main landmark مفقود كان يخفض a11y score (QA-P2-A11Y-01) — يحدد لقارئات الشاشة
             المحتوى الرئيسي للصفحة بمعزل عن الشريط الجانبي/العلوي */}
-        <main className="content">{children}</main>
+        <main className="content" id="main-content" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );

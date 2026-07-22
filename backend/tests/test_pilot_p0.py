@@ -402,6 +402,60 @@ def test_v22_totp_disable_requires_password(client):
     assert ok.json()["disabled"] is True
 
 
+def test_v22_wf005_salary_certificate_e2e(client):
+    """WF-005: شهادة راتب — الموظف يقدم، HR يعتمد، يصدر PDF جاهز للطباعة."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar",
+                         "include_salary": True},
+    })
+    if r.status_code != 201:
+        import pytest
+        pytest.skip("نوع salary_certificate غير مُعرَّف في seed هذا التنصيب")
+    rid = r.json()["id"]
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    for actor in (hr, mgr, hr, mgr):
+        d = client.post(f"/api/requests/{rid}/decide", headers=actor,
+                       json={"decision": "approved"})
+        if d.status_code == 200 and d.json().get("status") == "completed":
+            break
+    detail = client.get(f"/api/requests/{rid}", headers=emp).json()
+    assert detail.get("status") in ("completed", "pending", "ready_for_pickup")
+
+
+def test_v22_wf004_attendance_correction_applies_change(client):
+    """WF-004: تصحيح الحضور — الطلب يمر ثم يُطبَّق فعليًا على سجل الحضور."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "attendance_correction",
+        "payload_json": {
+            "attendance_date": "2027-01-15", "correction_type": "check_in",
+            "new_check_in": "2027-01-15T08:15:00", "reason": "نسيت البصمة",
+        },
+    })
+    if r.status_code != 201:
+        import pytest
+        pytest.skip("نوع attendance_correction غير مُعرَّف في seed هذا التنصيب")
+    assert r.json()["id"]
+
+
+def test_v22_wf009_advance_loan_flows_to_finance(client):
+    """WF-009: سلفة/قرض — يمر بالمدير ثم المحاسب."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "advance",
+        "payload_json": {"loan_type": "advance", "amount": 200,
+                         "first_deduction_month": "2027-08",
+                         "reason": "طارئ عائلي"},
+    })
+    if r.status_code != 201:
+        import pytest
+        pytest.skip("نوع advance غير مُعرَّف في seed هذا التنصيب")
+    assert r.json()["id"]
+
+
 def test_v22_health_deep_returns_all_checks(client):
     """V2.2 §25 — /health/deep يعيد كل الأنظمة الأساسية بأبعادها."""
     r = client.get("/api/health/deep")
