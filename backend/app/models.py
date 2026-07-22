@@ -394,6 +394,10 @@ class RequestType(Base):
     # ربط تتبّعي اختياري بأحد قوالب الطباعة الرسمية HRMS-PR-001..042 (P0-02) — ليس كل نوع
     # طلب له قالب مطابق (49+ نوعًا مقابل 42 قالبًا)، فيبقى None حين لا يوجد تطابق مناسب.
     default_template_code: Mapped[str | None] = mapped_column(String(20))
+    # V2.2/§4 — Form Schema Engine: تعريف الحقول والتحقق الشرطي والمرفقات لكل نوع.
+    #   الواجهة والـBackend يستهلكانه معًا؛ لا Forms مبنية بالخطأ (Date/Amount/Details) لكل نوع.
+    #   الشكل: {"fields": [...], "conditional": [...], "attachments": {...}, "meta": {...}}
+    form_schema_json: Mapped[dict | None] = mapped_column(JSON)
 
 
 class Request(Base):
@@ -409,6 +413,11 @@ class Request(Base):
     current_stage: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # V2.2/§5 Workflow Engine: needs_info + cancel + return_to_submitter
+    needs_info_note: Mapped[str | None] = mapped_column(Text)
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(String(300))
 
 
 class RequestApproval(Base):

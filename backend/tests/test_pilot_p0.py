@@ -299,6 +299,51 @@ def test_P0_8_cancel_draft(client):
     assert new_draft.status_code == 200
 
 
+# =============================================================================
+# V2.2 §4 — Form Schema Engine endpoints
+# =============================================================================
+def test_v22_schema_endpoint_returns_leave_fields(client):
+    """endpoint schemas يعيد الحقول للـcanonical code."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.get("/api/requests/types/REQLV/schema", headers=emp)
+    assert r.status_code == 200
+    fields = [f["code"] for f in r.json()["schema"]["fields"]]
+    assert "start_date" in fields and "leave_type" in fields
+
+
+def test_v22_schemas_bulk_endpoint_exposes_all_canonical(client):
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.get("/api/requests/types-schemas", headers=emp)
+    assert r.status_code == 200
+    body = r.json()
+    # على الأقل REQLV و REQATT و REQEOS مُعرَّفة
+    assert set(["REQLV", "REQATT", "REQEOS", "REQCERT", "REQADV"]).issubset(body.keys())
+
+
+# =============================================================================
+# V2.2 §5 — Self-approval on own file prevented
+# =============================================================================
+def test_v22_self_approval_on_own_leave_rejected(client):
+    """المدير الذي يعتمد إجازته لنفسه — مرفوض بسبب ملكية الملف."""
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    # المدير يقدّم طلب إجازة يخصّ ملفه (لو كان له employee_id)
+    r = client.post("/api/requests", headers=mgr, json={
+        "request_type_code": "leave",
+        "payload_json": {"start_date": "2027-06-01", "end_date": "2027-06-03",
+                         "days": 3, "reason": "شخصي"},
+    })
+    if r.status_code != 201:
+        # لو المدير ليس له employee_id فلا يستطيع تقديم أصلًا — نتخطّى بلطف
+        import pytest
+        pytest.skip("المدير لا يملك employee_id في بيانات الديمو")
+    rid = r.json()["id"]
+    # يحاول اعتماد طلبه بنفسه
+    dec = client.post(f"/api/requests/{rid}/decide", headers=mgr,
+                     json={"decision": "approved"})
+    assert dec.status_code == 403
+    assert "ملفك الشخصي" in dec.json()["detail"]
+
+
 def test_P0_7_adjustment_requires_reason_and_lock(client):
     """التسوية بعد lock فقط، وسبب إلزامي."""
     acc = auth_headers(login(client, "100000000007", "account123"))

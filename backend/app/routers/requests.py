@@ -134,6 +134,27 @@ def list_request_types(category: str | None = None,
     return out
 
 
+@router.get("/types/{code}/schema")
+def get_type_schema(code: str,
+                    user: models.User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """V2.2 §4 — يعيد form_schema_json لنوع الطلب (الواجهة تبني الفورم منه).
+    يقبل الـ canonical والـ legacy alias معًا."""
+    from .. import form_schemas
+    s = form_schemas.get_schema(code)
+    if not s:
+        raise HTTPException(status_code=404, detail="لا يوجد schema مُعرَّف لهذا النوع")
+    return {"code": code, "schema": s}
+
+
+@router.get("/types-schemas")
+def list_type_schemas(user: models.User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """V2.2 §4 — كل schemas الأنواع الرسمية في نداء واحد (للـ SPA الواجهة)."""
+    from .. import form_schemas
+    return form_schemas.SCHEMAS
+
+
 @router.post("/types", status_code=201)
 def create_request_type(data: schemas.RequestTypeIn,
                         user: models.User = Depends(require_perm("manage_request_types")),
@@ -164,6 +185,13 @@ def submit_request(data: schemas.RequestIn, request: Request,
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
+
+    # V2.2 §4 Form Schema Engine: التحقق من الحقول والقيود الشرطية والحدود
+    from .. import form_schemas
+    schema_errors = form_schemas.validate_payload(data.request_type_code, data.payload_json or {})
+    if schema_errors:
+        raise HTTPException(status_code=400,
+                            detail={"errors": schema_errors, "message": schema_errors[0]})
 
     # منع تقديم طلب فارغ يدخل مسار الاعتماد الفعلي (QA-P0-WF-01)
     missing = _missing_required_fields(data.request_type_code, data.payload_json or {})
@@ -243,6 +271,13 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     stage = chain[req.current_stage]
     if not workflow.can_decide(db, req, user, stage, rt=rt):
         raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
+    # V2.2 §5 — منع الاعتماد الذاتي فقط للطلبات التي تخصّ الموظف نفسه (ملفه الشخصي).
+    # HR/الإدارة الذين يبدأون طلبات نيابة عن موظف آخر يبقون قادرين على اعتماد مرحلتهم
+    # في السلسلة (لأنها ليست عن ملفهم). super_admin يمرّ للطوارئ.
+    if data.decision == "approved" and stage.get("kind") not in ("employee_ack", "acknowledgment"):
+        if user.role != "super_admin" and user.employee_id and req.employee_id == user.employee_id:
+            raise HTTPException(status_code=403,
+                                detail="لا يمكنك اعتماد طلب يخص ملفك الشخصي")
     if data.decision not in ("approved", "rejected", "returned"):
         raise HTTPException(status_code=400, detail="قرار غير صالح")
     if data.decision == "returned":
