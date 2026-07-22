@@ -456,6 +456,58 @@ def test_v22_wf009_advance_loan_flows_to_finance(client):
     assert r.json()["id"]
 
 
+# =============================================================================
+# V2.2 §17 — Attendance month close
+# =============================================================================
+def test_v22_close_month_and_reopen_flow(client):
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    # قفل شهر
+    r = client.post("/api/attendance/close-month", headers=hr,
+                   params={"period": "2027-01", "company_id": 1})
+    assert r.status_code == 200
+    assert r.json()["status"] == "closed"
+    # لا يمكن قفله مرة أخرى
+    dup = client.post("/api/attendance/close-month", headers=hr,
+                     params={"period": "2027-01", "company_id": 1})
+    assert dup.status_code == 409
+    # حالة القفل
+    st = client.get("/api/attendance/close-status", headers=hr,
+                    params={"period": "2027-01", "company_id": 1})
+    assert st.status_code == 200 and st.json()["status"] == "closed"
+    # إعادة الفتح تحتاج سببًا
+    bad = client.post("/api/attendance/reopen-month", headers=hr,
+                     params={"period": "2027-01", "reason": "  ", "company_id": 1})
+    assert bad.status_code == 400
+    ok = client.post("/api/attendance/reopen-month", headers=hr,
+                    params={"period": "2027-01", "reason": "خطأ في بيانات موظف", "company_id": 1})
+    assert ok.status_code == 200 and ok.json()["status"] == "reopened"
+
+
+# =============================================================================
+# V2.2 §14 — Template versions on update
+# =============================================================================
+def test_v22_template_update_creates_version_snapshot(client):
+    admin = auth_headers(login(client, "000000000000", "admin123"))
+    # ننشئ قالبًا جديدًا
+    r = client.post("/api/templates", headers=admin, json={
+        "name": "شهادة اختبار V2.2", "category": "اختبارات",
+        "body_html": "<p>الاسم: {{employee_name}}</p>",
+    })
+    assert r.status_code == 201
+    tid = r.json()["id"]
+    # نُحدّثه — يجب إنشاء نسخة تاريخية
+    upd = client.put(f"/api/templates/{tid}", headers=admin, json={
+        "name": "شهادة اختبار V2.2 (محدَّث)", "category": "اختبارات",
+        "body_html": "<p>الاسم الكامل: {{employee_name}} — {{date_today}}</p>",
+    })
+    assert upd.status_code == 200
+    assert upd.json().get("version") == 1
+    # نطلب سجل النسخ
+    versions = client.get(f"/api/templates/{tid}/versions", headers=admin).json()
+    assert len(versions) == 1
+    assert versions[0]["name"] == "شهادة اختبار V2.2"  # النسخة القديمة محفوظة
+
+
 def test_v22_health_deep_returns_all_checks(client):
     """V2.2 §25 — /health/deep يعيد كل الأنظمة الأساسية بأبعادها."""
     r = client.get("/api/health/deep")

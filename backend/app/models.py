@@ -329,6 +329,12 @@ class Task(Base):
     sla_due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     escalated_at: Mapped[datetime | None] = mapped_column(DateTime)
     escalation_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+    # V2.2 §20 — تتبّع محاولات التسليم للقنوات الخارجية (email/SMS/webhook).
+    #   in_app دائمًا 1 محاولة (الإدراج في الجدول). القنوات الأخرى قد تفشل
+    #   وتعاد المحاولة مع سقف أقصى.
+    delivery_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_delivery_error: Mapped[str | None] = mapped_column(String(400))
+    last_delivery_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class FeatureFlag(Base):
@@ -483,6 +489,27 @@ class Appointment(Base):
     status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled/done/missed
 
 
+class AttendanceMonthClose(Base):
+    """V2.2 §17 — قفل شهر حضور: بعد اعتماد كل التصحيحات، يُقفَل الشهر لتأمين مصدر بيانات
+    الرواتب. أي تصحيح لاحق يحتاج فتح صريح من HR + سبب مسجَّل في audit.
+    """
+    __tablename__ = "attendance_month_closes"
+    __table_args__ = (
+        UniqueConstraint("company_id", "period", name="uq_att_close_company_period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    period: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    status: Mapped[str] = mapped_column(String(20), default="closed")  # closed/reopened
+    closed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    closed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    reopened_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reopened_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reopen_reason: Mapped[str | None] = mapped_column(String(300))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
 
@@ -634,6 +661,22 @@ class AuthorizedSignatory(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class DocumentTemplateVersion(Base):
+    """V2.2 §14 — سجل نسخ القوالب: كل تعديل يُنشئ نسخة جديدة والقديمة تُحفظ للأرشيف.
+    المستندات المصدَرة قبل التعديل تشير للنسخة التي أُصدرت بها (immutable audit trail)."""
+    __tablename__ = "document_template_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("document_templates.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    body_html: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(60))
+    edited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    edited_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    change_note: Mapped[str | None] = mapped_column(String(300))
 
 
 class GovLog(Base):

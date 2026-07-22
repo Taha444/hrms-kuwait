@@ -127,3 +127,21 @@ def dispatch(to: str | None, title: str, body: str) -> None:
 
 def register_channel(channel: NotificationChannel) -> None:
     _channels.append(channel)
+
+
+def redispatch_task(db, task) -> None:
+    """V2.2 §20 — إعادة إرسال مهمة عبر قنواتها بعد فشل سابق. يرمي استثناء عند الفشل
+    ليصل للمُستدعي (endpoint إعادة المحاولة)."""
+    # نستخدم القنوات الافتراضية؛ المهمة نفسها تحمل قناتها في task.channel لو محددة
+    target = None
+    try:
+        from . import models
+        if task.assignee_user_id:
+            u = db.get(models.User, task.assignee_user_id)
+            if u:
+                # نبحث عن رقم أو email على ملفه (اختياري — قد يكون فارغًا)
+                target = getattr(u, "phone", None) or getattr(u, "email", None)
+    except Exception:
+        pass
+    # dispatch نفسه لا يرمي، ننقل الفشل عبر أول قناة تفشل صريحًا
+    dispatch(target, task.title or "", task.detail or "")

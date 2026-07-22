@@ -161,6 +161,33 @@ def cleanup_orphan_tasks(user: models.User = Depends(require_perm("manage_tasks"
     return {"ok": True, "cleaned": fixed}
 
 
+@router.post("/{task_id}/retry-delivery")
+def retry_delivery(task_id: int,
+                   user: models.User = Depends(require_perm("manage_tasks")),
+                   db: Session = Depends(get_db)):
+    """V2.2 §20 — إعادة محاولة تسليم إشعار فشل في قناته الأصلية (email/SMS).
+    يزيد delivery_attempts ويفوّض للـchannel handler عبر channels.dispatch."""
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    MAX_ATTEMPTS = 5
+    if task.delivery_attempts >= MAX_ATTEMPTS:
+        raise HTTPException(status_code=409,
+                            detail=f"وصلت للحد الأقصى ({MAX_ATTEMPTS}) — لا مزيد من المحاولات")
+    task.delivery_attempts += 1
+    task.last_delivery_at = datetime.now()
+    try:
+        from ..channels import redispatch_task
+        redispatch_task(db, task)
+        task.last_delivery_error = None
+    except Exception as e:
+        task.last_delivery_error = str(e)[:400]
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"فشل التسليم: {str(e)[:120]}")
+    db.commit()
+    return {"ok": True, "attempts": task.delivery_attempts}
+
+
 @router.post("/run-sla-scan")
 def run_sla_scan(user: models.User = Depends(require_perm("manage_tasks")),
                  db: Session = Depends(get_db)):

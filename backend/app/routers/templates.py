@@ -120,14 +120,41 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
 def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Request,
                     user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
+    """V2.2 §14 — كل تعديل يُنشئ نسخة تاريخية للحفاظ على المستندات القديمة المرتبطة بها."""
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    # نحفظ النسخة الحالية قبل الكتابة فوقها
+    last_version = db.scalar(select(models.DocumentTemplateVersion).where(
+        models.DocumentTemplateVersion.template_id == t.id,
+    ).order_by(models.DocumentTemplateVersion.version.desc()))
+    next_version = (last_version.version + 1) if last_version else 1
+    db.add(models.DocumentTemplateVersion(
+        template_id=t.id, version=next_version,
+        body_html=t.body_html, name=t.name, category=t.category,
+        edited_by=user.id, change_note=f"تحديث بواسطة {user.civil_id}",
+    ))
     t.name, t.name_en, t.category = data.name, data.name_en, data.category
     t.body_html = _sanitize_body_html(data.body_html)
     audit(db, user, "update_template", "template", t.id, request=request)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "version": next_version}
+
+
+@router.get("/{tpl_id}/versions")
+def list_template_versions(tpl_id: int,
+                           user: models.User = Depends(require_super_admin),
+                           db: Session = Depends(get_db)):
+    """V2.2 §14 — قائمة النسخ التاريخية للقالب."""
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    rows = db.scalars(select(models.DocumentTemplateVersion).where(
+        models.DocumentTemplateVersion.template_id == tpl_id,
+    ).order_by(models.DocumentTemplateVersion.version.desc())).all()
+    return [{"id": v.id, "version": v.version, "name": v.name,
+             "edited_by": v.edited_by, "edited_at": v.edited_at.isoformat(),
+             "change_note": v.change_note} for v in rows]
 
 
 @router.delete("/{tpl_id}")

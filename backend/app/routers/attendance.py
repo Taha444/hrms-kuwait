@@ -226,6 +226,20 @@ def correct_attendance(record_id: int, request: Request, reason: str,
         raise HTTPException(status_code=404, detail="السجل غير موجود")
     assert_same_company(user, rec.company_id, db=db, request=request)
 
+    # V2.2 §17 — لا تصحيح على شهر مقفل: يشترط reopen صريح أولاً
+    if rec.check_in_at:
+        period = rec.check_in_at.strftime("%Y-%m")
+        closed = db.scalar(select(models.AttendanceMonthClose).where(
+            models.AttendanceMonthClose.company_id == rec.company_id,
+            models.AttendanceMonthClose.period == period,
+            models.AttendanceMonthClose.status == "closed",
+        ))
+        if closed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"الشهر {period} مُقفل — أعد فتحه أولاً عبر /attendance/reopen-month"
+            )
+
     before = {"check_in_at": str(rec.check_in_at), "check_out_at": str(rec.check_out_at),
              "status": rec.status, "worked_minutes": rec.worked_minutes}
     if check_in_at is not None:
@@ -340,6 +354,99 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
         "employees": out_emps,
         "total_employees": len(out_emps),
     }
+
+
+@router.post("/close-month")
+def close_attendance_month(period: str, request: Request,
+                           company_id: int | None = None, notes: str | None = None,
+                           user: models.User = Depends(require_perm("manage_attendance")),
+                           db: Session = Depends(get_db)):
+    """V2.2 §17 — إقفال شهر حضور: بعد الإقفال لا يُقبل أي تصحيح على السجلات
+    ضمن الشهر، ولا يمكن تشغيل تصحيح جديد إلا بعد reopen صريح.
+
+    period: صيغة YYYY-MM
+    """
+    try:
+        y, m = period.split("-")
+        int(y), int(m)
+    except Exception:
+        raise HTTPException(status_code=400, detail="صيغة الفترة يجب أن تكون YYYY-MM")
+    cid = scope_company_id(user, company_id)
+    if cid is None:
+        raise HTTPException(status_code=400, detail="حدد الشركة")
+    existing = db.scalar(select(models.AttendanceMonthClose).where(
+        models.AttendanceMonthClose.company_id == cid,
+        models.AttendanceMonthClose.period == period,
+    ))
+    if existing and existing.status == "closed":
+        raise HTTPException(status_code=409, detail=f"الشهر {period} مقفل بالفعل")
+    if existing:
+        existing.status = "closed"
+        existing.closed_by = user.id
+        existing.closed_at = datetime.now()
+        existing.reopened_by = None
+        existing.reopened_at = None
+        existing.reopen_reason = None
+        existing.notes = notes
+        obj_id = existing.id
+    else:
+        c = models.AttendanceMonthClose(
+            company_id=cid, period=period, status="closed",
+            closed_by=user.id, notes=notes,
+        )
+        db.add(c); db.flush()
+        obj_id = c.id
+    audit(db, user, "attendance_month_close", "attendance_period", obj_id,
+          detail=f"{cid}/{period}", request=request)
+    db.commit()
+    return {"ok": True, "period": period, "status": "closed"}
+
+
+@router.post("/reopen-month")
+def reopen_attendance_month(period: str, reason: str, request: Request,
+                            company_id: int | None = None,
+                            user: models.User = Depends(require_perm("manage_attendance")),
+                            db: Session = Depends(get_db)):
+    """V2.2 §17 — إعادة فتح شهر مقفل: مطلوب سبب موثّق (يُسجَّل في audit)."""
+    if not reason or not reason.strip():
+        raise HTTPException(status_code=400, detail="سبب إعادة الفتح مطلوب")
+    cid = scope_company_id(user, company_id)
+    if cid is None:
+        raise HTTPException(status_code=400, detail="حدد الشركة")
+    c = db.scalar(select(models.AttendanceMonthClose).where(
+        models.AttendanceMonthClose.company_id == cid,
+        models.AttendanceMonthClose.period == period,
+    ))
+    if not c or c.status != "closed":
+        raise HTTPException(status_code=404, detail=f"لا يوجد شهر مقفل بهذه الفترة")
+    c.status = "reopened"
+    c.reopened_by = user.id
+    c.reopened_at = datetime.now()
+    c.reopen_reason = reason.strip()
+    audit(db, user, "attendance_month_reopen", "attendance_period", c.id,
+          detail=f"{cid}/{period}: {reason}", request=request)
+    db.commit()
+    return {"ok": True, "period": period, "status": "reopened"}
+
+
+@router.get("/close-status")
+def attendance_close_status(period: str, company_id: int | None = None,
+                            user: models.User = Depends(require_perm("view_attendance")),
+                            db: Session = Depends(get_db)):
+    """V2.2 §17 — يستعلم حالة إقفال شهر (للـUI لإظهار Lock badge)."""
+    cid = scope_company_id(user, company_id)
+    if cid is None:
+        return {"period": period, "status": "open"}
+    c = db.scalar(select(models.AttendanceMonthClose).where(
+        models.AttendanceMonthClose.company_id == cid,
+        models.AttendanceMonthClose.period == period,
+    ))
+    if not c:
+        return {"period": period, "status": "open"}
+    return {"period": period, "status": c.status,
+            "closed_at": c.closed_at.isoformat() if c.closed_at else None,
+            "reopened_at": c.reopened_at.isoformat() if c.reopened_at else None,
+            "reopen_reason": c.reopen_reason}
 
 
 @router.get("/branch/{branch_id}")
