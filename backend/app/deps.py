@@ -44,6 +44,29 @@ def get_current_user(
     if not user or not user.is_active:
         raise cred_exc
 
+    # V2.2 §9 — إبطال الجلسات القديمة: كل token صادر قبل tokens_valid_after يُرفض.
+    # يُستخدم لإنهاء الجلسات بعد تغيير كلمة المرور أو تعطيل الحساب.
+    # المقارنة تتم بدقّة الثانية (iat في الـ JWT ثوانٍ فقط) ونطاف بحاجز 1 ثانية
+    # لتفادي الحواف عند تسجيل الدخول مباشرة بعد التغيير.
+    if user.tokens_valid_after:
+        iat = payload.get("iat")
+        if iat is not None:
+            try:
+                from datetime import timezone
+                valid_after = user.tokens_valid_after
+                if valid_after.tzinfo is None:
+                    valid_after = valid_after.replace(tzinfo=timezone.utc)
+                # نقارن بالثواني الصحيحة مع هامش ثانية واحدة للأمان
+                if int(iat) + 1 < int(valid_after.timestamp()):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="انتهت الجلسة — تم تغيير كلمة المرور أو تعطيل الحساب",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass  # iat غير صالح؟ لا نمنع الوصول لأسباب موازية
+
     # فرض تغيير كلمة المرور الإلزامي على مستوى الخادم (لا الواجهة فقط)
     if user.must_change_password and not request.url.path.endswith(_PRE_CHANGE_ALLOWED):
         raise HTTPException(status_code=403, detail="يجب تغيير كلمة المرور أولًا")

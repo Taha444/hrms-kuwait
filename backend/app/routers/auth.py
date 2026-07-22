@@ -127,9 +127,11 @@ def change_password(data: schemas.ChangePasswordIn, request: Request,
         raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
     user.password_hash = hash_password(data.new_password)
     user.must_change_password = False
+    # V2.2 §9 — إبطال كل الجلسات السابقة (بما فيها الحالية) بعد تغيير كلمة المرور
+    user.tokens_valid_after = datetime.now(timezone.utc)
     audit(db, user, "change_password", "user", user.id, request=request)
     db.commit()
-    return {"ok": True, "message": "تم تغيير كلمة المرور بنجاح"}
+    return {"ok": True, "message": "تم تغيير كلمة المرور بنجاح — سيلزمك تسجيل الدخول مجددًا"}
 
 
 @router.post("/reset-password")
@@ -151,6 +153,8 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
     target.must_change_password = True
     target.failed_attempts = 0
     target.locked_until = None
+    # V2.2 §9 — إبطال جلسات المستخدم الحالية عند إعادة تعيين كلمة المرور
+    target.tokens_valid_after = datetime.now(timezone.utc)
     audit(db, actor, "reset_password", "user", target.id, request=request, company_id=target.company_id)
     db.commit()
     return {"ok": True, "message": "تمت إعادة تعيين كلمة المرور", "temporary_password": new_pw}
