@@ -692,4 +692,14 @@ class AuditLog(Base):
     entity_id: Mapped[int | None] = mapped_column(Integer)
     detail: Mapped[str | None] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(String(50))
+    # V2.2 §21 — تدقيق موسَّع:
+    #   - original_user_id: هوية الفاعل الحقيقي عند الانتحال (impersonation)
+    #   - user_agent: عميل المتصفح المستخدم
+    #   - correlation_id: ربط أحداث نفس الطلب/الجلسة
+    #   - before_json / after_json: حالة الكيان قبل وبعد التعديل
+    original_user_id: Mapped[int | None] = mapped_column(Integer)
+    user_agent: Mapped[str | None] = mapped_column(String(400))
+    correlation_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    before_json: Mapped[dict | None] = mapped_column(JSON)
+    after_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

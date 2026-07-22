@@ -110,6 +110,57 @@ def release_task(task_id: int, user: models.User = Depends(get_current_user),
     return {"ok": True}
 
 
+@router.post("/bulk")
+def bulk_task_action(task_ids: list[int], action: str,
+                     user: models.User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """V2.2 §19 — Bulk Complete/Dismiss لمهام المستخدم.
+
+    - action ∈ {done, dismissed}
+    - المستخدم لا يعمل bulk على مهام غيره (assignee_user_id == user.id)
+    - يعيد {count} = عدد المهام التي تأثرت فعلًا
+    """
+    if action not in ("done", "dismissed"):
+        raise HTTPException(status_code=400, detail="عملية غير صالحة")
+    if not task_ids:
+        return {"ok": True, "count": 0}
+    q = select(models.Task).where(
+        models.Task.id.in_(task_ids),
+        models.Task.assignee_user_id == user.id,
+        models.Task.status.in_(("open", "in_progress")),
+    )
+    updated = 0
+    now = datetime.now()
+    for t in db.scalars(q).all():
+        t.status = action
+        t.completed_at = now
+        updated += 1
+    db.commit()
+    return {"ok": True, "count": updated}
+
+
+@router.post("/cleanup-orphans")
+def cleanup_orphan_tasks(user: models.User = Depends(require_perm("manage_tasks")),
+                         db: Session = Depends(get_db)):
+    """V2.2 §19 — تنظيف مهام يتيمة: المهام المفتوحة المرتبطة بطلب مغلق (نهائية).
+    يستخدمها HR لتصحيح حالات نادرة تسبق تفعيل _close_open_tasks."""
+    closed_statuses = {"completed", "rejected", "cancelled"}
+    q = select(models.Task).where(
+        models.Task.status.in_(("open", "in_progress")),
+        models.Task.related_entity_type == "request",
+    )
+    fixed = 0
+    now = datetime.now()
+    for t in db.scalars(q).all():
+        req = db.get(models.Request, t.related_entity_id)
+        if req and req.status in closed_statuses:
+            t.status = "dismissed"
+            t.completed_at = now
+            fixed += 1
+    db.commit()
+    return {"ok": True, "cleaned": fixed}
+
+
 @router.post("/run-sla-scan")
 def run_sla_scan(user: models.User = Depends(require_perm("manage_tasks")),
                  db: Session = Depends(get_db)):

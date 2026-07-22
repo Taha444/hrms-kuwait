@@ -427,8 +427,29 @@ def _chain(rt: models.RequestType) -> list[dict]:
 
 
 def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> list[models.User]:
-    """يحدد المستخدمين المعنيين بمرحلة معيّنة حسب الدور (وفرع العامل)."""
+    """يحدد المستخدمين المعنيين بمرحلة معيّنة حسب الدور (وفرع العامل).
+
+    V2.2 §8 — المسؤول المباشر الفعلي:
+    إن كان role="direct_manager"، نستخدم Employee.direct_manager_id (الشخص الفعلي)
+    بدلًا من الافتراض بأنه "company_manager". هذا يتيح:
+      - محاسب مسؤول عن محاسبين آخرين
+      - موظف يمكن أن يكون مسؤولًا عن آخرين
+      - عند غيابه نسقط إلى Branch Supervisor ثم Company Manager
+    """
     role = stage.get("role")
+    if role == "direct_manager":
+        emp = db.get(models.Employee, req.employee_id)
+        if emp and emp.direct_manager_id:
+            mgr_emp = db.get(models.Employee, emp.direct_manager_id)
+            if mgr_emp:
+                mgr_user = db.scalar(select(models.User).where(
+                    models.User.employee_id == mgr_emp.id, models.User.is_active.is_(True)))
+                if mgr_user:
+                    from .delegation import expand_approvers_with_delegates
+                    return expand_approvers_with_delegates(db, [mgr_user], req.company_id)
+        # لا مسؤول مباشر → سقوط إلى branch_supervisor أو company_manager
+        stage_sup = {**stage, "role": "branch_supervisor"}
+        return resolve_stage_approvers(db, req, stage_sup)
     if role == "branch_supervisor":
         emp = db.get(models.Employee, req.employee_id)
         if emp and emp.branch_id:

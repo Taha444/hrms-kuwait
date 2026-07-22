@@ -48,6 +48,11 @@ def get_current_user(
     if user.must_change_password and not request.url.path.endswith(_PRE_CHANGE_ALLOWED):
         raise HTTPException(status_code=403, detail="يجب تغيير كلمة المرور أولًا")
 
+    # V2.2 §21 — تمرير هوية الفاعل الأصلي (المُنتحِل) للـaudit تلقائيًا
+    imp_id = payload.get("impersonator_id")
+    if imp_id is not None:
+        request.state.original_user_id = int(imp_id)
+
     return user
 
 
@@ -220,13 +225,25 @@ def assert_same_company(user: models.User, entity_company_id: int | None,
 
 def audit(db: Session, user: models.User | None, action: str, entity_type: str | None = None,
           entity_id: int | None = None, detail: str | None = None, request: Request | None = None,
-          company_id: int | None = None):
+          company_id: int | None = None, before: dict | None = None, after: dict | None = None,
+          correlation_id: str | None = None):
     """تسجيل عملية في سجل التدقيق.
 
     company_id: تجاوز اختياري لشركة الفاعل (user.company_id) — ضروري حين ينفّذ فاعل بلا
     شركة (super_admin) عملية تخص شركة محددة (كالانتحال)، وإلا يُسجَّل الحدث بـ company_id
     فارغ فيُستبعد من عرض سجل التدقيق كلما اختير عرض شركة محددة (QA-P1-AUD-02).
+
+    V2.2 §21 — الحقول الموسَّعة:
+      - before/after: حالة الكيان قبل وبعد (تُحفظ كـJSON)
+      - correlation_id: ربط أحداث نفس المعاملة
+      - original_user_id: يُلتقط تلقائيًا من request.state.original_user_id عند الانتحال
+      - user_agent: يُلتقط تلقائيًا من request.headers
     """
+    ua = None
+    original_uid = None
+    if request is not None:
+        ua = (request.headers.get("user-agent") or "")[:400] or None
+        original_uid = getattr(request.state, "original_user_id", None)
     log = models.AuditLog(
         company_id=company_id if company_id is not None else (user.company_id if user else None),
         user_id=user.id if user else None,
@@ -235,5 +252,10 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
         entity_id=entity_id,
         detail=detail,
         ip=(request.client.host if request and request.client else None),
+        user_agent=ua,
+        original_user_id=original_uid,
+        correlation_id=correlation_id,
+        before_json=before,
+        after_json=after,
     )
     db.add(log)
