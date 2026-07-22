@@ -186,6 +186,8 @@ class EmployeeOut(EmployeeIn):
     id: int
     company_id: int
     status: str
+    # PILOT-P0-6 — الرقم الوظيفي المرئي (read-only، مولَّد تلقائيًا)
+    employee_no: str | None = None
 
 
 class EmployeeCreateIn(EmployeeIn):

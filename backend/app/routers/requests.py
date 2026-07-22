@@ -193,7 +193,7 @@ def my_requests(user: models.User = Depends(get_current_user), db: Session = Dep
         (models.Request.requester_user_id == user.id)
         | (models.Request.employee_id == (user.employee_id or -1))
     )
-    return [_serialize(db, r) for r in db.scalars(q.order_by(models.Request.created_at.desc())).all()]
+    return [_serialize(db, r, viewer=user) for r in db.scalars(q.order_by(models.Request.created_at.desc())).all()]
 
 
 @router.get("/inbox")
@@ -217,7 +217,7 @@ def approval_inbox(company_id: int | None = None,
             continue
         stage = chain[req.current_stage]
         if workflow.can_decide(db, req, user, stage, rt=rt):
-            out.append(_serialize(db, req))
+            out.append(_serialize(db, req, viewer=user))
     return out
 
 
@@ -225,7 +225,7 @@ def approval_inbox(company_id: int | None = None,
 def get_request(req_id: int, user: models.User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
-    return _serialize(db, req, full=True)
+    return _serialize(db, req, full=True, viewer=user)
 
 
 # ----------------------------- قرارات -----------------------------
@@ -502,7 +502,21 @@ ROLE_AR = {
 }
 
 
-def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
+def _mask_leave_dates_for_employee(payload: dict, request_type_code: str,
+                                   viewer_role: str, is_own_request: bool) -> dict:
+    """PILOT-P0-3: يخفي تواريخ الإجازة من عرض الموظف عن طلبه الخاص.
+
+    القاعدة: الموظف يرى type/status/reason فقط دون start_date/end_date/days —
+    الـ HR والمدير والمسؤول يرون كل شيء لتخطيط الجداول. لا يُطبَّق الإخفاء إلا
+    للموظف عارض طلبه (is_own_request=True) وطلبات نوع leave تحديدًا."""
+    if not (request_type_code in ("leave",) and viewer_role == "employee" and is_own_request):
+        return payload
+    HIDDEN = {"start_date", "end_date", "days", "return_date"}
+    return {k: v for k, v in (payload or {}).items() if k not in HIDDEN}
+
+
+def _serialize(db: Session, req: models.Request, full: bool = False,
+               viewer: "models.User | None" = None) -> dict:
     emp = db.get(models.Employee, req.employee_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt) if rt else []
@@ -510,6 +524,13 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
     # V1.5 canonical resolver: يعرض الكود الجديد للطلب بجانب الكود القديم في seed
     from .. import v15_registry
     canonical_info = v15_registry.resolve_request(req.request_type_code)
+    # PILOT-P0-3: إخفاء تواريخ الإجازة من عرض الموظف لطلبه الخاص
+    is_own = bool(viewer and viewer.employee_id == req.employee_id
+                  and viewer.role == "employee")
+    payload_view = _mask_leave_dates_for_employee(
+        req.payload_json or {}, req.request_type_code,
+        viewer.role if viewer else "", is_own,
+    )
     data = {
         "id": req.id, "type": req.request_type_code,
         "type_name": rt.name if rt else req.request_type_code,
@@ -520,7 +541,8 @@ def _serialize(db: Session, req: models.Request, full: bool = False) -> dict:
         "status_v15": st.get("v15"),  # V1.5 canonical (IN_REVIEW/NEEDS_INFO/...)
         "current_stage": req.current_stage,
         "total_stages": len(chain),
-        "payload": req.payload_json, "created_at": req.created_at,
+        "payload": payload_view, "payload_masked": is_own and payload_view != (req.payload_json or {}),
+        "created_at": req.created_at,
     }
     if full:
         approvals = db.scalars(select(models.RequestApproval).where(

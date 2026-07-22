@@ -67,6 +67,35 @@ def create_user(data: schemas.UserIn, request: Request,
     if db.scalar(select(models.User).where(models.User.civil_id == data.civil_id)):
         raise HTTPException(status_code=409, detail="الرقم المدني مستخدم بالفعل")
 
+    # PILOT-P0-1: حساب بدور "employee" لازم يكون مربوطًا بموظف فعلي في نفس الشركة —
+    # كل الشاشات (My Profile, Attendance, Leaves) تعتمد على user.employee_id، ولو
+    # كان None يظهر 404 صامت. نمنع الإنشاء أصلًا لغلق هذا المصدر للخطأ.
+    if data.role == "employee":
+        if not data.employee_id:
+            raise HTTPException(
+                status_code=400,
+                detail="حساب موظف يجب ربطه بسجل موظف فعلي (employee_id مطلوب)",
+            )
+        emp = db.get(models.Employee, data.employee_id)
+        if not emp:
+            raise HTTPException(status_code=404, detail="سجل الموظف غير موجود")
+        if company_id is None:
+            company_id = emp.company_id  # نستخدم شركة الموظف كافتراضي
+        elif emp.company_id != company_id:
+            raise HTTPException(
+                status_code=400,
+                detail="سجل الموظف من شركة مختلفة عن شركة الحساب",
+            )
+        # فحص إن الموظف لسه ما اترتبطش بحساب آخر
+        existing_link = db.scalar(
+            select(models.User).where(models.User.employee_id == data.employee_id)
+        )
+        if existing_link:
+            raise HTTPException(
+                status_code=409,
+                detail=f"هذا الموظف مربوط بحساب موجود بالفعل (المستخدم #{existing_link.id})",
+            )
+
     pw = data.password or settings.default_user_password
     new_user = models.User(
         civil_id=data.civil_id, full_name=data.full_name, role=data.role,
@@ -80,6 +109,26 @@ def create_user(data: schemas.UserIn, request: Request,
     db.commit()
     db.refresh(new_user)
     return new_user
+
+
+@router.get("/orphaned")
+def list_orphaned_users(user: models.User = Depends(require_perm("manage_users")),
+                       db: Session = Depends(get_db)):
+    """PILOT-P0-1: يعرض المستخدمين بدور 'employee' اللي ما اتربطوش بسجل موظف —
+    وسيلة تشخيصية لأي حسابات قديمة اتعملت قبل الفحص الحالي وتحتاج إصلاح."""
+    q = select(models.User).where(
+        models.User.role == "employee",
+        models.User.employee_id.is_(None),
+        models.User.is_active == True,  # noqa: E712
+    )
+    if user.role not in CROSS_COMPANY_ROLES:
+        q = q.where(models.User.company_id == user.company_id)
+    rows = db.scalars(q).all()
+    return [
+        {"id": u.id, "civil_id": u.civil_id, "full_name": u.full_name,
+         "company_id": u.company_id, "created_at": u.created_at}
+        for u in rows
+    ]
 
 
 @router.post("/{user_id}/toggle")

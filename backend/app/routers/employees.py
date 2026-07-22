@@ -120,7 +120,11 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
     emp = models.Employee(company_id=cid, created_by=user.id, **payload)
     db.add(emp)
     db.flush()
-    audit(db, user, "create_employee", "employee", emp.id, request=request)
+    # PILOT-P0-6 — نولّد الرقم الوظيفي الرسمي بعد الـflush علشان employee.id يكون متوفر
+    from .. import employee_no as _emp_no
+    _emp_no.generate(db, emp)
+    audit(db, user, "create_employee", "employee", emp.id,
+          detail=f"employee_no={emp.employee_no}", request=request)
     db.commit()
     db.refresh(emp)
     return emp

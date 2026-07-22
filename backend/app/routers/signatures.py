@@ -170,6 +170,11 @@ def get_my_signature_info(user: models.User = Depends(get_current_user)):
     return {
         "has_signature": bool(user.signature_path and os.path.exists(user.signature_path)),
         "updated_at": user.signature_updated_at,
+        # PILOT-P0-5 — إشارة لطلب استبدال معلّق (يظهر للمستخدم "بانتظار موافقة HR")
+        "has_pending_replacement": bool(
+            user.pending_signature_path and os.path.exists(user.pending_signature_path)),
+        "pending_uploaded_at": user.pending_signature_uploaded_at,
+        "pending_reason": user.pending_signature_reason,
     }
 
 
@@ -184,13 +189,17 @@ def get_my_signature_image(user: models.User = Depends(get_current_user)):
 
 @router.post("", status_code=201)
 async def upload_my_signature(request: Request, file: UploadFile = File(...),
+                              reason: str | None = None,
                               user: models.User = Depends(get_current_user),
                               db: Session = Depends(get_db)):
-    """يرفع أو يستبدل توقيع المستخدم — يمر بمعالجة "سكان" تلقائيًا:
-    - يستخرج ink من صورة الورقة
-    - يحوّل اللون لأسود موحّد
-    - يشيل خلفية الورقة والحواف
-    - يحفظ كـ PNG شفاف الخلفية
+    """يرفع أو يستبدل توقيع المستخدم — يمر بمعالجة "سكان" تلقائيًا.
+
+    PILOT-P0-5 — قواعد الاستبدال:
+    - أول رفع لمستخدم بدون توقيع = تطبيق مباشر
+    - أي استبدال لاحق = يُخزَّن كـ "استبدال معلّق" ولا يُفعَّل حتى موافقة HR،
+      والتوقيع القديم يفضل نشطًا في كل المستندات الجديدة
+    - HR/super_admin يستبدلون توقيع أنفسهم مباشرة (ثقة إدارية)
+
     القبول: PNG/JPG ≤500KB. الإخراج دائمًا PNG بغض النظر عن الإدخال."""
     if file.content_type not in _ALLOWED_MIME:
         raise HTTPException(status_code=415, detail="نوع الملف يجب أن يكون PNG أو JPG فقط")
@@ -216,21 +225,58 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     with open(path, "wb") as f:
         f.write(processed)
 
-    # حذف التوقيع القديم (لو موجود) — نحتفظ بالجديد فقط لتقليل تراكم الملفات
-    old = user.signature_path
-    user.signature_path = path
-    user.signature_updated_at = datetime.now(timezone.utc)
-    audit(db, user, "signature_upload", "user", user.id,
-          detail=f"raw={len(data)}B processed={len(processed)}B", request=request)
+    now = datetime.now(timezone.utc)
+    # PILOT-P0-5: يفصل بين "أول رفع" و"استبدال يحتاج موافقة"
+    is_first_upload = not user.signature_path
+    is_privileged = user.role in ("hr", "super_admin")
+
+    if is_first_upload or is_privileged:
+        # تطبيق مباشر: أول رفع، أو المستخدم HR/Super Admin
+        old = user.signature_path
+        old_pending = user.pending_signature_path
+        user.signature_path = path
+        user.signature_updated_at = now
+        # لو كان في استبدال معلّق قديم نلغيه لأن الرفع الحالي حلّ محله
+        user.pending_signature_path = None
+        user.pending_signature_uploaded_at = None
+        user.pending_signature_reason = None
+        audit(db, user, "signature_upload", "user", user.id,
+              detail=f"first={is_first_upload} raw={len(data)}B", request=request)
+        db.commit()
+        for old_path in (old, old_pending):
+            if old_path and os.path.exists(old_path) and old_path != path:
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+        return {"ok": True, "status": "active", "updated_at": now,
+                "size_bytes": len(processed), "raw_size_bytes": len(data)}
+
+    # استبدال يحتاج موافقة HR — نحفظ في pending، القديم يفضل نشط
+    # لو في pending قديم نحذفه (يستبدله الجديد)
+    old_pending = user.pending_signature_path
+    user.pending_signature_path = path
+    user.pending_signature_uploaded_at = now
+    user.pending_signature_reason = (reason or "").strip() or None
+    audit(db, user, "signature_replacement_requested", "user", user.id,
+          detail=f"reason={user.pending_signature_reason or '-'} raw={len(data)}B",
+          request=request)
     db.commit()
-    if old and os.path.exists(old) and old != path:
+    if old_pending and os.path.exists(old_pending) and old_pending != path:
         try:
-            os.remove(old)
+            os.remove(old_pending)
         except OSError:
-            pass  # ملف قديم فُقد — لا يوقف العملية
-    return {"ok": True, "updated_at": user.signature_updated_at,
-            "size_bytes": len(processed),
-            "raw_size_bytes": len(data)}
+            pass
+    return {"ok": True, "status": "pending_approval", "updated_at": now,
+            "size_bytes": len(processed), "raw_size_bytes": len(data)}
+
+
+@router.get("/pending/image")
+def get_my_pending_signature_image(user: models.User = Depends(get_current_user)):
+    """معاينة التوقيع المعلّق (للمستخدم نفسه فقط أثناء انتظار موافقة HR)."""
+    if not user.pending_signature_path or not os.path.exists(user.pending_signature_path):
+        raise HTTPException(status_code=404, detail="لا يوجد توقيع معلّق")
+    return FileResponse(user.pending_signature_path, media_type="image/png")
 
 
 @router.delete("")
@@ -248,6 +294,107 @@ def delete_my_signature(request: Request,
     if old and os.path.exists(old):
         try:
             os.remove(old)
+        except OSError:
+            pass
+    return {"ok": True}
+
+
+# ============================================================================
+# PILOT-P0-5 — HR endpoints لإدارة طلبات استبدال التوقيع
+# ============================================================================
+hr_router = APIRouter(prefix="/signatures/pending", tags=["signature"])
+
+
+def _require_hr(user: models.User = Depends(get_current_user)) -> models.User:
+    if user.role not in ("hr", "super_admin"):
+        raise HTTPException(status_code=403,
+                            detail="إدارة استبدالات التوقيع مقتصرة على الموارد البشرية")
+    return user
+
+
+@hr_router.get("")
+def list_pending_replacements(user: models.User = Depends(_require_hr),
+                              db: Session = Depends(get_db)):
+    """قائمة طلبات استبدال التوقيع المعلّقة ضمن نطاق شركة HR."""
+    from sqlalchemy import select as _select
+    q = _select(models.User).where(models.User.pending_signature_path.isnot(None))
+    if user.role != "super_admin" and user.company_id is not None:
+        q = q.where(models.User.company_id == user.company_id)
+    rows = db.scalars(q).all()
+    return [
+        {"user_id": u.id, "civil_id": u.civil_id, "full_name": u.full_name,
+         "role": u.role, "company_id": u.company_id,
+         "uploaded_at": u.pending_signature_uploaded_at,
+         "reason": u.pending_signature_reason}
+        for u in rows
+    ]
+
+
+@hr_router.get("/{target_user_id}/image")
+def get_pending_image_for_hr(target_user_id: int,
+                             user: models.User = Depends(_require_hr),
+                             db: Session = Depends(get_db)):
+    """HR يعاين التوقيع المعلّق قبل قبوله."""
+    target = db.get(models.User, target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if user.role != "super_admin" and target.company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    if not target.pending_signature_path or not os.path.exists(target.pending_signature_path):
+        raise HTTPException(status_code=404, detail="لا يوجد توقيع معلّق لهذا المستخدم")
+    return FileResponse(target.pending_signature_path, media_type="image/png")
+
+
+@hr_router.post("/{target_user_id}/approve")
+def approve_replacement(target_user_id: int, request: Request,
+                        user: models.User = Depends(_require_hr),
+                        db: Session = Depends(get_db)):
+    """يعتمد استبدال التوقيع: الجديد يحلّ محل القديم، القديم يُحذف."""
+    target = db.get(models.User, target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if user.role != "super_admin" and target.company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    if not target.pending_signature_path:
+        raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
+    old_active = target.signature_path
+    target.signature_path = target.pending_signature_path
+    target.signature_updated_at = datetime.now(timezone.utc)
+    target.pending_signature_path = None
+    target.pending_signature_uploaded_at = None
+    target.pending_signature_reason = None
+    audit(db, user, "signature_replacement_approved", "user", target.id, request=request)
+    db.commit()
+    if old_active and os.path.exists(old_active) and old_active != target.signature_path:
+        try:
+            os.remove(old_active)
+        except OSError:
+            pass
+    return {"ok": True}
+
+
+@hr_router.post("/{target_user_id}/reject")
+def reject_replacement(target_user_id: int, request: Request, reason: str | None = None,
+                       user: models.User = Depends(_require_hr),
+                       db: Session = Depends(get_db)):
+    """يرفض استبدال التوقيع: الملف المعلّق يُحذف، القديم يفضل نشط."""
+    target = db.get(models.User, target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if user.role != "super_admin" and target.company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    if not target.pending_signature_path:
+        raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
+    old_pending = target.pending_signature_path
+    target.pending_signature_path = None
+    target.pending_signature_uploaded_at = None
+    target.pending_signature_reason = None
+    audit(db, user, "signature_replacement_rejected", "user", target.id,
+          detail=reason, request=request)
+    db.commit()
+    if old_pending and os.path.exists(old_pending):
+        try:
+            os.remove(old_pending)
         except OSError:
             pass
     return {"ok": True}

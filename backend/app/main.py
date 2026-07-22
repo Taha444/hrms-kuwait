@@ -150,6 +150,8 @@ for r in (auth, companies, users, employees, org, attendance, kiosk, documents, 
           operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
           verify, delegations, feature_flags_router, signatures):
     app.include_router(r.router, prefix="/api")
+# PILOT-P0-5 — hr_router للاستبدالات المعلّقة (prefix مختلف عن /me/signature)
+app.include_router(signatures.hr_router, prefix="/api")
 
 
 @app.get("/api/health")

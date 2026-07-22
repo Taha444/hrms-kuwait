@@ -38,6 +38,12 @@ export default function Requests() {
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
+  // PILOT-P0-2: كل ما يتغير نوع الطلب نمسح الـpayload — كانت الحقول من نوع سابق
+  // (مثل amount من "سلفة") تفضل في state، والاختبار على "leave" بيسقط لأن الحقول
+  // المطلوبة start_date/end_date مش موجودة في state (رغم إن المستخدم يعتقد إنه أدخلها
+  // في نوع مختلف قبل ما يبدّل النوع).
+  useEffect(() => { setPayload({}); setErr(""); }, [typeCode]);
+
   // حقول إلزامية لكل نوع بنموذج مخصّص — يطابق REQUIRED_PAYLOAD_FIELDS في requests.py
   // (QA-P0-WF-01: منع تقديم طلب فارغ برسالة واضحة قرب الحقول قبل وصوله للخادم أصًلا)
   const REQUIRED_FIELDS: Record<string, [string, string][]> = {
@@ -105,15 +111,21 @@ export default function Requests() {
               <div className="row">
                 <div className="field" style={{ flex: 1 }}>
                   <label htmlFor="req-leave-from">{t("req_from")} *</label>
-                  <input id="req-leave-from" type="date" required onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
+                  <input id="req-leave-from" type="date" required
+                         value={payload.start_date || ""}
+                         onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
                   <label htmlFor="req-leave-to">{t("req_to")} *</label>
-                  <input id="req-leave-to" type="date" required onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
+                  <input id="req-leave-to" type="date" required
+                         value={payload.end_date || ""}
+                         onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
                 </div>
                 <div className="field" style={{ width: 100 }}>
                   <label htmlFor="req-leave-days">{t("req_days")}</label>
-                  <input id="req-leave-days" type="number" onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
+                  <input id="req-leave-days" type="number"
+                         value={payload.days || ""}
+                         onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
                 </div>
               </div>
               <div className="field"><label htmlFor="req-leave-reason">{t("req_reason")}</label>

@@ -656,10 +656,113 @@ def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
         enter_stage(db, req, rt)
 
 
+def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool, str]:
+    """PILOT-P0-4 — يطبّق تعديل الحضور المعتمَد فعليًا على AttendanceRecord.
+
+    الحمولة المتوقعة (اختياريًا: الحمولة المرنة تُقبل، والحقول اللي تنقص لا تطبّق):
+        date          : تاريخ اليوم المطلوب تصحيحه (YYYY-MM-DD)
+        check_in      : وقت الحضور الجديد (HH:MM)
+        check_out     : وقت الانصراف الجديد (HH:MM)
+        reason        : سبب التصحيح (للـaudit)
+
+    يعيد (applied, note). لو applied=False، الطلب يبقى في IN_EXECUTION مع علامة
+    الفشل ولا يُعتبَر Completed — يمنع التقفيل الوهمي.
+    """
+    from datetime import datetime as _dt, date as _date
+
+    payload = req.payload_json or {}
+    day_str = payload.get("date") or payload.get("attendance_date")
+    if not day_str:
+        return False, "الحمولة تفتقد حقل التاريخ (date)"
+    try:
+        day = _date.fromisoformat(str(day_str))
+    except ValueError:
+        return False, f"صيغة التاريخ غير صحيحة: {day_str}"
+
+    # نجد سجل الحضور: نفس الموظف ونفس اليوم
+    from sqlalchemy import and_
+    day_start = _dt.combine(day, _dt.min.time())
+    day_end = _dt.combine(day, _dt.max.time())
+    rec = db.scalar(
+        select(models.AttendanceRecord).where(and_(
+            models.AttendanceRecord.employee_id == req.employee_id,
+            models.AttendanceRecord.check_in_at >= day_start,
+            models.AttendanceRecord.check_in_at <= day_end,
+        ))
+    )
+
+    new_ci = payload.get("check_in") or payload.get("new_check_in")
+    new_co = payload.get("check_out") or payload.get("new_check_out")
+
+    def _combine(hhmm: str) -> _dt | None:
+        try:
+            h, m = str(hhmm).split(":")[:2]
+            return _dt.combine(day, _dt.min.time().replace(hour=int(h), minute=int(m)))
+        except (ValueError, AttributeError):
+            return None
+
+    changes: list[str] = []
+    if rec is None:
+        # لا سجل — ننشئه لو فيه على الأقل check_in
+        ci = _combine(new_ci) if new_ci else None
+        if not ci:
+            return False, "لا يوجد سجل حضور لليوم المحدد ولم يُقدَّم check_in لإنشائه"
+        rec = models.AttendanceRecord(
+            company_id=req.company_id, employee_id=req.employee_id,
+            check_in_at=ci, check_out_at=_combine(new_co) if new_co else None,
+        )
+        db.add(rec)
+        changes.append(f"إنشاء سجل: in={ci}")
+    else:
+        if new_ci:
+            new_ci_dt = _combine(new_ci)
+            if new_ci_dt and new_ci_dt != rec.check_in_at:
+                changes.append(f"check_in: {rec.check_in_at} → {new_ci_dt}")
+                rec.check_in_at = new_ci_dt
+        if new_co:
+            new_co_dt = _combine(new_co)
+            if new_co_dt and new_co_dt != rec.check_out_at:
+                changes.append(f"check_out: {rec.check_out_at} → {new_co_dt}")
+                rec.check_out_at = new_co_dt
+
+    if not changes:
+        return False, "لم يُطلَب أي تعديل فعلي (نفس القيم القديمة)"
+
+    return True, "; ".join(changes)
+
+
 def _finalize(db: Session, req: models.Request) -> None:
+    rt = get_request_type(db, req.company_id, req.request_type_code)
+
+    # PILOT-P0-4 — تصحيح الحضور: نطبّق الأثر الفعلي قبل ما نعتبر الطلب Completed
+    if req.request_type_code == "REQATT":
+        applied, note = _apply_attendance_correction(db, req)
+        if not applied:
+            # لا نغلق كـ Completed — نبقى في IN_EXECUTION مع علامة "Failed to Apply"
+            # الطلب يرجع للمقدّم كـ NEEDS_INFO لتصحيح البيانات المفقودة
+            req.status = "returned"
+            db.add(models.RequestApproval(
+                request_id=req.id, stage_order=req.current_stage,
+                stage_label="فشل تطبيق التصحيح", approver_role="system",
+                decision="rejected", note=note,
+            ))
+            _notify_employee_from_template(
+                db, req, code="NTF-035",
+                context={"request_type": rt.name if rt else req.request_type_code,
+                         "reason": note},
+                dedup_key=f"req_att_fail:{req.id}",
+            )
+            _close_open_tasks(db, req)
+            return
+        # نجح التطبيق — نسجّل ملاحظة قبل/بعد كـ approval trail
+        db.add(models.RequestApproval(
+            request_id=req.id, stage_order=req.current_stage,
+            stage_label="تطبيق تصحيح الحضور", approver_role="system",
+            decision="approved", note=note,
+        ))
+
     req.status = "completed"
     req.closed_at = datetime.now(timezone.utc)
-    rt = get_request_type(db, req.company_id, req.request_type_code)
     _notify_employee_from_template(
         db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
         dedup_key=f"req_done:{req.id}",

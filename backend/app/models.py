@@ -75,6 +75,11 @@ class User(Base):
     # إخلاء طرف، إلخ). يتحمل المستخدم مسؤولية التوقيع كما لو كان يوقّع بيده على ورقة.
     signature_path: Mapped[str | None] = mapped_column(String(400))
     signature_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # PILOT-P0-5 — استبدال التوقيع لازم موافقة HR: أول رفع مباشر، بعده يُخزَّن التوقيع
+    # الجديد في pending_signature_path والقديم يفضل نشط حتى موافقة HR.
+    pending_signature_path: Mapped[str | None] = mapped_column(String(400))
+    pending_signature_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    pending_signature_reason: Mapped[str | None] = mapped_column(String(300))
 
     permissions: Mapped[list[UserPermission]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -169,6 +174,10 @@ class Employee(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    # PILOT-P0-6 — الرقم الوظيفي المرئي (لا يتغيّر مع نقل الفرع). صيغة "CO-BR-####"
+    # حيث CO = مختصر الشركة (رقم شركة داخلي مبسّط) و BR = مختصر الفرع و #### = تسلسل.
+    # يُولَّد تلقائيًا لكل موظف جديد ولا يقبل التعديل من الواجهة.
+    employee_no: Mapped[str | None] = mapped_column(String(30), unique=True, index=True)
     civil_id: Mapped[str | None] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(200))
     name_en: Mapped[str | None] = mapped_column(String(200))

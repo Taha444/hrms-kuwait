@@ -83,27 +83,99 @@ def test_upload_signature_rejects_too_large(client):
     assert r.status_code == 413
 
 
-def test_replace_signature_deletes_old_file(client):
-    emp = auth_headers(login(client, "100000000101", "emp12345"))
+def test_replace_signature_by_hr_deletes_old_file_directly(client):
+    """PILOT-P0-5: HR/super_admin يستبدلون توقيعهم مباشرة (تصفير الملف القديم)."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
     png1 = _minimal_png(width=100, height=40)
-    client.post("/api/me/signature", headers=emp,
-                files={"file": ("a.png", png1, "image/png")})
-    # نلقط المسار الحالي من DB
+    r = client.post("/api/me/signature", headers=hr,
+                    files={"file": ("a.png", png1, "image/png")})
+    assert r.json()["status"] == "active"
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        u = db.query(models.User).filter_by(civil_id="100000000002").one()
+        old_path = u.signature_path
+    finally:
+        db.close()
+    assert old_path and os.path.exists(old_path)
+    png2 = _minimal_png(width=150, height=50)
+    r = client.post("/api/me/signature", headers=hr,
+                    files={"file": ("b.png", png2, "image/png")})
+    # HR direct replace → status = active، الملف القديم انحذف
+    assert r.json()["status"] == "active"
+    assert not os.path.exists(old_path)
+
+
+def test_employee_signature_replacement_goes_to_pending_not_active(client):
+    """PILOT-P0-5: الموظف رفع مرة أولى (active)، ثم استبدال → pending، القديم يفضل نشط."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    client.delete("/api/me/signature", headers=emp)  # نمسح لو موجود
+    png1 = _minimal_png(width=100, height=40)
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("a.png", png1, "image/png")})
+    assert r.json()["status"] == "active"
     from app.database import SessionLocal
     from app import models
     db = SessionLocal()
     try:
         u = db.query(models.User).filter_by(civil_id="100000000101").one()
-        old_path = u.signature_path
+        old_active = u.signature_path
     finally:
         db.close()
-    assert old_path and os.path.exists(old_path)
-    # نستبدل
+    assert old_active and os.path.exists(old_active)
+
+    # الاستبدال الثاني (نفس الموظف، عنده توقيع بالفعل) → pending
     png2 = _minimal_png(width=150, height=50)
+    r = client.post("/api/me/signature", headers=emp,
+                    files={"file": ("b.png", png2, "image/png")})
+    assert r.json()["status"] == "pending_approval"
+    # القديم لسه نشط
+    assert os.path.exists(old_active)
+    info = client.get("/api/me/signature", headers=emp).json()
+    assert info["has_signature"] is True
+    assert info["has_pending_replacement"] is True
+
+
+def test_hr_can_approve_pending_replacement(client):
+    """HR يعتمد الاستبدال المعلّق → القديم يتحذف، الجديد يبقى نشط."""
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    client.delete("/api/me/signature", headers=emp)
+    # الرفع الأول (active)
     client.post("/api/me/signature", headers=emp,
-                files={"file": ("b.png", png2, "image/png")})
-    # المسار القديم اتحذف
-    assert not os.path.exists(old_path), "old signature file should be deleted"
+                files={"file": ("a.png", _minimal_png(100, 40), "image/png")})
+    # الاستبدال (pending)
+    client.post("/api/me/signature", headers=emp,
+                files={"file": ("b.png", _minimal_png(150, 50), "image/png")})
+
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        u = db.query(models.User).filter_by(civil_id="100000000101").one()
+        old_active = u.signature_path
+        pending = u.pending_signature_path
+        user_id = u.id
+    finally:
+        db.close()
+
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    # HR يشوف قائمة المعلّقين
+    pending_list = client.get("/api/signatures/pending", headers=hr).json()
+    assert any(p["user_id"] == user_id for p in pending_list)
+    # HR يعتمد
+    r = client.post(f"/api/signatures/pending/{user_id}/approve", headers=hr)
+    assert r.status_code == 200
+
+    db = SessionLocal()
+    try:
+        u = db.query(models.User).filter_by(id=user_id).one()
+        assert u.signature_path == pending
+        assert u.pending_signature_path is None
+    finally:
+        db.close()
+    # القديم اتحذف
+    assert not os.path.exists(old_active)
 
 
 def test_delete_signature_removes_file_and_clears_row(client):
