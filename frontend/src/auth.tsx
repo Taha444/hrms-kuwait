@@ -16,7 +16,7 @@ export type User = {
 type AuthCtx = {
   user: User | null;
   loading: boolean;
-  login: (civil_id: string, password: string) => Promise<User>;
+  login: (civil_id: string, password: string, totp_code?: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   can: (perm: string) => boolean;
@@ -58,8 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = async (civil_id: string, password: string) => {
-    const r = await api.post("/auth/login", { civil_id, password });
+  const login = async (civil_id: string, password: string, totp_code?: string) => {
+    const body: Record<string, string> = { civil_id, password };
+    if (totp_code) body.totp_code = totp_code;
+    const r = await api.post("/auth/login", body);
     setTokens(r.data.access_token, r.data.refresh_token);
     await refreshUser();
     const me = await api.get("/auth/me");

@@ -38,11 +38,11 @@ export default function Payroll() {
   };
 
   return (
-    <div>
+    <div aria-labelledby="payroll-title">
       <div className="page-head">
         <div>
           <div className="eyebrow">{t("payroll")}</div>
-          <h2 style={{ margin: "2px 0 0" }}>{t("payroll")}</h2>
+          <h2 id="payroll-title" style={{ margin: "2px 0 0" }}>{t("payroll")}</h2>
           <div className="sub">{t("rep_attendance_sub")}</div>
         </div>
         <div className="row">

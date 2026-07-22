@@ -33,11 +33,11 @@ export default function Reports() {
   );
 
   return (
-    <div>
+    <div aria-labelledby="reports-title">
       <div className="page-head">
         <div>
           <div className="eyebrow">{t("reports")}</div>
-          <h2 style={{ margin: "2px 0 0" }}>{t("reports")}</h2>
+          <h2 id="reports-title" style={{ margin: "2px 0 0" }}>{t("reports")}</h2>
           <div className="sub">{t("reports_sub")}</div>
         </div>
         <select aria-label={t("all_branches")} value={branch} onChange={(e) => setBranch(e.target.value)} style={{ maxWidth: 200 }}>

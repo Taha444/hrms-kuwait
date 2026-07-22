@@ -63,9 +63,9 @@ export default function Employees() {
   };
 
   return (
-    <div>
+    <div aria-labelledby="employees-title">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>{t("employees")}</h2>
+        <h2 id="employees-title" style={{ margin: 0 }}>{t("employees")}</h2>
         {can("create_employee") && <button onClick={startNew}>{t("emp_new_btn")}</button>}
       </div>
 

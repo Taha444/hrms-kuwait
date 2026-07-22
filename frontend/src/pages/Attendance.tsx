@@ -128,8 +128,8 @@ export default function Attendance() {
   };
 
   return (
-    <div>
-      <h2>{t("att_self_title")}</h2>
+    <div aria-labelledby="att-self-title">
+      <h2 id="att-self-title">{t("att_self_title")}</h2>
 
       <div className="card">
         <div className="row" style={{ gap: 6, marginBottom: 10 }}>
