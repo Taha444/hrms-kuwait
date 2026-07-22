@@ -196,11 +196,13 @@ class ArabicPDF:
 def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
                        verification_code: str | None = None,
                        employee_signature: str | None = None,
-                       company_signature: str | None = None) -> bytes:
+                       company_signature: str | None = None,
+                       authorized_signer_label: str | None = None) -> bytes:
     """يبني PDF فعليًا لمستند طلب معتمَد (بديل render_document_html).
 
     SIG-01 — لو مرِّرت مسارات صور توقيع (employee_signature أو company_signature)،
-    تُحقن فوق سطر التوقيع في خانتها المناسبة تلقائيًا."""
+    تُحقن فوق سطر التوقيع في خانتها المناسبة تلقائيًا.
+    SEC2-15 — authorized_signer_label يظهر أسفل خانة توقيع الشركة (مثل: "المدير العام")."""
     doc = ArabicPDF(
         title=(company.name if company else ""),
         subtitle=rt.name,
@@ -223,8 +225,12 @@ def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
             )
     else:
         doc.bullet("—")
+    # SEC2-15: عنوان المخول بالتوقيع (مثل "المدير العام") يظهر أسفل خانة الشركة إن أُتيح
+    company_label = "توقيع/ختم الشركة"
+    if authorized_signer_label:
+        company_label = f"توقيع/ختم الشركة — {authorized_signer_label}"
     # SIG-01: نمرّر الصور بنفس ترتيب labels — [توقيع الموظف, توقيع الشركة]
-    doc.signatures(["توقيع الموظف", "توقيع/ختم الشركة"],
+    doc.signatures(["توقيع الموظف", company_label],
                    images=[employee_signature, company_signature])
     if verification_code:
         doc.verification(verification_code)

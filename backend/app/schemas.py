@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ----------------------------- المصادقة -----------------------------
 
@@ -158,6 +158,9 @@ class EmployeeIn(BaseModel):
     attendance_mode: str = "none"
     annual_leave_balance: float = 30
     phone: str | None = None
+    # SEC2-17 — إعفاء صريح من الحضور (مثل المدير/المندوب/الحقلي بلا Shift)
+    attendance_exempt: bool = False
+    attendance_exempt_reason: str | None = None
 
     @field_validator("civil_id")
     @classmethod
@@ -217,6 +220,15 @@ class EmployeeCreateIn(EmployeeIn):
         if not v or v <= 0:
             raise ValueError("الراتب الأساسي مطلوب ويجب أن يكون أكبر من صفر")
         return v
+
+    @model_validator(mode="after")
+    def _attendance_policy_required(self):
+        """SEC2-17 — إن كان attendance_exempt صريحًا يجب سبب موثّق. النمط "none" الافتراضي
+        الصامت يُترك للتوافق العكسي، ويُفرَض تحويله عبر endpoint مخصّص قبل التشغيل."""
+        if self.attendance_exempt:
+            if not (self.attendance_exempt_reason and self.attendance_exempt_reason.strip()):
+                raise ValueError("الإعفاء من الحضور يتطلب سببًا صريحًا (attendance_exempt_reason)")
+        return self
 
 
 class OcrApplyIn(BaseModel):

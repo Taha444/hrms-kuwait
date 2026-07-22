@@ -55,16 +55,37 @@ def test_payroll_rejects_future_period_without_force(client):
 
 
 def test_payroll_lock_prevents_rerun(client):
-    """P1-03: بعد قفل المسيّر (locked) لا يمكن إعادة تشغيله فوق نفسه."""
-    acc = login(client, "100000000007", "account123")
-    h = auth_headers(acc)
+    """PILOT-P0-7: المسيّر لا يقفل مباشرة — يمر بـ prepared → approved → finalized → locked.
+    بعد الـlock إعادة التشغيل فوق نفس الفترة تُرفض ويجب adjustment."""
+    acc = login(client, "100000000007", "account123")  # المُجَهِّز
+    admin = login(client, "000000000000", "admin123")  # المُعتمِد المختلف
+    h_acc = auth_headers(acc)
+    h_admin = auth_headers(admin)
     period = f"{date.today().year}-{date.today().month:02d}"
-    r = client.post("/api/payroll/run", headers=h, params={"period": period})
+    # 1) تجهيز
+    r = client.post("/api/payroll/run", headers=h_acc, params={"period": period})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "prepared"
     run_id = r.json()["run_id"]
-    lock = client.post(f"/api/payroll/runs/{run_id}/lock", headers=h)
+    # 2) اعتماد (لازم مستخدم مختلف)
+    self_approve = client.post(f"/api/payroll/runs/{run_id}/approve", headers=h_acc)
+    assert self_approve.status_code == 403  # المُجَهِّز لا يعتمد نفسه
+    ok = client.post(f"/api/payroll/runs/{run_id}/approve", headers=h_admin)
+    assert ok.status_code == 200 and ok.json()["status"] == "approved"
+    # 3) finalize
+    fin = client.post(f"/api/payroll/runs/{run_id}/finalize", headers=h_admin)
+    assert fin.status_code == 200 and fin.json()["status"] == "finalized"
+    # 4) lock
+    lock = client.post(f"/api/payroll/runs/{run_id}/lock", headers=h_admin)
     assert lock.status_code == 200 and lock.json()["status"] == "locked"
-    r2 = client.post("/api/payroll/run", headers=h, params={"period": period})
+    # إعادة التشغيل فوق مسيّر متقدّم — مرفوضة
+    r2 = client.post("/api/payroll/run", headers=h_acc, params={"period": period})
     assert r2.status_code == 409
+    # التسوية بعد lock — مسموحة بسبب صريح
+    adj = client.post(f"/api/payroll/runs/{run_id}/adjustment", headers=h_admin,
+                     params={"reason": "تصحيح خصم"})
+    assert adj.status_code == 200 and adj.json()["status"] == "adjustment_run"
+    assert adj.json()["adjustment_of"] == run_id
 
 
 # ----------------------------- التصدير -----------------------------
@@ -100,23 +121,42 @@ def test_audit_denied_for_employee(client):
 # ----------------------------- إنهاء الخدمة -----------------------------
 
 def test_terminate_employee_computes_eos(client):
-    # إنهاء الخدمة + EOS من اختصاص HR (انتقلت من المدير)
-    hr = login(client, "100000000002", "hr12345")
-    h = auth_headers(hr)
-    # موظف جديد ثم إنهاء خدمته (حتى لا يؤثر على إجماليات بقية الاختبارات)
-    new = client.post("/api/employees", headers=h, json={
+    """PILOT-P0-8: التنفيذ الفوري أُلغي — دورة إلزامية (HR يحضّر → محاسب يعتمد → HR ينفّذ)."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    acc = auth_headers(login(client, "100000000007", "account123"))  # مُعتمِد ماليًا
+    # موظف جديد ثم إنهاء خدمته
+    new = client.post("/api/employees", headers=hr, json={
         "civil_id": "199900099001", "name": "موظف للإنهاء", "basic_salary": 520,
         "hire_date": "2015-01-01", "contract_type": "indefinite"}).json()
-    r = client.post(f"/api/employees/{new['id']}/terminate", headers=h,
-                    params={"end_date": "2025-01-01", "reason": "termination"})
-    assert r.status_code == 200, r.text
-    assert r.json()["status"] == "terminated"
-    assert r.json()["settlement"]["total_settlement"] > 0
+    emp_id = new["id"]
+
+    # 1) HR يحضّر المسودة — لا يتغير الـstatus
+    prep = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
+                       params={"end_date": "2025-01-01", "reason": "termination"})
+    assert prep.status_code == 200, prep.text
+    assert prep.json()["stage"] == "prepared"
+    assert prep.json()["status"] != "terminated"
+    assert prep.json()["settlement"]["total_settlement"] > 0
+
+    # 2) HR لا يعتمد نفسه
+    self_appr = client.post(f"/api/employees/{emp_id}/terminate/approve", headers=hr)
+    assert self_appr.status_code in (403, 404)  # 403 لو له approve_termination، 404 لو ليس له
+
+    # 3) المحاسب يعتمد ماليًا
+    appr = client.post(f"/api/employees/{emp_id}/terminate/approve", headers=acc)
+    assert appr.status_code == 200
+    assert appr.json()["stage"] == "approved"
+
+    # 4) HR ينفذ — تغيير status = terminated
+    execd = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
+    assert execd.status_code == 200
+    assert execd.json()["status"] == "terminated"
+
     # DEMO-014: النتيجة تُحفَظ في ملف الموظف وتُصدَّر
-    prof = client.get(f"/api/employees/{new['id']}/profile", headers=h).json()
+    prof = client.get(f"/api/employees/{emp_id}/profile", headers=hr).json()
     assert prof["saved_eos"] and prof["saved_eos"]["total_settlement"] > 0
     assert prof["termination_date"] == "2025-01-01"
-    exp = client.get(f"/api/reports/eos/{new['id']}", headers=h,
+    exp = client.get(f"/api/reports/eos/{emp_id}", headers=hr,
                      params={"fmt": "xlsx", "reason": "أرشفة"})
     assert exp.status_code == 200 and exp.content[:2] == b"PK"
 

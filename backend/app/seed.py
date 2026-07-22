@@ -435,11 +435,17 @@ def build_company(db, cfg) -> dict:
     emps = []
     for i, (name, nat, job, sal, mode) in enumerate(cfg["employees"]):
         branch = branches[i % 2]
+        # SEC2-17: mode='none' يجب أن يكون مصحوبًا بإعفاء موثّق (مدير مقره الميداني/إداري
+        # مرن)، ليس القيمة الافتراضية الصامتة.
+        is_exempt = mode == "none"
+        exempt_reason = "مدير مقره ميداني — إشراف بلا شفت ثابت" if is_exempt else None
         e = models.Employee(company_id=company.id, civil_id=civ(p, 100 + i + 1), name=name,
                             nationality=nat, worker_type=("موظف" if mode == "none" else "عامل"),
                             job_title=job, basic_salary=sal, hire_date=d(-900 - i * 120),
                             status="active", license_id=license_.id, branch_id=branch.id,
-                            shift_id=shift.id, attendance_mode=mode, annual_leave_balance=30)
+                            shift_id=shift.id, attendance_mode=mode, annual_leave_balance=30,
+                            attendance_exempt=is_exempt,
+                            attendance_exempt_reason=exempt_reason)
         db.add(e)
         emps.append(e)
     db.flush()

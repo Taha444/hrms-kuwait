@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """الموظفون: CRUD مع عزل، الملف الشخصي المجمّع، الإقامات/التراخيص/الخصومات، والنقل."""
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, or_, select
@@ -379,20 +379,54 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
     return {"employee": {"id": emp.id, "name": emp.name, "status": emp.status}, "timeline": items}
 
 
-# ----------------------------- إنهاء الخدمة -----------------------------
+# ----------------------------- إنهاء الخدمة (PILOT-P0-8) -----------------------------
+# دورة إنهاء الخدمة الآمنة (منع التنفيذ الفوري):
+#   1) HR يحضّر مسودة عبر POST /terminate            → status لا يتغير، مسودة في pending_termination_json
+#   2) المحاسب يعتمد عبر POST /terminate/approve     → لا يزال pending، فقط توثيق سلطة مالية
+#   3) HR/المحاسب ينفّذ عبر POST /terminate/execute   → هنا فقط يصبح status="terminated"
+#   إمكانية POST /terminate/cancel لإلغاء مسودة معلّقة قبل التنفيذ.
+#
+# قواعد الرفض (bad inputs):
+# - hire_date غير موجود / السبب غير معروف / basic_salary ≤ 0 / end_date < hire_date
+# - الموظف مؤرشف/منتهي/عليه مسودة معلقة سابقة (لا يُسمح بتحضيرين متوازيين)
+# - المُعتمِد لا يجوز أن يكون هو نفسه المُحضِّر (فصل السلطات)
+
+def _validate_termination_inputs(emp: models.Employee, end_date: date, reason: str) -> None:
+    if not emp.hire_date:
+        raise HTTPException(status_code=400,
+                            detail="لا يمكن حساب المكافأة: تاريخ التعيين غير مُسجّل للموظف")
+    if reason not in eos_engine.TERMINATION_REASONS:
+        raise HTTPException(status_code=400,
+                            detail=f"سبب إنهاء غير معتمد: {reason}")
+    if end_date < emp.hire_date:
+        raise HTTPException(status_code=400,
+                            detail="تاريخ الإنهاء يسبق تاريخ التعيين")
+    if not emp.basic_salary or float(emp.basic_salary) <= 0:
+        raise HTTPException(status_code=400,
+                            detail="الراتب الأساسي للموظف غير محدد أو ≤ 0 — لا يمكن حساب المكافأة")
+
 
 @router.post("/{emp_id}/terminate")
-def terminate_employee(emp_id: int, end_date: date, reason: str = "termination",
-                       used_leave_days: int = 0, request: Request = None,
-                       user: models.User = Depends(require_perm("terminate_employee")),
-                       db: Session = Depends(get_db)):
-    """ينهي خدمة الموظف: يحسب مكافأة نهاية الخدمة وفق سياسة شركته ويؤرشف حالته.
+def prepare_termination(emp_id: int, end_date: date, reason: str = "termination",
+                        used_leave_days: int = 0, request: Request = None,
+                        user: models.User = Depends(require_perm("terminate_employee")),
+                        db: Session = Depends(get_db)):
+    """PILOT-P0-8 — تحضير مسودة إنهاء الخدمة (لا فصل فوري).
 
-    رصيد الإجازات يُحسب آليًا من مدة الخدمة؛ يُستقبَل المستهلَك فقط (used_leave_days).
+    HR يحسب المكافأة ويخزنها كمسودة. تحتاج اعتماد المحاسب + تنفيذ منفصل قبل تغيير الحالة.
     """
+    import json
     emp = _get_emp(db, user, emp_id)
     if emp.status == "terminated":
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
+    if emp.status == "archived":
+        raise HTTPException(status_code=409, detail="الموظف مؤرشف — لا يمكن إنهاء خدمته")
+    if emp.pending_termination_json:
+        raise HTTPException(status_code=409,
+                            detail="يوجد مسودة إنهاء خدمة معلقة — الغِها أولاً قبل تحضير غيرها")
+    if used_leave_days is not None and used_leave_days < 0:
+        raise HTTPException(status_code=400, detail="أيام الإجازة المستهلكة لا يمكن أن تكون سالبة")
+    _validate_termination_inputs(emp, end_date, reason)
     company = db.get(models.Company, emp.company_id)
     try:
         settlement = eos_engine.calculate_eos(
@@ -402,16 +436,149 @@ def terminate_employee(emp_id: int, end_date: date, reason: str = "termination",
             day_divisor=company.eos_day_divisor, max_months=company.eos_max_months)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    emp.status = "terminated"
-    # حفظ نتيجة الحسبة في ملف الموظف (DEMO-014)
+    settlement["_end_date"] = str(end_date)
+    settlement["_reason"] = reason
+    emp.pending_termination_json = json.dumps(settlement, ensure_ascii=False)
+    emp.pending_termination_prepared_by = user.id
+    emp.pending_termination_prepared_at = datetime.utcnow()
+    emp.pending_termination_approved_by = None
+    emp.pending_termination_approved_at = None
+    audit(db, user, "prepare_termination", "employee", emp.id,
+          detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD (draft)",
+          request=request)
+    db.commit()
+    return {"ok": True, "employee_id": emp.id, "status": emp.status,
+            "stage": "prepared", "settlement": settlement}
+
+
+@router.post("/{emp_id}/terminate/approve")
+def approve_termination(emp_id: int, request: Request = None,
+                        user: models.User = Depends(require_perm("approve_termination")),
+                        db: Session = Depends(get_db)):
+    """PILOT-P0-8 — اعتماد المسودة (يشترط مختلف المُحضِّر)."""
+    emp = _get_emp(db, user, emp_id)
+    if not emp.pending_termination_json:
+        raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة معلقة")
+    if emp.pending_termination_prepared_by == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403,
+                            detail="لا يمكن اعتماد مسودة حضّرتها بنفسك — فصل السلطات إلزامي")
+    emp.pending_termination_approved_by = user.id
+    emp.pending_termination_approved_at = datetime.utcnow()
+    audit(db, user, "approve_termination", "employee", emp.id,
+          detail="approved for execution", request=request)
+    db.commit()
+    return {"ok": True, "employee_id": emp.id, "stage": "approved"}
+
+
+@router.post("/{emp_id}/terminate/execute")
+def execute_termination(emp_id: int, request: Request = None,
+                        user: models.User = Depends(require_perm("terminate_employee")),
+                        db: Session = Depends(get_db)):
+    """PILOT-P0-8 — تنفيذ الإنهاء بعد الاعتماد: تغيير status + حفظ التسوية النهائية."""
     import json
-    emp.termination_date = end_date
+    emp = _get_emp(db, user, emp_id)
+    if emp.status == "terminated":
+        raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
+    if not emp.pending_termination_json:
+        raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
+    if not emp.pending_termination_approved_at:
+        raise HTTPException(status_code=409, detail="المسودة غير معتمدة بعد — لا يمكن تنفيذها")
+    settlement = json.loads(emp.pending_termination_json)
+    end_date = settlement.pop("_end_date", None)
+    reason = settlement.pop("_reason", "termination")
+    emp.status = "terminated"
+    emp.termination_date = date.fromisoformat(end_date) if end_date else date.today()
     emp.termination_reason = reason
     emp.eos_settlement_json = json.dumps(settlement, ensure_ascii=False)
+    emp.pending_termination_json = None
+    emp.pending_termination_prepared_by = None
+    emp.pending_termination_prepared_at = None
+    emp.pending_termination_approved_by = None
+    emp.pending_termination_approved_at = None
     audit(db, user, "terminate_employee", "employee", emp.id,
-          detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD", request=request)
+          detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD (executed)",
+          request=request)
     db.commit()
-    return {"ok": True, "employee_id": emp.id, "status": "terminated", "settlement": settlement}
+    return {"ok": True, "employee_id": emp.id, "status": "terminated",
+            "stage": "executed", "settlement": settlement}
+
+
+@router.post("/{emp_id}/terminate/cancel")
+def cancel_termination(emp_id: int, request: Request = None,
+                       user: models.User = Depends(require_perm("terminate_employee")),
+                       db: Session = Depends(get_db)):
+    """PILOT-P0-8 — إلغاء المسودة قبل التنفيذ."""
+    emp = _get_emp(db, user, emp_id)
+    if not emp.pending_termination_json:
+        raise HTTPException(status_code=404, detail="لا توجد مسودة معلقة لإلغائها")
+    emp.pending_termination_json = None
+    emp.pending_termination_prepared_by = None
+    emp.pending_termination_prepared_at = None
+    emp.pending_termination_approved_by = None
+    emp.pending_termination_approved_at = None
+    audit(db, user, "cancel_termination_draft", "employee", emp.id, request=request)
+    db.commit()
+    return {"ok": True, "stage": "cancelled"}
+
+
+# ----------------------------- سياسة الحضور (SEC2-17) -----------------------------
+
+@router.post("/{emp_id}/attendance-policy")
+def set_attendance_policy(emp_id: int, mode: str, exempt: bool = False,
+                          exempt_reason: str | None = None,
+                          request: Request = None,
+                          user: models.User = Depends(require_perm("manage_attendance")),
+                          db: Session = Depends(get_db)):
+    """SEC2-17 — تعيين سياسة حضور صريحة لموظف (HR أو مسؤول حضور).
+
+    القاعدة:
+      - mode ∈ {qr, gps, both} → attendance_exempt=False
+      - mode='none' → يشترط exempt=True + exempt_reason ≠ فارغ (توثيق صريح)
+    """
+    if mode not in ("none", "qr", "gps", "both"):
+        raise HTTPException(status_code=400, detail="نمط حضور غير صالح")
+    emp = _get_emp(db, user, emp_id)
+    if mode == "none":
+        if not exempt or not (exempt_reason and exempt_reason.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="mode='none' يتطلب exempt=True + سبب موثّق (attendance_exempt_reason)",
+            )
+    before = f"{emp.attendance_mode}/exempt={emp.attendance_exempt}"
+    emp.attendance_mode = mode
+    emp.attendance_exempt = bool(exempt)
+    emp.attendance_exempt_reason = (exempt_reason or "").strip() or None if exempt else None
+    emp.attendance_exempt_approved_by = user.id if exempt else None
+    emp.attendance_exempt_approved_at = datetime.utcnow() if exempt else None
+    after = f"{emp.attendance_mode}/exempt={emp.attendance_exempt}"
+    audit(db, user, "set_attendance_policy", "employee", emp.id,
+          detail=f"{before} → {after}", request=request)
+    db.commit()
+    return {"ok": True, "employee_id": emp.id, "mode": emp.attendance_mode,
+            "exempt": emp.attendance_exempt, "reason": emp.attendance_exempt_reason}
+
+
+@router.get("/attendance-policy/pending")
+def list_employees_without_policy(company_id: int | None = None,
+                                  user: models.User = Depends(require_perm("view_attendance")),
+                                  db: Session = Depends(get_db)):
+    """SEC2-17 — قائمة الموظفين الـactive الذين لم تُثبَّت لهم سياسة حضور صريحة.
+    (mode='none' AND attendance_exempt=False) — للـHR للمعالجة قبل قفل الحضور/الرواتب.
+    """
+    from sqlalchemy import and_, or_
+    cid = scope_company_id(user, company_id)
+    q = select(models.Employee).where(
+        models.Employee.status == "active",
+        models.Employee.attendance_mode == "none",
+        or_(models.Employee.attendance_exempt.is_(False),
+            models.Employee.attendance_exempt.is_(None)),
+    )
+    if cid is not None:
+        q = q.where(models.Employee.company_id == cid)
+    rows = db.scalars(q.order_by(models.Employee.name)).all()
+    return [{"id": e.id, "name": e.name, "employee_no": e.employee_no,
+             "company_id": e.company_id, "branch_id": e.branch_id,
+             "hire_date": e.hire_date} for e in rows]
 
 
 # ----------------------------- النقل بين الشركات -----------------------------

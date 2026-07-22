@@ -205,6 +205,12 @@ class Employee(Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     shift_id: Mapped[int | None] = mapped_column(ForeignKey("shifts.id"))
     attendance_mode: Mapped[str] = mapped_column(String(10), default="none")  # none/qr/gps/both
+    # SEC2-17: كل Active موظف يجب أن يكون له وضع حضور صريح، أو مُعفى بسبب موثّق
+    #   attendance_mode="none" مقبولة فقط مع attendance_exempt=True + سبب
+    attendance_exempt: Mapped[bool] = mapped_column(Boolean, default=False)
+    attendance_exempt_reason: Mapped[str | None] = mapped_column(String(200))
+    attendance_exempt_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    attendance_exempt_approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     annual_leave_balance: Mapped[float] = mapped_column(Float, default=30)
     phone: Mapped[str | None] = mapped_column(String(30))
     photo: Mapped[str | None] = mapped_column(String(300))
@@ -212,6 +218,14 @@ class Employee(Base):
     termination_date: Mapped[date | None] = mapped_column(Date)
     termination_reason: Mapped[str | None] = mapped_column(String(40))
     eos_settlement_json: Mapped[str | None] = mapped_column(Text)
+    # PILOT-P0-8 — دورة إنهاء الخدمة المتدرجة:
+    #   prepared (HR يحسب المسودة) → approved (المحاسب يعتمد ماليًا) → executed (الفصل الفعلي)
+    #   الموظف يبقى status="active" حتى الاعتماد، ولا يتم الفصل مباشرة.
+    pending_termination_json: Mapped[str | None] = mapped_column(Text)
+    pending_termination_prepared_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    pending_termination_prepared_at: Mapped[datetime | None] = mapped_column(DateTime)
+    pending_termination_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    pending_termination_approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
@@ -517,10 +531,23 @@ class PayrollRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    period: Mapped[str] = mapped_column(String(7))  # YYYY-MM
-    status: Mapped[str] = mapped_column(String(20), default="draft")
+    period: Mapped[str] = mapped_column(String(30))  # YYYY-MM أو YYYY-MM-ADJ-<id> للتسويات
+    status: Mapped[str] = mapped_column(String(20), default="prepared")
     totals_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    # PILOT-P0-7 — دورة الاعتماد المتدرجة (فصل السلطات)
+    prepared_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finalized_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime)
+    locked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Adjustment run بعد قفل الفترة الأصلية
+    adjustment_of_run_id: Mapped[int | None] = mapped_column(ForeignKey("payroll_runs.id"))
+    adjustment_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Transfer(Base):
@@ -548,6 +575,41 @@ class DocumentTemplate(Base):
     category: Mapped[str] = mapped_column(String(60), default="عام")
     body_html: Mapped[str] = mapped_column(Text)  # نص الصيغة مع متغيّرات {{...}}
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AuthorizedSignatory(Base):
+    """SEC2-15 — سجل المخوّلين بالتوقيع (Authorized Signatories Registry).
+
+    مصدر الحقيقة الذي يُستعلَم منه توليد كل مستند رسمي (شهادة/خطاب/عقد/طلب) عند
+    وضع خانة "المخول بالتوقيع". يمنع طباعة أي مستند رسمي بدون توقيع مُعتمَد.
+
+    scope_type:
+      - "any"        → مخول عام لكل مستندات الشركة
+      - "code"       → مقيَّد برمز مستند/طلب محدد (HRMS-PR-001, REQEOS...)
+      - "prefix"     → مقيَّد بمجموعة رموز (مثل HRMS-PR-00* للشهادات)
+      - "category"   → مقيَّد بفئة (شهادات، عقود، إجراءات إدارية...)
+
+    الفترة الزمنية effective_from/effective_to لدعم تفويض مؤقت (إجازة/سفر...).
+    """
+    __tablename__ = "authorized_signatories"
+    __table_args__ = (
+        UniqueConstraint("company_id", "user_id", "scope_type", "scope_value",
+                         name="uq_signatory_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    title_ar: Mapped[str] = mapped_column(String(120))  # مثل: المدير العام
+    title_en: Mapped[str | None] = mapped_column(String(120))
+    scope_type: Mapped[str] = mapped_column(String(20), default="any")
+    scope_value: Mapped[str | None] = mapped_column(String(80))
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 

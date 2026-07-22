@@ -35,6 +35,7 @@ PERMISSIONS: dict[str, str] = {
     "export_reports": "تصدير التقارير",
     "view_audit": "عرض سجل التدقيق",
     "terminate_employee": "إنهاء خدمة موظف",
+    "approve_termination": "اعتماد إنهاء خدمة موظف (سلطة مستقلة عن التحضير)",
     "view_tasks": "عرض المهام والتنبيهات",
     "manage_tasks": "إدارة المهام",
     "submit_request": "تقديم الطلبات (خدمة ذاتية)",
@@ -113,7 +114,12 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks",
-                   "submit_request", "record_attendance", "approve_request"},
+                   "submit_request", "record_attendance", "approve_request",
+                   # PILOT-P0-8: المحاسب هو المُعتمِد المالي لإنهاء الخدمة (فصل السلطات عن HR)
+                   "approve_termination",
+                   # PILOT-P0-11a: المحاسب يحتاج مراجعة الحضور قبل قفل الرواتب (منع تشغيل رواتب
+                   # على بيانات ناقصة). لا يحق له تعديل السجلات (manage_attendance يبقى مع HR).
+                   "view_attendance"},
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
     # submit_request (P0-05): يبدأ طلبات تشغيلية عن موظفيه (تغيير وردية، مهمة خارجية...).

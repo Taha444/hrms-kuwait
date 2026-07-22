@@ -253,10 +253,18 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
                       company_id: int | None = None,
                       user: models.User = Depends(require_perm("view_attendance")),
                       db: Session = Depends(get_db)):
-    """مراجعة الحضور الشهري لموظفي الشركة المختارة (للمدير/المالك/الإدارة العليا).
+    """مراجعة الحضور الشهري لموظفي الشركة المختارة.
 
-    يبني مصفوفة (موظف × يوم) بحالات: حاضر/متأخر/غائب/إجازة/عطلة، مع ملخّص شهري.
+    PILOT-P0-11a — من يستطيع الوصول:
+    - HR / company_manager: الشركة كاملة
+    - المحاسب: قراءة فقط للشركة (يحتاجها لقفل الرواتب)
+    - branch_supervisor: مُقيَّد بفروعه المُسندة فقط عبر resolve_scope
+    - super_admin / company_owner: عبر الشركات
+
+    يبني مصفوفة (موظف × يوم): حاضر/متأخر/غائب/إجازة/عطلة، مع ملخّص شهري.
     """
+    from ..deps import resolve_scope
+    scope = resolve_scope(user, db)
     cid = scope_company_id(user, company_id)
     today = date.today()
     try:
@@ -271,7 +279,16 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
         models.Employee.status == "active", models.Employee.attendance_mode != "none")
     if cid is not None:
         emp_q = emp_q.where(models.Employee.company_id == cid)
-    if branch_id:
+    # PILOT-P0-11a: إن كان المستخدم مُقيَّدًا بفروع (supervisor)، نطبّق فروعه دائمًا،
+    # ولا نسمح له بتجاوزها عبر branch_id يدوي.
+    if scope.branch_ids is not None:
+        allowed = scope.branch_ids
+        if branch_id and branch_id not in allowed:
+            raise HTTPException(status_code=403,
+                                detail="لا تملك صلاحية مراجعة حضور هذا الفرع")
+        target = {branch_id} if branch_id else allowed
+        emp_q = emp_q.where(models.Employee.branch_id.in_(target))
+    elif branch_id:
         emp_q = emp_q.where(models.Employee.branch_id == branch_id)
     employees = db.scalars(emp_q.order_by(models.Employee.name)).all()
 

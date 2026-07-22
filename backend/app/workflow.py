@@ -982,9 +982,25 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
         emp_user = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
         if emp_user and emp_user.signature_path and os.path.exists(emp_user.signature_path):
             emp_sig = emp_user.signature_path
-    # توقيع "الشركة" = آخر معتمِد للطلب (المدير العام أو من في صلاحيته)
+    # SEC2-15: يُفضّل مخوّل من سجل المخوّلين بالتوقيع (Authorized Signatories) عن آخر
+    # معتمِد، حتى يكون التوقيع من سلطة موثّقة رسميًا لا من أي معتمِد عابر.
     company_sig = None
-    if approvals:
+    signer_label = None
+    try:
+        from .routers.signatories import resolve_authorized_signatory
+        auth_signer = resolve_authorized_signatory(
+            db, req.company_id,
+            rt.default_template_code or rt.code,
+            category=(getattr(rt, "category", None)),
+        )
+        if auth_signer:
+            signer_user = db.get(models.User, auth_signer.user_id)
+            if signer_user and signer_user.signature_path and os.path.exists(signer_user.signature_path):
+                company_sig = signer_user.signature_path
+                signer_label = auth_signer.title_ar
+    except Exception:
+        pass  # فشل السجل لا يمنع الطباعة — نسقط تلقائيًا لآخر معتمِد
+    if not company_sig and approvals:
         last = approvals[-1]
         if last.approver_user_id:
             last_user = db.get(models.User, last.approver_user_id)
@@ -993,7 +1009,8 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp),
                                    verification_code=verification_code,
                                    employee_signature=emp_sig,
-                                   company_signature=company_sig)
+                                   company_signature=company_sig,
+                                   authorized_signer_label=signer_label)
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
