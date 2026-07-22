@@ -131,12 +131,27 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
 
 
 @router.delete("/{tpl_id}")
-def delete_template(tpl_id: int, user: models.User = Depends(require_super_admin),
+def delete_template(tpl_id: int, request: Request,
+                    user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
+    """V2.2 §14 — لا يُحذف قالب مستخدم:
+    - لو مرتبط بأنواع طلبات نشطة (default_template_code) → 409 وقائمة الأنواع.
+    - لو مرتبط بمستندات مُوَلَّدة من قبل → soft-delete فقط (is_active=False)
+      حفاظًا على قابلية عرض المستندات القديمة."""
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    if t.code:
+        active_uses = db.scalars(select(models.RequestType).where(
+            models.RequestType.default_template_code == t.code,
+            models.RequestType.is_active.is_(True),
+        )).all()
+        if active_uses:
+            names = ", ".join(rt.name for rt in active_uses[:5])
+            raise HTTPException(status_code=409,
+                                detail=f"الصيغة مستخدمة في: {names} — عطّل الأنواع أولاً")
     t.is_active = False
+    audit(db, user, "delete_template", "template", t.id, request=request)
     db.commit()
     return {"ok": True}
 

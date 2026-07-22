@@ -160,6 +160,57 @@ def health():
     return {"status": "ok", "service": "hrms-kuwait"}
 
 
+@app.get("/api/health/deep")
+def health_deep():
+    """V2.2 §25 — فحص عميق: DB + Scheduler + Storage + Registry counts.
+    يعيد 200 مع تفاصيل كل مكوّن، أو 503 عند فشل أي جزء أساسي."""
+    from sqlalchemy import text
+    from .database import SessionLocal
+    from .v15_registry import summary as v15_summary
+
+    results: dict = {"service": "hrms-kuwait", "checks": {}}
+    ok = True
+
+    # 1) DB
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        results["checks"]["database"] = {"status": "ok"}
+    except Exception as e:
+        results["checks"]["database"] = {"status": "fail", "error": str(e)[:200]}
+        ok = False
+
+    # 2) Upload dir
+    try:
+        upload_dir = settings.upload_dir
+        exists = os.path.isdir(upload_dir)
+        writable = os.access(upload_dir, os.W_OK) if exists else False
+        results["checks"]["storage"] = {
+            "status": "ok" if exists and writable else "fail",
+            "path": upload_dir, "writable": writable,
+        }
+        if not (exists and writable):
+            ok = False
+    except Exception as e:
+        results["checks"]["storage"] = {"status": "fail", "error": str(e)[:200]}
+        ok = False
+
+    # 3) Scheduler
+    results["checks"]["scheduler"] = {"status": "ok" if settings.scheduler_enabled else "disabled"}
+
+    # 4) Registry counts
+    try:
+        results["checks"]["registry"] = {"status": "ok", **v15_summary()}
+    except Exception as e:
+        results["checks"]["registry"] = {"status": "fail", "error": str(e)[:200]}
+        ok = False
+
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"status": "degraded", **results})
+    return {"status": "ok", **results}
+
+
 # Evidence Pack + V1.5 Manifest: يُنشر بلا مصادقة لتوثيق أن الـ deployment مربوط بالـ build
 # المتفق عليه في تقرير القبول النهائي، ولإثبات نسخة سجل الترحيل النشطة (V1.5 §3 Manifest).
 # القيم تُقرأ من متغيرات بيئة تُضبط عند البناء (Railway/CI)؛ إن غابت، تُقرأ محليًا من git.
