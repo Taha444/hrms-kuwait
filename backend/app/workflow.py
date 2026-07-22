@@ -788,6 +788,19 @@ def _finalize(db: Session, req: models.Request) -> None:
         db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
         dedup_key=f"req_done:{req.id}",
     )
+    # V2.2 §20 — إشعار "جاهز للطباعة" للمسؤول عن طباعة المستندات (HR/الأرشيف)
+    # عند وجود مستند رسمي مُوَلَّد ينتظر الطباعة والحفظ في الملف الورقي.
+    if rt and getattr(rt, "produces_document", False):
+        for u in users_by_role(db, req.company_id, ["hr"]):
+            create_task(
+                db, company_id=req.company_id, type="ready_to_print",
+                assignee_user_id=u.id,
+                title=f"جاهز للطباعة والحفظ: {rt.name}",
+                detail=f"طلب #{req.id} — الموظف: {_employee_name(db, req)}",
+                related_entity_type="request", related_entity_id=req.id,
+                dedup_key=f"req_ready_print:{req.id}", severity="info",
+                template_code="NTF-040",
+            )
     _close_open_tasks(db, req)
 
 
@@ -1040,6 +1053,10 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
         f.write(pdf_bytes)
     doc.file_path = fpath
     doc.lifecycle_status = "GENERATED"  # V1.5 Phase 4: انتهى التوليد بنجاح
+    # V2.2 §13 — Immutable Artifact: بصمة SHA256 ورقم مرجعي مقروء بشريًا
+    import hashlib
+    doc.checksum_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
+    doc.reference_no = f"REQ-{req.id:06d}-{kind.upper()[:6]}-v{doc.version}"
     return doc
 
 

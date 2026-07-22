@@ -455,6 +455,11 @@ class RequestDocument(Base):
     # دورة حياة المستند V1.5 (منفصلة عن حالة الطلب):
     # NOT_REQUIRED → QUEUED → GENERATING → GENERATED → SIGNED → DELIVERED → ARCHIVED
     lifecycle_status: Mapped[str] = mapped_column(String(20), default="GENERATED")
+    # V2.2 §13 — Immutable Artifact: بصمة SHA256 للملف تُحسب عند التوليد وتبقى ثابتة
+    # لإثبات عدم التلاعب. Reference Number مقروء بشريًا للمستند.
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    reference_no: Mapped[str | None] = mapped_column(String(40), unique=True, index=True)
+    signature_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class Appointment(Base):
