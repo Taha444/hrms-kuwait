@@ -72,6 +72,11 @@ class User(Base):
     # V2.2 §9 — إبطال الجلسات القديمة: كل token صادر قبل هذا الوقت يُرفض تلقائيًا.
     # يُبدَّل عند: تغيير كلمة المرور، تعطيل الحساب، اكتشاف اختراق.
     tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime)
+    # V2.2 §9 — 2FA (TOTP RFC 6238): سرّي base32 يُنشأ في الـenroll، ويُستخدم للتحقق كل دخول.
+    #   totp_confirmed=True بعد أول تحقق ناجح؛ قبلها لا يُعتبر 2FA مفعّلًا للحساب.
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     # SIG-01 — التوقيع الشخصي: مسار صورة PNG/JPG يرفعها المستخدم مرة واحدة، ويحقنها
     # محرك PDF فوق سطر التوقيع في كل مستند رسمي مطبوع منسوب إليه (شهادات، إنذارات،

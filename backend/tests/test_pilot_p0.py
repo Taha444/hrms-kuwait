@@ -356,6 +356,52 @@ def test_v22_leave_e2e_completes_and_produces_document(client):
                 assert "checksum_sha256" in doc or "reference_no" in doc or True
 
 
+# =============================================================================
+# V2.2 §9 — TOTP 2FA
+# =============================================================================
+def test_v22_totp_enroll_returns_secret_and_qr(client):
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    r = client.post("/api/2fa/enroll", headers=hr)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["secret"] and len(body["secret"]) >= 16
+    assert body["uri"].startswith("otpauth://totp/")
+    assert body["qr_png_base64"]
+
+
+def test_v22_totp_confirm_and_verify(client):
+    """يشتغل مع pyotp عبر توليد رمز صحيح لحظة الاختبار."""
+    import pyotp
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    en = client.post("/api/2fa/enroll", headers=hr).json()
+    secret = en["secret"]
+    good = pyotp.TOTP(secret).now()
+    conf = client.post("/api/2fa/confirm", headers=hr, json={"code": good})
+    assert conf.status_code == 200
+    assert conf.json()["confirmed"] is True
+    # verify ينجح برمز جديد
+    good2 = pyotp.TOTP(secret).now()
+    v = client.post("/api/2fa/verify", headers=hr, json={"code": good2})
+    assert v.status_code == 200
+    # وrmz غلط يفشل
+    bad = client.post("/api/2fa/verify", headers=hr, json={"code": "000000"})
+    assert bad.status_code == 400
+
+
+def test_v22_totp_disable_requires_password(client):
+    """تعطيل 2FA يحتاج كلمة السر الحالية."""
+    import pyotp
+    # نستخدم المحاسب (مستخدم مختلف عن تلك التي فعّلها الاختبار السابق)
+    acc = auth_headers(login(client, "100000000007", "account123"))
+    en = client.post("/api/2fa/enroll", headers=acc).json()
+    client.post("/api/2fa/confirm", headers=acc, json={"code": pyotp.TOTP(en["secret"]).now()})
+    bad = client.post("/api/2fa/disable", headers=acc, json={"password": "wrong"})
+    assert bad.status_code == 400
+    ok = client.post("/api/2fa/disable", headers=acc, json={"password": "account123"})
+    assert ok.status_code == 200
+    assert ok.json()["disabled"] is True
+
+
 def test_v22_health_deep_returns_all_checks(client):
     """V2.2 §25 — /health/deep يعيد كل الأنظمة الأساسية بأبعادها."""
     r = client.get("/api/health/deep")

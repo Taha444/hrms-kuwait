@@ -147,6 +147,29 @@ def list_notes(entity_type: str, entity_id: int,
              "at": r.created_at} for r in rows]
 
 
+@router.get("/deprecation-notice")
+def deprecation_notice():
+    """V2.2 §16 — إشعار للواجهة: صفحة PRO Transactions القديمة موقوفة.
+    الاستخدام الوحيد المُعتمد للإقامة/الإذن هو Residency Renewals و Company/Branch Archive.
+    """
+    return {
+        "deprecated": True,
+        "notice_ar": (
+            "صفحة PRO Transactions القديمة موقوفة. استخدم Residency Renewals للإقامة، "
+            "و Company/Branch Archive لمستندات الشركة والفروع."
+        ),
+        "notice_en": (
+            "The legacy PRO Transactions page is deprecated. Use Residency Renewals for "
+            "iqama actions, and Company/Branch Archive for company/branch documents."
+        ),
+        "recommended_endpoints": [
+            "/api/renewals/*",
+            "/api/archive/*",
+            "/api/companies/{id}/documents",
+        ],
+    }
+
+
 @router.get("/government")
 def government_overview(company_id: int | None = None,
                         user: models.User = Depends(require_perm("manage_licenses")),

@@ -36,6 +36,7 @@ from .routers import (
     signatures,
     tasks,
     templates,
+    twofa,
     users,
     verify,
 )
@@ -142,6 +143,42 @@ async def security_headers(request, call_next):
         response.headers.setdefault(k, v)
     return response
 
+
+# ============================================================================
+# V2.2 §25 — Structured JSON logging (ops: Sentry/Datadog يقرأون JSON مباشرة)
+# ============================================================================
+import json as _json  # noqa: E402
+import time as _time  # noqa: E402
+import uuid as _uuid  # noqa: E402
+
+
+@app.middleware("http")
+async def structured_request_log(request, call_next):
+    """يُنتج سطر JSON لكل طلب (method/path/status/duration_ms/correlation_id).
+    correlation_id يمكن للعميل تمريره كـ X-Correlation-Id، وإلا نولّده."""
+    corr = request.headers.get("x-correlation-id") or _uuid.uuid4().hex[:16]
+    request.state.correlation_id = corr
+    start = _time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration_ms = int((_time.perf_counter() - start) * 1000)
+        try:
+            logger.info(_json.dumps({
+                "event": "http_request",
+                "method": request.method,
+                "path": request.url.path,
+                "status": status_code,
+                "duration_ms": duration_ms,
+                "correlation_id": corr,
+                "client": (request.client.host if request.client else None),
+            }, ensure_ascii=False))
+        except Exception:
+            pass  # logging failure لا يعرقل الاستجابة
+
 # ملاحظة أمنية: لا نكشف مجلد uploads كملفات عامة (يحوي سيلفي ومستندات حسّاسة).
 # تنزيل أي ملف يمرّ عبر نقطة موثّقة تتحقق من العزل والصلاحية.
 os.makedirs(settings.upload_dir, exist_ok=True)
@@ -149,7 +186,7 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 for r in (auth, companies, users, employees, org, attendance, kiosk, documents, tasks,
           requests_router, templates, payroll_router, reports, pro, archive, search,
           operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
-          verify, delegations, feature_flags_router, signatures, signatories):
+          verify, delegations, feature_flags_router, signatures, signatories, twofa):
     app.include_router(r.router, prefix="/api")
 # PILOT-P0-5 — hr_router للاستبدالات المعلّقة (prefix مختلف عن /me/signature)
 app.include_router(signatures.hr_router, prefix="/api")

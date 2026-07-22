@@ -20,6 +20,10 @@ pytesseract==0.3.13
 pillow==12.3.0
 # قاعدة بيانات الإنتاج (PostgreSQL) — اختياري للتطوير
 psycopg2-binary==2.9.10
+# V2.2 §9 — TOTP (RFC 6238) للـ 2FA للأدوار الحساسة (super_admin/owner/hr/accountant)
+pyotp==2.9.0
+# رمز QR لتفعيل authenticator app (يستخدم أيضًا في P2-01 verification)
+qrcode[pil]==8.0
 # اختبارات
 pytest==8.3.4
 httpx==0.28.1
