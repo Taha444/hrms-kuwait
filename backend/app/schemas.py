@@ -26,6 +26,10 @@ def _check_password_strength(v: str) -> str:
 class LoginIn(BaseModel):
     civil_id: str
     password: str
+    # V2.2 §9 — رمز TOTP الاختياري في نفس الطلب (لتقليل الـround-trip للأدوار الحساسة).
+    #   لو 2FA مفعّل ولم يُمرَّر، يعود 401 مع requires_2fa=true؛ الواجهة تعرض حقل الرمز
+    #   وتُعيد الإرسال. الرمز 6 خانات وصالح ±30 ثانية.
+    totp_code: str | None = None
 
 
 class TokenOut(BaseModel):

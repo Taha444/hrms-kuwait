@@ -82,15 +82,21 @@ export default function Requests() {
   const list = tab === "mine" ? mine : inbox;
 
   return (
-    <div>
+    <div aria-labelledby="requests-title">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>{t("requests")}</h2>
-        {can("submit_request") && <button onClick={() => setShowNew((s) => !s)}>+ {t("new_request")}</button>}
+        <h2 id="requests-title">{t("requests")}</h2>
+        {can("submit_request") && (
+          <button onClick={() => setShowNew((s) => !s)}
+                 aria-expanded={showNew}
+                 aria-controls="new-request-panel">
+            + {t("new_request")}
+          </button>
+        )}
       </div>
 
       {showNew && (
-        <div className="card">
-          <h3>{t("new_request")}</h3>
+        <div className="card" id="new-request-panel" role="region" aria-labelledby="new-request-title">
+          <h3 id="new-request-title">{t("new_request")}</h3>
           <div className="field">
             <label htmlFor="req-type">{t("req_type")}</label>
             <select id="req-type" value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>

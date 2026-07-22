@@ -71,6 +71,20 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
         db.commit()
         raise HTTPException(status_code=401, detail="الرقم المدني أو كلمة المرور غير صحيحة")
 
+    # V2.2 §9 — لو 2FA مفعّل، يجب تمرير رمز TOTP صحيح لتكتمل الجلسة.
+    if user.totp_confirmed and user.totp_secret:
+        if not data.totp_code:
+            raise HTTPException(
+                status_code=401,
+                detail={"requires_2fa": True, "message": "أدخل رمز التحقق الثنائي"},
+            )
+        from .twofa import _verify_code
+        if not _verify_code(user.totp_secret, data.totp_code):
+            audit(db, user, "totp_login_fail", "user", user.id, request=request)
+            db.commit()
+            raise HTTPException(status_code=401, detail="رمز التحقق الثنائي غير صحيح")
+        user.totp_last_used_at = now
+
     user.failed_attempts = 0
     user.locked_until = None
     user.last_login = now

@@ -78,12 +78,12 @@ export default function MyProfile() {
   const kwd = t("kwd_currency");
 
   return (
-    <div>
+    <div aria-labelledby="profile-title">
       <div className="page-head">
         <div>
           <div className="eyebrow">{t("my_profile")}</div>
-          <h2 style={{ margin: "2px 0 0" }}>{e.name}</h2>
-          <div className="sub">{e.job_title || "—"}</div>
+          <h2 id="profile-title" style={{ margin: "2px 0 0" }}>{e.name}</h2>
+          <div className="sub" aria-label={`المسمى الوظيفي: ${e.job_title || "غير محدد"}`}>{e.job_title || "—"}</div>
         </div>
       </div>
 

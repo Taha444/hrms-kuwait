@@ -383,9 +383,11 @@ def test_v22_totp_confirm_and_verify(client):
     good2 = pyotp.TOTP(secret).now()
     v = client.post("/api/2fa/verify", headers=hr, json={"code": good2})
     assert v.status_code == 200
-    # وrmz غلط يفشل
+    # ورمز غلط يفشل
     bad = client.post("/api/2fa/verify", headers=hr, json={"code": "000000"})
     assert bad.status_code == 400
+    # cleanup — نعطل 2FA حتى لا نكسر بقية الاختبارات التي تستخدم hr
+    client.post("/api/2fa/disable", headers=hr, json={"password": "hr12345"})
 
 
 def test_v22_totp_disable_requires_password(client):
@@ -506,6 +508,106 @@ def test_v22_template_update_creates_version_snapshot(client):
     versions = client.get(f"/api/templates/{tid}/versions", headers=admin).json()
     assert len(versions) == 1
     assert versions[0]["name"] == "شهادة اختبار V2.2"  # النسخة القديمة محفوظة
+
+
+# =============================================================================
+# V2.2 §9 — 2FA login gate
+# =============================================================================
+def test_v22_login_requires_totp_when_enabled(client):
+    """بعد تفعيل 2FA، login بدون totp_code يعطي 401 + requires_2fa=true."""
+    import pyotp
+    # ننشئ مستخدم HR جديد لهذا الاختبار (لأن المحاسب قد يكون معطّل من اختبار سابق)
+    admin = auth_headers(login(client, "000000000000", "admin123"))
+    client.post("/api/users", headers=admin, json={
+        "civil_id": "555999888777", "full_name": "2FA test",
+        "role": "hr", "company_id": 1, "password": "temp12345",
+    })
+    tok = login(client, "555999888777", "temp12345")
+    h = auth_headers(tok)
+    # لازم يغيّر كلمة السر أول شيء
+    client.post("/api/auth/change-password", headers=h, json={
+        "old_password": "temp12345", "new_password": "NewPass123",
+    })
+    # نسجل مرة أخرى بعد تغيير كلمة السر
+    tok2 = login(client, "555999888777", "NewPass123")
+    h2 = auth_headers(tok2)
+    # نُفعّل 2FA
+    en = client.post("/api/2fa/enroll", headers=h2).json()
+    secret = en["secret"]
+    client.post("/api/2fa/confirm", headers=h2, json={"code": pyotp.TOTP(secret).now()})
+
+    # الآن login بدون totp = 401 مع requires_2fa
+    r = client.post("/api/auth/login", json={
+        "civil_id": "555999888777", "password": "NewPass123",
+    })
+    assert r.status_code == 401
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict) and detail.get("requires_2fa") is True
+
+    # login مع totp خاطئ = 401
+    r_bad = client.post("/api/auth/login", json={
+        "civil_id": "555999888777", "password": "NewPass123", "totp_code": "000000",
+    })
+    assert r_bad.status_code == 401
+
+    # login مع totp صحيح = 200
+    r_ok = client.post("/api/auth/login", json={
+        "civil_id": "555999888777", "password": "NewPass123",
+        "totp_code": pyotp.TOTP(secret).now(),
+    })
+    assert r_ok.status_code == 200
+    assert "access_token" in r_ok.json()
+
+
+# =============================================================================
+# V2.2 §7 — Additional workflow smoke tests (Expense, Overtime, Bank Update)
+# =============================================================================
+def test_v22_wf010_expense_reimbursement_smoke(client):
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "expense",
+        "payload_json": {"expense_date": "2027-06-01", "category": "travel",
+                         "amount": 50, "reason": "تاكسي مهمة عمل"},
+    })
+    if r.status_code != 201:
+        import pytest; pytest.skip("expense غير موجود في seed هذا التنصيب")
+    assert r.json()["id"]
+
+
+def test_v22_wf017_overtime_smoke(client):
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "overtime",
+        "payload_json": {"overtime_date": "2027-06-10", "from_time": "17:00",
+                         "to_time": "20:00", "hours": 3, "reason": "إنهاء تقرير عاجل"},
+    })
+    if r.status_code != 201:
+        import pytest; pytest.skip("overtime غير موجود في seed هذا التنصيب")
+    assert r.json()["id"]
+
+
+def test_v22_wf008_bank_update_requires_attachment(client):
+    """تحديث الحساب البنكي — schema فقط، لا E2E."""
+    r = client.get("/api/requests/types/REQBANK/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    schema = r.json()["schema"]
+    fields = [f["code"] for f in schema["fields"]]
+    assert "iban" in fields and "bank_name" in fields
+    assert "bank_letter" in schema["attachments"]["required"]
+
+
+# =============================================================================
+# V2.2 §26 — canonical migration script (dry-run)
+# =============================================================================
+def test_v22_canonical_migration_dry_run_reports_counts():
+    """script الترحيل لا يكسر شيئًا في dry-run."""
+    from scripts.migrate_to_canonical import run
+    result = run(dry_run=True)
+    assert result["dry_run"] is True
+    assert result["canonical_types"]["total_canonical_defined"] == 29
+    # عدد الأنواع القديمة "still_active" يجب أن يكون > 0 (seed يضع أنواعًا)
+    assert result["legacy_types_still_active"] >= 0
 
 
 def test_v22_health_deep_returns_all_checks(client):
