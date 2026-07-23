@@ -12,6 +12,5 @@ backend/uploads
 **/*.db-*
 **/.env
 .git
-legacy_prototype
 docs
 *.md

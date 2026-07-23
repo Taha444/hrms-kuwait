@@ -125,8 +125,7 @@ hrms_kuwait/
 │   └── tests/               الاختبارات
 ├── frontend/           React + TS + Vite (PWA)
 ├── docs/               المعمارية والنشر
-├── docker-compose.yml
-└── legacy_prototype/   النسخة الأولية (Flask) المرجعية — منها نُقل منطق EOS
+└── docker-compose.yml
 ```
 
 ---
