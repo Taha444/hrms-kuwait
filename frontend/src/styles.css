@@ -117,7 +117,18 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 5px
   top: 0;
   height: 100vh;
   flex-shrink: 0;
+  /* V2.2 §24 — scroll داخلي مع خلفية مستمرة عند طول قائمة زائد */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.25) transparent;
 }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
 .sidebar .brand {
   display: flex; align-items: center; gap: 11px;
   padding: 4px 20px 18px; margin-bottom: 6px;

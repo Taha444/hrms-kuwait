@@ -610,6 +610,109 @@ def test_v22_canonical_migration_dry_run_reports_counts():
     assert result["legacy_types_still_active"] >= 0
 
 
+# =============================================================================
+# V2.2 §7 — Extended workflow smoke tests (skip-friendly per seed availability)
+# =============================================================================
+def test_v22_wf006_certificate_letter_schema(client):
+    """WF-006 NOC/Experience Certificate schema يظهر للواجهة."""
+    r = client.get("/api/requests/types/REQCERT/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    fields = [f["code"] for f in r.json()["schema"]["fields"]]
+    assert "purpose" in fields and "language" in fields
+
+
+def test_v22_wf011_payroll_objection_schema(client):
+    """WF-011 اعتراض راتب."""
+    r = client.get("/api/requests/types/REQPAY/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    fields = [f["code"] for f in r.json()["schema"]["fields"]]
+    assert "payroll_period" in fields
+
+
+def test_v22_wf012_deduction_objection_schema(client):
+    r = client.get("/api/requests/types/REQDED/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+
+
+def test_v22_wf015_warning_reply_schema(client):
+    """WF-015 رد على إنذار — إن كان REQWARN مُعرَّف."""
+    r = client.get("/api/requests/types/REQWARN/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    # قد يعطي 404 لو غير مُعرَّف في الـSCHEMAS الحالية — نتقبل الاثنين
+    assert r.status_code in (200, 404)
+
+
+def test_v22_wf016_grievance_schema_confidential(client):
+    """WF-016 تظلم — schema يحمل meta.confidential."""
+    r = client.get("/api/requests/types/REQGRV/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    schema = r.json()["schema"]
+    assert schema.get("meta", {}).get("confidential") is True
+
+
+def test_v22_wf019_wf020_residency_renewal_schema(client):
+    r = client.get("/api/requests/types/REQREN/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    fields = [f["code"] for f in r.json()["schema"]["fields"]]
+    assert "renewal_type" in fields
+
+
+def test_v22_wf022_passport_update_schema(client):
+    r = client.get("/api/requests/types/REQPASS/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    schema = r.json()["schema"]
+    assert "passport_scan" in schema["attachments"]["required"]
+
+
+def test_v22_wf023_civil_id_update_schema(client):
+    r = client.get("/api/requests/types/REQCIVIL/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+
+
+def test_v22_wf024_resignation_schema(client):
+    r = client.get("/api/requests/types/REQRESIGN/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+    fields = [f["code"] for f in r.json()["schema"]["fields"]]
+    assert "notice_period_days" in fields
+
+
+def test_v22_wf027_training_schema(client):
+    r = client.get("/api/requests/types/REQTRAIN/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+
+
+def test_v22_wf028_promotion_schema(client):
+    r = client.get("/api/requests/types/REQPROM/schema",
+                   headers=auth_headers(login(client, "100000000101", "emp12345")))
+    assert r.status_code == 200
+
+
+# =============================================================================
+# V2.2 §20 — Digest engine
+# =============================================================================
+def test_v22_digest_creates_summary_per_user(client):
+    """digest_scan ينشئ مهمة digest واحدة لكل مستخدم عنده مهام مفتوحة."""
+    admin = auth_headers(login(client, "000000000000", "admin123"))
+    r = client.post("/api/tasks/run-digest", headers=admin)
+    assert r.status_code == 200
+    body = r.json()
+    assert "digests_created" in body
+    assert "date" in body
+    # تشغيله مرة ثانية ما يزوّدش (idempotent per day)
+    r2 = client.post("/api/tasks/run-digest", headers=admin)
+    assert r2.status_code == 200
+    assert r2.json()["digests_created"] == 0
+
+
 def test_v22_health_deep_returns_all_checks(client):
     """V2.2 §25 — /health/deep يعيد كل الأنظمة الأساسية بأبعادها."""
     r = client.get("/api/health/deep")

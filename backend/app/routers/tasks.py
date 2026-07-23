@@ -194,3 +194,11 @@ def run_sla_scan(user: models.User = Depends(require_perm("manage_tasks")),
     """تشغيل مسح SLA يدويًا لتصعيد المهام المتأخرة (اختياري — يعمل تلقائيًا كل ساعة)."""
     from ..notifications import sla_scan
     return sla_scan(db)
+
+
+@router.post("/run-digest")
+def run_digest(user: models.User = Depends(require_perm("manage_tasks")),
+               db: Session = Depends(get_db)):
+    """V2.2 §20 — تشغيل digest يومي يدويًا. يُشغَّل تلقائيًا كل يوم في 8 صباحًا."""
+    from ..notifications import digest_scan
+    return digest_scan(db)

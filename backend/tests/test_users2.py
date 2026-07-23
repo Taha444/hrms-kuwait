@@ -79,7 +79,10 @@ def test_audit_filters_by_entity_and_date(client):
     }).json()
     assert any("→" in (log_.get("detail") or "") for log_ in logs)
 
-    today = date.today()
+    # audit_log.created_at يُحفَظ بـ UTC (naive utcnow) — نفس المرجع هنا لتفادي
+    # فشل الاختبار عند حدود المنتصف بين UTC والوقت المحلي (مثلاً KWT +3).
+    from datetime import datetime
+    today = datetime.utcnow().date()
     logs2 = client.get("/api/audit", headers=ah, params={
         "company_id": 1, "from_date": str(today), "to_date": str(today),
     }).json()

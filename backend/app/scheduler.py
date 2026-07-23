@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .database import SessionLocal
-from .notifications import daily_scan, sla_scan
+from .notifications import daily_scan, digest_scan, sla_scan
 
 logger = logging.getLogger("hrms.scheduler")
 _scheduler: BackgroundScheduler | None = None
@@ -36,6 +36,18 @@ def _run_sla_scan():
         db.close()
 
 
+def _run_digest():
+    """V2.2 §20 — Digest يومي 8 صباحًا: ملخص المهام لكل مستخدم بدل إشعارات متكررة."""
+    db = SessionLocal()
+    try:
+        result = digest_scan(db)
+        logger.info("digest_scan: %s", result)
+    except Exception:  # pragma: no cover
+        logger.exception("فشل digest اليومي")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler:
@@ -47,8 +59,11 @@ def start_scheduler() -> BackgroundScheduler:
     # كل ساعة على رأس الساعة: مسح SLA (P1-NOTIF-01)
     _scheduler.add_job(_run_sla_scan, CronTrigger(minute=0), id="sla_scan",
                        replace_existing=True)
+    # يوميًا 8 صباحًا: digest إحصائيات المهام لكل مستخدم (V2.2 §20)
+    _scheduler.add_job(_run_digest, CronTrigger(hour=8, minute=0), id="digest_scan",
+                       replace_existing=True)
     _scheduler.start()
-    logger.info("تم تشغيل المجدول (المسح اليومي 6 صباحًا + SLA كل ساعة)")
+    logger.info("تم تشغيل المجدول (اليومي 6ص + SLA كل ساعة + Digest 8ص)")
     return _scheduler
 
 

@@ -322,3 +322,76 @@ def sla_scan(db: Session) -> dict:
 
     db.commit()
     return {"escalated": escalated, "scanned_at": now.isoformat()}
+
+
+def digest_scan(db: Session) -> dict:
+    """V2.2 §20 — Digest يومي: ملخص المهام المفتوحة لكل مستخدم بدل إرسال إشعار
+    منفصل لكل واحدة (يقلل الضجيج).
+
+    - يجمع كل المهام المفتوحة/in_progress لكل assignee
+    - ينشئ مهمة digest واحدة بسيفريتي info تحوي الإحصائيات
+    - dedup_key بتاريخ اليوم يمنع تكرار الـdigest إذا شُغل مرتين
+    """
+    from datetime import datetime, timezone, date
+    from collections import defaultdict
+
+    today = date.today().isoformat()
+    now = datetime.now(timezone.utc)
+
+    open_tasks = db.scalars(
+        select(models.Task).where(
+            models.Task.status.in_(("open", "in_progress")),
+            models.Task.assignee_user_id.is_not(None),
+        )
+    ).all()
+
+    grouped: dict[int, list[models.Task]] = defaultdict(list)
+    for t in open_tasks:
+        # لا نضم مهام digest سابقة داخل الـdigest
+        if t.type == "digest":
+            continue
+        grouped[t.assignee_user_id].append(t)
+
+    digests_created = 0
+    for user_id, tasks in grouped.items():
+        dk = f"digest:{user_id}:{today}"
+        already = db.scalar(select(models.Task.id).where(models.Task.dedup_key == dk))
+        if already:
+            continue
+        user = db.get(models.User, user_id)
+        if not user or not user.is_active:
+            continue
+
+        # عد المهام حسب severity
+        by_sev = defaultdict(int)
+        for t in tasks:
+            by_sev[t.severity or "info"] += 1
+
+        summary = f"لديك {len(tasks)} مهمة مفتوحة"
+        if by_sev.get("critical"):
+            summary += f" ({by_sev['critical']} حرجة)"
+        if by_sev.get("warning"):
+            summary += f" ({by_sev['warning']} تحذير)"
+
+        # عيّنة من أهم 5 مهام
+        preview_lines = []
+        top_tasks = sorted(tasks, key=lambda t: (
+            0 if t.severity == "critical" else 1 if t.severity == "warning" else 2,
+            t.created_at,
+        ))[:5]
+        for t in top_tasks:
+            preview_lines.append(f"• {t.title}")
+        detail = summary + "\n\n" + "\n".join(preview_lines)
+
+        create_task(
+            db, company_id=user.company_id, type="digest",
+            assignee_user_id=user_id,
+            title=f"ملخص اليوم — {today}",
+            detail=detail,
+            severity="info", dedup_key=dk,
+        )
+        digests_created += 1
+
+    db.commit()
+    return {"digests_created": digests_created, "users_scanned": len(grouped),
+            "date": today}
