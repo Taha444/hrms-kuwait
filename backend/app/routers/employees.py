@@ -521,6 +521,23 @@ def cancel_termination(emp_id: int, request: Request = None,
     return {"ok": True, "stage": "cancelled"}
 
 
+# ----------------------------- Employee ID Backfill (§6) -----------------------------
+
+@router.post("/backfill-employee-no")
+def backfill_employee_numbers(company_id: int | None = None, request: Request = None,
+                              user: models.User = Depends(require_perm("manage_users")),
+                              db: Session = Depends(get_db)):
+    """V2.2 §6 — يعطي employee_no لأي موظف قديم بدون رقم داخل الشركة.
+    Idempotent — الموظفين اللي عندهم رقم بالفعل ما يتغيروا."""
+    from .. import employee_no as _en
+    cid = scope_company_id(user, company_id)
+    count = _en.backfill_missing(db, company_id=cid)
+    audit(db, user, "backfill_employee_no", "company", cid or 0,
+          detail=f"count={count}", request=request)
+    db.commit()
+    return {"ok": True, "backfilled": count}
+
+
 # ----------------------------- سياسة الحضور (SEC2-17) -----------------------------
 
 @router.post("/{emp_id}/attendance-policy")

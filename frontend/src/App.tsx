@@ -21,7 +21,6 @@ import Requests from "./pages/Requests";
 import RequestDetail from "./pages/RequestDetail";
 import Attendance from "./pages/Attendance";
 import AttendanceReview from "./pages/AttendanceReview";
-import Pro from "./pages/Pro";
 import Operations from "./pages/Operations";
 import Branches from "./pages/Branches";
 import Kiosk from "./pages/Kiosk";
@@ -142,7 +141,7 @@ function Sidebar({ open }: { open: boolean }) {
         {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
         {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
-        {can("manage_permits") && <Item to="/pro" icon="doc" label={t("pro")} />}
+        {/* V2.2 §16 — صفحة PRO Transactions القديمة موقوفة. مسار الإقامة الوحيد هو Renewals. */}
         {/* تجديد الإقامة: الموظف/المندوب/المدير/الشؤون */}
         {canRenewals && <Item to="/renewals" icon="attendance" label={t("rnw_nav")} />}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
@@ -318,7 +317,8 @@ export default function App() {
       <Route path="/attendance" element={
         <Guarded need={(a) => a.isEmployee && a.can("record_attendance")}><Attendance /></Guarded>} />
       <Route path="/attendance-review" element={<Guarded need={(a) => a.canReview}><AttendanceReview /></Guarded>} />
-      <Route path="/pro" element={<Guarded need={(a) => a.can("manage_permits")}><Pro /></Guarded>} />
+      {/* V2.2 §16 — redirect legacy /pro to /renewals (سوف يحول تلقائيًا للصفحة الجديدة) */}
+      <Route path="/pro" element={<Navigate to="/renewals" replace />} />
       <Route path="/operations" element={<Guarded need={(a) => a.canOperations}><Operations /></Guarded>} />
       <Route path="/branches" element={<Guarded need={(a) => a.can("manage_branches")}><Branches /></Guarded>} />
       <Route path="/eos" element={<Guarded need={(a) => a.can("calculate_eos")}><Eos /></Guarded>} />
