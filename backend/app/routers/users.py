@@ -135,9 +135,13 @@ def list_orphaned_users(user: models.User = Depends(require_perm("manage_users")
 def toggle_active(user_id: int, request: Request,
                   user: models.User = Depends(require_perm("manage_users")),
                   db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
     target = _get_scoped_user(db, user, user_id)
     target.is_active = not target.is_active
     target.status = "active" if target.is_active else "inactive"
+    # V2.2 §9 — عند التعطيل، إبطال كل الجلسات النشطة فورًا (JWT الحالية تفشل)
+    if not target.is_active:
+        target.tokens_valid_after = datetime.now(timezone.utc)
     audit(db, user, "toggle_user", "user", target.id, request=request)
     db.commit()
     return {"ok": True, "is_active": target.is_active, "status": target.status}
@@ -150,17 +154,23 @@ USER_STATUSES = {"active", "inactive", "suspended", "locked"}
 def set_user_status(user_id: int, status: str, request: Request,
                     user: models.User = Depends(require_perm("manage_users")),
                     db: Session = Depends(get_db)):
-    """تغيير حالة المستخدم (نشط/غير نشط/موقوف/مقفل) — لا يُحذف نهائيًا."""
+    """تغيير حالة المستخدم (نشط/غير نشط/موقوف/مقفل) — لا يُحذف نهائيًا.
+    V2.2 §9: أي انتقال إلى حالة غير نشطة (inactive/suspended/locked) يبطل
+    الجلسات الحالية تلقائيًا حتى لا يبقى token صالح لحساب معطّل."""
     if status not in USER_STATUSES:
         raise HTTPException(status_code=400, detail="حالة غير صالحة")
+    from datetime import datetime, timedelta, timezone
     target = _get_scoped_user(db, user, user_id)
+    prev_status = target.status
     target.status = status
     target.is_active = status == "active"
     if status == "locked":
-        from datetime import datetime, timedelta, timezone
         target.locked_until = datetime.now(timezone.utc) + timedelta(days=3650)
     elif status == "active":
         target.locked_until = None
+    # إبطال الجلسات عند أي تعطيل — يمنع بقاء JWT صالح لحساب suspended/inactive
+    if status != "active" and prev_status == "active":
+        target.tokens_valid_after = datetime.now(timezone.utc)
     audit(db, user, "set_user_status", "user", target.id, detail=status, request=request)
     db.commit()
     return {"ok": True, "status": status}

@@ -8,6 +8,7 @@
 التشغيل:  python -m app.seed
 """
 import html
+import os
 import secrets
 import sys
 from datetime import date, datetime, time, timedelta
@@ -526,6 +527,14 @@ def run():
     init_db()
     db = SessionLocal()
 
+    # V2.2 §9 — منع seed التجريبي في بيئة إنتاجية إلا بتصريح صريح.
+    #   ALLOW_DEMO_SEED=true يتيح تشغيله عمدًا (مفيد للـstaging).
+    #   بدون التصريح، seed لا يعمل على Postgres حقيقي — يمنع تسريب admin123/hr12345.
+    from .config import settings
+    if settings.is_production and os.environ.get("ALLOW_DEMO_SEED", "").lower() not in ("1", "true", "yes"):
+        print("⚠ seed تجريبي محظور في الإنتاج. اضبط ALLOW_DEMO_SEED=true للسماح صراحًة.")
+        return
+
     # تنظيف شامل لكل الجداول
     for model in (models.AuditLog, models.ConsumedToken, models.RequestApproval,
                   models.RequestDocument, models.Appointment, models.Request, models.RequestType,
@@ -538,11 +547,17 @@ def run():
         db.execute(delete(model))
     db.commit()
 
+    # V2.2 §9 — على staging المسموح: نجبر كل المستخدمين على تغيير كلمة السر أول دخول.
+    # على التطوير المحلي (SQLite): يبقى must_change_password=False للراحة.
+    force_pw_change = settings.is_production
+
     # الإدارة العليا (تختار الشركة) والمالك (يرى كل الشركات)
     db.add(models.User(civil_id="000000000000", password_hash=hash_password("admin123"),
-                       full_name="مدير النظام العام", role="super_admin", must_change_password=False))
+                       full_name="مدير النظام العام", role="super_admin",
+                       must_change_password=force_pw_change))
     db.add(models.User(civil_id="111111111111", password_hash=hash_password("owner123"),
-                       full_name="صاحب الشركات", role="company_owner", must_change_password=False))
+                       full_name="صاحب الشركات", role="company_owner",
+                       must_change_password=force_pw_change))
 
     infos = [build_company(db, cfg) for cfg in COMPANIES]
 
