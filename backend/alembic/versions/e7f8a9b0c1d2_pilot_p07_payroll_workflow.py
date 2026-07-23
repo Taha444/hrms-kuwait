@@ -1,8 +1,12 @@
 """PILOT-P0-7 + P0-8 — Payroll staged workflow + Termination staged workflow
 
 Revision ID: e7f8a9b0c1d2
-Revises: c5d6e7f8a9b0
+Revises: d6e7f8a9b0c1
 Create Date: 2026-07-22 00:00:00.000000
+
+FIX: كان down_revision يشير لـ c5d6e7f8a9b0 وتخطى d6e7f8a9b0c1 (pending_signature) —
+مما تسبب في fork واثنين HEADs في alembic ووقوع الديبلويمنت لأن `upgrade head` فشل.
+تم ضبطها لتكون خلف d6e7f8a9b0c1 بحيث يعود الـchain متسلسل head واحد.
 """
 from typing import Sequence, Union
 
@@ -11,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = "e7f8a9b0c1d2"
-down_revision: Union[str, None] = "c5d6e7f8a9b0"
+down_revision: Union[str, None] = "d6e7f8a9b0c1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
