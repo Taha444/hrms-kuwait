@@ -72,9 +72,13 @@ export default function Login() {
         <button style={{ width: "100%", marginTop: 4 }} disabled={busy} aria-busy={busy}>
           {busy ? t("loading") : t("login")}
         </button>
-        <p className="muted" style={{ marginTop: 16, textAlign: "center" }}>
-          {t("demo_hint")} <code>000000000000</code> / <code>admin123</code>
-        </p>
+        {/* V2.2 §9 — لا نعرض بيانات اعتماد الإدارة العليا في شاشة الدخول أبدًا.
+            يظهر الـhint فقط في بيئة التطوير المحلي (VITE_SHOW_DEMO_HINT=true). */}
+        {import.meta.env.VITE_SHOW_DEMO_HINT === "true" && (
+          <p className="muted" style={{ marginTop: 16, textAlign: "center" }}>
+            {t("demo_hint")} <code>000000000000</code> / <code>admin123</code>
+          </p>
+        )}
       </form>
     </main>
   );

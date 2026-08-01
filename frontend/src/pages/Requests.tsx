@@ -9,7 +9,7 @@ import { statusAr } from "../labels";
 
 export default function Requests() {
   const { t } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [tab, setTab] = useState<"mine" | "inbox">("mine");
   const [mine, setMine] = useState<any[]>([]);
   const [inbox, setInbox] = useState<any[]>([]);
@@ -24,6 +24,9 @@ export default function Requests() {
   // من يملك view_employee (HR/مدير/مشرف/مندوب/محاسب) قد يقدّم طلًبا نيابًة عن موظف آخر —
   // كان النموذج يقدّم دائًما عن حساب المستخدم نفسه فقط (P1-01)
   const canActOnBehalf = can("view_employee");
+  // V2.2 §3 — المستخدم الإداري بدون employee_id لا يمكنه تقديم "لنفسه"،
+  // يجب اختيار موظف صراحة. لو عنده employee_id (مثل موظف/HR مربوط) → يقدر يختار نفسه.
+  const hasOwnEmployeeProfile = !!user?.employee_id;
 
   const load = () => {
     setState("loading");
@@ -60,6 +63,11 @@ export default function Requests() {
 
   const submit = async () => {
     setErr("");
+    // V2.2 §3 — منع تقديم "لنفسي" من مستخدم غير مرتبط بملف موظف قبل إرسال الطلب
+    if (canActOnBehalf && !onBehalfOf && !hasOwnEmployeeProfile) {
+      setErr("حسابك غير مرتبط بملف موظف — اختر موظفًا محددًا من القائمة");
+      return;
+    }
     const clean = Object.fromEntries(
       Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
     );
@@ -107,9 +115,16 @@ export default function Requests() {
             <div className="field">
               <label htmlFor="req-on-behalf">{t("req_on_behalf_of")}</label>
               <select id="req-on-behalf" value={onBehalfOf} onChange={(e) => setOnBehalfOf(e.target.value ? +e.target.value : "")}>
-                <option value="">{t("req_myself")}</option>
+                {hasOwnEmployeeProfile
+                  ? <option value="">{t("req_myself")}</option>
+                  : <option value="" disabled>— اختر موظفًا —</option>}
                 {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
               </select>
+              {!hasOwnEmployeeProfile && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  حسابك الإداري غير مرتبط بملف موظف — يجب اختيار موظف محدد
+                </span>
+              )}
             </div>
           )}
           {typeCode === "leave" && (

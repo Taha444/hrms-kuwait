@@ -84,21 +84,39 @@ def generate(db: Session, employee: models.Employee) -> str:
 
     Non-reusable: يحسب أعلى تسلسل موجود ضمن نفس (abbr, branch) بما فيهم الموظفين
     المؤرشفين، ويعطي seq+1. الأرقام القديمة تظل محجوزة.
+
+    Thread-safe: عند التصادم مع unique constraint (احتمال ضعيف عند إنشاء
+    متزامن)، نعيد المحاولة حتى 5 مرات مع تحديث الـsequence من DB.
     """
     if employee.employee_no:
         return employee.employee_no
 
+    from sqlalchemy.exc import IntegrityError
     company = db.get(models.Company, employee.company_id)
     branch = db.get(models.Branch, employee.branch_id) if employee.branch_id else None
-
     abbr = _company_abbr(company)
     bcode = _branch_code(branch)
     prefix = f"{abbr}-{bcode}-"
-    seq = _next_sequence(db, prefix)
-    code = f"{prefix}{seq:05d}"
 
-    employee.employee_no = code
-    return code
+    MAX_ATTEMPTS = 5
+    last_error: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        seq = _next_sequence(db, prefix)
+        code = f"{prefix}{seq:05d}"
+        employee.employee_no = code
+        try:
+            db.flush()  # نفرض الكتابة للـDB الآن لالتقاط التصادم مبكرًا
+            return code
+        except IntegrityError as e:
+            last_error = e
+            db.rollback()
+            # نعيد جلب الموظف من DB (rollback أفقده session state)
+            employee = db.merge(employee)
+            employee.employee_no = None
+            continue
+    raise RuntimeError(
+        f"فشل توليد employee_no بعد {MAX_ATTEMPTS} محاولات — تصادم متكرر: {last_error}"
+    )
 
 
 def backfill_missing(db: Session, company_id: int | None = None) -> int:

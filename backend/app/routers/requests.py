@@ -173,9 +173,17 @@ def create_request_type(data: schemas.RequestTypeIn,
 def submit_request(data: schemas.RequestIn, request: Request,
                    user: models.User = Depends(require_perm("submit_request")),
                    db: Session = Depends(get_db)):
-    # تحديد الموظف: العامل يقدّم لنفسه، وذو الصلاحية قد يقدّم لموظف
+    # تحديد الموظف: العامل يقدّم لنفسه، وذو الصلاحية قد يقدّم لموظف آخر.
+    # V2.2 §3 — لو المستخدم الإداري (branch_supervisor مثلًا) بدون employee_id
+    # حاول يقدّم "لنفسه" — نرفض برسالة واضحة تدله على السبب.
     emp_id = data.employee_id or user.employee_id
     if not emp_id:
+        if not user.employee_id:
+            raise HTTPException(
+                status_code=400,
+                detail=("حسابك غير مرتبط بملف موظف — لا يمكنك تقديم طلب لنفسك. "
+                        "اختر موظفًا محددًا من قائمة 'تقديم نيابة عن'.")
+            )
         raise HTTPException(status_code=400, detail="يجب تحديد الموظف")
     emp = db.get(models.Employee, emp_id)
     if not emp:
