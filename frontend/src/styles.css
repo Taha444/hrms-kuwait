@@ -392,9 +392,14 @@ video, canvas.cam, .cam { width: 100%; max-width: 340px; border-radius: 14px; ba
 .sk-head { height: 34px; width: 45%; }
 .sk-row { height: 46px; }
 @keyframes sk-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
-.state-box { display: grid; place-items: center; gap: 10px; text-align: center; padding: 40px 20px;
-  color: var(--muted); border: 1px dashed var(--line); border-radius: 14px; }
+.state-box { display: grid; place-items: center; gap: 10px; text-align: center; padding: 56px 24px;
+  color: var(--muted); border: 1px dashed var(--line); border-radius: 14px;
+  background: linear-gradient(180deg, #fafcfb 0%, #f3f7f5 100%); }
 .state-box.err { color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg); }
+.state-icon { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%;
+  background: #fff; color: var(--petrol-700, #0b3b54); box-shadow: 0 2px 8px rgba(11,59,84,0.08); }
+.state-title { font-size: 16px; font-weight: 600; color: var(--ink, #16302b); margin-top: 4px; }
+.state-hint { font-size: 13px; color: var(--muted); max-width: 380px; line-height: 1.6; }
 
 /* ---------- استجابة (موبايل / تابلت) ---------- */
 /* زر القائمة وخلفية الـ drawer يظهروا على الشاشات الصغيرة فقط */

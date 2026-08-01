@@ -14,12 +14,27 @@ export function Skeleton({ rows = 4 }: { rows?: number }) {
   );
 }
 
-export function EmptyState({ message, icon = "doc" }: { message?: string; icon?: string }) {
+export function EmptyState({
+  message, icon = "doc", hint, action,
+}: {
+  message?: string;
+  icon?: string;
+  hint?: string;
+  action?: { label: string; onClick: () => void };
+}) {
   const { t } = useI18n();
   return (
     <div className="state-box">
-      <Icon name={icon} size={30} />
-      <div>{message || t("no_data")}</div>
+      <div className="state-icon">
+        <Icon name={icon} size={40} />
+      </div>
+      <div className="state-title">{message || t("no_data")}</div>
+      {hint && <div className="state-hint">{hint}</div>}
+      {action && (
+        <button onClick={action.onClick} style={{ marginTop: 8 }}>
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }

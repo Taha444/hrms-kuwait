@@ -38,6 +38,7 @@ const dict: Record<string, { ar: string; en: string }> = {
   operations: { ar: "مركز العمليات", en: "Operations Center" },
   companies: { ar: "الشركات", en: "Companies" },
   users: { ar: "المستخدمون والصلاحيات", en: "Users & Permissions" },
+  system_health: { ar: "حالة النظام", en: "System Health" },
   change_password: { ar: "تغيير كلمة المرور", en: "Change Password" },
   // أفعال شائعة
   save: { ar: "حفظ", en: "Save" },

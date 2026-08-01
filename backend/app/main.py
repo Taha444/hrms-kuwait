@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import DEFAULT_SECRET_KEYS, settings
 from .database import init_db
 from .routers import (
+    admin as admin_router,
     archive,
     attendance,
     auth,
@@ -186,7 +187,8 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 for r in (auth, companies, users, employees, org, attendance, kiosk, documents, tasks,
           requests_router, templates, payroll_router, reports, pro, archive, search,
           operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
-          verify, delegations, feature_flags_router, signatures, signatories, twofa):
+          verify, delegations, feature_flags_router, signatures, signatories, twofa,
+          admin_router):
     app.include_router(r.router, prefix="/api")
 # PILOT-P0-5 — hr_router للاستبدالات المعلّقة (prefix مختلف عن /me/signature)
 app.include_router(signatures.hr_router, prefix="/api")
@@ -241,6 +243,44 @@ def health_deep():
     except Exception as e:
         results["checks"]["registry"] = {"status": "fail", "error": str(e)[:200]}
         ok = False
+
+    # 5) OCR (Tesseract) — لصفحة "حالة النظام" في العرض التوضيحي (DEMO-3)
+    try:
+        from . import ocr
+        tess = ocr._tesseract_status()
+        results["checks"]["ocr"] = {
+            "status": "ok" if tess["available"] else "disabled",
+            "version": tess.get("version"),
+            "languages": tess.get("languages", []),
+            "arabic_ready": "ara" in (tess.get("languages") or []),
+        }
+    except Exception as e:
+        results["checks"]["ocr"] = {"status": "fail", "error": str(e)[:200]}
+
+    # 6) Data counts (سريعة — للعرض في لوحة الحالة)
+    try:
+        from . import models
+        with SessionLocal() as db:
+            counts = {
+                "companies": db.query(models.Company).count(),
+                "employees": db.query(models.Employee).count(),
+                "users": db.query(models.User).count(),
+                "requests": db.query(models.Request).count(),
+                "templates": db.query(models.Template).count(),
+                "documents": db.query(models.Document).count(),
+            }
+        results["checks"]["data"] = {"status": "ok", **counts}
+    except Exception as e:
+        results["checks"]["data"] = {"status": "fail", "error": str(e)[:200]}
+
+    # 7) Alembic head (نسخة الهجرات النشطة)
+    try:
+        from sqlalchemy import text
+        with SessionLocal() as db:
+            row = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+            results["checks"]["alembic"] = {"status": "ok", "head": row[0] if row else None}
+    except Exception as e:
+        results["checks"]["alembic"] = {"status": "fail", "error": str(e)[:200]}
 
     if not ok:
         from fastapi.responses import JSONResponse

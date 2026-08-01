@@ -5,6 +5,7 @@ import { useI18n } from "./i18n";
 import api from "./api";
 import Icon from "./Icon";
 import GlobalSearch from "./components/GlobalSearch";
+import WelcomeTour from "./components/WelcomeTour";
 
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
@@ -32,6 +33,7 @@ import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
 import Companies from "./pages/Companies";
 import Users from "./pages/Users";
+import SystemHealth from "./pages/SystemHealth";
 import { roleAr } from "./labels";
 
 // لوجو/شعار مميّز لكل دور (أيقونة + لون)
@@ -159,6 +161,7 @@ function Sidebar({ open }: { open: boolean }) {
           {user?.role === "super_admin" && <Item to="/companies" icon="companies" label={t("companies")} />}
           {can("manage_users") && <Item to="/users" icon="users" label={t("users")} />}
           {can("view_audit") && <Item to="/audit" icon="lock" label={t("audit")} />}
+          {user?.role === "super_admin" && <Item to="/system-health" icon="dashboard" label={t("system_health")} />}
         </div>
       )}
 
@@ -258,6 +261,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             المحتوى الرئيسي للصفحة بمعزل عن الشريط الجانبي/العلوي */}
         <main className="content" id="main-content" tabIndex={-1}>{children}</main>
       </div>
+      {/* DEMO-5: modal ترحيبي يظهر مرة واحدة لكل مستخدم، role-aware */}
+      <WelcomeTour />
     </div>
   );
 }
@@ -331,6 +336,7 @@ export default function App() {
       <Route path="/audit" element={<Guarded need={(a) => a.can("view_audit")}><Audit /></Guarded>} />
       <Route path="/companies" element={<Guarded need={(a) => a.user?.role === "super_admin"}><Companies /></Guarded>} />
       <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")}><Users /></Guarded>} />
+      <Route path="/system-health" element={<Guarded need={(a) => a.user?.role === "super_admin"}><SystemHealth /></Guarded>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
