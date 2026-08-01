@@ -62,7 +62,42 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
   const [docExpiry, setDocExpiry] = useState("");
   const [uploadedDocs, setUploadedDocs] = useState<string[]>([]);
 
+  // User account state — يُنشأ تلقائيًا بعد الحفظ (checkbox قابل للإلغاء)
+  const [createUserAccount, setCreateUserAccount] = useState(true);
+  const [userCredentials, setUserCredentials] = useState<{
+    civil_id: string; password: string; user_id: number;
+  } | null>(null);
+  const [copyToast, setCopyToast] = useState("");
+
   const setField = (k: string, v: any) => setForm({ ...form, [k]: v });
+
+  // كلمة سر عشوائية قوية: 12 حرف، حروف كبيرة/صغيرة/أرقام/رموز
+  const genPassword = (): string => {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // بلا I/O لتجنب اللبس
+    const lower = "abcdefghjkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const symbols = "!@#$%&*";
+    const all = upper + lower + digits + symbols;
+    // تضمين نوع واحد على الأقل من كل فئة
+    const required = [
+      upper[Math.floor(Math.random() * upper.length)],
+      lower[Math.floor(Math.random() * lower.length)],
+      digits[Math.floor(Math.random() * digits.length)],
+      symbols[Math.floor(Math.random() * symbols.length)],
+    ];
+    const rest = Array.from({ length: 8 }, () => all[Math.floor(Math.random() * all.length)]);
+    return [...required, ...rest].sort(() => Math.random() - 0.5).join("");
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyToast(isEn ? `${label} copied ✓` : `تم نسخ ${label} ✓`);
+      setTimeout(() => setCopyToast(""), 2000);
+    } catch {
+      setErr(isEn ? "Copy failed — select and copy manually" : "فشل النسخ — حدد واسحب يدويًا");
+    }
+  };
 
   // ============ Step 1 validation ============
   const validateStep1 = () => {
@@ -148,6 +183,31 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
       const r = await api.post("/employees", payload);
       setSavedEmp(r.data);
       setStep(4);
+      // إنشاء حساب المستخدم تلقائيًا لو HR اختار (الافتراضي)
+      if (createUserAccount) {
+        const pw = genPassword();
+        try {
+          const userR = await api.post("/users", {
+            civil_id: r.data.civil_id,
+            full_name: r.data.name,
+            role: "employee",
+            company_id: r.data.company_id,
+            employee_id: r.data.id,
+            password: pw,
+          });
+          setUserCredentials({
+            civil_id: r.data.civil_id,
+            password: pw,
+            user_id: userR.data.id,
+          });
+        } catch (userErr: any) {
+          // فشل إنشاء الحساب لا يعطل الفلو — يظهر تنبيه بالأسباب
+          const msg = errMsg(userErr, isEn ? "User account creation failed" : "فشل إنشاء حساب المستخدم");
+          setErr(isEn
+            ? `Employee saved, but user account failed: ${msg}. Create manually later.`
+            : `تم حفظ الموظف، لكن فشل إنشاء الحساب: ${msg}. أنشئه يدويًا لاحقًا.`);
+        }
+      }
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
     finally { setBusy(false); }
   };
@@ -432,6 +492,20 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
               <p>{isEn
                 ? "Ready to save the employee. Permits and documents can be added after."
                 : "جاهز لحفظ الموظف. أذونات الإقامة والمستندات ستُضاف بعد الحفظ."}</p>
+              <div className="field" style={{ marginTop: 12, marginBottom: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={createUserAccount}
+                    onChange={(e) => setCreateUserAccount(e.target.checked)} />
+                  <span>
+                    <strong>{isEn ? "Auto-create login account for this employee" : "أنشئ حساب دخول للموظف تلقائيًا"}</strong>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {isEn
+                        ? "Username = civil ID, strong random password shown once for you to copy and send to the employee."
+                        : "اسم المستخدم = الرقم المدني، وكلمة سر عشوائية قوية تظهر مرة واحدة لتنسخها وترسلها للموظف."}
+                    </div>
+                  </span>
+                </label>
+              </div>
               <button onClick={saveEmployee} disabled={busy} aria-busy={busy}>
                 {busy
                   ? (isEn ? "Saving..." : "جارٍ الحفظ...")
@@ -445,6 +519,70 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                   ? `✓ Employee saved. ID: ${savedEmp.employee_no}`
                   : `✓ تم حفظ الموظف. الرقم الوظيفي: ${savedEmp.employee_no}`}
               </div>
+
+              {/* بيانات حساب الدخول — تظهر مرة واحدة فقط */}
+              {userCredentials && (
+                <div className="card" style={{
+                  background: "#fff8e1",
+                  border: "2px solid #f59e0b",
+                  marginBottom: 12,
+                }} role="region" aria-labelledby="creds-title">
+                  <h4 id="creds-title" style={{ margin: "0 0 8px" }}>
+                    🔐 {isEn ? "Login credentials (shown once)" : "بيانات الدخول (تظهر مرة واحدة فقط)"}
+                  </h4>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                    {isEn
+                      ? "Copy these NOW and send them to the employee. The password won't appear again — HR would need to reset it if lost. The employee will be forced to change it on first login."
+                      : "انسخها الآن وأرسلها للموظف. كلمة السر لن تظهر مرة أخرى — HR يحتاج لإعادة تعيينها لو ضاعت. الموظف سيُجبر على تغييرها في أول دخول."}
+                  </p>
+
+                  <div className="row" style={{ marginBottom: 8 }}>
+                    <div className="field" style={{ flex: 2 }}>
+                      <label>{isEn ? "Username (Civil ID)" : "اسم المستخدم (الرقم المدني)"}</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input readOnly value={userCredentials.civil_id} dir="ltr"
+                          style={{ flex: 1, fontFamily: "monospace", fontSize: 16, letterSpacing: 1 }}
+                          onFocus={(e) => e.currentTarget.select()} />
+                        <button onClick={() => copyToClipboard(userCredentials.civil_id,
+                          isEn ? "Username" : "اسم المستخدم")}>
+                          📋 {isEn ? "Copy" : "نسخ"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="row" style={{ marginBottom: 8 }}>
+                    <div className="field" style={{ flex: 2 }}>
+                      <label>{isEn ? "Password" : "كلمة السر"}</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input readOnly value={userCredentials.password} dir="ltr"
+                          style={{ flex: 1, fontFamily: "monospace", fontSize: 16, letterSpacing: 2 }}
+                          onFocus={(e) => e.currentTarget.select()} />
+                        <button onClick={() => copyToClipboard(userCredentials.password,
+                          isEn ? "Password" : "كلمة السر")}>
+                          📋 {isEn ? "Copy" : "نسخ"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="row">
+                    <button onClick={() => copyToClipboard(
+                      `${isEn ? "Username" : "اسم المستخدم"}: ${userCredentials.civil_id}\n` +
+                      `${isEn ? "Password" : "كلمة السر"}: ${userCredentials.password}`,
+                      isEn ? "Both" : "الاثنين")}>
+                      📋 {isEn ? "Copy both" : "نسخ الاثنين معًا"}
+                    </button>
+                  </div>
+
+                  {copyToast && (
+                    <div className="ok" role="status" aria-live="polite"
+                         style={{ marginTop: 8, padding: "4px 8px", fontSize: 12 }}>
+                      {copyToast}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Permits */}
               <div className="card" style={{ background: "#fafafa" }}>
