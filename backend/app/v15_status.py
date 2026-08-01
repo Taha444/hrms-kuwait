@@ -110,23 +110,30 @@ DOCUMENT_LIFECYCLE: dict[str, dict] = {
     },
     "GENERATED": {
         "label_ar": "تم التوليد", "label_en": "Generated",
-        "next": ["SIGNED", "DELIVERED", "ARCHIVED"],
+        "next": ["SIGNED", "DELIVERED", "ARCHIVED", "SUPERSEDED"],
         "note": "PDF جاهز؛ ينتظر توقيع إلكتروني أو تسليم مباشر.",
     },
     "SIGNED": {
         "label_ar": "موقّع إلكترونيًا", "label_en": "Electronically Signed",
-        "next": ["DELIVERED", "ARCHIVED"],
+        "next": ["DELIVERED", "ARCHIVED", "SUPERSEDED"],
         "note": "تم توثيق التوقيع في SYS-001 Signature Evidence Record.",
     },
     "DELIVERED": {
         "label_ar": "تم التسليم", "label_en": "Delivered",
-        "next": ["ARCHIVED"],
+        "next": ["ARCHIVED", "SUPERSEDED"],
         "note": "استُلم من المقدّم/الجهة الخارجية عبر تنزيل موثّق.",
     },
     "ARCHIVED": {
         "label_ar": "مؤرشف", "label_en": "Archived",
         "next": [],
         "note": "الحالة النهائية — محفوظ في أرشيف الشركة/الموظف.",
+        "terminal": True,
+    },
+    "SUPERSEDED": {
+        "label_ar": "استُبدلت بنسخة أحدث", "label_en": "Superseded",
+        "next": [],
+        "note": "V2.2 Module 15 — أُصدرت نسخة أحدث من نفس المستند؛ توقيعات هذه النسخة "
+                "بطلت. النسخة تظل محفوظة كأثر أرشيفي.",
         "terminal": True,
     },
     "GENERATION_FAILED": {
