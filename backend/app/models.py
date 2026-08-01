@@ -36,6 +36,8 @@ class Company(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     name_en: Mapped[str | None] = mapped_column(String(200))
+    # V2.2 §6/Module 6 — اختصار حرفي 3 حروف يظهر في Employee ID مثل KOC-KUW-00142
+    abbreviation: Mapped[str | None] = mapped_column(String(6))
     commercial_reg: Mapped[str | None] = mapped_column(String(50))
     file_number: Mapped[str | None] = mapped_column(String(50))  # رقم ملف الشركة (القوى العاملة)
     entity_type: Mapped[str | None] = mapped_column(String(100))
@@ -112,6 +114,8 @@ class Branch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
+    # V2.2 §6/Module 6 — كود حرفي للفرع يظهر في Employee ID (KOC-KUW-00142)
+    code: Mapped[str | None] = mapped_column(String(6))
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
     geofence_radius_m: Mapped[int] = mapped_column(Integer, default=100)

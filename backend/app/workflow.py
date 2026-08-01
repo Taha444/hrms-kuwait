@@ -996,6 +996,12 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             models.RequestDocument.kind == kind,
         )
     ).all()
+    # V2.2 Module 15 — regenerating invalidates prior versions:
+    # النسخ السابقة تُوسم SUPERSEDED (signature snapshots القديمة تصبح باطلة)
+    # والنسخة الجديدة تحصل على version أعلى.
+    for prev in existing:
+        if prev.lifecycle_status not in ("SUPERSEDED", "ARCHIVED"):
+            prev.lifecycle_status = "SUPERSEDED"
     # يُنشأ السجل أوًلا (بلا file_path) للحصول على doc.id، لازم لتوليد رمز التحقق
     # المُشتق منه (P2-01) قبل رسم الـPDF نفسه.
     # V1.5 Phase 4: نستخرج od_code من default_template_code (HRMS-PR-XXX → OD-YYY)
@@ -1057,6 +1063,15 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     import hashlib
     doc.checksum_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
     doc.reference_no = f"REQ-{req.id:06d}-{kind.upper()[:6]}-v{doc.version}"
+    # V2.2 Module 15 — signature_version: يشير للنسخة الفعلية من signature_path المستخدمة
+    #   وقت التوليد. لو الموقّع بدّل توقيعه بعدين، هذا المستند يبقى محتفظًا بالنسخة الأصلية.
+    if approvals:
+        last_signer_id = approvals[-1].approver_user_id if approvals else None
+        if last_signer_id:
+            signer = db.get(models.User, last_signer_id)
+            if signer and signer.signature_updated_at:
+                # نحفظ الطابع الزمني كـinteger unix timestamp للـsignature version
+                doc.signature_version = int(signer.signature_updated_at.timestamp())
     return doc
 
 

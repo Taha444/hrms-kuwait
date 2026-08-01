@@ -27,8 +27,10 @@ PW = {"manager": "manager123", "hr": "hr12345", "delegate": "deleg123",
 COMPANIES = [
     {
         "name": "شركة الخليج للتجارة", "name_en": "Gulf Trading Co.", "reg": "100200",
+        "abbr": "GTC",  # V2.2 Module 6 — يظهر في Employee ID (GTC-SLM-00042)
         "entity": "ذات مسؤولية محدودة", "divisor": 26, "lead": 30, "prefix": "1",
-        "branches": [("محل السالمية", 29.3394, 48.0758), ("محل حولي", 29.3328, 48.0263)],
+        "branches": [("محل السالمية", 29.3394, 48.0758, "SLM"),
+                    ("محل حولي", 29.3328, 48.0263, "HWL")],
         "employees": [
             ("أحمد محمود علي", "مصري", "بائع", 480, "both"),
             ("راجيش كومار", "هندي", "فني", 420, "qr"),
@@ -40,8 +42,10 @@ COMPANIES = [
     },
     {
         "name": "الوطنية للمقاولات", "name_en": "National Contracting Co.", "reg": "300400",
+        "abbr": "NCC",
         "entity": "شركة شخص واحد", "divisor": 30, "lead": 45, "prefix": "2",
-        "branches": [("موقع الجهراء", 29.3375, 47.6581), ("موقع الأحمدي", 29.0769, 48.0838)],
+        "branches": [("موقع الجهراء", 29.3375, 47.6581, "JAH"),
+                    ("موقع الأحمدي", 29.0769, 48.0838, "AHM")],
         "employees": [
             ("علي عبد الله", "مصري", "عامل", 380, "qr"),
             ("سونيل باتيل", "هندي", "كهربائي", 430, "both"),
@@ -380,15 +384,23 @@ def build_company(db, cfg) -> dict:
     p = cfg["prefix"]
     company = models.Company(
         name=cfg["name"], name_en=cfg["name_en"], commercial_reg=cfg["reg"],
+        abbreviation=cfg.get("abbr"),
         entity_type=cfg["entity"], eos_day_divisor=cfg["divisor"], eos_max_months=18,
         alert_lead_days=cfg["lead"])
     db.add(company)
     db.flush()
 
-    # فروع
+    # فروع (V2.2 Module 6: code يظهر في Employee ID)
     branches = []
-    for name, lat, lng in cfg["branches"]:
-        b = models.Branch(company_id=company.id, name=name, latitude=lat, longitude=lng,
+    for entry in cfg["branches"]:
+        # Backward-compat: قد يكون (name, lat, lng) أو (name, lat, lng, code)
+        if len(entry) == 4:
+            name, lat, lng, bcode = entry
+        else:
+            name, lat, lng = entry
+            bcode = None
+        b = models.Branch(company_id=company.id, name=name, code=bcode,
+                          latitude=lat, longitude=lng,
                           geofence_radius_m=120, qr_secret=secrets.token_hex(16),
                           kiosk_key=secrets.token_urlsafe(24), address=name)
         db.add(b)

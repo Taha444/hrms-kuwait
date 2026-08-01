@@ -97,9 +97,10 @@ def test_P0_6_new_employee_gets_auto_employee_no(client):
     assert r.status_code == 201
     emp = r.json()
     assert emp["employee_no"] is not None
-    # الصيغة: COxx-BRxx-####
+    # V2.2 Module 6 — الصيغة المفضّلة: {ABBR}-{BRANCH_CODE}-{seq:05d} (مثل GTC-SLM-00042)
+    # مع توافق خلفي مع الصيغة القديمة COxx-BRxx-#### للسجلات الموروثة.
     import re
-    assert re.match(r"^CO\d{2}-BR\d{2}-\d{4}$", emp["employee_no"])
+    assert re.match(r"^[A-Z0-9]{2,6}-[A-Z0-9]{2,6}-\d{4,5}$", emp["employee_no"])
 
 
 def test_P0_6_employee_no_is_unique(client):
