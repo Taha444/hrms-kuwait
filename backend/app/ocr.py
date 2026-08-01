@@ -79,42 +79,73 @@ def parse_mrz_td3(text: str) -> dict:
 
 
 class OcrProvider(Protocol):
-    def image_to_text(self, file_path: str) -> str: ...
+    def image_to_text(self, file_path: str, lang: str = "eng") -> str: ...
 
 
 class NullImageOcr:
     """لا محرّك صور مُفعّل — يُرجع نصًّا فارغًا."""
-    def image_to_text(self, file_path: str) -> str:
+    def image_to_text(self, file_path: str, lang: str = "eng") -> str:
         return ""
 
 
 class TesseractOcr:
     """محرّك OCR فعلي عبر Tesseract (pytesseract). يدعم قراءة نص MRZ من الجواز،
-    والبطاقة المدنية الكويتية باللغتين (eng+ara)."""
+    والبطاقة المدنية الكويتية باللغتين (eng+ara).
+
+    Preprocessing المطبَّق:
+    - EXIF exif_transpose: تصحيح دوران صور الموبايل
+    - Upscale: تكبير الصور الصغيرة لعرض 2000px (Tesseract يعمل أفضل على 300+ DPI)
+    - Grayscale + autocontrast: زيادة التباين
+    - Sharpen: حواف أوضح للأحرف
+    - Config PSM 6: يفترض كتلة نص موحّدة (مناسب للبطاقات)
+    """
     def image_to_text(self, file_path: str, lang: str = "eng") -> str:
         import pytesseract
-        from PIL import Image, ImageOps
+        from PIL import Image, ImageOps, ImageFilter
 
         img = Image.open(file_path)
-        # EXIF rotation (لو صورة موبايل)
         img = ImageOps.exif_transpose(img)
-        # Grayscale + auto-contrast لتحسين الدقة
+        # تكبير الصور الصغيرة (Tesseract يعمل أفضل على دقة أعلى)
+        w, h = img.size
+        if w < 2000:
+            scale = 2000 / w
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
         img = img.convert("L")
         img = ImageOps.autocontrast(img, cutoff=2)
-        return pytesseract.image_to_string(img, lang=lang)
+        img = img.filter(ImageFilter.SHARPEN)
+        # PSM 6 = Assume a single uniform block of text
+        return pytesseract.image_to_string(img, lang=lang, config="--psm 6")
 
 
-def _detect_provider() -> OcrProvider:
-    """يفعّل Tesseract تلقائيًا إن كانت المكتبة والثنائي (binary) متوفّرين، وإلا يبقى معطَّلًا بأمان."""
+# ============================================================================
+# اكتشاف المحرّك — كل استدعاء يعيد الفحص (بلا cache) عشان لو الـbinary
+# اتثبت بعد إقلاع التطبيق يتم استخدامه فورًا. يُرجع أيضًا تفاصيل التشخيص.
+# ============================================================================
+def _tesseract_status() -> dict:
+    """يفحص حالة Tesseract الحقيقية على النظام ويُرجع تفاصيل التشخيص."""
+    status: dict = {"available": False, "version": None, "languages": [], "error": None}
     try:
         import pytesseract
-        pytesseract.get_tesseract_version()
+        status["version"] = str(pytesseract.get_tesseract_version())
+        status["available"] = True
+        try:
+            status["languages"] = list(pytesseract.get_languages(config=""))
+        except Exception as le:
+            status["languages_error"] = str(le)
+    except Exception as e:
+        status["error"] = f"{type(e).__name__}: {e}"
+    return status
+
+
+def _get_provider() -> OcrProvider:
+    """يُرجع Tesseract إن كان مثبَّتًا، وإلا Null."""
+    if _tesseract_status()["available"]:
         return TesseractOcr()
-    except Exception:
-        return NullImageOcr()
+    return NullImageOcr()
 
 
-provider: OcrProvider = _detect_provider()
+# متغيّر للتوافق مع الاستدعاءات القديمة (يُقيَّم لحظيًا)
+provider: OcrProvider = _get_provider()
 
 
 def _read_text_source(file_path: str, lang: str = "eng") -> str:
@@ -122,11 +153,7 @@ def _read_text_source(file_path: str, lang: str = "eng") -> str:
     if file_path.lower().endswith(".txt") and os.path.exists(file_path):
         with open(file_path, encoding="utf-8", errors="ignore") as f:
             return f.read()
-    try:
-        return provider.image_to_text(file_path, lang=lang)
-    except TypeError:
-        # provider قديم بدون lang
-        return provider.image_to_text(file_path)
+    return _get_provider().image_to_text(file_path, lang=lang)
 
 
 # ============================================================================
@@ -217,22 +244,84 @@ def parse_kuwait_civil_id(text_en: str, text_ar: str = "") -> dict:
 
 
 def extract(document_type_code: str, file_path: str) -> dict:
-    """يستخرج بيانات مقترحة حسب نوع المستند (يؤكّدها المستخدم قبل الحفظ)."""
+    """يستخرج بيانات مقترحة حسب نوع المستند (يؤكّدها المستخدم قبل الحفظ).
+
+    عند فشل القراءة يُرجع diagnostics صريحة (Tesseract غير مثبت / حزمة عربية ناقصة
+    / نص فارغ) بدل رسائل غامضة، عشان المشرف يعرف السبب الفعلي.
+    """
+    tess = _tesseract_status()
+
     if document_type_code == "passport":
+        if not tess["available"]:
+            return {"_provider": "mrz", "_confidence": 0.0,
+                    "_note": f"محرّك OCR غير متاح على الخادم ({tess['error']}). "
+                             "ارفع نص MRZ كملف .txt أو ثبّت tesseract-ocr.",
+                    "_diag": tess,
+                    "full_name": None, "passport_number": None, "nationality": None,
+                    "date_of_birth": None, "expiry_date": None}
         text = _read_text_source(file_path, lang="eng")
         if text.strip():
-            return parse_mrz_td3(text)
+            r = parse_mrz_td3(text)
+            r["_diag"] = {"text_length": len(text), **tess}
+            return r
         return {"_provider": "mrz", "_confidence": 0.0,
-                "_note": "لم يُستخرج نص MRZ — فعّل محرّك صور (Tesseract) أو ارفع نص MRZ كملف .txt.",
+                "_note": "Tesseract مثبَّت لكن لم يُستخرج نص MRZ — جودة صورة الجواز منخفضة. "
+                         "جرّب صورة أوضح أو ارفع نص MRZ كملف .txt.",
+                "_diag": tess,
                 "full_name": None, "passport_number": None, "nationality": None,
                 "date_of_birth": None, "expiry_date": None}
+
     if document_type_code == "civil_id":
-        text_en = _read_text_source(file_path, lang="eng")
+        if not tess["available"]:
+            return {
+                "_provider": "tesseract_civil_id", "_confidence": 0.0,
+                "_note": f"محرّك OCR غير مثبَّت على الخادم ({tess['error']}). "
+                         "المطلوب: apt-get install tesseract-ocr tesseract-ocr-ara.",
+                "_diag": tess,
+                "civil_id": None, "full_name": None, "full_name_ar": None,
+                "passport_number": None, "nationality": None, "gender": None,
+                "date_of_birth": None, "expiry_date": None,
+            }
+
+        langs = tess.get("languages", [])
+        has_ara = "ara" in langs
+        has_eng = "eng" in langs or not langs  # لو ما قدرناش نقرأ القائمة نجرّب
+
+        text_en = ""
         text_ar = ""
-        try:
-            text_ar = _read_text_source(file_path, lang="ara")
-        except Exception:
-            # حزمة الـara غير مثبتة — نكمل بالإنجليزي فقط
-            pass
-        return parse_kuwait_civil_id(text_en, text_ar)
+        en_err = ar_err = None
+        if has_eng:
+            try:
+                text_en = _read_text_source(file_path, lang="eng")
+            except Exception as e:
+                en_err = f"{type(e).__name__}: {e}"
+        if has_ara:
+            try:
+                text_ar = _read_text_source(file_path, lang="ara")
+            except Exception as e:
+                ar_err = f"{type(e).__name__}: {e}"
+
+        r = parse_kuwait_civil_id(text_en, text_ar)
+        r["_diag"] = {
+            **tess,
+            "text_length_en": len(text_en),
+            "text_length_ar": len(text_ar),
+            "en_error": en_err,
+            "ar_error": ar_err,
+            "arabic_pack_installed": has_ara,
+        }
+        # لو الحزمة العربية مفقودة — نضيف تحذير واضح
+        if not has_ara and r.get("_confidence", 0) < 0.9:
+            note = r.get("_note", "")
+            r["_note"] = (note + " | " if note else "") + \
+                         "حزمة اللغة العربية (tesseract-ocr-ara) غير مثبَّتة — الاسم العربي لن يُقرأ."
+        # لو Tesseract مثبَّت لكن ما قدرش يقرأ أي نص — رسالة أوضح
+        if not text_en.strip() and not text_ar.strip():
+            r["_note"] = (f"Tesseract v{tess['version']} مثبَّت لكن لم يقرأ أي نص من الصورة. "
+                         "الأسباب المحتملة: (1) الصورة ضبابية أو منخفضة الدقة، "
+                         "(2) الإضاءة سيئة، (3) البطاقة مائلة جدًا. "
+                         "جرّب تصويرها من مسافة أقرب مع إضاءة أفضل، "
+                         "أو أدخل البيانات يدويًا.")
+        return r
+
     return {"_provider": "null", "_confidence": 0.0, "text": ""}

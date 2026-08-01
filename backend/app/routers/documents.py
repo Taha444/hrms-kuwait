@@ -65,6 +65,13 @@ async def ocr_preview(document_type_code: str = Form(...), file: UploadFile = Fi
     return {"suggested": suggested, "note": "راجع البيانات وعدّلها قبل الحفظ."}
 
 
+@router.get("/ocr-status")
+def ocr_status(user: models.User = Depends(require_perm("upload_documents"))):
+    """تشخيص محرّك OCR على الخادم: هل Tesseract مثبَّت؟ إصداره؟ اللغات المتاحة؟
+    مفيد للإدارة عشان تعرف لو حزمة العربية ناقصة قبل ما يشتكي المستخدمون."""
+    return ocr._tesseract_status()
+
+
 @router.post("/upload")
 async def upload_document(
     request: Request,

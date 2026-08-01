@@ -14,7 +14,11 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
+# gcc/libpq: SQLAlchemy + psycopg2
+# tesseract-ocr + حزم eng/ara: قراءة MRZ للجواز والبطاقة المدنية الكويتية (app/ocr.py)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev \
+    tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./backend/requirements.txt

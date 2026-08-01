@@ -471,6 +471,32 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
                 {isEn ? "OCR suggested values (review before applying):" : "قيم مُقترحة من OCR (راجع قبل التطبيق):"}
               </div>
+
+              {/* لافتة تشخيص واضحة لما OCR يفشل — تُوضّح السبب الحقيقي */}
+              {(ocrSuggested._confidence === 0 || ocrSuggested._note) && ocrSuggested._diag && (
+                <div style={{
+                  background: ocrSuggested._diag.available ? "#fef3c7" : "#fee2e2",
+                  border: `1px solid ${ocrSuggested._diag.available ? "#fbbf24" : "#ef4444"}`,
+                  padding: 10, borderRadius: 6, marginBottom: 8, fontSize: 13,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {ocrSuggested._diag.available
+                      ? (isEn ? "OCR engine OK but no text extracted" : "محرّك OCR شغّال لكن لم يستخرج نصًا")
+                      : (isEn ? "OCR engine unavailable" : "محرّك OCR غير متاح على الخادم")}
+                  </div>
+                  {ocrSuggested._note && <div style={{ marginBottom: 4 }}>{ocrSuggested._note}</div>}
+                  <div style={{ fontFamily: "monospace", fontSize: 11, color: "#555" }}>
+                    Tesseract: {ocrSuggested._diag.version || "—"}
+                    {" · "}
+                    {isEn ? "Languages" : "اللغات"}: {(ocrSuggested._diag.languages || []).join(", ") || "—"}
+                    {ocrSuggested._diag.text_length_en !== undefined && (
+                      <> · en={ocrSuggested._diag.text_length_en} chars · ar={ocrSuggested._diag.text_length_ar} chars</>
+                    )}
+                    {ocrSuggested._diag.error && <> · error: {ocrSuggested._diag.error}</>}
+                  </div>
+                </div>
+              )}
+
               <pre style={{ direction: "ltr", fontSize: 12, background: "white",
                 padding: 8, overflow: "auto" }}>
                 {JSON.stringify(ocrSuggested, null, 2)}
