@@ -2,7 +2,7 @@
 """اختبارات الموديولات الجديدة: الرواتب، التصدير، التدقيق، إنهاء الخدمة، OCR، التحقق."""
 from datetime import date
 
-from app.ocr import parse_mrz_td3
+from app.ocr import parse_mrz_td3, parse_kuwait_civil_id
 from tests.conftest import auth_headers, login
 
 
@@ -17,6 +17,58 @@ def test_mrz_passport_parser():
     assert "ERIKSSON" in r["full_name"]
     assert r["expiry_date"] == "2012-04-15"
     assert r["_checks"]["passport_number"] is True  # رقم الضبط صحيح
+
+
+def test_kuwait_civil_id_parser_extracts_all_fields():
+    """محاكاة نص Tesseract من بطاقة كويتية حقيقية — يستخرج كل الحقول."""
+    text_en = """
+    STATE OF KUWAIT CIVIL ID CARD
+    Civil ID No 305092002632
+    Name ZEIAD MOHAMED FAROUK FARGHALY
+    Passport No A38873722
+    Nationality EGY
+    Sex M
+    Birth Date 20/09/2005
+    Expiry Date 04/08/2026
+    """
+    text_ar = """
+    دولة الكويت البطاقة المدنية
+    الرقم المدني
+    زياد محمد فاروق فرغلي
+    الاسم
+    رقم الجواز
+    الجنسية مصرى
+    الجنس ذكر
+    تاريخ الميلاد
+    تاريخ الانتهاء
+    """
+    r = parse_kuwait_civil_id(text_en, text_ar)
+    assert r["civil_id"] == "305092002632"
+    assert r["passport_number"] == "A38873722"
+    assert r["nationality"] == "EGY"
+    assert r["gender"] == "male"
+    assert r["date_of_birth"] == "2005-09-20"
+    assert r["expiry_date"] == "2026-08-04"
+    assert "ZEIAD" in (r["full_name"] or "")
+    assert "زياد" in (r["full_name_ar"] or "")
+    assert r["_confidence"] >= 0.9  # كل الحقول اتقرأت
+
+
+def test_kuwait_civil_id_parser_empty_text():
+    """نص فارغ يرجّع confidence=0 مع ملاحظة."""
+    r = parse_kuwait_civil_id("", "")
+    assert r["civil_id"] is None
+    assert r["_confidence"] == 0.0
+    assert "لم يستخرج" in r["_note"]
+
+
+def test_kuwait_civil_id_parser_partial_extraction():
+    """يعمل حتى لو بعض الحقول فقط قابلة للقراءة."""
+    text_en = "Civil ID 288800008888 Expiry Date 15/06/2028"
+    r = parse_kuwait_civil_id(text_en, "")
+    assert r["civil_id"] == "288800008888"
+    assert r["expiry_date"] == "2028-06-15"
+    assert r["_confidence"] > 0.5
 
 
 # ----------------------------- الرواتب -----------------------------

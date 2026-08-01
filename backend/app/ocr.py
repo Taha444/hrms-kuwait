@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""واجهة OCR قابلة للتوصيل + قارئ MRZ حقيقي لجوازات السفر (صيغة TD3).
+"""واجهة OCR قابلة للتوصيل + قارئ MRZ حقيقي لجوازات السفر + قارئ البطاقة المدنية الكويتية.
 
 - قراءة MRZ: منفّذة فعليًا كدالة تحليل نصّية (TD3 من سطرين، 44 خانة) مع التحقق من
-  أرقام الضبط (check digits) — هذا هو الجزء "الذكي" في قراءة الجواز.
-- استخراج النص من الصورة: خلف واجهة قابلة للتوصيل (Tesseract/خدمة سحابية) — إن لم
-  يُفعَّل محرّك صور، يُمكن رفع نصّ الـ MRZ كملف .txt ويُحلَّل مباشرة.
+  أرقام الضبط (check digits).
+- قراءة البطاقة المدنية الكويتية: Tesseract (eng+ara) + regex لاستخراج:
+  Civil ID (12 خانة)، Name (English+Arabic)، Passport No، Nationality،
+  Sex، Birth Date، Expiry Date.
+- استخراج النص من الصورة: خلف واجهة قابلة للتوصيل (Tesseract/خدمة سحابية).
 
 القاعدة الذهبية: النتيجة *اقتراح* يؤكّده المستخدم قبل الحفظ.
 """
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from typing import Protocol
 
@@ -86,14 +89,19 @@ class NullImageOcr:
 
 
 class TesseractOcr:
-    """محرّك OCR فعلي عبر Tesseract (pytesseract) — يقرأ نص MRZ من صورة الجواز مباشرة."""
-    def image_to_text(self, file_path: str) -> str:
+    """محرّك OCR فعلي عبر Tesseract (pytesseract). يدعم قراءة نص MRZ من الجواز،
+    والبطاقة المدنية الكويتية باللغتين (eng+ara)."""
+    def image_to_text(self, file_path: str, lang: str = "eng") -> str:
         import pytesseract
-        from PIL import Image
+        from PIL import Image, ImageOps
 
         img = Image.open(file_path)
-        # سطرا MRZ بأسفل الصورة عادةً؛ lang=eng كافٍ لأن MRZ حروف/أرقام لاتينية فقط
-        return pytesseract.image_to_string(img, lang="eng")
+        # EXIF rotation (لو صورة موبايل)
+        img = ImageOps.exif_transpose(img)
+        # Grayscale + auto-contrast لتحسين الدقة
+        img = img.convert("L")
+        img = ImageOps.autocontrast(img, cutoff=2)
+        return pytesseract.image_to_string(img, lang=lang)
 
 
 def _detect_provider() -> OcrProvider:
@@ -109,18 +117,109 @@ def _detect_provider() -> OcrProvider:
 provider: OcrProvider = _detect_provider()
 
 
-def _read_text_source(file_path: str) -> str:
-    """يقرأ نصّ الـ MRZ: من ملف .txt مباشرة، أو من الصورة عبر محرّك OCR إن توفّر."""
+def _read_text_source(file_path: str, lang: str = "eng") -> str:
+    """يقرأ نصًّا: من ملف .txt مباشرة، أو من الصورة عبر محرّك OCR إن توفّر."""
     if file_path.lower().endswith(".txt") and os.path.exists(file_path):
         with open(file_path, encoding="utf-8", errors="ignore") as f:
             return f.read()
-    return provider.image_to_text(file_path)
+    try:
+        return provider.image_to_text(file_path, lang=lang)
+    except TypeError:
+        # provider قديم بدون lang
+        return provider.image_to_text(file_path)
+
+
+# ============================================================================
+# قارئ البطاقة المدنية الكويتية (Tesseract eng+ara)
+# ============================================================================
+_DATE_RE = re.compile(r"(\d{2})[/\-\.](\d{2})[/\-\.](\d{4})")
+_CIVIL_RE = re.compile(r"\b(\d{12})\b")
+_PASSPORT_RE = re.compile(r"\b([A-Z]\d{7,9})\b")
+_NATIONALITY_RE = re.compile(r"Nationality[\s:]*([A-Z]{3})\b", re.IGNORECASE)
+_SEX_RE = re.compile(r"\bSex[\s:]*([MFmf])\b")
+
+
+def _norm_date(m: re.Match) -> str | None:
+    dd, mm, yyyy = m.group(1), m.group(2), m.group(3)
+    try:
+        return datetime.strptime(f"{yyyy}-{mm}-{dd}", "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def parse_kuwait_civil_id(text_en: str, text_ar: str = "") -> dict:
+    """يستخرج حقول بطاقة الهوية الكويتية من نصوص Tesseract:
+    civil_id (12 خانة)، full_name (English)، full_name_ar، passport_number،
+    nationality (3-letter)، gender، date_of_birth، expiry_date.
+    """
+    result: dict = {
+        "_provider": "tesseract_civil_id",
+        "civil_id": None, "full_name": None, "full_name_ar": None,
+        "passport_number": None, "nationality": None, "gender": None,
+        "date_of_birth": None, "expiry_date": None,
+    }
+    if not text_en.strip() and not text_ar.strip():
+        result["_confidence"] = 0.0
+        result["_note"] = "لم يستخرج Tesseract أي نص — تأكد من وضوح الصورة."
+        return result
+
+    if (m := _CIVIL_RE.search(text_en)):
+        result["civil_id"] = m.group(1)
+    if (m := _PASSPORT_RE.search(text_en)):
+        result["passport_number"] = m.group(1)
+    if (m := _NATIONALITY_RE.search(text_en)):
+        result["nationality"] = m.group(1).upper()
+    if (m := _SEX_RE.search(text_en)):
+        result["gender"] = "male" if m.group(1).upper() == "M" else "female"
+
+    # التواريخ: الأحدث = انتهاء، الأقدم = ميلاد
+    dates = [d for d in (_norm_date(x) for x in _DATE_RE.finditer(text_en)) if d]
+    if len(dates) >= 2:
+        srt = sorted(dates)
+        result["date_of_birth"] = srt[0]
+        result["expiry_date"] = srt[-1]
+    elif len(dates) == 1:
+        result["expiry_date"] = dates[0]
+
+    # الاسم الإنجليزي — بعد كلمة "Name"
+    nm = re.search(
+        r"Name[\s:]+([A-Z][A-Z\s]{2,60}?)(?:\s*(?:Passport|Nationality|Sex|Birth|Expiry|\n|$))",
+        text_en, re.IGNORECASE | re.DOTALL)
+    if nm:
+        result["full_name"] = re.sub(r"\s+", " ", nm.group(1)).strip()
+
+    # الاسم العربي — نتفحّص كل سطر منفصلاً بعد استبعاد العناوين الثابتة
+    if text_ar:
+        _LABELS = ("البطاقة المدنية", "دولة الكويت", "الرقم المدني", "الاسم",
+                   "الجنسية", "الجنس", "تاريخ الميلاد", "تاريخ الانتهاء",
+                   "رقم الجواز", "ذكر", "أنثى", "مصرى", "كويتى")
+        # split على newlines أولاً — لا نسمح للـregex بعبور السطور
+        candidates = []
+        for raw_line in text_ar.splitlines():
+            # نستخرج تسلسلات عربية + مسافات فقط ضمن السطر الواحد
+            for m in re.finditer(r"[ء-ي][ء-ي ]{5,60}", raw_line):
+                clean = re.sub(r"\s+", " ", m.group(0)).strip()
+                if any(lbl in clean for lbl in _LABELS):
+                    continue
+                # نطلب على الأقل كلمتين (اسم + عائلة أدنى)
+                if len(clean) >= 6 and " " in clean:
+                    candidates.append(clean)
+        if candidates:
+            result["full_name_ar"] = max(candidates, key=len)
+
+    # ثقة تعتمد على عدد الحقول المستخرجة
+    extracted = sum(1 for k, v in result.items() if v and not k.startswith("_"))
+    result["_confidence"] = round(min(0.5 + extracted * 0.08, 0.95), 2)
+    if extracted == 0:
+        result["_note"] = ("لم يُستخرج أي حقل — الصورة قد تكون ضبابية أو بحاجة "
+                          "لتشذيب. جرّب صورة أوضح أو أدخل البيانات يدويًا.")
+    return result
 
 
 def extract(document_type_code: str, file_path: str) -> dict:
     """يستخرج بيانات مقترحة حسب نوع المستند (يؤكّدها المستخدم قبل الحفظ)."""
     if document_type_code == "passport":
-        text = _read_text_source(file_path)
+        text = _read_text_source(file_path, lang="eng")
         if text.strip():
             return parse_mrz_td3(text)
         return {"_provider": "mrz", "_confidence": 0.0,
@@ -128,7 +227,12 @@ def extract(document_type_code: str, file_path: str) -> dict:
                 "full_name": None, "passport_number": None, "nationality": None,
                 "date_of_birth": None, "expiry_date": None}
     if document_type_code == "civil_id":
-        return {"_provider": "barcode", "_confidence": 0.0,
-                "_note": "قارئ باركود البطاقة المدنية يُوصَّل عند توفّر صورة الباركود.",
-                "civil_id": None, "full_name": None, "nationality": None, "expiry_date": None}
+        text_en = _read_text_source(file_path, lang="eng")
+        text_ar = ""
+        try:
+            text_ar = _read_text_source(file_path, lang="ara")
+        except Exception:
+            # حزمة الـara غير مثبتة — نكمل بالإنجليزي فقط
+            pass
+        return parse_kuwait_civil_id(text_en, text_ar)
     return {"_provider": "null", "_confidence": 0.0, "text": ""}
