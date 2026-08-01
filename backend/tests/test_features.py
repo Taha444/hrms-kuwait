@@ -28,9 +28,11 @@ def test_payroll_run_and_view(client):
     r = client.post("/api/payroll/run", headers=h, params={"period": period})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["employees_count"] == 7  # 6 موظفين + المحاسب (له ملف موظف أيًضا)
+    # V2.2 §3 — كل الأدوار الإدارية الآن موظفون: 6 عاملين + 7 إداريين
+    # (manager, hr, 2×delegate, 2×supervisor, accountant) = 13
+    assert body["employees_count"] == 13
     assert "net" in body["totals"]
-    assert len(body["payslips"]) == 7
+    assert len(body["payslips"]) == 13
     # كل قسيمة لها صافي محسوب
     assert all("net" in p for p in body["payslips"])
     runs = client.get("/api/payroll/runs", headers=h).json()

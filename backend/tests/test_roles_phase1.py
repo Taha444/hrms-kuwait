@@ -198,7 +198,9 @@ def test_branch_supervisor_scoped_to_own_branch(client):
     assert "branch_employees" in d
     assert "branches" not in d and "expiring_permits" not in d
     emps = client.get("/api/employees", headers=h).json()
-    assert 0 < len(emps) < 6  # فرعه فقط، أقل من إجمالي الشركة (6)
+    # V2.2 §3 — الأدوار الإدارية الآن موظفون كمان (13 موظف/إداري بالشركة)،
+    # مسؤول الفرع يشوف اللي في فرعه فقط (< 13، > 0)
+    assert 0 < len(emps) < 13
     assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
     # تقرير الموظفين مقيّد بفرعه (لا يتعدّى عدد موظفي فرعه)
     rep = client.get("/api/reports/employees", headers=h, params={"fmt": "csv"})

@@ -434,15 +434,30 @@ def build_company(db, cfg) -> dict:
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[0].id, user_id=sup1.id))
     db.add(models.BranchSupervisor(company_id=company.id, branch_id=branches[1].id, user_id=sup2.id))
 
-    # المحاسب موظف أيًضا (له ملف وحضور خاص به مثل أي موظف)، بمسمى وظيفي "محاسب"
-    accountant_emp = models.Employee(
-        company_id=company.id, civil_id=civ(p, 7), name=accountant.full_name,
-        nationality="كويتي", worker_type="موظف", job_title="محاسب", basic_salary=750,
-        hire_date=d(-500), status="active", license_id=license_.id, branch_id=branches[0].id,
-        shift_id=shift.id, attendance_mode="both", annual_leave_balance=30)
-    db.add(accountant_emp)
-    db.flush()
-    accountant.employee_id = accountant_emp.id
+    # كل الأدوار الإدارية موظفون فعليون في الشركة (ولهم راتب/عقد/إجازات) —
+    # الاستثناء الوحيد super_admin و company_owner (المالك يشرف من الخارج).
+    # يمكّنهم من تقديم طلبات لأنفسهم (إجازة/شهادة راتب/تصحيح حضور/سلفة...) مثل أي موظف.
+    admin_staff = [
+        (manager, "مدير الشركة", 2500, "both", branches[0].id, -1200),
+        (hr, "موظف موارد بشرية", 900, "both", branches[0].id, -1000),
+        (deleg1, "مندوب أول", 550, "qr", branches[0].id, -800),
+        (deleg2, "مندوب ثاني", 550, "qr", branches[1].id, -750),
+        (sup1, f"مسؤول {cfg['branches'][0][0]}", 800, "both", branches[0].id, -900),
+        (sup2, f"مسؤول {cfg['branches'][1][0]}", 800, "both", branches[1].id, -850),
+        (accountant, "محاسب", 750, "both", branches[0].id, -500),
+    ]
+    for user_obj, job_title, salary, mode, branch_id, days_ago in admin_staff:
+        emp = models.Employee(
+            company_id=company.id, civil_id=user_obj.civil_id,
+            name=user_obj.full_name, nationality="كويتي",
+            worker_type="موظف", job_title=job_title, basic_salary=salary,
+            hire_date=d(days_ago), status="active", license_id=license_.id,
+            branch_id=branch_id, shift_id=shift.id,
+            attendance_mode=mode, annual_leave_balance=30,
+        )
+        db.add(emp)
+        db.flush()
+        user_obj.employee_id = emp.id
 
     # موظفون
     emps = []

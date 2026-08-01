@@ -67,26 +67,27 @@ def create_user(data: schemas.UserIn, request: Request,
     if db.scalar(select(models.User).where(models.User.civil_id == data.civil_id)):
         raise HTTPException(status_code=409, detail="الرقم المدني مستخدم بالفعل")
 
-    # PILOT-P0-1: حساب بدور "employee" لازم يكون مربوطًا بموظف فعلي في نفس الشركة —
-    # كل الشاشات (My Profile, Attendance, Leaves) تعتمد على user.employee_id، ولو
-    # كان None يظهر 404 صامت. نمنع الإنشاء أصلًا لغلق هذا المصدر للخطأ.
-    if data.role == "employee":
-        if not data.employee_id:
-            raise HTTPException(
-                status_code=400,
-                detail="حساب موظف يجب ربطه بسجل موظف فعلي (employee_id مطلوب)",
-            )
+    # PILOT-P0-1: حساب بدور "employee" لازم يكون مربوطًا بموظف (حماية صارمة).
+    # V2.2 §3: باقي الأدوار الداخلية (hr/accountant/manager/supervisor/delegate) هم فعليًا
+    # موظفون بالشركة، وحسابهم يجب ربطه بموظف حتى يقدروا يقدموا طلبات لأنفسهم (إجازة/
+    # شهادة راتب/تصحيح حضور). لكن لا نُلزم فورًا للحفاظ على التوافق مع تدفقات HR الحالية —
+    # نعرض تحذير مسموع في /orphaned و POST /link-employee للربط الرجعي.
+    if data.role == "employee" and not data.employee_id:
+        raise HTTPException(
+            status_code=400,
+            detail="حساب موظف يجب ربطه بسجل موظف فعلي (employee_id مطلوب)",
+        )
+    if data.employee_id:
         emp = db.get(models.Employee, data.employee_id)
         if not emp:
             raise HTTPException(status_code=404, detail="سجل الموظف غير موجود")
         if company_id is None:
-            company_id = emp.company_id  # نستخدم شركة الموظف كافتراضي
+            company_id = emp.company_id
         elif emp.company_id != company_id:
             raise HTTPException(
                 status_code=400,
                 detail="سجل الموظف من شركة مختلفة عن شركة الحساب",
             )
-        # فحص إن الموظف لسه ما اترتبطش بحساب آخر
         existing_link = db.scalar(
             select(models.User).where(models.User.employee_id == data.employee_id)
         )
@@ -114,21 +115,56 @@ def create_user(data: schemas.UserIn, request: Request,
 @router.get("/orphaned")
 def list_orphaned_users(user: models.User = Depends(require_perm("manage_users")),
                        db: Session = Depends(get_db)):
-    """PILOT-P0-1: يعرض المستخدمين بدور 'employee' اللي ما اتربطوش بسجل موظف —
-    وسيلة تشخيصية لأي حسابات قديمة اتعملت قبل الفحص الحالي وتحتاج إصلاح."""
+    """V2.2 §3 — كل الأدوار داخل الشركة (employee/hr/accountant/delegate/
+    branch_supervisor/company_manager) لازم تكون مربوطة بموظف. المالك و
+    super_admin مستثنون. هنا نعرض كل الحسابات المكسورة داخل شركة المستخدم."""
+    from ..permissions import CROSS_COMPANY_ROLES as _CC
+    INTERNAL_ROLES = ["employee", "hr", "accountant", "delegate",
+                      "branch_supervisor", "company_manager", "admin_employee"]
     q = select(models.User).where(
-        models.User.role == "employee",
+        models.User.role.in_(INTERNAL_ROLES),
         models.User.employee_id.is_(None),
         models.User.is_active == True,  # noqa: E712
     )
-    if user.role not in CROSS_COMPANY_ROLES:
+    if user.role not in _CC:
         q = q.where(models.User.company_id == user.company_id)
     rows = db.scalars(q).all()
     return [
         {"id": u.id, "civil_id": u.civil_id, "full_name": u.full_name,
-         "company_id": u.company_id, "created_at": u.created_at}
+         "role": u.role, "company_id": u.company_id, "created_at": u.created_at}
         for u in rows
     ]
+
+
+@router.post("/{user_id}/link-employee")
+def link_user_to_employee(user_id: int, employee_id: int, request: Request,
+                          user: models.User = Depends(require_perm("manage_users")),
+                          db: Session = Depends(get_db)):
+    """V2.2 §3 — يربط user موجود بسجل موظف. يفشل لو الاثنين من شركات مختلفة
+    أو الموظف مربوط بحساب آخر بالفعل."""
+    target = _get_scoped_user(db, user, user_id)
+    emp = db.get(models.Employee, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="سجل الموظف غير موجود")
+    if target.company_id and emp.company_id != target.company_id:
+        raise HTTPException(status_code=400, detail="سجل الموظف من شركة مختلفة")
+    other = db.scalar(select(models.User).where(
+        models.User.employee_id == employee_id,
+        models.User.id != user_id,
+    ))
+    if other:
+        raise HTTPException(
+            status_code=409,
+            detail=f"هذا الموظف مربوط بحساب آخر (#{other.id})",
+        )
+    old = target.employee_id
+    target.employee_id = employee_id
+    if not target.company_id:
+        target.company_id = emp.company_id
+    audit(db, user, "link_user_to_employee", "user", target.id,
+          detail=f"{old} → {employee_id}", request=request)
+    db.commit()
+    return {"ok": True, "user_id": target.id, "employee_id": employee_id}
 
 
 @router.post("/{user_id}/link-employee")
