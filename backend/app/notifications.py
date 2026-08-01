@@ -113,7 +113,9 @@ def create_task(
             recipient = (u.phone or u.email) if u else None
         dispatch(recipient, title, detail or "")
     except Exception:
-        pass
+        import logging
+        logging.getLogger("hrms.notifications").exception(
+            "فشل dispatch لمهمة type=%s title=%s", type, title[:60])
     return task
 
 

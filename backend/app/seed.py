@@ -586,6 +586,12 @@ def run():
     print(line)
     print(" تمت تعبئة شركتين معزولتين بنجاح")
     print(line)
+    # V2.2 §9 — عدم عرض كلمات السر في أي log/شاشة/export.
+    # على staging/prod: نطبع الأسماء فقط بدون كلمات السر.
+    # على التطوير المحلي (SQLite): نطبعها للراحة.
+    if settings.is_production:
+        print(" الحسابات مُنشأة. راجع فريق الإعدادات لكلمات السر (لن تُطبع في logs).")
+        return
     print(" الإدارة العليا (تختار الشركة):  000000000000 / admin123")
     print(" صاحب الشركات (يرى الكل):        111111111111 / owner123")
     for idx, (cfg, info) in enumerate(zip(COMPANIES, infos), start=1):

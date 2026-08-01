@@ -41,11 +41,27 @@ def pick_port() -> int:
     return port
 
 
+def _upgrade_schema() -> None:
+    """يشغّل alembic upgrade head قبل تشغيل الخادم — يضمن أن الـDB المحلي متزامن
+    مع الـmodels بعد أي pull جديد. لو Alembic غير متاح أو DB جديد، يتخطى بأمان.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+        import os
+        cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        command.upgrade(cfg, "head")
+        print("✓ alembic upgrade head — DB متزامن")
+    except Exception as e:
+        print(f"⚠ فشل تحديث DB (سيتم المتابعة): {e}")
+
+
 if __name__ == "__main__":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+    _upgrade_schema()
     port = pick_port()
     url = f"http://127.0.0.1:{port}"
     print("=" * 60)

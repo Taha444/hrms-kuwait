@@ -470,11 +470,58 @@ def approve_termination(emp_id: int, request: Request = None,
     return {"ok": True, "employee_id": emp.id, "stage": "approved"}
 
 
+@router.post("/{emp_id}/terminate/clearance")
+def clearance_termination(emp_id: int, request: Request = None,
+                          clearance_note: str | None = None,
+                          user: models.User = Depends(require_perm("terminate_employee")),
+                          db: Session = Depends(get_db)):
+    """V2.2 §13 — إخلاء الطرف: تأكيد أن الموظف سلم عهدته وأخلى مسؤولياته
+    (يأتي بعد approve وقبل execute).
+    """
+    emp = _get_emp(db, user, emp_id)
+    if not emp.pending_termination_json:
+        raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
+    if not emp.pending_termination_approved_at:
+        raise HTTPException(status_code=409, detail="المسودة غير معتمدة — يشترط approve أولاً")
+    emp.pending_termination_cleared_by = user.id
+    emp.pending_termination_cleared_at = datetime.utcnow()
+    emp.pending_termination_clearance_note = (clearance_note or "").strip() or None
+    audit(db, user, "termination_clearance", "employee", emp.id,
+          detail=(clearance_note or "cleared")[:200], request=request)
+    db.commit()
+    return {"ok": True, "employee_id": emp.id, "stage": "cleared"}
+
+
+@router.post("/{emp_id}/terminate/acknowledge")
+def acknowledge_termination(emp_id: int, request: Request = None,
+                            user: models.User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """V2.2 §13 — إقرار الموظف بالتسوية (يقر بموافقته على أرقام EOS).
+    يستدعيها الموظف نفسه أو HR نيابة عنه بتفويض واضح في audit."""
+    emp = _get_emp(db, user, emp_id)
+    if not emp.pending_termination_json:
+        raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
+    if not emp.pending_termination_cleared_at:
+        raise HTTPException(status_code=409, detail="يشترط إتمام إخلاء الطرف أولاً")
+    # لو الموظف نفسه أو HR
+    is_own = user.employee_id == emp.id
+    is_hr = user.role in ("hr", "super_admin", "company_manager")
+    if not (is_own or is_hr):
+        raise HTTPException(status_code=403,
+                            detail="فقط الموظف أو HR يمكنه إقرار التسوية")
+    emp.pending_termination_acknowledged_at = datetime.utcnow()
+    audit(db, user, "termination_acknowledged", "employee", emp.id,
+          detail=f"by {'self' if is_own else 'hr:'+str(user.id)}", request=request)
+    db.commit()
+    return {"ok": True, "employee_id": emp.id, "stage": "acknowledged"}
+
+
 @router.post("/{emp_id}/terminate/execute")
 def execute_termination(emp_id: int, request: Request = None,
                         user: models.User = Depends(require_perm("terminate_employee")),
                         db: Session = Depends(get_db)):
-    """PILOT-P0-8 — تنفيذ الإنهاء بعد الاعتماد: تغيير status + حفظ التسوية النهائية."""
+    """PILOT-P0-8 — تنفيذ الإنهاء بعد الاعتماد + إخلاء الطرف + إقرار الموظف.
+    V2.2 §13: كل الـstages التمهيدية إجبارية قبل التنفيذ."""
     import json
     emp = _get_emp(db, user, emp_id)
     if emp.status == "terminated":
@@ -483,6 +530,12 @@ def execute_termination(emp_id: int, request: Request = None,
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
     if not emp.pending_termination_approved_at:
         raise HTTPException(status_code=409, detail="المسودة غير معتمدة بعد — لا يمكن تنفيذها")
+    # V2.2 §13 — نطلب الـstages التمهيدية (مع تخفيف لل super_admin كحالة طارئة)
+    if user.role != "super_admin":
+        if not emp.pending_termination_cleared_at:
+            raise HTTPException(status_code=409, detail="يشترط إخلاء الطرف قبل التنفيذ")
+        if not emp.pending_termination_acknowledged_at:
+            raise HTTPException(status_code=409, detail="يشترط إقرار الموظف قبل التنفيذ")
     settlement = json.loads(emp.pending_termination_json)
     end_date = settlement.pop("_end_date", None)
     reason = settlement.pop("_reason", "termination")
@@ -495,6 +548,10 @@ def execute_termination(emp_id: int, request: Request = None,
     emp.pending_termination_prepared_at = None
     emp.pending_termination_approved_by = None
     emp.pending_termination_approved_at = None
+    emp.pending_termination_cleared_by = None
+    emp.pending_termination_cleared_at = None
+    emp.pending_termination_clearance_note = None
+    emp.pending_termination_acknowledged_at = None
     audit(db, user, "terminate_employee", "employee", emp.id,
           detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD (executed)",
           request=request)
@@ -516,6 +573,10 @@ def cancel_termination(emp_id: int, request: Request = None,
     emp.pending_termination_prepared_at = None
     emp.pending_termination_approved_by = None
     emp.pending_termination_approved_at = None
+    emp.pending_termination_cleared_by = None
+    emp.pending_termination_cleared_at = None
+    emp.pending_termination_clearance_note = None
+    emp.pending_termination_acknowledged_at = None
     audit(db, user, "cancel_termination_draft", "employee", emp.id, request=request)
     db.commit()
     return {"ok": True, "stage": "cancelled"}

@@ -436,11 +436,16 @@ def _latest_doc(db: Session, req_id: int, kind: str) -> models.RequestDocument:
 def mark_document_printed(req_id: int, kind: str, request: Request,
                           user: models.User = Depends(get_current_user),
                           db: Session = Depends(get_db)):
-    """READY_TO_PRINT → PRINTED: تسجّل من طبع المستند الفعلي ومتى."""
+    """READY_TO_PRINT → PRINTED: تسجّل من طبع المستند الفعلي ومتى.
+    V2.2 §13: يفشل بـ 409 لو ملف المستند غير موجود على القرص — لا نسجل نجاح على عمل لم يحصل."""
+    import os
     req = _get_req(db, user, req_id)
     doc = _latest_doc(db, req.id, kind)
     if doc.print_status not in ("ready_to_print", "printed"):
         raise HTTPException(status_code=409, detail="لا يمكن تسجيل الطباعة في هذه الحالة")
+    if not (doc.file_path and os.path.exists(doc.file_path)):
+        raise HTTPException(status_code=409,
+                            detail="ملف المستند غير موجود على القرص — لا يمكن تسجيل الطباعة")
     doc.print_status = "printed"
     doc.printed_at = datetime.now()
     doc.printed_by = user.id
@@ -462,11 +467,16 @@ def mark_document_printed(req_id: int, kind: str, request: Request,
 def mark_document_filed(req_id: int, kind: str, request: Request,
                         user: models.User = Depends(require_perm("upload_documents")),
                         db: Session = Depends(get_db)):
-    """PRINTED → FILED: أرشفة النسخة المعتمدة في ملف الموظف (ورقي/إلكتروني)."""
+    """PRINTED → FILED: أرشفة النسخة المعتمدة في ملف الموظف (ورقي/إلكتروني).
+    V2.2 §13: يشترط وجود الملف فعلاً قبل تسجيل الأرشفة."""
+    import os
     req = _get_req(db, user, req_id)
     doc = _latest_doc(db, req.id, kind)
     if doc.print_status != "printed":
         raise HTTPException(status_code=409, detail="يجب تسجيل الطباعة أولًا قبل الأرشفة")
+    if not (doc.file_path and os.path.exists(doc.file_path)):
+        raise HTTPException(status_code=409,
+                            detail="ملف المستند غير موجود على القرص — لا يمكن تسجيل الأرشفة")
     doc.print_status = "filed"
     doc.filed_at = datetime.now()
     doc.filed_by = user.id

@@ -147,7 +147,15 @@ def test_terminate_employee_computes_eos(client):
     assert appr.status_code == 200
     assert appr.json()["stage"] == "approved"
 
-    # 4) HR ينفذ — تغيير status = terminated
+    # 4) V2.2 §13 — clearance + acknowledge قبل التنفيذ
+    admin = auth_headers(login(client, "000000000000", "admin123"))
+    cl = client.post(f"/api/employees/{emp_id}/terminate/clearance", headers=hr,
+                    params={"clearance_note": "تسليم عهدة"})
+    assert cl.status_code == 200
+    ack = client.post(f"/api/employees/{emp_id}/terminate/acknowledge", headers=admin)
+    assert ack.status_code == 200
+
+    # 5) HR ينفذ — تغيير status = terminated
     execd = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
     assert execd.status_code == 200
     assert execd.json()["status"] == "terminated"

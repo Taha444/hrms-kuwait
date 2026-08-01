@@ -9,6 +9,7 @@ import GlobalSearch from "./components/GlobalSearch";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import TwoFactor from "./pages/TwoFactor";
+import NotificationPrefs from "./pages/NotificationPrefs";
 import CompanyPicker from "./pages/CompanyPicker";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
@@ -111,6 +112,7 @@ function Sidebar({ open }: { open: boolean }) {
         <div className="sb-foot">
           <Item to="/change-password" icon="key" label={t("change_password")} />
           <Item to="/two-factor" icon="lock" label="التحقق الثنائي" />
+          <Item to="/notification-prefs" icon="bell" label="تفضيلات الإشعارات" />
         </div>
       </aside>
     );
@@ -300,6 +302,7 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/change-password" element={user ? <ChangePassword /> : <Navigate to="/login" replace />} />
       <Route path="/two-factor" element={<Protected><TwoFactor /></Protected>} />
+      <Route path="/notification-prefs" element={<Protected><NotificationPrefs /></Protected>} />
       <Route path="/select-company" element={
         !user ? <Navigate to="/login" replace />
         : user.is_cross_company ? <CompanyPicker /> : <Navigate to="/" replace />

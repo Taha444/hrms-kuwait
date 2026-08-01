@@ -234,6 +234,12 @@ class Employee(Base):
     pending_termination_prepared_at: Mapped[datetime | None] = mapped_column(DateTime)
     pending_termination_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     pending_termination_approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # V2.2 §13 — Full EOS workflow: بعد approve نضيف مرحلتين قبل execute:
+    #   Clearance (إخلاء الطرف من الأقسام) + Employee Acknowledgment (توقيع الموظف)
+    pending_termination_cleared_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    pending_termination_cleared_at: Mapped[datetime | None] = mapped_column(DateTime)
+    pending_termination_clearance_note: Mapped[str | None] = mapped_column(Text)
+    pending_termination_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

@@ -142,6 +142,6 @@ def redispatch_task(db, task) -> None:
                 # نبحث عن رقم أو email على ملفه (اختياري — قد يكون فارغًا)
                 target = getattr(u, "phone", None) or getattr(u, "email", None)
     except Exception:
-        pass
+        logger.exception("فشل جلب بيانات المستلم للمهمة #%s", task.id)
     # dispatch نفسه لا يرمي، ننقل الفشل عبر أول قناة تفشل صريحًا
     dispatch(target, task.title or "", task.detail or "")

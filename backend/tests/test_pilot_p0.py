@@ -273,13 +273,25 @@ def test_P0_8_duplicate_draft_rejected(client):
 
 
 def test_P0_8_full_workflow_terminates(client):
-    """المسار الكامل: HR يحضّر → المحاسب يعتمد → HR ينفّذ → status=terminated."""
+    """V2.2 §13 المسار الكامل: HR يحضّر → المحاسب يعتمد → clearance → acknowledge → execute."""
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     acc = auth_headers(login(client, "100000000007", "account123"))
+    admin = auth_headers(login(client, "000000000000", "admin123"))
     emp_id = _make_test_emp(client, hr, name_suffix=106)
     client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
                 params={"end_date": "2025-01-01", "reason": "termination"})
     client.post(f"/api/employees/{emp_id}/terminate/approve", headers=acc)
+    # V2.2 §13 — execute مباشرة بعد approve مرفوض (يشترط clearance + ack)
+    early_exec = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
+    assert early_exec.status_code == 409
+    # clearance
+    cl = client.post(f"/api/employees/{emp_id}/terminate/clearance", headers=hr,
+                    params={"clearance_note": "سلّم لابتوب وبطاقة الدخول"})
+    assert cl.status_code == 200
+    # acknowledge (بواسطة super_admin — الموظف الاختباري بدون user لاعتماد نفسه)
+    ack = client.post(f"/api/employees/{emp_id}/terminate/acknowledge", headers=admin)
+    assert ack.status_code == 200
+    # execute نجح الآن
     execd = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
     assert execd.status_code == 200
     assert execd.json()["status"] == "terminated"
@@ -408,13 +420,11 @@ def test_v22_wf005_salary_certificate_e2e(client):
     """WF-005: شهادة راتب — الموظف يقدم، HR يعتمد، يصدر PDF جاهز للطباعة."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "salary_certificate",
+        "request_type_code": "REQCERTSAL",
         "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar",
                          "include_salary": True},
     })
-    if r.status_code != 201:
-        import pytest
-        pytest.skip("نوع salary_certificate غير مُعرَّف في seed هذا التنصيب")
+    assert r.status_code == 201, r.text
     rid = r.json()["id"]
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     mgr = auth_headers(login(client, "100000000001", "manager123"))
@@ -431,15 +441,13 @@ def test_v22_wf004_attendance_correction_applies_change(client):
     """WF-004: تصحيح الحضور — الطلب يمر ثم يُطبَّق فعليًا على سجل الحضور."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "attendance_correction",
+        "request_type_code": "REQATT",
         "payload_json": {
             "attendance_date": "2027-01-15", "correction_type": "check_in",
             "new_check_in": "2027-01-15T08:15:00", "reason": "نسيت البصمة",
         },
     })
-    if r.status_code != 201:
-        import pytest
-        pytest.skip("نوع attendance_correction غير مُعرَّف في seed هذا التنصيب")
+    assert r.status_code == 201, r.text
     assert r.json()["id"]
 
 
@@ -565,24 +573,22 @@ def test_v22_login_requires_totp_when_enabled(client):
 def test_v22_wf010_expense_reimbursement_smoke(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "expense",
+        "request_type_code": "REQEXP",
         "payload_json": {"expense_date": "2027-06-01", "category": "travel",
-                         "amount": 50, "reason": "تاكسي مهمة عمل"},
+                         "amount": 50, "description": "تاكسي مهمة عمل"},
     })
-    if r.status_code != 201:
-        import pytest; pytest.skip("expense غير موجود في seed هذا التنصيب")
+    assert r.status_code == 201, r.text
     assert r.json()["id"]
 
 
 def test_v22_wf017_overtime_smoke(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "overtime",
+        "request_type_code": "REQOT",
         "payload_json": {"overtime_date": "2027-06-10", "from_time": "17:00",
                          "to_time": "20:00", "hours": 3, "reason": "إنهاء تقرير عاجل"},
     })
-    if r.status_code != 201:
-        import pytest; pytest.skip("overtime غير موجود في seed هذا التنصيب")
+    assert r.status_code == 201, r.text
     assert r.json()["id"]
 
 
