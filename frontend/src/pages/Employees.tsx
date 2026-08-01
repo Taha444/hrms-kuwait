@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import api, { errMsg } from "../api";
+import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import EmployeeProfile from "./EmployeeProfile";
+import EmployeeOnboarding from "./EmployeeOnboarding";
 
 // تخطيط رئيسي-تفصيلي للموظفين: يسارًا قائمة وبحث، يمينًا تبويبات الملف أو نموذج إضافة (بلا نوافذ منبثقة).
 export default function Employees() {
@@ -22,8 +23,6 @@ export default function Employees() {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [mode, setMode] = useState<"detail" | "new">("detail");
-  const [form, setForm] = useState<any>({ name: "", attendance_mode: "none", contract_type: "indefinite", basic_salary: 0 });
-  const [err, setErr] = useState("");
   const PAGE = 25;
 
   const load = (p = page, br = branch, dp = dept, query = q) => api.get("/employees", {
@@ -43,24 +42,7 @@ export default function Employees() {
     load(0, b);
   };
   const select = (id: number) => { setMode("detail"); navigate(`/employees/${id}`); };
-  const startNew = () => { setMode("new"); setErr(""); navigate("/employees"); };
-
-  const create = async () => {
-    setErr("");
-    // منع حفظ موظف بلا هوية/راتب (QA-P1-EMP-01)
-    if (!form.name?.trim() || !form.civil_id?.trim() || !form.basic_salary || +form.basic_salary <= 0) {
-      setErr(`${t("req_missing_fields")}: ${t("fld_name")}، ${t("fld_civil_id")}، ${t("fld_official_salary")}`);
-      return;
-    }
-    const active = localStorage.getItem("active_company_id");
-    const payload = active && active !== "all" ? { ...form, company_id: Number(active) } : form;
-    try {
-      const r = await api.post("/employees", payload);
-      setForm({ name: "", attendance_mode: "none", contract_type: "indefinite", basic_salary: 0 });
-      await load(0);
-      select(r.data.id);  // افتح ملف الموظف الجديد مباشرةً
-    } catch (e: any) { setErr(errMsg(e, t("error"))); }
-  };
+  const startNew = () => { setMode("new"); navigate("/employees"); };
 
   return (
     <div aria-labelledby="employees-title">
@@ -109,63 +91,15 @@ export default function Employees() {
         {/* ============ التفصيل (Detail) ============ */}
         <div className="md-detail">
           {mode === "new" ? (
-            <div className="card">
-              <h3>{t("emp_new_title")}</h3>
-              <div className="row">
-                <div className="field" style={{ flex: 2 }}><label htmlFor="emp-name">{t("fld_name")} *</label>
-                  <input id="emp-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-civil-id">{t("fld_civil_id")} *</label>
-                  <input id="emp-civil-id" required value={form.civil_id || ""} onChange={(e) => setForm({ ...form, civil_id: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-basic-salary">{t("fld_official_salary")} *</label>
-                  <input id="emp-basic-salary" type="number" required min={0.001} step="0.001" value={form.basic_salary || ""}
-                    onChange={(e) => setForm({ ...form, basic_salary: e.target.value ? +e.target.value : 0 })} /></div>
-              </div>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-job-title">{t("fld_job_title")}</label>
-                  <input id="emp-job-title" onChange={(e) => setForm({ ...form, job_title: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-hire-date">{t("fld_hire_date")}</label>
-                  <input id="emp-hire-date" type="date" onChange={(e) => setForm({ ...form, hire_date: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-att-mode">{t("fld_att_mode")}</label>
-                  <select id="emp-att-mode" onChange={(e) => setForm({ ...form, attendance_mode: e.target.value })}>
-                    <option value="none">{t("att_none")}</option><option value="qr">QR</option>
-                    <option value="gps">GPS</option><option value="both">{t("att_both")}</option>
-                  </select></div>
-              </div>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-branch">{t("fld_official_branch")}</label>
-                  <select id="emp-branch" onChange={(e) => setForm({ ...form, branch_id: e.target.value ? +e.target.value : null })}>
-                    <option value="">{t("opt_choose")}</option>
-                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-actual-branch">{t("fld_actual_branch")}</label>
-                  <select id="emp-actual-branch" onChange={(e) => setForm({ ...form, actual_branch_id: e.target.value ? +e.target.value : null })}>
-                    <option value="">{t("opt_choose")}</option>
-                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-department">{t("fld_department")}</label>
-                  <select id="emp-department" onChange={(e) => setForm({ ...form, department_id: e.target.value ? +e.target.value : null })}>
-                    <option value="">{t("opt_choose")}</option>
-                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select></div>
-              </div>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-nationality">{t("fld_nationality")}</label>
-                  <input id="emp-nationality" onChange={(e) => setForm({ ...form, nationality: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-gender">{t("fld_gender")}</label>
-                  <select id="emp-gender" onChange={(e) => setForm({ ...form, gender: e.target.value || null })}>
-                    <option value="">{t("opt_choose")}</option><option value="male">{t("gender_male")}</option><option value="female">{t("gender_female")}</option>
-                  </select></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-dob">{t("fld_dob")}</label>
-                  <input id="emp-dob" type="date" onChange={(e) => setForm({ ...form, date_of_birth: e.target.value || null })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="emp-passport">{t("fld_passport")}</label>
-                  <input id="emp-passport" onChange={(e) => setForm({ ...form, passport_number: e.target.value })} /></div>
-              </div>
-              {err && <div className="err">{err}</div>}
-              <div className="row">
-                <button onClick={create}>{t("save")}</button>
-                <button className="ghost" onClick={() => setMode("detail")}>{t("cancel")}</button>
-              </div>
-            </div>
+            <EmployeeOnboarding
+              branches={branches}
+              departments={departments}
+              onDone={async (emp) => {
+                await load(0);
+                select(emp.id);
+              }}
+              onCancel={() => setMode("detail")}
+            />
           ) : (
             <EmployeeProfile id={selectedId ?? undefined} onChanged={() => load(page)} />
           )}
