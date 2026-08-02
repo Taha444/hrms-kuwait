@@ -288,7 +288,17 @@ class DocumentType(Base):
 
 
 class Document(Base):
-    """مستند بنُسخ/تأريخ — الأحدث is_current=True والقديم محفوظ."""
+    """مستند بنُسخ/تأريخ — الأحدث is_current=True والقديم محفوظ.
+
+    Immutable Artifact Metadata (R1-A §8):
+    - `is_issued`: True فقط لمستندات مُولّدة عبر /generate (لا preview)
+    - `reference_no`: رقم مرجعي مقروء بشريًا (unique per company)
+    - `template_version`: نسخة القالب اللي وُلِّد منها (لتتبّع التعديلات)
+    - `checksum_sha256`: بصمة SHA-256 للملف — تُحسب عند التوليد
+    - `generated_at/by`: من نفّذ التوليد ومتى (UTC)
+    - `signature_version`: نسخة توقيع المُصدر إن كانت مدمجة
+    Mark Printed/Filed مرفوضة على مستند is_issued=False.
+    """
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -306,6 +316,14 @@ class Document(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # Immutable Artifact Metadata
+    is_issued: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    reference_no: Mapped[str | None] = mapped_column(String(60), unique=True, index=True)
+    template_version: Mapped[int | None] = mapped_column(Integer)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    generated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    signature_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class Task(Base):
@@ -634,6 +652,8 @@ class DocumentTemplate(Base):
     category: Mapped[str] = mapped_column(String(60), default="عام")
     body_html: Mapped[str] = mapped_column(Text)  # نص الصيغة مع متغيّرات {{...}}
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # R1-A §8 — عداد نسخة القالب: يُزاد عند كل تعديل، ويُختم على كل مستند مُولّد
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 

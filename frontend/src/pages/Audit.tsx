@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import { useI18n } from "../i18n";
+import { fmtKuwaitDateTime, KUWAIT_TZ_LABEL, KUWAIT_TZ_LABEL_EN } from "../utils/datetime";
 
 export default function Audit() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const actionLabel = (a: string) => {
     const key = `audit_act_${a}`;
     const lbl = t(key);
@@ -28,7 +29,13 @@ export default function Audit() {
         <div>
           <div className="eyebrow">{t("audit_eyebrow")}</div>
           <h2 style={{ margin: "2px 0 0" }}>{t("audit_title")}</h2>
-          <div className="sub">{t("audit_sub")}</div>
+          <div className="sub">
+            {t("audit_sub")}
+            <span style={{
+              marginInlineStart: 8, background: "#e0ece8", color: "#0b3b38",
+              padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600,
+            }}>{lang === "en" ? KUWAIT_TZ_LABEL_EN : KUWAIT_TZ_LABEL}</span>
+          </div>
         </div>
         <select aria-label={t("audit_all")} value={action} onChange={(e) => setAction(e.target.value)} style={{ width: 200 }}>
           <option value="">{t("audit_all")}</option>
@@ -48,7 +55,7 @@ export default function Audit() {
                   <td className="muted">{r.detail}</td>
                   <td>{r.by}</td>
                   <td className="muted">{r.ip}</td>
-                  <td className="muted">{new Date(r.at).toLocaleString()}</td>
+                  <td className="muted">{fmtKuwaitDateTime(r.at, lang)}</td>
                 </tr>
               ))}
             {!loading && !rows.length && <tr><td colSpan={6} className="empty">{t("no_data")}</td></tr>}

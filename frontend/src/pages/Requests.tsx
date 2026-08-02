@@ -118,7 +118,11 @@ export default function Requests() {
                 {hasOwnEmployeeProfile
                   ? <option value="">{t("req_myself")}</option>
                   : <option value="" disabled>— اختر موظفًا —</option>}
-                {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.employee_no ? `[${e.employee_no}] ` : ""}{e.name} — {e.job_title || "—"}
+                  </option>
+                ))}
               </select>
               {!hasOwnEmployeeProfile && (
                 <span className="muted" style={{ fontSize: 12 }}>

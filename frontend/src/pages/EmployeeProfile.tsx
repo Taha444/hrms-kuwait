@@ -161,7 +161,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       {/* ============ البيانات الشخصية ============ */}
       {tab === "personal" && (
         <div className="grid cards">
-          <div className="card"><b>{t("fld_civil_id")}:</b> {e.civil_id || "—"}<br /><b>{t("epf_nationality")}:</b> {e.nationality || "—"}<br />
+          <div className="card">
+            {e.employee_no && (<><b>الرقم الوظيفي:</b> <code style={{ background: "#e0ece8", padding: "1px 6px", borderRadius: 4 }}>{e.employee_no}</code><br /></>)}
+            <b>{t("fld_civil_id")}:</b> {e.civil_id || "—"}<br /><b>{t("epf_nationality")}:</b> {e.nationality || "—"}<br />
             <b>{t("epf_gender")}:</b> {genderLabel(e.gender)}<br /><b>{t("epf_dob")}:</b> {e.date_of_birth || "—"}<br />
             <b>{t("epf_marital")}:</b> {e.marital_status || "—"}</div>
           <div className="card"><b>{t("epf_email")}:</b> {e.email || "—"}<br /><b>{t("emp_phone")}:</b> {e.phone || "—"}<br />

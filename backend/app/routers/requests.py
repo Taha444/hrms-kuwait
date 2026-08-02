@@ -499,10 +499,17 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
         )).all()
         for d in prev:
             d.is_current = False
+        # R1-A §8 — نختم metadata الاعتماد على المستند المؤرشف: is_issued=True
+        # + نسخ reference_no/checksum من RequestDocument (اللي بيحملهم من workflow.py)
         db.add(models.Document(
             company_id=req.company_id, entity_type="employee", entity_id=req.employee_id,
             document_type_code=type_code, title=rt.name, file_path=doc.file_path,
             mime="application/pdf", version=len(prev) + 1, is_current=True, uploaded_by=user.id,
+            is_issued=True,
+            reference_no=doc.reference_no,
+            checksum_sha256=doc.checksum_sha256,
+            signature_version=doc.signature_version,
+            generated_at=datetime.utcnow(), generated_by=user.id,
         ))
         from ..notifications import notify_from_template
         notify_from_template(

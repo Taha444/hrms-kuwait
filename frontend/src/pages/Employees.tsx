@@ -73,7 +73,16 @@ export default function Employees() {
           <div className="md-rows">
             {emps.map((e) => (
               <button key={e.id} className={`md-row ${selectedId === e.id ? "active" : ""}`} onClick={() => select(e.id)}>
-                <span className="r-name">{e.name}</span>
+                <span className="r-name">
+                  {e.name}
+                  {e.employee_no && (
+                    <span style={{
+                      marginInlineStart: 8, fontSize: 11, background: "#e0ece8",
+                      color: "#0b3b38", padding: "1px 6px", borderRadius: 4,
+                      fontFamily: "monospace", fontWeight: 500,
+                    }}>{e.employee_no}</span>
+                  )}
+                </span>
                 <span className="r-sub">{e.job_title || "—"} · {e.nationality || "—"}</span>
               </button>
             ))}

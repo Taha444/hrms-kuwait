@@ -61,8 +61,12 @@ def reset_demo_data(request: Request,
 
     duration = (datetime.utcnow() - started).total_seconds()
     # تسجيل تدقيقي حسّاس — بس audit جدول اتمسح، فنكتب سطر جديد بعد الـseed
-    audit(request, user, "reset_demo_data", entity_type="system",
-          details_json={"duration_seconds": duration})
+    # ملاحظة: seed.run() مسح جدول audit_log — ندخل سجل جديد بعد الـcommit
+    from ..database import SessionLocal
+    with SessionLocal() as db2:
+        audit(db2, user, "reset_demo_data", entity_type="system",
+              request=request, after={"duration_seconds": duration})
+        db2.commit()
 
     return {
         "status": "ok",

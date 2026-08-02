@@ -30,7 +30,8 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 PLACEHOLDERS = {
     "employee_name": "اسم الموظف",
     "employee_name_en": "اسم الموظف (إنجليزي)",
-    "employee_id": "الرقم الوظيفي",
+    "employee_id": "الرقم التسلسلي",
+    "employee_no": "الرقم الوظيفي الرسمي",  # R1-B
     "civil_id": "الرقم المدني",
     "job_title": "المسمى الوظيفي",
     "department": "القسم/الإدارة",
@@ -136,9 +137,11 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
     ))
     t.name, t.name_en, t.category = data.name, data.name_en, data.category
     t.body_html = _sanitize_body_html(data.body_html)
+    # R1-A §8 — تحديث القالب يزيد عدّاد الإصدار (يُختم على أي مستند مُولّد لاحقًا)
+    t.version = (t.version or 1) + 1
     audit(db, user, "update_template", "template", t.id, request=request)
     db.commit()
-    return {"ok": True, "version": next_version}
+    return {"ok": True, "version": next_version, "template_version": t.version}
 
 
 @router.get("/{tpl_id}/versions")
@@ -191,6 +194,7 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "employee_name": emp.name or "",
         "employee_name_en": emp.name_en or "",
         "employee_id": str(emp.id),
+        "employee_no": emp.employee_no or "",  # R1-B — الرقم الوظيفي الرسمي
         "civil_id": emp.civil_id or "",
         "job_title": emp.job_title or "",
         "department": department.name if department else "",
@@ -208,11 +212,67 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
     }
 
 
-@router.post("/{tpl_id}/render")
-def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Request,
-                    user: models.User = Depends(require_perm("manage_templates")),
-                    db: Session = Depends(get_db)):
-    """يعبّئ الصيغة ببيانات الموظف تلقائيًا + أي حقول إضافية، ويعيد HTML للطباعة."""
+# ============================================================================
+# R1-A §8 — Preview / Generate Decoupled Pipeline
+# ============================================================================
+# Preview: يعرض HTML فقط. لا يكتب ملف ولا صف Document. لا يمكن اعتباره مصدرًا
+#          رسميًا للطباعة (Mark Printed مرفوض على أي مستند بلا is_issued=True).
+# Generate: يكتب الملف على القرص، ينشئ صف Document بكل الـmetadata الرسمية
+#          (reference_no, template_version, checksum_sha256, generated_at/by,
+#          signature_version)، ويصير قابلًا للـMark Printed / Filed.
+# ----------------------------------------------------------------------------
+
+
+def _resolve_authoritative_data(db: Session, emp: models.Employee, extras: dict) -> dict:
+    """يبني سياق التوليد من مصدر السلطة (DB) فقط. حقول العميل تُقبل فقط لو ما
+    لها مقابل authoritative — لمنع تزوير الراتب/التاريخ من الفورم.
+    """
+    ctx = _build_context(db, emp)
+    # مفاتيح authoritative (لا تُقبَل من input) — الراتب والتاريخ والاسم من DB فقط
+    LOCKED = {"basic_salary", "hire_date", "civil_id", "employee_name",
+              "employee_name_en", "employee_id", "job_title", "nationality",
+              "contract_type", "company_name", "company_name_en",
+              "commercial_reg", "branch_name", "department"}
+    for k, v in (extras or {}).items():
+        if k in LOCKED:
+            continue  # نتجاهل بصمت لضمان صحة البيانات
+        ctx[k] = str(v)
+    return ctx
+
+
+def _fill_html(t: models.DocumentTemplate, ctx: dict) -> str:
+    def repl(m):
+        key = m.group(1)
+        return html.escape(str(ctx.get(key, "................")))
+    filled = _TOKEN_RE.sub(repl, _sanitize_body_html(t.body_html))
+    return _wrap_printable(t, ctx, filled)
+
+
+def _generate_reference_no(db: Session, template_code: str | None, company_id: int,
+                          template_version: int) -> str:
+    """رقم مرجعي فريد ومقروء: {CODE}/{COMPANY}/{YYYYMM}/{SEQ4}
+    مثال: HRMS-PR-001/3/202608/0042"""
+    now = datetime.utcnow()
+    period = now.strftime("%Y%m")
+    prefix = f"{template_code or 'DOC'}/{company_id}/{period}/"
+    last = db.scalar(select(models.Document.reference_no).where(
+        models.Document.reference_no.like(f"{prefix}%"),
+    ).order_by(models.Document.reference_no.desc()))
+    seq = 1
+    if last:
+        try:
+            seq = int(last.rsplit("/", 1)[-1]) + 1
+        except (ValueError, IndexError):
+            seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+@router.post("/{tpl_id}/preview")
+def preview_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Request,
+                     user: models.User = Depends(require_perm("manage_templates")),
+                     db: Session = Depends(get_db)):
+    """R1-A §8 — Preview فقط. لا كتابة على القرص، لا صف DB، لا مرجع رسمي.
+    نتيجته HTML بس. للحصول على مستند رسمي قابل للطباعة استخدم /generate."""
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
@@ -223,37 +283,109 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
     if t.company_id is not None:
         assert_same_company(user, t.company_id, db=db)
 
-    ctx = _build_context(db, emp)
-    ctx.update({k: str(v) for k, v in (data.extra or {}).items()})  # حقول مخصّصة يدخلها المستخدم
-
-    def repl(m):
-        key = m.group(1)
-        # تهريب القيم المُدرجة (بيانات الموظف/المدخلات) لمنع حقن HTML/XSS
-        return html.escape(str(ctx.get(key, "................")))
-
-    # تعقيم دفاعي إضافي عند العرض أيضًا (يحيّد أي قوالب محفوظة قبل هذا الإصلاح)
-    filled = _TOKEN_RE.sub(repl, _sanitize_body_html(t.body_html))
-    rendered = _wrap_printable(t, ctx, filled)
-
-    document_id = None
-    if data.save:
-        folder = os.path.join(settings.upload_dir, "forms")
-        os.makedirs(folder, exist_ok=True)
-        fname = f"form_{t.id}_emp{emp.id}_{int(datetime.now().timestamp())}.html"
-        fpath = os.path.join(folder, fname)
-        with open(fpath, "w", encoding="utf-8") as f:
-            f.write(rendered)
-        doc = models.Document(
-            company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
-            document_type_code=f"form_{t.code or t.id}", title=t.name, file_path=fpath,
-            mime="text/html", version=1, is_current=True, uploaded_by=user.id)
-        db.add(doc)
-        db.flush()
-        document_id = doc.id
-
-    audit(db, user, "render_template", "employee", emp.id, detail=t.name, request=request)
+    ctx = _resolve_authoritative_data(db, emp, data.extra or {})
+    rendered = _fill_html(t, ctx)
+    audit(db, user, "preview_template", "employee", emp.id,
+          detail=f"{t.name} (preview only, not stored)", request=request)
     db.commit()
-    return {"html": rendered, "filename": f"{t.name} - {emp.name}.html", "document_id": document_id}
+    return {
+        "html": rendered,
+        "is_preview": True,
+        "is_issued": False,
+        "warning": "هذه معاينة فقط — لا تُعتبر مستندًا رسميًا. استخدم زر «توليد» لإصدار مستند مرجعي.",
+    }
+
+
+@router.post("/{tpl_id}/generate")
+def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Request,
+                      user: models.User = Depends(require_perm("manage_templates")),
+                      db: Session = Depends(get_db)):
+    """R1-A §8 — Generate: يُصدر مستندًا رسميًا مع كل metadata (reference_no،
+    template_version، checksum SHA-256، generated_at/by، signature_version).
+    المستند يصير قابلًا للـMark Printed / Filed."""
+    import hashlib
+
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    emp = db.get(models.Employee, data.employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    assert_same_company(user, emp.company_id, db=db)
+    if t.company_id is not None:
+        assert_same_company(user, t.company_id, db=db)
+
+    ctx = _resolve_authoritative_data(db, emp, data.extra or {})
+    reference_no = _generate_reference_no(db, t.code, emp.company_id, t.version or 1)
+    ctx["ref_no"] = reference_no  # يظهر في الترويسة
+
+    rendered = _fill_html(t, ctx)
+    pdf_bytes = rendered.encode("utf-8")
+    checksum = hashlib.sha256(pdf_bytes).hexdigest()
+
+    # كتابة الملف الفعلي — الاسم يحوي reference للتتبّع
+    folder = os.path.join(settings.upload_dir, "forms")
+    os.makedirs(folder, exist_ok=True)
+    safe_ref = reference_no.replace("/", "_")
+    fname = f"{safe_ref}.html"
+    fpath = os.path.join(folder, fname)
+    with open(fpath, "wb") as f:
+        f.write(pdf_bytes)
+
+    # نسخة توقيع مصدر المستند لو له توقيع نشط
+    sig_version = None
+    active_sig = db.scalar(select(models.EmployeeSignature).where(
+        models.EmployeeSignature.user_id == user.id,
+        models.EmployeeSignature.status == "active",
+    ).order_by(models.EmployeeSignature.version.desc())) if hasattr(models, "EmployeeSignature") else None
+    if active_sig:
+        sig_version = getattr(active_sig, "version", None)
+
+    doc = models.Document(
+        company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+        document_type_code=f"form_{t.code or t.id}", title=t.name, file_path=fpath,
+        mime="text/html", version=1, is_current=True, uploaded_by=user.id,
+        # R1-A §8 — Immutable Metadata
+        is_issued=True,
+        reference_no=reference_no,
+        template_version=t.version or 1,
+        checksum_sha256=checksum,
+        generated_at=datetime.utcnow(),
+        generated_by=user.id,
+        signature_version=sig_version,
+    )
+    db.add(doc)
+    db.flush()
+
+    audit(db, user, "generate_template", "employee", emp.id,
+          detail=f"{t.name} → {reference_no}", request=request,
+          after={"reference_no": reference_no, "checksum_sha256": checksum,
+                "template_version": t.version or 1})
+    db.commit()
+
+    return {
+        "html": rendered,
+        "is_preview": False,
+        "is_issued": True,
+        "document_id": doc.id,
+        "reference_no": reference_no,
+        "template_version": t.version or 1,
+        "checksum_sha256": checksum,
+        "generated_at": doc.generated_at.isoformat() + "Z",
+        "signature_version": sig_version,
+        "filename": f"{safe_ref}.html",
+    }
+
+
+@router.post("/{tpl_id}/render")
+def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Request,
+                    user: models.User = Depends(require_perm("manage_templates")),
+                    db: Session = Depends(get_db)):
+    """DEPRECATED — طريق قديم للتوافق العكسي. يعيد التوجيه إلى preview أو generate
+    حسب data.save. سيُزال في إصدار قادم. استخدم /preview أو /generate صراحةً."""
+    if data.save:
+        return generate_template(tpl_id, data, request, user, db)
+    return preview_template(tpl_id, data, request, user, db)
 
 
 def _wrap_printable(t: "models.DocumentTemplate", ctx: dict, body: str) -> str:

@@ -24,6 +24,10 @@ export default function Templates() {
   const [extra, setExtra] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [lastGenerated, setLastGenerated] = useState<{
+    reference_no: string; checksum_sha256: string; template_version: number;
+    generated_at: string; document_id: number;
+  } | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const load = () => api.get("/templates").then((r) => setTemplates(r.data));
@@ -66,13 +70,34 @@ export default function Templates() {
     setFilling({ ...full, customKeys });
   };
 
-  const renderPrint = async () => {
-    setErr("");
+  // R1-A §8 — Preview: يفتح HTML بلا حفظ. لا reference، لا يعتبر مستندًا رسميًا.
+  const previewOnly = async () => {
+    setErr(""); setLastGenerated(null);
     try {
-      const r = await api.post(`/templates/${filling.id}/render`, { employee_id: empId, extra, save: true });
+      const r = await api.post(`/templates/${filling.id}/preview`, { employee_id: empId, extra });
+      const w = window.open("", "_blank");
+      if (w) {
+        const banner = `<div style="background:#fef3c7;border:2px solid #fbbf24;padding:12px;
+          margin:0 0 16px;font-family:sans-serif;text-align:center;font-weight:600;">
+          ⚠ معاينة فقط — Preview Only — ليست مستندًا رسميًا
+          </div>`;
+        w.document.write(banner + r.data.html);
+        w.document.close(); w.focus();
+      }
+      setMsg("معاينة فقط — لم يُحفظ أي مستند.");
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  // R1-A §8 — Generate: يُصدر مستندًا رسميًا برقم مرجعي وbصمة SHA-256.
+  const generateOfficial = async () => {
+    if (!confirm("سيتم إصدار مستند رسمي بختم مرجعي دائم. متابعة؟")) return;
+    setErr(""); setLastGenerated(null);
+    try {
+      const r = await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
+      setLastGenerated(r.data);
       const w = window.open("", "_blank");
       if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
-      setMsg(t("tpl_rendered"));
+      setMsg(`✓ تم إصدار المستند — رقم مرجعي: ${r.data.reference_no}`);
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
@@ -133,7 +158,11 @@ export default function Templates() {
           <div className="field" style={{ maxWidth: 360 }}>
             <label htmlFor="tpl-emp">{t("tpl_select_emp")}</label>
             <select id="tpl-emp" value={empId} onChange={(e) => setEmpId(+e.target.value)}>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>)}
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.employee_no ? `[${e.employee_no}] ` : ""}{e.name} — {e.job_title || "—"}
+                </option>
+              ))}
             </select>
           </div>
           {filling.customKeys?.length > 0 && (
@@ -150,9 +179,38 @@ export default function Templates() {
             </>
           )}
           <div className="row">
-            <button onClick={renderPrint}><Icon name="doc" size={16} /> {t("tpl_preview_print")}</button>
-            <button className="ghost" onClick={() => setFilling(null)}>{t("close")}</button>
+            <button className="ghost" onClick={previewOnly}>
+              <Icon name="doc" size={16} /> معاينة (Preview)
+            </button>
+            <button onClick={generateOfficial}
+              style={{ background: "#0e5a54", color: "white" }}>
+              <Icon name="doc" size={16} /> توليد مستند رسمي (Generate)
+            </button>
+            <button className="ghost" onClick={() => { setFilling(null); setLastGenerated(null); }}>
+              {t("close")}
+            </button>
           </div>
+
+          {lastGenerated && (
+            <div style={{
+              background: "#d1fae5", border: "1px solid #10b981", padding: 12,
+              borderRadius: 8, marginTop: 12, fontSize: 13,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>✓ مستند رسمي صادر</div>
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
+                <span><b>رقم مرجعي:</b></span>
+                <code style={{ fontFamily: "monospace" }}>{lastGenerated.reference_no}</code>
+                <span><b>نسخة القالب:</b></span>
+                <span>v{lastGenerated.template_version}</span>
+                <span><b>Checksum:</b></span>
+                <code style={{ fontFamily: "monospace", fontSize: 10 }}>
+                  {lastGenerated.checksum_sha256.slice(0, 32)}...
+                </code>
+                <span><b>وقت الإصدار:</b></span>
+                <span>{lastGenerated.generated_at}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

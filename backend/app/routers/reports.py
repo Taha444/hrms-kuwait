@@ -41,10 +41,10 @@ def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = N
     if branch_ids is not None:
         q = q.where(models.Employee.branch_id.in_(branch_ids))
     emps = db.scalars(q.order_by(models.Employee.name)).all()
-    headers = ["الاسم", "الرقم المدني", "الجنسية", "المسمى", "الراتب الأساسي",
-               "تاريخ التعيين", "نوع العقد", "الحالة"]
-    rows = [[e.name, e.civil_id or "", e.nationality or "", e.job_title or "",
-             e.basic_salary, e.hire_date.isoformat() if e.hire_date else "",
+    headers = ["الرقم الوظيفي", "الاسم", "الرقم المدني", "الجنسية", "المسمى",
+               "الراتب الأساسي", "تاريخ التعيين", "نوع العقد", "الحالة"]
+    rows = [[e.employee_no or "", e.name, e.civil_id or "", e.nationality or "",
+             e.job_title or "", e.basic_salary, e.hire_date.isoformat() if e.hire_date else "",
              e.contract_type, e.status] for e in emps]
     return headers, rows
 
