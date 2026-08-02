@@ -1,4 +1,5 @@
 import Icon from "../Icon";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // مسار الطلب الهرمي: يعرض كل مرحلة وحالتها (تمّ/الحالي/قادم/مرفوض) بوضوح.
 type Stage = {
@@ -32,7 +33,8 @@ export function ProgressMini({ current, total, status }: { current: number; tota
 
 export default function RequestSteps({ stages, status }: { stages: Stage[]; status: string }) {
   if (!stages?.length) return <div className="empty">لا توجد مراحل معرّفة لهذا الطلب.</div>;
-  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString("ar", { dateStyle: "medium", timeStyle: "short" }) : "");
+  // R1-C — كل timestamps تظهر بتوقيت الكويت (UTC+3) بدل التوقيت المحلي للمتصفح
+  const fmt = (d?: string | null) => (d ? fmtKuwaitDateTime(d, "ar") : "");
 
   return (
     <div className="steps">

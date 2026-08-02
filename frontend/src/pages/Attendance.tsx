@@ -3,6 +3,7 @@ import jsQR from "jsqr";
 import api, { errMsg } from "../api";
 import { attAr } from "../labels";
 import { useI18n } from "../i18n";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // تدفّق من خطوتين: (1) مسح الـ QR بالكاميرا الخلفية → تحقّق ← تذكرة،
 // (2) فتح كاميرا السيلفي الأمامية ← التقاط ← تسجيل حضور/انصراف.
@@ -176,8 +177,8 @@ export default function Attendance() {
         <h3>{t("att_my_log")}</h3>
         <table><thead><tr><th>{t("col_in")}</th><th>{t("col_out")}</th><th>{t("status")}</th><th>{t("col_worked")}</th><th>{t("col_overtime")}</th></tr></thead>
           <tbody>{records.map((r) => (
-            <tr key={r.id}><td>{r.check_in_at && new Date(r.check_in_at).toLocaleString(lang)}</td>
-              <td>{r.check_out_at ? new Date(r.check_out_at).toLocaleString(lang) : "—"}</td>
+            <tr key={r.id}><td>{fmtKuwaitDateTime(r.check_in_at, lang)}</td>
+              <td>{fmtKuwaitDateTime(r.check_out_at, lang)}</td>
               <td><span className={`pill ${r.status === "late" ? "warning" : "success"}`}>{attAr(r.status)}</span></td>
               <td>{r.worked_minutes}</td><td>{r.overtime_minutes}</td></tr>
           ))}{!records.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>

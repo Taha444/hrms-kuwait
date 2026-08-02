@@ -3,6 +3,7 @@ import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // وحدة الصيغ والنماذج: تسجيل صيغة بمتغيّرات {{...}}، تعبئتها تلقائيًا ببيانات الموظف، وطباعتها.
 const NEW_TEMPLATE = `<h2>عنوان الصيغة</h2>
@@ -13,7 +14,7 @@ const NEW_TEMPLATE = `<h2>عنوان الصيغة</h2>
 
 export default function Templates() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const isAdmin = user?.role === "super_admin";
   const [templates, setTemplates] = useState<any[]>([]);
   const [placeholders, setPlaceholders] = useState<Record<string, string>>({});
@@ -207,7 +208,7 @@ export default function Templates() {
                   {lastGenerated.checksum_sha256.slice(0, 32)}...
                 </code>
                 <span><b>وقت الإصدار:</b></span>
-                <span>{lastGenerated.generated_at}</span>
+                <span>{fmtKuwaitDateTime(lastGenerated.generated_at, lang)} <span className="muted" style={{ fontSize: 10 }}>(UTC+3)</span></span>
               </div>
             </div>
           )}

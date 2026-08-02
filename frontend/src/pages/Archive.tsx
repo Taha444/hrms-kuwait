@@ -3,6 +3,7 @@ import api, { downloadFile } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
+import { fmtKuwaitDate } from "../utils/datetime";
 
 // أرشيف الشركة والفروع: المستندات الرسمية (عقد التأسيس، السجل التجاري، الرخص…).
 export default function Archive() {
@@ -53,7 +54,7 @@ export default function Archive() {
               <b>{dt.name}</b>
               {cur ? <span className="pill success">{t("arch_uploaded_v", { v: cur.version })}</span> : <span className="pill neutral">{t("arch_not_uploaded")}</span>}
             </div>
-            {cur && <p className="muted" style={{ fontSize: 12 }}>{t("arch_added", { date: new Date(cur.created_at).toLocaleDateString(lang) })}{cur.expiry_date ? ` · ${t("arch_expires", { date: cur.expiry_date })}` : ""}</p>}
+            {cur && <p className="muted" style={{ fontSize: 12 }}>{t("arch_added", { date: fmtKuwaitDate(cur.created_at, lang) })}{cur.expiry_date ? ` · ${t("arch_expires", { date: cur.expiry_date })}` : ""}</p>}
             <div className="row" style={{ marginTop: 8 }}>
               {cur && <button className="ghost sm" onClick={() => download(entityType, entityId, dt.code, dt.name)}><Icon name="doc" size={14} /> {t("arch_download")}</button>}
               {can("upload_documents") && (

@@ -4,6 +4,7 @@ import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { attAr, statusAr, contractTypeAr } from "../labels";
+import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
 // يقبل id كخاصية (وضع مُضمَّن) أو يقرأه من المسار (صفحة مستقلة).
@@ -224,8 +225,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             <h3>{t("emp_recent_att")}</h3>
             <table><thead><tr><th>{t("col_in")}</th><th>{t("col_out")}</th><th>{t("status")}</th><th>{t("epf_col_selfie")}</th></tr></thead>
               <tbody>{p.attendance.map((a: any) => (
-                <tr key={a.id}><td>{a.check_in_at && new Date(a.check_in_at).toLocaleString(lang)}</td>
-                  <td>{a.check_out_at && new Date(a.check_out_at).toLocaleString(lang)}</td>
+                <tr key={a.id}><td>{fmtKuwaitDateTime(a.check_in_at, lang)}</td>
+                  <td>{fmtKuwaitDateTime(a.check_out_at, lang)}</td>
                   <td><span className={`pill ${a.status === "late" ? "warning" : "success"}`}>{attAr(a.status)}</span></td>
                   <td>{a.selfie_in ? "✓" : "—"}</td></tr>
               ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
@@ -377,7 +378,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <div className="rail"><div className="node">•</div><div className="connector" /></div>
                   <div className="body">
                     <div className="s-title">{it.text}</div>
-                    <div className="s-meta"><span>{new Date(it.at).toLocaleDateString(lang, { dateStyle: "medium" })}</span></div>
+                    <div className="s-meta"><span>{fmtKuwaitDate(it.at, lang)}</span></div>
                   </div>
                 </div>
               ))}

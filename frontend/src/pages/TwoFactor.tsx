@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // V2.2 §9 — نصوص ثنائية اللغة (dictionary صغير محلي للـpage)
 const L = {
@@ -173,7 +174,7 @@ export default function TwoFactor() {
           <div className="kv"><span>{t.status}</span><strong style={{ color: "green" }}>{t.enabled_ok}</strong></div>
           {status.last_used_at && (
             <div className="kv"><span>{t.last_used}</span>
-              <span>{new Date(status.last_used_at).toLocaleString(lang === "en" ? "en-US" : "ar-KW")}</span></div>
+              <span>{fmtKuwaitDateTime(status.last_used_at, lang)}</span></div>
           )}
           <hr />
           <h4>{t.disable_2fa}</h4>

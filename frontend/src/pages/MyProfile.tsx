@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 import { statusAr, contractTypeAr } from "../labels";
+import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // الخدمة الذاتية: ملف الموظف الشخصي — بياناته/عقده/مستنداته/إجازاته/إنذاراته + توقيعه الرقمي.
 export default function MyProfile() {
@@ -174,7 +175,7 @@ export default function MyProfile() {
             )}
             {sig?.updated_at && (
               <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                {t("sig_updated_at")}: {new Date(sig.updated_at).toLocaleString(lang)}
+                {t("sig_updated_at")}: {fmtKuwaitDateTime(sig.updated_at, lang)}
               </div>
             )}
           </div>
@@ -187,7 +188,7 @@ export default function MyProfile() {
           <div key={w.id} className="timeline-item">
             <span className="pill warning">{t("ev_warning")}</span> {w.title}
             {w.detail ? <div className="muted">{w.detail}</div> : null}
-            <div className="muted">{new Date(w.date).toLocaleDateString(lang, { dateStyle: "medium" })}</div>
+            <div className="muted">{fmtKuwaitDate(w.date, lang)}</div>
           </div>
         ))}
         {!p.warnings.length && <div className="muted">{t("my_no_warnings")}</div>}
