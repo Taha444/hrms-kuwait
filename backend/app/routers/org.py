@@ -148,11 +148,22 @@ def branch_qr(branch_id: int, user: models.User = Depends(get_current_user),
     }
 
 
+def _mask_kiosk_key(key: str | None) -> str | None:
+    """R3-A §5 — إخفاء المفتاح ما عدا آخر 4 خانات: 'abc...xyz9' → '****xyz9'."""
+    if not key:
+        return None
+    if len(key) <= 4:
+        return "****"
+    return "****" + key[-4:]
+
+
 @router.post("/branches/{branch_id}/kiosk-key/rotate")
 def rotate_kiosk_key(branch_id: int, request: Request,
                      user: models.User = Depends(require_perm("manage_branches")),
                      db: Session = Depends(get_db)):
-    """يولّد/يدوّر مفتاح شاشة العرض ويعيد رابط الشاشة الكامل (يُبطل القديم فورًا)."""
+    """R3-A §5 — يولّد/يدوّر مفتاح شاشة العرض. يعيد المفتاح الكامل *مرة واحدة فقط*
+    (هذه هي المرة الوحيدة اللي هيظهر فيها كامل — بعدها يُعرض masked في القوائم).
+    القديم يُبطل فورًا؛ أي شاشة تستخدمه ستنقطع."""
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
@@ -162,8 +173,11 @@ def rotate_kiosk_key(branch_id: int, request: Request,
     db.commit()
     return {
         "branch_id": branch.id,
-        "kiosk_key": branch.kiosk_key,
+        "kiosk_key": branch.kiosk_key,  # ← الكامل، مرة واحدة فقط
+        "kiosk_key_masked": _mask_kiosk_key(branch.kiosk_key),
         "kiosk_path": f"/kiosk/qr/{branch.id}?key={branch.kiosk_key}",
+        "warning": "احفظ المفتاح الآن — لن يُعرض كاملاً مرة أخرى. أي شاشة تستخدم "
+                   "المفتاح القديم قد تحتاج لإعادة الفتح بالرابط الجديد.",
     }
 
 
@@ -171,14 +185,21 @@ def rotate_kiosk_key(branch_id: int, request: Request,
 def get_kiosk_url(branch_id: int,
                   user: models.User = Depends(require_perm("manage_branches")),
                   db: Session = Depends(get_db)):
+    """R3-A §5 — يعرض المفتاح masked فقط (آخر 4 خانات). للحصول على المفتاح الكامل،
+    يجب استخدام /rotate الذي يعيد إنشاء واحد جديد."""
     branch = db.get(models.Branch, branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
     assert_same_company(user, branch.company_id, db=db)
     if not branch.kiosk_key:
-        return {"branch_id": branch.id, "kiosk_path": None}
-    return {"branch_id": branch.id, "kiosk_key": branch.kiosk_key,
-            "kiosk_path": f"/kiosk/qr/{branch.id}?key={branch.kiosk_key}"}
+        return {"branch_id": branch.id, "kiosk_key_masked": None, "kiosk_path": None}
+    return {
+        "branch_id": branch.id,
+        "kiosk_key_masked": _mask_kiosk_key(branch.kiosk_key),
+        # نُبقي رابط الشاشة الكامل لأن الفرع يحتاج فتحه فعلًا لعرض QR
+        # (هو المستخدم النهائي الوحيد للمفتاح — الموظفون يمسحون QR لا يرون المفتاح)
+        "kiosk_path": f"/kiosk/qr/{branch.id}?key={branch.kiosk_key}",
+    }
 
 
 @router.post("/branches/{branch_id}/supervisors/{user_id}")

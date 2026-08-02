@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // V2.2 §9 — env vars الخاصة بالتطوير (تُقرأ من frontend/.env.local)
 interface ImportMetaEnv {

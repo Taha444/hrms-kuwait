@@ -24,7 +24,16 @@ export default defineConfig({
         ]
       },
       workbox: {
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/]
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
+        // R3-B §4 — تفعيل فوري بعد أي deployment جديد:
+        //   skipWaiting: SW الجديد يتخطى مرحلة "waiting" ويحل محل القديم فورًا
+        //   clientsClaim: يسيطر على الـtabs المفتوحة الآن (ما ننتظرش reload يدوي)
+        //   cleanupOutdatedCaches: يمسح ملفات الـcache القديمة اللي ما بقتش مطلوبة
+        // النتيجة: لما ندفع build جديد، متصفحات المستخدمين تحدّث خلال ثوانٍ
+        // (بدل يظلوا يشوفوا النسخة القديمة لغاية ما يعملوا refresh يدوي)
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true
       }
     })
   ],

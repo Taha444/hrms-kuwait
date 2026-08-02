@@ -25,6 +25,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [leaveBal, setLeaveBal] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);  // R3-C — سجل التعديلات الحرجة
   const [evForm, setEvForm] = useState({ kind: "warning", title: "", amount: "" });
   const [actualEdit, setActualEdit] = useState(false);
   const [actualVal, setActualVal] = useState("");
@@ -50,6 +51,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const loadExtras = () => {
     api.get(`/employees/${id}/timeline`).then((r) => setTimeline(r.data.timeline)).catch(() => {});
     api.get(`/employees/${id}/events`).then((r) => setEvents(r.data)).catch(() => {});
+    api.get(`/employees/${id}/change-history`).then((r) => setHistory(r.data)).catch(() => {});
   };
   const load = () => api.get(`/employees/${id}/profile`).then((r) => setP(r.data));
   useEffect(() => {
@@ -146,13 +148,14 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     ["personal", t("tab_personal")], ["employment", t("tab_employment")],
     ["documents", t("tab_documents")], ["leave", t("tab_leave")],
     ["eos", t("tab_eos")], ["warnings", t("tab_warnings")],
+    ["history", "سجل التعديلات"],  // R3-C — تبويب جديد لتاريخ التغييرات الحرجة
   ];
   const ALLOWED_BY_SCOPE: Record<string, Set<string>> = {
-    // المحاسب: بيانات الرواتب فقط (employment) — لا هوية، لا مستندات، لا إجازات/إنذارات/EOS
-    accountant: new Set(["employment"]),
+    // المحاسب: بيانات الرواتب فقط (employment + history للراتب) — لا هوية/مستندات/إجازات
+    accountant: new Set(["employment", "history"]),
     // PRO: الجواز والوثائق الحكومية فقط
     pro: new Set(["documents"]),
-    full: new Set(["personal", "employment", "documents", "leave", "eos", "warnings"]),
+    full: new Set(["personal", "employment", "documents", "leave", "eos", "warnings", "history"]),
   };
   const allowedTabs = ALLOWED_BY_SCOPE[scope] || ALLOWED_BY_SCOPE.full;
   const TABS = ALL_TABS.filter(([k]) => allowedTabs.has(k));
@@ -412,6 +415,49 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             </div>
           </div>
         </>
+      )}
+
+      {/* R3-C — سجل التعديلات الحرجة (راتب/تعيين/عقد/مسمى) */}
+      {tab === "history" && (
+        <div className="card">
+          <h3>سجل التعديلات على البيانات الحرجة</h3>
+          <p className="muted" style={{ fontSize: 12 }}>
+            كل تعديل على الراتب أو تاريخ التعيين أو المسمى الوظيفي أو العقد يُسجَّل هنا
+            بتاريخ التسجيل + تاريخ السريان + المُنفِّذ + السبب.
+          </p>
+          {!history.length ? (
+            <div className="muted">لا يوجد سجل تعديلات بعد.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>الحقل</th>
+                    <th>القيمة السابقة</th>
+                    <th>القيمة الجديدة</th>
+                    <th>تاريخ السريان</th>
+                    <th>وقت التسجيل</th>
+                    <th>المُنفِّذ</th>
+                    <th>السبب</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h) => (
+                    <tr key={h.id}>
+                      <td><span className="pill neutral">{h.field_name}</span></td>
+                      <td className="muted"><code>{h.old_value ?? "—"}</code></td>
+                      <td><code style={{ color: "#065f46", fontWeight: 600 }}>{h.new_value ?? "—"}</code></td>
+                      <td>{h.effective_date}</td>
+                      <td className="muted">{fmtKuwaitDateTime(h.changed_at, lang)}</td>
+                      <td>{h.changed_by_name || `#${h.changed_by}` || "—"}</td>
+                      <td className="muted">{h.reason || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

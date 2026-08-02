@@ -152,22 +152,72 @@ def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_emp
     return out
 
 
+# R3-C §4 — الحقول اللي كل تعديل عليها يُسجَّل في EmployeeFieldChange (سجل نسخي دائم)
+CRITICAL_FIELDS = {"basic_salary", "actual_salary", "hire_date", "job_title",
+                   "contract_type", "contract_start_date", "contract_end_date"}
+
+
 @router.put("/{emp_id}", response_model=schemas.EmployeeOut)
 def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Request,
+                    effective_date: date | None = None, change_reason: str | None = None,
                     user: models.User = Depends(require_perm("edit_employee")),
                     db: Session = Depends(get_db)):
+    """R3-C — يقبل effective_date اختياري: لو موجود، التغييرات على الحقول الحرجة
+    تُسجَّل بتاريخ سريان مستقبلي (مفيد لزيادة راتب تسري الشهر القادم).
+    الافتراضي: effective_date = اليوم = تسري فورًا."""
     emp = _get_emp(db, user, emp_id)
     payload = data.model_dump()
     payload.pop("company_id", None)  # لا يُغيَّر انتماء الشركة عبر التعديل العادي
     _assert_no_duplicates(db, emp.company_id, payload.get("civil_id"),
                           payload.get("passport_number"), exclude_id=emp.id)
     _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
+
+    # R3-C — التقاط snapshot قبل + تسجيل التغييرات الحرجة في جدول التاريخ
+    eff = effective_date or date.today()
     for k, v in payload.items():
+        old = getattr(emp, k, None)
+        if k in CRITICAL_FIELDS and old != v:
+            db.add(models.EmployeeFieldChange(
+                company_id=emp.company_id, employee_id=emp.id, field_name=k,
+                old_value=None if old is None else str(old),
+                new_value=None if v is None else str(v),
+                effective_date=eff, changed_by=user.id, reason=change_reason,
+            ))
         setattr(emp, k, v)
     audit(db, user, "update_employee", "employee", emp.id, request=request)
     db.commit()
     db.refresh(emp)
     return emp
+
+
+@router.get("/{emp_id}/change-history")
+def employee_change_history(emp_id: int,
+                            user: models.User = Depends(require_perm("view_employee")),
+                            db: Session = Depends(get_db)):
+    """R3-C §4 — سجل التغييرات الحرجة على ملف الموظف (راتب/تعيين/عقد/مسمى).
+    يُعرَض بترتيب زمني تنازلي مع تاريخ التسجيل + تاريخ السريان + المُنفِّذ + السبب."""
+    from ..deps import assert_role_allowed
+    emp = _get_emp(db, user, emp_id)
+    # المحاسب يشوف تغييرات الرواتب فقط، PRO لا يشوف شيئًا
+    assert_role_allowed(user, {"delegate"}, emp_id,
+                       reason="سجل التعديلات لـHR/الإدارة والمحاسب فقط")
+    rows = db.scalars(select(models.EmployeeFieldChange).where(
+        models.EmployeeFieldChange.employee_id == emp_id,
+    ).order_by(models.EmployeeFieldChange.changed_at.desc())).all()
+    # تنقية للمحاسب: يشوف الحقول المالية فقط
+    is_self = user.employee_id == emp.id
+    if user.role == "accountant" and not is_self:
+        rows = [r for r in rows if r.field_name in {"basic_salary", "actual_salary"}]
+    return [{
+        "id": r.id, "field_name": r.field_name,
+        "old_value": r.old_value, "new_value": r.new_value,
+        "effective_date": r.effective_date.isoformat(),
+        "changed_at": r.changed_at.isoformat() + "Z",
+        "changed_by": r.changed_by,
+        "changed_by_name": (db.get(models.User, r.changed_by).full_name
+                            if r.changed_by and db.get(models.User, r.changed_by) else None),
+        "reason": r.reason,
+    } for r in rows]
 
 
 @router.post("/{emp_id}/apply-ocr")

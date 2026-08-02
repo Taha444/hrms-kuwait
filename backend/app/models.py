@@ -627,6 +627,31 @@ class PayrollRun(Base):
     adjustment_reason: Mapped[str | None] = mapped_column(Text)
 
 
+class EmployeeFieldChange(Base):
+    """R3-C §4 — سجل نسخي للتغييرات الحرجة على ملف الموظف.
+
+    مختلف عن AuditLog:
+      - AuditLog: كل الأحداث (login/print/export/...) — عام
+      - EmployeeFieldChange: فقط الحقول المالية/التعاقدية (basic_salary, actual_salary,
+        hire_date, job_title, contract_type)، مع effective_date منفصل عن changed_at
+        (لأن الشركة قد تسجّل زيادة راتب اليوم تسري الشهر القادم).
+
+    يُقرأ عبر GET /employees/{id}/change-history لعرض تاريخ التغييرات في ملف الموظف.
+    """
+    __tablename__ = "employee_field_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), index=True)
+    field_name: Mapped[str] = mapped_column(String(40))  # basic_salary, hire_date, ...
+    old_value: Mapped[str | None] = mapped_column(String(200))  # serialized (JSON/str)
+    new_value: Mapped[str | None] = mapped_column(String(200))
+    effective_date: Mapped[date] = mapped_column(Date)  # متى يسري التغيير (قد يكون بالمستقبل)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)  # متى سُجِّل التغيير
+    changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(Text)
+
+
 class Transfer(Base):
     """نقل موظف بين شركتين مع سجل تاريخي."""
     __tablename__ = "transfers"
