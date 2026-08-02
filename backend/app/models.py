@@ -645,6 +645,26 @@ class PayrollRun(Base):
     adjustment_reason: Mapped[str | None] = mapped_column(Text)
 
 
+class UserTourState(Base):
+    """R5 §3 — حالة إكمال الجولة التعليمية لكل (مستخدم × مفتاح جولة).
+
+    tour_key يميّز الجولة (عادةً "role:{role}:v1") — بحيث لو أُصدرت نسخة جديدة من
+    جولة دور معيّن، تُعتبر جولة جديدة ويظهر onboarding مرة أخرى.
+    مسار Replay: DELETE (أو reset) يمسح السجل → الجولة تظهر تلقائيًا مجددًا.
+    """
+    __tablename__ = "user_tour_states"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tour_key", name="uq_tour_user_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    tour_key: Mapped[str] = mapped_column(String(60), index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)  # تمييز "تجاوز" عن "أكمل"
+    step_reached: Mapped[int | None] = mapped_column(Integer)  # آخر خطوة وصلها (لو skip)
+
+
 class EmployeeFieldChange(Base):
     """R3-C §4 — سجل نسخي للتغييرات الحرجة على ملف الموظف.
 

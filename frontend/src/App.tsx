@@ -5,7 +5,7 @@ import { useI18n } from "./i18n";
 import api from "./api";
 import Icon from "./Icon";
 import GlobalSearch from "./components/GlobalSearch";
-import WelcomeTour from "./components/WelcomeTour";
+import RoleTour from "./components/RoleTour";
 
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
@@ -86,8 +86,10 @@ function Sidebar({ open }: { open: boolean }) {
     return () => window.removeEventListener("tasks:changed", refresh);
   }, [loc.pathname]);
 
-  const Item = ({ to, icon, label, badge }: any) => (
-    <NavLink to={to} end={to === "/"} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+  const Item = ({ to, icon, label, badge, tour }: any) => (
+    <NavLink to={to} end={to === "/"}
+             data-tour={tour}
+             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
       <Icon name={icon} className="ico" />
       <span>{label}</span>
       {badge ? <span className="badge">{badge}</span> : null}
@@ -129,45 +131,40 @@ function Sidebar({ open }: { open: boolean }) {
 
       <div className="nav-group">
         <div className="nav-label">{t("main_section")}</div>
-        <Item to="/" icon="dashboard" label={t("dashboard")} />
-        <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
-        <Item to="/requests" icon="requests" label={t("requests")} />
-        {canOperations && <Item to="/operations" icon="scan" label={t("operations")} />}
+        <Item to="/" icon="dashboard" label={t("dashboard")} tour="nav-dashboard" />
+        <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} tour="nav-tasks" />
+        <Item to="/requests" icon="requests" label={t("requests")} tour="nav-requests" />
+        {canOperations && <Item to="/operations" icon="scan" label={t("operations")} tour="nav-operations" />}
       </div>
 
-      {/* R2 §3 — Dual Persona: أي مستخدم إداري له ملف موظف يشوف قسم "خدمتي الذاتية"
-          مستقلًا عن قسم "إجراءات العمل" — لا يخلط بينهما. */}
+      {/* R2 §3 — Dual Persona */}
       {isEmployee && (
         <div className="nav-group">
           <div className="nav-label">{t("self_service_section") || "خدمتي الذاتية"}</div>
-          <Item to="/my-profile" icon="employees" label={t("my_profile")} />
-          {can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
+          <Item to="/my-profile" icon="employees" label={t("my_profile")} tour="nav-my-profile" />
+          {can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} tour="nav-attendance" />}
         </div>
       )}
 
       <div className="nav-group">
         <div className="nav-label">{t("resources_section")}</div>
-        {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
-        {/* الهيكل يعرض كل الفروع → للإدارة فقط (مسؤول الفرع مقيّد بفرعه) */}
+        {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} tour="nav-employees" />}
         {canStructure && <Item to="/structure" icon="branches" label={t("structure")} />}
-        {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
-        {/* R2 §3 — Attendance في "خدمتي الذاتية" فوق، Attendance Review هنا (إداري) */}
-        {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
-        {/* V2.2 §16 — صفحة PRO Transactions القديمة موقوفة. مسار الإقامة الوحيد هو Renewals. */}
-        {/* تجديد الإقامة: الموظف/المندوب/المدير/الشؤون */}
-        {canRenewals && <Item to="/renewals" icon="attendance" label={t("rnw_nav")} />}
-        {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} />}
-        {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} />}
-        {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
+        {canArchive && <Item to="/archive" icon="doc" label={t("archive")} tour="nav-archive" />}
+        {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} tour="nav-attendance-review" />}
+        {canRenewals && <Item to="/renewals" icon="attendance" label={t("rnw_nav")} tour="nav-renewals" />}
+        {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
+        {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
+        {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} tour="nav-payroll" />}
         {can("calculate_eos") && <Item to="/eos" icon="eos" label={t("eos")} />}
-        {can("export_reports") && <Item to="/reports" icon="doc" label={t("reports")} />}
+        {can("export_reports") && <Item to="/reports" icon="doc" label={t("reports")} tour="nav-reports" />}
       </div>
 
       {(user?.role === "super_admin" || can("manage_users") || can("view_audit")) && (
         <div className="nav-group">
           <div className="nav-label">{t("admin_section")}</div>
           {user?.role === "super_admin" && <Item to="/companies" icon="companies" label={t("companies")} />}
-          {can("manage_users") && <Item to="/users" icon="users" label={t("users")} />}
+          {can("manage_users") && <Item to="/users" icon="users" label={t("users")} tour="nav-users" />}
           {can("view_audit") && <Item to="/audit" icon="lock" label={t("audit")} />}
           {user?.role === "super_admin" && <Item to="/system-health" icon="dashboard" label={t("system_health")} />}
         </div>
@@ -215,8 +212,16 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
       <button className="icon-btn" onClick={() => nav("/tasks")} title={t("tasks")}>
         <Icon name="bell" size={18} />
       </button>
-      <button className="icon-btn" onClick={toggle} title={t("language")}>
+      <button className="icon-btn" onClick={toggle} title={t("language")}
+              data-tour="topbar-lang">
         <Icon name="globe" size={18} /><span style={{ fontSize: 11, fontWeight: 700, marginInlineStart: 2 }}>{lang === "ar" ? "EN" : "ع"}</span>
+      </button>
+      {/* R5 §3 — زر "أعد جولة التعريف" */}
+      <button className="icon-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent("hrms:replay-tour"))}
+              title={lang === "en" ? "Replay tour" : "أعد جولة التعريف"}
+              aria-label={lang === "en" ? "Replay tour" : "أعد جولة التعريف"}>
+        <Icon name="dashboard" size={18} />
       </button>
       <div className="user-chip">
         <div className="avatar" style={{ background: `linear-gradient(145deg, ${th.c1}, ${th.c2})` }} title={roleAr(user?.role || "")}>
@@ -269,8 +274,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             المحتوى الرئيسي للصفحة بمعزل عن الشريط الجانبي/العلوي */}
         <main className="content" id="main-content" tabIndex={-1}>{children}</main>
       </div>
-      {/* DEMO-5: modal ترحيبي يظهر مرة واحدة لكل مستخدم، role-aware */}
-      <WelcomeTour />
+      {/* R5 §3 — جولة تعليمية تُسلّط الضوء على العناصر (تظهر مرة واحدة تلقائيًا) */}
+      <RoleTour />
     </div>
   );
 }

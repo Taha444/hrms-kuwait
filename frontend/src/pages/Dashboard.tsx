@@ -55,7 +55,7 @@ export default function Dashboard() {
   if (data.personal_only) {
     return (
       <div>
-        <div className="page-head">
+        <div className="page-head" data-tour="dashboard-header">
           <div>
             <div className="eyebrow">{t("dash_welcome")}</div>
             <h2 style={{ margin: "2px 0 0" }}>{user?.full_name}</h2>
@@ -93,7 +93,7 @@ export default function Dashboard() {
     const perf = data.performance || {};
     return (
       <div>
-        <div className="page-head">
+        <div className="page-head" data-tour="dashboard-header">
           <div>
             <div className="eyebrow">{t("dash_eyebrow")}</div>
             <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}، {user?.full_name}</h2>

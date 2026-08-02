@@ -68,3 +68,53 @@ def my_document(document_type_code: str,
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
+
+
+# =============================================================================
+# R5 §3 — Tutorial state persistence (per-user, per-tour_key)
+# =============================================================================
+
+@router.get("/tours")
+def my_tours(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """قائمة الجولات التعليمية اللي أكملها/تجاوزها المستخدم — الفرونت يستخدمها
+    ليقرّر هل يعرض جولة الترحيب تلقائيًا أم لا."""
+    rows = db.scalars(select(models.UserTourState).where(
+        models.UserTourState.user_id == user.id,
+    )).all()
+    return [{"tour_key": r.tour_key, "completed_at": r.completed_at.isoformat() + "Z",
+             "skipped": r.skipped, "step_reached": r.step_reached} for r in rows]
+
+
+@router.post("/tours/{tour_key}/complete")
+def complete_tour(tour_key: str, skipped: bool = False, step_reached: int | None = None,
+                  user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """يسجّل إكمال (أو تجاوز) جولة تعليمية — لا تظهر تلقائيًا مرة أخرى."""
+    existing = db.scalar(select(models.UserTourState).where(
+        models.UserTourState.user_id == user.id,
+        models.UserTourState.tour_key == tour_key,
+    ))
+    if existing:
+        # نحدّث بدل رفض 409 — Replay بعد Skip يفترض يقدر يكمل ثانية
+        existing.skipped = skipped
+        existing.step_reached = step_reached
+    else:
+        db.add(models.UserTourState(
+            user_id=user.id, tour_key=tour_key,
+            skipped=skipped, step_reached=step_reached,
+        ))
+    db.commit()
+    return {"ok": True, "tour_key": tour_key, "skipped": skipped}
+
+
+@router.delete("/tours/{tour_key}")
+def reset_tour(tour_key: str,
+               user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Replay — يمسح سجل الإكمال بحيث تظهر الجولة تلقائيًا مجددًا."""
+    existing = db.scalar(select(models.UserTourState).where(
+        models.UserTourState.user_id == user.id,
+        models.UserTourState.tour_key == tour_key,
+    ))
+    if existing:
+        db.delete(existing)
+        db.commit()
+    return {"ok": True, "reset": tour_key}
