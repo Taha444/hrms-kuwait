@@ -13,8 +13,10 @@ const dict: Record<string, { ar: string; en: string }> = {
   login_failed: { ar: "تعذّر تسجيل الدخول", en: "Login failed" },
   demo_hint: { ar: "تجريبي — إدارة عليا:", en: "Demo — Super Admin:" },
   // الأقسام والتنقّل
-  main_section: { ar: "الرئيسية", en: "Main" },
-  resources_section: { ar: "الموارد", en: "Resources" },
+  // R2 §3 — الرئيسية = المهام والاعتمادات (Approvals + Tasks); بعدها الأقسام المتخصّصة
+  main_section: { ar: "الرئيسية والاعتمادات", en: "Main & Approvals" },
+  // R2 §3 — "إجراءات العمل" أوضح من "الموارد" للأدوار الإدارية (بيميّزها عن "خدمتي الذاتية")
+  resources_section: { ar: "إجراءات العمل", en: "Work Actions" },
   admin_section: { ar: "الإدارة", en: "Administration" },
   dashboard: { ar: "لوحة التحكم", en: "Dashboard" },
   tasks: { ar: "المهام", en: "Tasks" },

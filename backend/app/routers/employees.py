@@ -130,10 +130,26 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
     return emp
 
 
-@router.get("/{emp_id}", response_model=schemas.EmployeeOut)
+@router.get("/{emp_id}")
 def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                  db: Session = Depends(get_db)):
-    return _get_emp(db, user, emp_id)
+    emp = _get_emp(db, user, emp_id)
+    # R2-D — نفس strip الـprofile: نُحوّل لـdict وننقّي الحقول الحساسة (بلا تعديل الصف في DB)
+    is_self = user.employee_id == emp.id
+    out = schemas.EmployeeOut.model_validate(emp).model_dump()
+    if user.role == "accountant" and not is_self:
+        for k in ("civil_id", "passport_number", "passport_expiry", "date_of_birth",
+                  "address", "nationality", "gender", "marital_status", "email", "phone",
+                  "personal_photo_path", "health_insurance",
+                  "contract_type", "contract_start_date", "contract_end_date"):
+            if k in out:
+                out[k] = None
+    elif user.role == "delegate" and not is_self:
+        for k in ("basic_salary", "actual_salary", "hire_date", "job_title",
+                  "contract_type", "contract_start_date", "contract_end_date"):
+            if k in out:
+                out[k] = None
+    return out
 
 
 @router.put("/{emp_id}", response_model=schemas.EmployeeOut)
@@ -362,6 +378,10 @@ def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
               user: models.User = Depends(require_perm("edit_employee")),
               db: Session = Depends(get_db)):
     """تسجيل إنذار/جزاء/مكافأة/ترقية/ملاحظة للموظف."""
+    # R2-D — المحاسب/PRO ممنوعان (إنذارات = HR domain)
+    from ..deps import assert_role_allowed
+    assert_role_allowed(user, {"accountant", "delegate"}, emp_id,
+                       reason="الإنذارات/الجزاءات تخص شؤون الموظفين فقط")
     if kind not in EVENT_KINDS:
         raise HTTPException(status_code=400, detail="نوع حدث غير صالح")
     emp = _get_emp(db, user, emp_id)
@@ -378,6 +398,10 @@ def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
 @router.get("/{emp_id}/events")
 def list_events(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                 db: Session = Depends(get_db)):
+    # R2-D — المحاسب/PRO ممنوعان من رؤية الإنذارات (فصل الواجبات)
+    from ..deps import assert_role_allowed
+    assert_role_allowed(user, {"accountant", "delegate"}, emp_id,
+                       reason="الإنذارات لـHR والإدارة فقط")
     emp = _get_emp(db, user, emp_id)
     rows = db.scalars(select(models.EmployeeEvent).where(
         models.EmployeeEvent.employee_id == emp.id).order_by(models.EmployeeEvent.date.desc())).all()
@@ -390,8 +414,16 @@ def list_events(emp_id: int, user: models.User = Depends(require_perm("view_empl
 @router.get("/{emp_id}/timeline")
 def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                       db: Session = Depends(get_db)):
-    """سجل زمني موحّد لكل أحداث الموظف (إنشاء، مستندات، إقامات، إجازات، إنذارات...)."""
+    """سجل زمني موحّد لكل أحداث الموظف (إنشاء، مستندات، إقامات، إجازات، إنذارات...).
+
+    R2-D — يُنقّى المحتوى حسب دور العارض:
+      - المحاسب: أحداث الرواتب/المكافآت/الترقيات فقط (بلا مستندات/إجازات/إنذارات)
+      - المندوب: مستندات/إقامات فقط (بلا راتب/إجازات)
+    """
     emp = _get_emp(db, user, emp_id)
+    is_self = user.employee_id == emp.id
+    is_accountant = user.role == "accountant" and not is_self
+    is_pro = user.role == "delegate" and not is_self
     items: list[dict] = []
 
     items.append({"at": emp.created_at.isoformat(), "category": "create", "text": "تم إنشاء ملف الموظف"})
@@ -410,6 +442,13 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
         items.append({"at": (ev.date or ev.created_at.date()).isoformat() + "T00:00:00",
                       "category": ev.kind, "text": ev.title + (f" — {ev.amount} د.ك" if ev.amount else "")})
 
+    # R2-D — تنقية الـtimeline حسب دور العارض (فصل الواجبات)
+    if is_accountant:
+        ACC_CATS = {"create", "bonus", "promotion", "penalty"}  # لا مستندات/إقامات/إجازات/إنذارات
+        items = [x for x in items if x["category"] in ACC_CATS]
+    elif is_pro:
+        PRO_CATS = {"create", "document", "permit"}  # لا إجازات/راتب/إنذارات
+        items = [x for x in items if x["category"] in PRO_CATS]
     items.sort(key=lambda x: x["at"], reverse=True)
     return {"employee": {"id": emp.id, "name": emp.name, "status": emp.status}, "timeline": items}
 

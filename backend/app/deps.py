@@ -156,6 +156,25 @@ def require_super_admin(user: models.User = Depends(get_current_user)) -> models
     return user
 
 
+def assert_role_allowed(user: "models.User", blocked_roles: set[str],
+                        emp_id: int | None = None, reason: str = "") -> None:
+    """R2 §2 — يرفض الأدوار المحجوبة من الـendpoint. تُستدعى داخل الدالة (ليست dependency).
+
+    استثناء dual-persona: لو الطلب على ملف المستخدم نفسه (emp_id == user.employee_id) — يُسمح.
+    مثال:
+        assert_role_allowed(user, {"accountant", "delegate"}, emp_id,
+                            reason="عرض الإنذارات لـHR فقط")
+    """
+    if user.role not in blocked_roles:
+        return
+    if emp_id is not None and user.employee_id == emp_id:
+        return
+    msg = f"هذا الإجراء ممنوع على دور {user.role}"
+    if reason:
+        msg += f" — {reason}"
+    raise HTTPException(status_code=403, detail=msg)
+
+
 def scope_company_id(user: models.User, requested: int | None = None) -> int | None:
     """يطبّق العزل: غير الإدارة العليا/المالك يُجبَر على company_id الخاص به.
 
