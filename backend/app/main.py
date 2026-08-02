@@ -266,7 +266,7 @@ def health_deep():
                 "employees": db.query(models.Employee).count(),
                 "users": db.query(models.User).count(),
                 "requests": db.query(models.Request).count(),
-                "templates": db.query(models.Template).count(),
+                "templates": db.query(models.DocumentTemplate).count(),
                 "documents": db.query(models.Document).count(),
             }
         results["checks"]["data"] = {"status": "ok", **counts}
@@ -274,13 +274,24 @@ def health_deep():
         results["checks"]["data"] = {"status": "fail", "error": str(e)[:200]}
 
     # 7) Alembic head (نسخة الهجرات النشطة)
+    #    ملاحظة: لو الجدول غير موجود، يعني schema أُنشئ عبر Base.metadata.create_all()
+    #    (وضع تطوير/ديمو مع SQLite) — النظام يعمل لكن بلا تتبّع migrations.
     try:
         from sqlalchemy import text
         with SessionLocal() as db:
             row = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
             results["checks"]["alembic"] = {"status": "ok", "head": row[0] if row else None}
     except Exception as e:
-        results["checks"]["alembic"] = {"status": "fail", "error": str(e)[:200]}
+        err = str(e)[:200]
+        # نميّز بين "الجدول ما موجودش" (وضع create_all) وبين خطأ اتصال حقيقي
+        is_missing_table = "no such table" in err or "does not exist" in err
+        results["checks"]["alembic"] = {
+            "status": "disabled" if is_missing_table else "fail",
+            "error": err,
+            "note": ("Schema created via Base.metadata.create_all() — no migration "
+                    "tracking. Run 'alembic stamp head' to enable versioning.")
+                    if is_missing_table else None,
+        }
 
     # 8) R7-F — قنوات الإشعار الفعّالة (in-app / log / SMS / WhatsApp)
     try:

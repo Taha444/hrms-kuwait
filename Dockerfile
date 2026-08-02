@@ -29,5 +29,12 @@ COPY backend/ ./backend/
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
 WORKDIR /app/backend
-# إقلاع آمن (يُعبّئ مرة واحدة إن كانت القاعدة فارغة) ثم تشغيل الخادم على منفذ المنصّة
-CMD ["sh", "-c", "python -m app.bootstrap; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# إقلاع آمن:
+#  1) alembic upgrade head — يشغّل كل migrations الجديدة (idempotent). لو القاعدة
+#     أُنشئت سابقًا عبر Base.metadata.create_all() بلا alembic_version، بيرمي
+#     لكن ما يوقف الإقلاع (نستخدم `|| true` عشان بلا داعي لـdowntime).
+#  2) alembic stamp head — لو القاعدة موجودة بلا جدول alembic_version (وضع
+#     create_all السابق)، ده يختمها بالـHEAD الحالي ليبدأ التتبّع.
+#  3) bootstrap — يعبّئ super_admin + owner على قاعدة فارغة (idempotent).
+#  4) uvicorn — تشغيل الخادم.
+CMD ["sh", "-c", "alembic upgrade head || alembic stamp head; python -m app.bootstrap; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
