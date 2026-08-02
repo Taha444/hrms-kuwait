@@ -89,6 +89,8 @@ type Status = {
   enabled: boolean;
   sensitive_role: boolean;
   last_used_at: string | null;
+  role?: string;
+  role_label_ar?: string;
 };
 
 type Enrollment = {
@@ -159,8 +161,14 @@ export default function TwoFactor() {
           <h2 id="tfa-title">{t.two_factor}</h2>
           <div className="sub">
             {status.enabled ? t.enabled_desc
-              : status.sensitive_role ? t.sensitive_desc
-              : t.optional_desc}
+              : status.sensitive_role
+                ? (lang === "en"
+                    ? `Your role (${status.role || ""}) handles sensitive data — 2FA is strongly recommended.`
+                    : `دورك (${status.role_label_ar || status.role || ""}) يتعامل مع بيانات حساسة — يوصى بشدة بتفعيل 2FA.`)
+                : (lang === "en"
+                    ? `2FA is optional for your role (${status.role || ""}) but greatly improves security.`
+                    : `تفعيل 2FA اختياري لدورك (${status.role_label_ar || status.role || ""})، لكنه يزيد أمانك بشكل كبير.`)
+            }
           </div>
         </div>
       </div>

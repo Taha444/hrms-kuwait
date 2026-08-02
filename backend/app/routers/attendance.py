@@ -289,8 +289,10 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
     first, last = date(y, m, 1), date(y, m, days_in_month)
     days = [date(y, m, i + 1) for i in range(days_in_month)]
 
-    emp_q = select(models.Employee).where(
-        models.Employee.status == "active", models.Employee.attendance_mode != "none")
+    # R6-C §1 — Population parity: نُدرج كل الموظفين النشطين (بمن فيهم exempt)
+    #   حتى يرى المراجع "13/13" في العدّاد. exempt يظهر بصف واحد مع badge
+    #   يوضّح سبب الإعفاء، بدل الاختفاء الصامت.
+    emp_q = select(models.Employee).where(models.Employee.status == "active")
     if cid is not None:
         emp_q = emp_q.where(models.Employee.company_id == cid)
     # PILOT-P0-11a: إن كان المستخدم مُقيَّدًا بفروع (supervisor)، نطبّق فروعه دائمًا،
@@ -308,6 +310,18 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
 
     out_emps = []
     for e in employees:
+        # R6-C — موظف مُعفى من الحضور (attendance_mode=none أو attendance_exempt=True):
+        #   يظهر بصف واحد مع reason، بلا خلايا يومية — رؤية كاملة للـ13/13
+        if e.attendance_mode == "none" or getattr(e, "attendance_exempt", False):
+            out_emps.append({
+                "employee_id": e.id, "name": e.name, "job_title": e.job_title,
+                "branch_id": e.branch_id, "attendance_mode": e.attendance_mode,
+                "cells": {}, "summary": {"present": 0, "late": 0, "absent": 0, "leave": 0, "off": 0},
+                "overtime_minutes": 0,
+                "exempt": True,
+                "exempt_reason": getattr(e, "attendance_exempt_reason", None) or "معفى من الحضور",
+            })
+            continue
         recs = db.scalars(select(models.AttendanceRecord).where(
             models.AttendanceRecord.employee_id == e.id,
             models.AttendanceRecord.check_in_at >= datetime(y, m, 1),

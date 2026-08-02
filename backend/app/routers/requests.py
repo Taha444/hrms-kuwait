@@ -194,6 +194,23 @@ def submit_request(data: schemas.RequestIn, request: Request,
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
 
+    # R6-A §5 — Backend Allowlist: لو الشركة فعّلت إخفاء legacy، نرفض POST
+    # على الأكواد القديمة (لا يكفي إخفاؤها من الـcatalog؛ الـUI القديمة أو الـAPI
+    # الخارجية قد تحاول إنشاء طلب مباشرة). نقترح canonical البديل صراحًة.
+    from .. import feature_flags as ff
+    from .. import v15_registry
+    if ff.is_enabled(db, emp.company_id, ff.V15_LEGACY_CATALOG_HIDDEN):
+        info = v15_registry.resolve_request(data.request_type_code)
+        canonical = info.get("canonical")
+        # الكود القديم = له canonical مختلف عن نفسه = legacy
+        if canonical and canonical != data.request_type_code:
+            raise HTTPException(status_code=400, detail={
+                "code": "LEGACY_ALIAS_BLOCKED",
+                "message": f"الكود «{data.request_type_code}» قديم — استخدم «{canonical}» بدلاً منه.",
+                "canonical": canonical,
+                "legacy_code": data.request_type_code,
+            })
+
     # V2.2 §4 Form Schema Engine: التحقق من الحقول والقيود الشرطية والحدود
     from .. import form_schemas
     schema_errors = form_schemas.validate_payload(data.request_type_code, data.payload_json or {})

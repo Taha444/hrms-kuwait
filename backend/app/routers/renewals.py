@@ -421,7 +421,9 @@ def finalize_renewal(rid: int, request: Request,
     perms = get_user_perms(user, db)
     if not _is_pro(user, perms):
         raise HTTPException(status_code=403, detail="فقط المندوب يقدر يُتمم المعاملة الحكومية")
-    if rn.status not in (R.RENEWING, R.CONTRACTS_SIGNED, R.WITH_DELEGATE):
+    # R4/R6 — finalize مسموحة قبل رفع البطاقة المدنية أو بعده (المندوب قد يعبّي
+    # البيانات قبل استلام البطاقة من الموظف)
+    if rn.status not in (R.RENEWING, R.CONTRACTS_SIGNED, R.WITH_DELEGATE, R.AWAITING_CIVIL_CARD):
         raise HTTPException(status_code=409,
                           detail=f"الحالة الحالية ({rn.status}) لا تسمح بإدخال بيانات المعاملة الحكومية")
     # التحقق من صحة القيم
@@ -440,7 +442,9 @@ def finalize_renewal(rid: int, request: Request,
     rn.new_expiry_date = new_expiry_date
     rn.finalized_at = datetime.utcnow()
     rn.finalized_by = user.id
-    rn.status = R.AWAITING_CIVIL_CARD
+    # لو الحالة awaiting_civil_card بالفعل، نُبقيها (المندوب أكمل بيانات متأخّرة)
+    if rn.status != R.AWAITING_CIVIL_CARD:
+        rn.status = R.AWAITING_CIVIL_CARD
     _notify_stage(db, rn)
     audit(db, user, "finalize_renewal", "residency_renewal", rn.id, request=request,
           detail=f"gov_ref={gov_reference_no}, new_permit={new_permit_number}",
@@ -474,11 +478,19 @@ def hr_verify_renewal(rid: int, request: Request,
     rn.hr_verification_note = (note or "").strip() or None
     rn.status = R.COMPLETED
 
-    # R4 §7 — بيانات الإقامة الجديدة محفوظة على المعاملة نفسها (new_permit_number,
-    # new_expiry_date). سجل Permit يُحدَّث عبر عملية منفصلة (زر "تحديث ملف الموظف")
-    # في UI Renewals لتفادي أي تعارض مع قواعد التحقق في create_renewal.
-    # هذا الفصل يسمح لـHR أن ترى بيانات المعاملة المؤكّدة، ثم تختار متى تُطبّقها
-    # على الـPermit الرسمي (قد تحتاج تدقيقًا إضافيًا قبل التطبيق).
+    # R6-E §7 — Archive old permit + create the new one atomically.
+    # نُميّز القديم بحالة "renewed" (مش expired) — semantic أدق للتاريخ.
+    if rn.permit_id:
+        old_permit = db.get(models.Permit, rn.permit_id)
+        if old_permit:
+            old_permit.status = "renewed"
+    new_permit = models.Permit(
+        company_id=rn.company_id, employee_id=rn.employee_id,
+        kind="residency", number=rn.new_permit_number,
+        start_date=date.today(), expiry_date=rn.new_expiry_date,
+        status="active",
+    )
+    db.add(new_permit)
 
     _notify_stage(db, rn)
     audit(db, user, "hr_verify_renewal", "residency_renewal", rn.id, request=request,

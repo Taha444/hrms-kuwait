@@ -128,8 +128,12 @@ def disable(data: DisableIn, request: Request,
 @router.get("/status")
 def status(user: models.User = Depends(get_current_user)):
     """حالة 2FA الحالية للمستخدم — للواجهة تعرف تعرض أزرار الإعداد."""
+    from ..permissions import ROLE_LABEL_AR
     return {
         "enabled": bool(user.totp_confirmed),
         "sensitive_role": user.role in SENSITIVE_ROLES,
         "last_used_at": user.totp_last_used_at.isoformat() if user.totp_last_used_at else None,
+        # R6-D §4 — تسمية دور المستخدم عشان الواجهة تعرض نصًا مخصّصًا بدل عام
+        "role": user.role,
+        "role_label_ar": ROLE_LABEL_AR.get(user.role, user.role),
     }

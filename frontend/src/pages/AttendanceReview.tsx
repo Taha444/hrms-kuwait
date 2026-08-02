@@ -77,18 +77,36 @@ export default function AttendanceReview() {
               <tbody>
                 {data.employees.map((e: any) => (
                   <tr key={e.employee_id}>
-                    <td className="emp" title={e.job_title || ""}>{e.name}</td>
-                    {data.days.map((iso: string) => {
-                      const st = e.cells[iso] || "off";
-                      return (
-                        <td key={iso} className="cell">
-                          <span className={`att-dot ${st}`} title={`${iso} · ${attAr(st)}`}>{MARK[st]}</span>
-                        </td>
-                      );
-                    })}
-                    <td className="sum" style={{ color: "var(--success)" }}>{e.summary.present + e.summary.late}</td>
-                    <td className="sum" style={{ color: "var(--danger)" }}>{e.summary.absent}</td>
-                    <td className="sum" style={{ color: "var(--info)" }}>{e.summary.leave}</td>
+                    <td className="emp" title={e.job_title || ""}>
+                      {e.name}
+                      {e.exempt && (
+                        <span title={e.exempt_reason || "معفى"} style={{
+                          marginInlineStart: 6, fontSize: 10, background: "#e0ece8",
+                          color: "#0b3b38", padding: "1px 6px", borderRadius: 4,
+                          fontWeight: 600,
+                        }}>معفى</span>
+                      )}
+                    </td>
+                    {e.exempt ? (
+                      <td className="cell muted" colSpan={data.days.length + 3}
+                          style={{ textAlign: "center", fontSize: 12, color: "#6b7280" }}>
+                        {e.exempt_reason || "معفى من الحضور — لا تسجيل يومي"}
+                      </td>
+                    ) : (
+                      <>
+                        {data.days.map((iso: string) => {
+                          const st = e.cells[iso] || "off";
+                          return (
+                            <td key={iso} className="cell">
+                              <span className={`att-dot ${st}`} title={`${iso} · ${attAr(st)}`}>{MARK[st]}</span>
+                            </td>
+                          );
+                        })}
+                        <td className="sum" style={{ color: "var(--success)" }}>{e.summary.present + e.summary.late}</td>
+                        <td className="sum" style={{ color: "var(--danger)" }}>{e.summary.absent}</td>
+                        <td className="sum" style={{ color: "var(--info)" }}>{e.summary.leave}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

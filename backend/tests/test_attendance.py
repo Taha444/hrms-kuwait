@@ -102,10 +102,15 @@ def test_attendance_review_for_manager(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert "days" in body and "employees" in body
-    # كل الموظفين المعروضين مفعّل لهم الحضور (mode != none)
-    assert all(e["attendance_mode"] != "none" for e in body["employees"])
-    if body["employees"]:
-        e0 = body["employees"][0]
+    # R6-C — الموظفون المعفَون يظهرون بـexempt=True وسبب موثّق (population parity 13/13)
+    exempt = [e for e in body["employees"] if e.get("exempt")]
+    active = [e for e in body["employees"] if not e.get("exempt")]
+    for e in exempt:
+        assert e.get("exempt_reason"), "exempt employee must have a reason"
+    for e in active:
+        assert e["attendance_mode"] != "none"
+    if active:
+        e0 = active[0]
         assert set(e0["summary"]) >= {"present", "late", "absent", "leave"}
         assert len(e0["cells"]) == len(body["days"])
 
