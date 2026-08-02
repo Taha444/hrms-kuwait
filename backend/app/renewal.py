@@ -18,6 +18,9 @@ AWAITING_SIGNATURE = "awaiting_signature"
 CONTRACTS_SIGNED = "contracts_signed"
 RENEWING = "renewing"
 AWAITING_CIVIL_CARD = "awaiting_civil_card"
+# R4 §7 — بين استلام الوثائق الحكومية وإغلاق المعاملة: HR يتحقق من التطابق
+# (رقم الإقامة الجديد + التاريخ + الرسوم) قبل إغلاق التذكرة نهائيًا.
+PENDING_HR_VERIFY = "pending_hr_verify"
 COMPLETED = "completed"
 
 STATUS_LABELS = {
@@ -31,6 +34,7 @@ STATUS_LABELS = {
     CONTRACTS_SIGNED: {"ar": "تم رفع العقود الموقّعة", "en": "Signed contracts uploaded"},
     RENEWING: {"ar": "جاري التجديد", "en": "Renewing"},
     AWAITING_CIVIL_CARD: {"ar": "تم التجديد – بانتظار البطاقة المدنية", "en": "Renewed – awaiting civil card"},
+    PENDING_HR_VERIFY: {"ar": "بانتظار تحقق شؤون الموظفين", "en": "Pending HR verification"},
     COMPLETED: {"ar": "مكتملة", "en": "Completed"},
 }
 

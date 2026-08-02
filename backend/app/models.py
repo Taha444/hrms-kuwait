@@ -138,7 +138,14 @@ class BranchSupervisor(Base):
 
 
 class ResidencyRenewal(Base):
-    """معاملة تجديد الإقامة (مبكر/عادي) بحالاتها المتعددة — DEMO-001/002."""
+    """معاملة تجديد الإقامة (مبكر/عادي) بحالاتها المتعددة — DEMO-001/002.
+
+    R4 §7 — حقول إتمام المعاملة الحكومية (يعبّئها المندوب في finalize):
+      - gov_reference_no: الرقم المرجعي الحكومي للمعاملة
+      - fees_amount + fees_receipt_no: قيمة الرسوم ورقم الإيصال
+      - new_permit_number + new_expiry_date: بيانات الإقامة الجديدة
+    ثم HR يتحقق (hr_verified_by/at) قبل الإغلاق النهائي COMPLETED.
+    """
     __tablename__ = "residency_renewals"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -154,6 +161,17 @@ class ResidencyRenewal(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    # R4 §7 — Government Transaction Metadata
+    gov_reference_no: Mapped[str | None] = mapped_column(String(60), index=True)
+    fees_amount: Mapped[float | None] = mapped_column(Float)
+    fees_receipt_no: Mapped[str | None] = mapped_column(String(60))
+    new_permit_number: Mapped[str | None] = mapped_column(String(60))
+    new_expiry_date: Mapped[date | None] = mapped_column(Date)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finalized_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    hr_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    hr_verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    hr_verification_note: Mapped[str | None] = mapped_column(Text)
 
 
 class Department(Base):

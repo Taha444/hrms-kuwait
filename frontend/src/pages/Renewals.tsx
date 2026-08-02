@@ -8,7 +8,23 @@ const ST_PILL: Record<string, string> = {
   rejected: "critical", completed: "success", new: "info",
   pending_manager: "warning", pending_hr: "warning", awaiting_signature: "warning",
   awaiting_civil_card: "warning", awaiting_contracts: "info", contracts_signed: "info",
-  renewing: "info", with_delegate: "info",
+  renewing: "info", with_delegate: "info", pending_hr_verify: "warning",
+};
+
+// R4 §7 — تسميات الحالات الجديدة (لتفادي التبعية على i18n)
+const ST_LABEL: Record<string, string> = {
+  new: "طلب جديد",
+  pending_manager: "بانتظار موافقة المدير",
+  pending_hr: "بانتظار HR",
+  rejected: "مرفوض",
+  with_delegate: "محوّل للمندوب",
+  awaiting_contracts: "بانتظار العقود",
+  awaiting_signature: "بانتظار توقيع الموظف",
+  contracts_signed: "العقود موقّعة",
+  renewing: "جاري التجديد",
+  awaiting_civil_card: "بانتظار البطاقة المدنية",
+  pending_hr_verify: "بانتظار تحقق HR",
+  completed: "مكتملة",
 };
 
 export default function Renewals() {
@@ -69,6 +85,33 @@ export default function Renewals() {
   };
 
   const setRenewing = () => act(() => api.post(`/renewals/${sel.id}/renewing`));
+
+  // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)
+  const [gov, setGov] = useState({
+    gov_reference_no: "", fees_amount: "", fees_receipt_no: "",
+    new_permit_number: "", new_expiry_date: "",
+  });
+  const finalize = () => {
+    if (!gov.gov_reference_no.trim() || !gov.new_permit_number.trim() || !gov.new_expiry_date) {
+      setErr("الرقم المرجعي + رقم الإقامة الجديد + تاريخ الانتهاء إلزامية"); return;
+    }
+    act(async () => {
+      const fd = new FormData();
+      Object.entries(gov).forEach(([k, v]) => fd.append(k, v));
+      await api.post(`/renewals/${sel.id}/finalize`, fd);
+      setGov({ gov_reference_no: "", fees_amount: "", fees_receipt_no: "",
+               new_permit_number: "", new_expiry_date: "" });
+    }, "✓ تم تسجيل بيانات المعاملة الحكومية");
+  };
+
+  // R4 §7 — HR verification (يقفل المعاملة بعد التحقق من التطابق)
+  const [hrNote, setHrNote] = useState("");
+  const hrVerify = () => act(async () => {
+    const fd = new FormData();
+    if (hrNote) fd.append("note", hrNote);
+    await api.post(`/renewals/${sel.id}/hr-verify`, fd);
+    setHrNote("");
+  }, "✓ تم التحقق وإغلاق المعاملة");
   const download = async (dt: string) => {
     setErr("");
     try {
@@ -133,13 +176,40 @@ export default function Renewals() {
             <div className="card">
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <h3 style={{ margin: 0 }}>{sel.employee_name}</h3>
-                <span className={`pill ${ST_PILL[sel.status] || "neutral"}`}>{t(`rnw_st_${sel.status}`)}</span>
+                <span className={`pill ${ST_PILL[sel.status] || "neutral"}`}>
+                  {ST_LABEL[sel.status] || sel.status_label || sel.status}
+                </span>
               </div>
               <p className="muted" style={{ marginTop: 6 }}>
                 {t(`rnw_type_${sel.renewal_type}`)} · {t("rnw_days_left")}: {sel.days_left_at_request}
               </p>
               {sel.reason && <p><b>{t("rnw_reason")}:</b> {sel.reason}</p>}
               {sel.reject_reason && <p className="err"><b>{t("rnw_reject_reason")}:</b> {sel.reject_reason}</p>}
+
+              {/* R4 §7 — عرض بيانات المعاملة الحكومية (لو مسجّلة) */}
+              {sel.gov_reference_no && (
+                <div style={{
+                  background: "#e0ece8", padding: 10, borderRadius: 8,
+                  fontSize: 13, marginTop: 10,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>📋 بيانات المعاملة الحكومية</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
+                    <span><b>الرقم المرجعي:</b></span><code>{sel.gov_reference_no}</code>
+                    <span><b>رقم الإقامة الجديد:</b></span><code>{sel.new_permit_number || "—"}</code>
+                    <span><b>تاريخ الانتهاء الجديد:</b></span><span>{sel.new_expiry_date || "—"}</span>
+                    <span><b>الرسوم:</b></span>
+                    <span>{sel.fees_amount ?? "—"} د.ك · إيصال #{sel.fees_receipt_no || "—"}</span>
+                    {sel.hr_verified_at && (
+                      <>
+                        <span><b>تحقق HR:</b></span>
+                        <span style={{ color: "#065f46" }}>
+                          ✓ {sel.hr_verification_note || "بدون ملاحظة"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* المستندات */}
               <div style={{ margin: "10px 0" }}>
@@ -191,6 +261,73 @@ export default function Renewals() {
                   <UploadBtn docType="civil_id" label={t("rnw_upload_card")} />
                 )}
               </div>
+
+              {/* R4 §7 — PRO يعبّي بيانات المعاملة الحكومية (خلال renewing / awaiting_civil_card) */}
+              {isPro && ["renewing", "contracts_signed", "with_delegate"].includes(sel.status) &&
+                !sel.gov_reference_no && (
+                <div style={{
+                  background: "#fef3c7", border: "1px solid #fbbf24",
+                  padding: 12, borderRadius: 8, marginTop: 12,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                    📋 تسجيل بيانات المعاملة الحكومية (Finalize)
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>الرقم المرجعي الحكومي *</label>
+                      <input value={gov.gov_reference_no}
+                             onChange={(e) => setGov({ ...gov, gov_reference_no: e.target.value })}
+                             placeholder="GOV-2026-000123" />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>رقم الإقامة الجديد *</label>
+                      <input value={gov.new_permit_number}
+                             onChange={(e) => setGov({ ...gov, new_permit_number: e.target.value })} />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>تاريخ انتهاء الإقامة الجديد *</label>
+                      <input type="date" value={gov.new_expiry_date}
+                             onChange={(e) => setGov({ ...gov, new_expiry_date: e.target.value })} />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>قيمة الرسوم (د.ك)</label>
+                      <input type="number" step="0.001" value={gov.fees_amount}
+                             onChange={(e) => setGov({ ...gov, fees_amount: e.target.value })} />
+                    </div>
+                    <div className="field" style={{ margin: 0, gridColumn: "1 / span 2" }}>
+                      <label>رقم إيصال الرسوم</label>
+                      <input value={gov.fees_receipt_no}
+                             onChange={(e) => setGov({ ...gov, fees_receipt_no: e.target.value })} />
+                    </div>
+                  </div>
+                  <button onClick={finalize} style={{ marginTop: 10 }}>
+                    تسجيل وتحويل للتحقق
+                  </button>
+                </div>
+              )}
+
+              {/* R4 §7 — HR يتحقق ويقفل المعاملة */}
+              {isHr && sel.status === "pending_hr_verify" && (
+                <div style={{
+                  background: "#d1fae5", border: "1px solid #10b981",
+                  padding: 12, borderRadius: 8, marginTop: 12,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                    ✅ تحقق HR وإغلاق المعاملة
+                  </div>
+                  <p style={{ fontSize: 12, color: "#065f46", margin: "0 0 8px" }}>
+                    راجع بيانات المعاملة أعلاه وتطابقها مع الوثائق المرفوعة قبل الإغلاق.
+                  </p>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>ملاحظة التحقق (اختياري)</label>
+                    <input value={hrNote} onChange={(e) => setHrNote(e.target.value)}
+                           placeholder="تم التحقق من الرقم المرجعي والتاريخ الجديد" />
+                  </div>
+                  <button onClick={hrVerify} style={{ marginTop: 8 }}>
+                    تحقق وإغلاق
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

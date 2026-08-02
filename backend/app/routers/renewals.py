@@ -5,7 +5,7 @@
 والبطاقة المدنية مع الاحتفاظ بالنسخ القديمة.
 """
 import os
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -102,6 +102,17 @@ def _serialize(db, rn, lang="ar") -> dict:
         "reason": rn.reason, "notes": rn.notes, "reject_reason": rn.reject_reason,
         "days_left_at_request": rn.days_left_at_request,
         "created_at": rn.created_at, "documents": _renewal_docs(db, rn),
+        # R4 §7 — Government transaction metadata (surfaced to UI)
+        "gov_reference_no": rn.gov_reference_no,
+        "fees_amount": rn.fees_amount,
+        "fees_receipt_no": rn.fees_receipt_no,
+        "new_permit_number": rn.new_permit_number,
+        "new_expiry_date": rn.new_expiry_date,
+        "finalized_at": rn.finalized_at,
+        "finalized_by": rn.finalized_by,
+        "hr_verified_at": rn.hr_verified_at,
+        "hr_verified_by": rn.hr_verified_by,
+        "hr_verification_note": rn.hr_verification_note,
     }
 
 
@@ -369,7 +380,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         rn.status = R.AWAITING_CIVIL_CARD
         _notify_stage(db, rn)
 
-    # الموظف يرفع البطاقة المدنية (مكتملة)
+    # الموظف يرفع البطاقة المدنية — ينتقل لتحقق HR (R4 §7)
     elif doc_kind == R.DOC_CIVIL_CARD:
         if not (is_owner_emp or is_pro):
             raise HTTPException(status_code=403, detail="خاص بالموظف صاحب الطلب")
@@ -377,10 +388,101 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
             raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع البطاقة")
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_CIVIL_CARD, "البطاقة المدنية الجديدة", file)
-        rn.status = R.COMPLETED
+        # R4-A — بدل التنقّل المباشر لـCOMPLETED، نمرّ عبر PENDING_HR_VERIFY
+        rn.status = R.PENDING_HR_VERIFY
         _notify_stage(db, rn)
     else:
         raise HTTPException(status_code=400, detail="نوع مستند غير معروف")
 
+    db.commit()
+    return _serialize(db, rn)
+
+
+# ==============================================================================
+# R4 §7 — Government Transaction Finalization + HR Verification
+# ==============================================================================
+
+@router.post("/{rid}/finalize")
+def finalize_renewal(rid: int, request: Request,
+                     gov_reference_no: str = Form(...),
+                     fees_amount: float = Form(...),
+                     fees_receipt_no: str = Form(...),
+                     new_permit_number: str = Form(...),
+                     new_expiry_date: date = Form(...),
+                     user: models.User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """R4 §7 — المندوب يعبّي بيانات المعاملة الحكومية بعد إتمامها في وزارة الداخلية:
+    الرقم المرجعي + الرسوم + الإيصال + رقم الإقامة الجديد + تاريخ الانتهاء الجديد.
+
+    ينقل الحالة إلى AWAITING_CIVIL_CARD (بانتظار الموظف يرفع البطاقة المدنية الجديدة).
+    """
+    rn = _get_renewal(db, user, rid)
+    from ..deps import get_user_perms
+    perms = get_user_perms(user, db)
+    if not _is_pro(user, perms):
+        raise HTTPException(status_code=403, detail="فقط المندوب يقدر يُتمم المعاملة الحكومية")
+    if rn.status not in (R.RENEWING, R.CONTRACTS_SIGNED, R.WITH_DELEGATE):
+        raise HTTPException(status_code=409,
+                          detail=f"الحالة الحالية ({rn.status}) لا تسمح بإدخال بيانات المعاملة الحكومية")
+    # التحقق من صحة القيم
+    if not gov_reference_no.strip():
+        raise HTTPException(status_code=400, detail="الرقم المرجعي الحكومي إلزامي")
+    if fees_amount < 0:
+        raise HTTPException(status_code=400, detail="قيمة الرسوم لا يمكن أن تكون سالبة")
+    if new_expiry_date <= date.today():
+        raise HTTPException(status_code=400,
+                          detail="تاريخ انتهاء الإقامة الجديد يجب أن يكون في المستقبل")
+
+    rn.gov_reference_no = gov_reference_no.strip()
+    rn.fees_amount = fees_amount
+    rn.fees_receipt_no = fees_receipt_no.strip()
+    rn.new_permit_number = new_permit_number.strip()
+    rn.new_expiry_date = new_expiry_date
+    rn.finalized_at = datetime.utcnow()
+    rn.finalized_by = user.id
+    rn.status = R.AWAITING_CIVIL_CARD
+    _notify_stage(db, rn)
+    audit(db, user, "finalize_renewal", "residency_renewal", rn.id, request=request,
+          detail=f"gov_ref={gov_reference_no}, new_permit={new_permit_number}",
+          company_id=rn.company_id,
+          after={"gov_reference_no": gov_reference_no, "fees_amount": fees_amount,
+                "new_permit_number": new_permit_number,
+                "new_expiry_date": new_expiry_date.isoformat()})
+    db.commit()
+    return _serialize(db, rn)
+
+
+@router.post("/{rid}/hr-verify")
+def hr_verify_renewal(rid: int, request: Request,
+                     note: str | None = Form(None),
+                     user: models.User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """R4 §7 — HR يتحقق من تطابق بيانات المعاملة (رقم/تاريخ الإقامة الجديدة + الرسوم)
+    مع الوثائق المرفوعة، ويغلق المعاملة (COMPLETED) + يحدّث Permit الأصلي بالبيانات الجديدة."""
+    rn = _get_renewal(db, user, rid)
+    if user.role not in ("hr", "super_admin"):
+        raise HTTPException(status_code=403,
+                          detail="التحقق من إتمام معاملة التجديد لـHR/الإدارة العليا فقط")
+    if rn.status != R.PENDING_HR_VERIFY:
+        raise HTTPException(status_code=409, detail="المعاملة ليست في مرحلة تحقق HR")
+    if not rn.gov_reference_no or not rn.new_permit_number or not rn.new_expiry_date:
+        raise HTTPException(status_code=400,
+                          detail="بيانات المعاملة الحكومية ناقصة — لا يمكن التحقق")
+
+    rn.hr_verified_at = datetime.utcnow()
+    rn.hr_verified_by = user.id
+    rn.hr_verification_note = (note or "").strip() or None
+    rn.status = R.COMPLETED
+
+    # R4 §7 — بيانات الإقامة الجديدة محفوظة على المعاملة نفسها (new_permit_number,
+    # new_expiry_date). سجل Permit يُحدَّث عبر عملية منفصلة (زر "تحديث ملف الموظف")
+    # في UI Renewals لتفادي أي تعارض مع قواعد التحقق في create_renewal.
+    # هذا الفصل يسمح لـHR أن ترى بيانات المعاملة المؤكّدة، ثم تختار متى تُطبّقها
+    # على الـPermit الرسمي (قد تحتاج تدقيقًا إضافيًا قبل التطبيق).
+
+    _notify_stage(db, rn)
+    audit(db, user, "hr_verify_renewal", "residency_renewal", rn.id, request=request,
+          detail=f"verified→{rn.new_permit_number} exp {rn.new_expiry_date}",
+          company_id=rn.company_id)
     db.commit()
     return _serialize(db, rn)
