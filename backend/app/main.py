@@ -282,6 +282,22 @@ def health_deep():
     except Exception as e:
         results["checks"]["alembic"] = {"status": "fail", "error": str(e)[:200]}
 
+    # 8) R7-F — قنوات الإشعار الفعّالة (in-app / log / SMS / WhatsApp)
+    try:
+        from . import channels
+        active = channels.active_channels()
+        has_external = any(ch["external"] for ch in active)
+        results["checks"]["notifications"] = {
+            "status": "ok" if active else "fail",
+            "channels": active,
+            "external_delivery": has_external,
+            "note": ("قنوات خارجية (SMS/WhatsApp) مفعّلة" if has_external
+                    else "التسليم داخل التطبيق فقط — لتفعيل SMS/WhatsApp اضبط "
+                         "TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN في .env"),
+        }
+    except Exception as e:
+        results["checks"]["notifications"] = {"status": "fail", "error": str(e)[:200]}
+
     if not ok:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"status": "degraded", **results})

@@ -63,9 +63,14 @@ SCHEMAS: dict[str, dict] = {
         "conditional": [
             {"when": {"travel_required": True},
              "show": ["destination", "return_date"], "require": ["destination"]},
+            # R7-E — الإجازة المرضية تستلزم تقرير طبي (attachment.medical_report)
+            {"when": {"leave_type": "sick"}, "require_attachments": ["medical_report"]},
         ],
         "attachments": {"required": [], "optional": ["medical_report"]},
         "validation": {"end_gte_start": ["start_date", "end_date"]},
+        # ملاحظة: strict_validation مُطفَأة على REQLV للتوافق مع اختبارات موجودة
+        # تعتمد على schema مرن. الـsick→medical_report يطبَّق فعليًا فقط لو المستخدم
+        # اختار leave_type=sick صراحًة عبر الفورم (لا للـpayload القديم اللي بلا نوع).
         "meta": {"legacy_aliases": ["leave", "annual_leave", "sick_leave"]},
     },
     # ------------------------- تصحيح الحضور -------------------------
@@ -93,7 +98,7 @@ SCHEMAS: dict[str, dict] = {
              "require": ["new_check_in", "new_check_out"]},
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["attendance_correction"]},
+        "meta": {"legacy_aliases": ["attendance_correction"], "strict_validation": False},
     },
     # ------------------------- الإذن / المغادرة المبكرة -------------------------
     "REQPERM": {
@@ -110,7 +115,7 @@ SCHEMAS: dict[str, dict] = {
             REASON,
         ],
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["permission", "early_leave"]},
+        "meta": {"legacy_aliases": ["permission", "early_leave"], "strict_validation": False},
     },
     # ------------------------- شهادة راتب -------------------------
     "REQCERT": {
@@ -127,7 +132,8 @@ SCHEMAS: dict[str, dict] = {
             _field("notes", "ملاحظات إضافية", "textarea", max_length=300),
         ],
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["salary_certificate", "employment_letter", "noc"]},
+        "meta": {"legacy_aliases": ["salary_certificate", "employment_letter", "noc"],
+                 "strict_validation": False},
     },
     # ------------------------- سلفة / قرض -------------------------
     "REQADV": {
@@ -194,8 +200,14 @@ SCHEMAS: dict[str, dict] = {
             _field("effective_date", "تاريخ السريان", "date"),
             REASON,
         ],
+        "conditional": [
+            # R7-E — تعديل الحالة الاجتماعية يستلزم وثيقة داعمة (عقد زواج/طلاق/إلخ)
+            {"when": {"field_to_update": "marital_status"},
+             "require_attachments": ["supporting_doc"]},
+        ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["personal_update", "data_update"]},
+        "meta": {"legacy_aliases": ["personal_update", "data_update"],
+                 "strict_validation": False},
     },
     # ------------------------- تحديث الحساب البنكي -------------------------
     "REQBANK": {
@@ -267,8 +279,10 @@ SCHEMAS: dict[str, dict] = {
             _field("civil_id_no", "رقم البطاقة المدنية", "text", read_only=True),
             REASON,
         ],
-        "attachments": {"required": [], "optional": ["passport_copy", "civil_id_copy"]},
-        "meta": {"legacy_aliases": ["residency_renewal", "iqama_renewal"]},
+        # R7-E — تجديد الإقامة يستلزم نسخة الجواز والبطاقة (لا يمكن تقديمها للحكومة بدونها)
+        "attachments": {"required": ["passport_copy", "civil_id_copy"], "optional": []},
+        "meta": {"legacy_aliases": ["residency_renewal", "iqama_renewal"],
+                 "strict_validation": False},
     },
     # ------------------------- تحديث الجواز -------------------------
     "REQPASS": {
@@ -280,7 +294,7 @@ SCHEMAS: dict[str, dict] = {
             REASON,
         ],
         "attachments": {"required": ["passport_scan"], "optional": []},
-        "meta": {"legacy_aliases": ["passport_update"]},
+        "meta": {"legacy_aliases": ["passport_update"], "strict_validation": False},
     },
     # ------------------------- تحديث البطاقة المدنية -------------------------
     "REQCIVIL": {
@@ -290,7 +304,7 @@ SCHEMAS: dict[str, dict] = {
             REASON,
         ],
         "attachments": {"required": ["civil_id_scan"], "optional": []},
-        "meta": {"legacy_aliases": ["civil_id_update"]},
+        "meta": {"legacy_aliases": ["civil_id_update"], "strict_validation": False},
     },
     # ------------------------- تظلّم -------------------------
     "REQGRV": {
@@ -320,8 +334,9 @@ SCHEMAS: dict[str, dict] = {
             _field("difference_amount", "الفرق", "amount"),
             REASON,
         ],
-        "attachments": {"required": [], "optional": ["payslip_copy"]},
-        "meta": {"legacy_aliases": ["payroll_objection"]},
+        # R7-E — اعتراض راتب: يجب تقديم نسخة القسيمة المُعترَض عليها (بلاها لا دليل)
+        "attachments": {"required": ["payslip_copy"], "optional": []},
+        "meta": {"legacy_aliases": ["payroll_objection"], "strict_validation": False},
     },
     "REQDED": {
         "fields": [
@@ -422,21 +437,23 @@ def validate_payload(code: str, payload: dict) -> list[str]:
     """يتحقق من الـpayload وفق الـschema — يعيد قائمة أخطاء (فارغة = نجاح).
     الأخطاء بصيغة "{field}: {message}" للعرض بجانب الحقل الصحيح في الواجهة.
 
-    القاعدة العامة (§4 مع توافق خلفي):
-    - التحقق يتم فقط عند meta.strict_validation=True في الـschema.
-    - الأنواع الأخرى تعتمد على _missing_required_fields العام (workflow) للتوافق الخلفي
-      حتى يُهاجَر كل نوع تدريجيًا.
+    قاعدتان مستقلّتان:
+    - التحقق الحقلي الصارم (fields required + types + limits) يتم فقط عند
+      meta.strict_validation=True (للتوافق الخلفي مع الاختبارات القديمة).
+    - التحقق من المرفقات المطلوبة (§5) يتم دائمًا لأي schema يعرّف
+      attachments.required أو conditional.require_attachments — بصرف النظر عن
+      strict_validation، لأن رفض طلب بلا مرفق إلزامي ليس اختياريًا.
     """
     s = get_schema(code)
     if not s:
         return []
-    if not (s.get("meta") or {}).get("strict_validation"):
-        return []
+    strict = bool((s.get("meta") or {}).get("strict_validation"))
     errors: list[str] = []
     payload = payload or {}
 
     # القيود الشرطية: يُضاف "مطلوب" لحقول conditional.require
     dynamic_required: set[str] = set()
+    dynamic_required_attachments: set[str] = set()
     hidden: set[str] = set()
     for cond in s.get("conditional") or []:
         when = cond.get("when") or {}
@@ -446,6 +463,24 @@ def validate_payload(code: str, payload: dict) -> list[str]:
                 dynamic_required.add(f)
             for f in cond.get("hide") or []:
                 hidden.add(f)
+            # R7-E — مرفقات مطلوبة شرطيًا (مثلاً "leave sick" → medical_report)
+            for att in cond.get("require_attachments") or []:
+                dynamic_required_attachments.add(att)
+
+    # التحقق من المرفقات دائمًا — لا يعتمد على strict_validation
+    required_atts = set((s.get("attachments") or {}).get("required") or []) \
+                   | dynamic_required_attachments
+    if required_atts:
+        uploaded = set(payload.get("_attachments") or [])
+        missing_atts = required_atts - uploaded
+        if missing_atts:
+            errors.append(
+                f"_attachments: مرفقات مطلوبة مفقودة — {', '.join(sorted(missing_atts))}"
+            )
+
+    # التحقق الحقلي الصارم فقط لما strict_validation مُفعّلة
+    if not strict:
+        return errors
 
     # التحقق من الحقول
     for f in s.get("fields") or []:

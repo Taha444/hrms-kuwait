@@ -48,7 +48,10 @@ def test_accountant_can_decide_approval_stage_assigned_to_them(client):
     """P0-01: أي مرحلة اعتماد (لا pickup فقط) مسندة للمحاسب يجب أن يقدر يعتمدها/يرفضها."""
     emp = login(client, "100000000101", "emp12345")
     rid = client.post("/api/requests", headers=auth_headers(emp), json={
-        "request_type_code": "REQPAY", "payload_json": {"period": "2026-06", "reason": "خطأ حساب"},
+        "request_type_code": "REQPAY",
+        # R7-E — payslip_copy مرفق مطلوب لاعتراض الراتب
+        "payload_json": {"period": "2026-06", "reason": "خطأ حساب",
+                         "_attachments": ["payslip_copy"]},
     }).json()["id"]
     acc = login(client, "100000000007", "account123")
     r = client.post(f"/api/requests/{rid}/decide", headers=auth_headers(acc), json={"decision": "approved"})

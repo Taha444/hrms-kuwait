@@ -129,6 +129,15 @@ def register_channel(channel: NotificationChannel) -> None:
     _channels.append(channel)
 
 
+def active_channels() -> list[dict]:
+    """R7-F §4 — تشخيص شفّاف للقنوات الفعّالة (يُعرض في Health dashboard).
+    يميّز بين قنوات فعلية (SMS/WhatsApp عبر Twilio) وقناة تسجيل داخلية (log فقط)."""
+    return [{
+        "name": getattr(ch, "name", "?"),
+        "external": getattr(ch, "name", "") not in ("log", "in_app"),
+    } for ch in _channels]
+
+
 def redispatch_task(db, task) -> None:
     """V2.2 §20 — إعادة إرسال مهمة عبر قنواتها بعد فشل سابق. يرمي استثناء عند الفشل
     ليصل للمُستدعي (endpoint إعادة المحاولة)."""

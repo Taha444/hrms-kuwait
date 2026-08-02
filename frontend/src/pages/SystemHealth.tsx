@@ -192,6 +192,22 @@ export default function SystemHealth() {
           }
         </Card>
 
+        <Card title={isEn ? "Notification Channels" : "قنوات الإشعار"} status={c.notifications?.status || "fail"}>
+          {c.notifications?.channels?.map((ch: any) => (
+            <div key={ch.name} style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>{ch.name}</span>
+              <span style={{ color: ch.external ? "#065f46" : "#6b7280" }}>
+                {ch.external ? (isEn ? "external ✓" : "خارجية ✓") : (isEn ? "in-app" : "داخلية")}
+              </span>
+            </div>
+          ))}
+          {c.notifications?.note && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+              {c.notifications.note}
+            </div>
+          )}
+        </Card>
+
         <Card title={isEn ? "Canonical Registry" : "السجل الرسمي"} status={c.registry?.status || "fail"}>
           {c.registry?.status === "ok" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 4 }}>

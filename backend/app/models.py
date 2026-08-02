@@ -645,6 +645,32 @@ class PayrollRun(Base):
     adjustment_reason: Mapped[str | None] = mapped_column(Text)
 
 
+class SalaryChangeRequest(Base):
+    """R7-G §4 — طلب اعتماد لتغيير الراتب أو تاريخ التعيين أو العقد.
+
+    HR تقترح تغييرًا (proposed_by) — يبقى في status="pending" — ثم مدير الشركة
+    أو الإدارة العليا يعتمد (approved_by) → يُطبَّق على الموظف + يُنشأ صف
+    EmployeeFieldChange نهائي. طالب الاعتماد لا يقدر يعتمد نفسه (فصل واجبات).
+    """
+    __tablename__ = "salary_change_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), index=True)
+    field_name: Mapped[str] = mapped_column(String(40))  # basic_salary / actual_salary / hire_date / job_title / contract_type
+    old_value: Mapped[str | None] = mapped_column(String(200))
+    new_value: Mapped[str] = mapped_column(String(200))
+    effective_date: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending/approved/rejected/applied
+    proposed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    proposed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rejected_reason: Mapped[str | None] = mapped_column(Text)
+    applied_change_id: Mapped[int | None] = mapped_column(ForeignKey("employee_field_changes.id"))
+
+
 class UserTourState(Base):
     """R5 §3 — حالة إكمال الجولة التعليمية لكل (مستخدم × مفتاح جولة).
 

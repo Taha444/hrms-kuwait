@@ -783,6 +783,144 @@ def list_employees_without_policy(company_id: int | None = None,
              "hire_date": e.hire_date} for e in rows]
 
 
+# =============================================================================
+# R7-G §4 — Salary Change Approval Workflow (maker-checker)
+# HR/Manager يقترح، Manager/Owner/super_admin يعتمد. المُقترِح ≠ المُعتمِد.
+# =============================================================================
+CHANGEABLE_FIELDS = {"basic_salary", "actual_salary", "hire_date", "job_title",
+                    "contract_type"}
+
+
+@router.post("/{emp_id}/salary-change-request", status_code=201)
+def propose_salary_change(emp_id: int, field_name: str, new_value: str,
+                          effective_date: date, reason: str,
+                          request: Request = None,
+                          user: models.User = Depends(require_perm("edit_employee")),
+                          db: Session = Depends(get_db)):
+    """R7-G — يقترح تغييرًا على حقل حرج (راتب/تاريخ تعيين/عقد). الحالة تصبح pending
+    بانتظار اعتماد مستخدم آخر. لا يُطبَّق على الموظف حتى الاعتماد."""
+    if field_name not in CHANGEABLE_FIELDS:
+        raise HTTPException(status_code=400,
+                          detail=f"لا يمكن اقتراح تغيير على '{field_name}' — الحقول المسموحة: {sorted(CHANGEABLE_FIELDS)}")
+    if not reason or not reason.strip():
+        raise HTTPException(status_code=400, detail="سبب التغيير إلزامي")
+    emp = _get_emp(db, user, emp_id)
+    old = getattr(emp, field_name, None)
+    req = models.SalaryChangeRequest(
+        company_id=emp.company_id, employee_id=emp.id,
+        field_name=field_name,
+        old_value=None if old is None else str(old),
+        new_value=new_value,
+        effective_date=effective_date,
+        reason=reason.strip(),
+        proposed_by=user.id,
+    )
+    db.add(req)
+    db.flush()
+    audit(db, user, "propose_salary_change", "employee", emp.id,
+          detail=f"{field_name}: {old} → {new_value}", request=request)
+    db.commit()
+    return {"ok": True, "request_id": req.id, "status": "pending"}
+
+
+@router.get("/{emp_id}/salary-change-requests")
+def list_salary_change_requests(emp_id: int,
+                                user: models.User = Depends(require_perm("view_employee")),
+                                db: Session = Depends(get_db)):
+    _get_emp(db, user, emp_id)  # scope check
+    rows = db.scalars(select(models.SalaryChangeRequest).where(
+        models.SalaryChangeRequest.employee_id == emp_id,
+    ).order_by(models.SalaryChangeRequest.proposed_at.desc())).all()
+    return [{
+        "id": r.id, "field_name": r.field_name,
+        "old_value": r.old_value, "new_value": r.new_value,
+        "effective_date": r.effective_date.isoformat(),
+        "reason": r.reason, "status": r.status,
+        "proposed_by": r.proposed_by,
+        "proposed_by_name": (db.get(models.User, r.proposed_by).full_name
+                            if r.proposed_by and db.get(models.User, r.proposed_by) else None),
+        "proposed_at": r.proposed_at.isoformat() + "Z",
+        "approved_by": r.approved_by,
+        "approved_by_name": (db.get(models.User, r.approved_by).full_name
+                            if r.approved_by and db.get(models.User, r.approved_by) else None),
+        "approved_at": r.approved_at.isoformat() + "Z" if r.approved_at else None,
+        "rejected_reason": r.rejected_reason,
+    } for r in rows]
+
+
+@router.post("/salary-change-requests/{req_id}/decide")
+def decide_salary_change(req_id: int, decision: str, request: Request = None,
+                        note: str | None = None,
+                        user: models.User = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    """R7-G §4 — يعتمد أو يرفض. المُقترِح لا يقدر يعتمد نفسه (فصل واجبات)."""
+    if decision not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="القرار: approved أو rejected")
+    req = db.get(models.SalaryChangeRequest, req_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="طلب التغيير غير موجود")
+    if req.status != "pending":
+        raise HTTPException(status_code=409,
+                          detail=f"الطلب مغلق (الحالة: {req.status}) — لا يمكن اتخاذ قرار جديد")
+    # المُعتمِد لازم يكون مدير الشركة/صاحبها/الإدارة العليا
+    if user.role not in ("company_manager", "company_owner", "super_admin"):
+        raise HTTPException(status_code=403,
+                          detail="اعتماد تغييرات الرواتب لمدير الشركة/الإدارة العليا فقط")
+    # فصل الواجبات: المُقترِح ≠ المُعتمِد
+    if req.proposed_by == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403,
+                          detail="لا يمكنك اعتماد اقتراح قدّمته بنفسك (فصل الواجبات)")
+    # scope check
+    assert_same_company(user, req.company_id, db=db)
+
+    if decision == "rejected":
+        req.status = "rejected"
+        req.rejected_reason = (note or "").strip() or None
+        req.approved_by = user.id  # نسجل من رفض
+        req.approved_at = datetime.utcnow()
+        audit(db, user, "reject_salary_change", "employee", req.employee_id,
+              detail=f"{req.field_name} rejected: {req.rejected_reason}", request=request)
+        db.commit()
+        return {"ok": True, "status": "rejected"}
+
+    # approved → طبّق التغيير + سجّل EmployeeFieldChange نهائي + قفل الطلب
+    emp = db.get(models.Employee, req.employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    # convert new_value حسب نوع الحقل
+    coerced = req.new_value
+    if req.field_name in ("basic_salary", "actual_salary"):
+        try:
+            coerced = float(req.new_value)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="قيمة رقمية غير صالحة")
+    elif req.field_name == "hire_date":
+        try:
+            coerced = date.fromisoformat(req.new_value)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="تاريخ غير صالح")
+    setattr(emp, req.field_name, coerced)
+    # قيّد التاريخ نهائيًا في EmployeeFieldChange
+    change = models.EmployeeFieldChange(
+        company_id=emp.company_id, employee_id=emp.id,
+        field_name=req.field_name,
+        old_value=req.old_value, new_value=req.new_value,
+        effective_date=req.effective_date, changed_by=user.id,
+        reason=f"[approval #{req.id}] {req.reason}",
+    )
+    db.add(change)
+    db.flush()
+    req.status = "applied"
+    req.approved_by = user.id
+    req.approved_at = datetime.utcnow()
+    req.applied_change_id = change.id
+    audit(db, user, "apply_salary_change", "employee", emp.id,
+          detail=f"{req.field_name}: {req.old_value} → {req.new_value} (approved)",
+          request=request)
+    db.commit()
+    return {"ok": True, "status": "applied", "change_id": change.id}
+
+
 # ----------------------------- النقل بين الشركات -----------------------------
 
 @router.post("/{emp_id}/transfer")

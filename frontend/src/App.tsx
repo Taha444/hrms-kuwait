@@ -292,6 +292,29 @@ function Forbidden() {
   );
 }
 
+// R7-B §4 — صفحة 404 صريحة بدل إعادة توجيه صامتة للـdashboard
+// (المواصفة: "explicit 403/404 state screens instead of infinite loading spinners")
+function NotFound() {
+  const { t, lang } = useI18n();
+  const nav = useNavigate();
+  return (
+    <div className="card" style={{ textAlign: "center", padding: 48 }}>
+      <div style={{ fontSize: 48, color: "#0b3b54", marginBottom: 8 }}>404</div>
+      <h2 style={{ marginTop: 0 }}>
+        {lang === "en" ? "Page not found" : "الصفحة غير موجودة"}
+      </h2>
+      <p className="muted">
+        {lang === "en"
+          ? "The URL you requested doesn't match any known page."
+          : "الرابط المطلوب لا يطابق أي صفحة معروفة."}
+      </p>
+      <button onClick={() => nav("/")} style={{ marginTop: 16 }}>
+        {lang === "en" ? "Back to dashboard" : "العودة إلى لوحة المؤشرات"}
+      </button>
+    </div>
+  );
+}
+
 function Protected({ children, need }: { children: React.ReactNode; need?: boolean }) {
   const { user, loading, activeCompanyId } = useAuth();
   const { t } = useI18n();
@@ -350,7 +373,8 @@ export default function App() {
       <Route path="/companies" element={<Guarded need={(a) => a.user?.role === "super_admin"}><Companies /></Guarded>} />
       <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")}><Users /></Guarded>} />
       <Route path="/system-health" element={<Guarded need={(a) => a.user?.role === "super_admin"}><SystemHealth /></Guarded>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* R7-B — 404 صريحة بدل إعادة توجيه صامت (كان يحجب أخطاء التوجيه) */}
+      <Route path="*" element={<Protected><NotFound /></Protected>} />
     </Routes>
   );
 }

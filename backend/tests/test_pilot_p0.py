@@ -575,8 +575,10 @@ def test_v22_wf010_expense_reimbursement_smoke(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQEXP",
+        # R7-E — receipt مرفق مطلوب لصرف المصروفات
         "payload_json": {"expense_date": "2027-06-01", "category": "travel",
-                         "amount": 50, "description": "تاكسي مهمة عمل"},
+                         "amount": 50, "description": "تاكسي مهمة عمل",
+                         "_attachments": ["receipt"]},
     })
     assert r.status_code == 201, r.text
     assert r.json()["id"]
