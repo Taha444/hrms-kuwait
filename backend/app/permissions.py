@@ -142,7 +142,10 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
     # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR. submit_request (P0-05): يبدأ معاملات
     # حكومية (ADMLIC، REQWP...) نيابًة عن الموظف.
-    "delegate": {"view_employee", "create_employee", "view_documents", "upload_documents",
+    # R2-B: create_employee أُلغي — PRO لا يُنشئ موظفين (HR فقط). صلاحية إنشاء تُسبب
+    # ظهور "موظف جديد" في القائمة الجانبية وتفتح فورمًا يعرض حقول (راتب/تاريخ تعيين/عقد)
+    # ممنوعة على المندوب أصلاً في الرؤية.
+    "delegate": {"view_employee", "view_documents", "upload_documents",
                  "manage_permits", "manage_licenses", "process_delegate_tasks", "submit_request",
                  "view_tasks", "manage_tasks"},
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات

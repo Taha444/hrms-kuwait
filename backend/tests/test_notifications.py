@@ -83,8 +83,10 @@ def test_leave_approval_stage_is_template_driven(client):
 def test_renewal_stage_notification_is_template_driven(client):
     """FIX-004 (تعميم): تجديد الإقامة يُشعر عبر قالب مسمّى (NTF-015) لا نداء مباشر."""
     from datetime import date, timedelta
+    # R2-B — الموظف يُنشأ عبر HR (المندوب لم يعد يملك create_employee)
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
     pro = auth_headers(login(client, "100000000003", "deleg123"))
-    eid = client.post("/api/employees", headers=pro, json={
+    eid = client.post("/api/employees", headers=hr, json={
         "name": "موظف إشعار تجديد", "civil_id": "199933445566", "basic_salary": 300}).json()["id"]
     exp = (date.today() + timedelta(days=10)).isoformat()  # ضمن نافذة العادي (0-30) -> AWAITING_CONTRACTS
     client.post(f"/api/employees/{eid}/permits", headers=pro,

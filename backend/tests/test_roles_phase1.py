@@ -111,14 +111,18 @@ def test_actual_salary_is_permission_gated(client):
     assert prof_acc["actual_salary"] == 850
 
 
-def test_add_employee_pro_and_duplicate_block(client):
-    # المندوب يقدر يضيف موظفًا (DEMO-006)
+def test_pro_cannot_add_employee_hr_can_and_duplicate_block(client):
+    # R2-B — المندوب (PRO) ممنوع من إنشاء الموظفين (كان مسموحًا بالخطأ في DEMO-006)
     pro = login(client, "100000000003", "deleg123")
-    h = auth_headers(pro)
+    r_pro = client.post("/api/employees", headers=auth_headers(pro), json={
+        "civil_id": "288800011122", "name": "محاولة PRO", "basic_salary": 300})
+    assert r_pro.status_code == 403, r_pro.text
+    # HR له الصلاحية → يقدر ينشئ + منع تكرار الرقم المدني يظل شغّالًا
+    hr = login(client, "100000000002", "hr12345")
+    h = auth_headers(hr)
     r = client.post("/api/employees", headers=h, json={
-        "civil_id": "288800011122", "name": "موظف المندوب", "basic_salary": 300})
+        "civil_id": "288800011122", "name": "موظف HR", "basic_salary": 300})
     assert r.status_code == 201, r.text
-    # منع تكرار الرقم المدني
     dup = client.post("/api/employees", headers=h, json={
         "civil_id": "288800011122", "name": "مكرر", "basic_salary": 300})
     assert dup.status_code == 409

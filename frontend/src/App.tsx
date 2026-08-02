@@ -135,15 +135,23 @@ function Sidebar({ open }: { open: boolean }) {
         {canOperations && <Item to="/operations" icon="scan" label={t("operations")} />}
       </div>
 
+      {/* R2 §3 — Dual Persona: أي مستخدم إداري له ملف موظف يشوف قسم "خدمتي الذاتية"
+          مستقلًا عن قسم "إجراءات العمل" — لا يخلط بينهما. */}
+      {isEmployee && (
+        <div className="nav-group">
+          <div className="nav-label">{t("self_service_section") || "خدمتي الذاتية"}</div>
+          <Item to="/my-profile" icon="employees" label={t("my_profile")} />
+          {can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
+        </div>
+      )}
+
       <div className="nav-group">
         <div className="nav-label">{t("resources_section")}</div>
-        {/* خدمة ذاتية: ملف الموظف الشخصي (لمن له ملف موظف بلا صلاحية عرض عامة) */}
-        {isEmployee && !can("view_employee") && <Item to="/my-profile" icon="employees" label={t("my_profile")} />}
         {can("view_employee") && <Item to="/employees" icon="employees" label={t("employees")} />}
         {/* الهيكل يعرض كل الفروع → للإدارة فقط (مسؤول الفرع مقيّد بفرعه) */}
         {canStructure && <Item to="/structure" icon="branches" label={t("structure")} />}
         {canArchive && <Item to="/archive" icon="doc" label={t("archive")} />}
-        {isEmployee && can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} />}
+        {/* R2 §3 — Attendance في "خدمتي الذاتية" فوق، Attendance Review هنا (إداري) */}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} />}
         {/* V2.2 §16 — صفحة PRO Transactions القديمة موقوفة. مسار الإقامة الوحيد هو Renewals. */}
         {/* تجديد الإقامة: الموظف/المندوب/المدير/الشؤون */}

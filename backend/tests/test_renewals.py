@@ -126,9 +126,10 @@ def test_early_renewal_approval_chain(client):
 
 def test_early_renewal_reject_requires_reason(client):
     from datetime import date, timedelta
+    # R2-B — الموظف يُنشأ عبر HR (المندوب لم يعد يملك create_employee)
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
     pro = auth_headers(login(client, *PRO))
-    # موظف جديد بإقامة تنتهي خلال 60 يومًا (مستقل — DB مشتركة بين الاختبارات)
-    eid = client.post("/api/employees", headers=pro, json={
+    eid = client.post("/api/employees", headers=hr, json={
         "name": "موظف رفض", "civil_id": "199911223399", "basic_salary": 300}).json()["id"]
     exp = (date.today() + timedelta(days=60)).isoformat()
     client.post(f"/api/employees/{eid}/permits", headers=pro,

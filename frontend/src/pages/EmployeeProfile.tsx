@@ -140,11 +140,26 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   if (!p) return <div className="empty">{t("loading")}</div>;
   const e = p.employee;
 
-  const TABS = [
+  // R2 §2 — تصفية التبويبات حسب دور العارض (view_scope من backend)
+  const scope: string = p.view_scope || "full";
+  const ALL_TABS: [string, string][] = [
     ["personal", t("tab_personal")], ["employment", t("tab_employment")],
     ["documents", t("tab_documents")], ["leave", t("tab_leave")],
     ["eos", t("tab_eos")], ["warnings", t("tab_warnings")],
   ];
+  const ALLOWED_BY_SCOPE: Record<string, Set<string>> = {
+    // المحاسب: بيانات الرواتب فقط (employment) — لا هوية، لا مستندات، لا إجازات/إنذارات/EOS
+    accountant: new Set(["employment"]),
+    // PRO: الجواز والوثائق الحكومية فقط
+    pro: new Set(["documents"]),
+    full: new Set(["personal", "employment", "documents", "leave", "eos", "warnings"]),
+  };
+  const allowedTabs = ALLOWED_BY_SCOPE[scope] || ALLOWED_BY_SCOPE.full;
+  const TABS = ALL_TABS.filter(([k]) => allowedTabs.has(k));
+  // لو التبويب النشط ما يظهرش لهذا الدور — نلقائيًا نروح لأول تبويب مسموح
+  if (tab && !allowedTabs.has(tab) && TABS[0]) {
+    setTimeout(() => setTab(TABS[0][0]), 0);
+  }
 
   return (
     <div className="md-detail">
@@ -153,6 +168,17 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       </div>
       {msg && <div className="ok">{msg}</div>}
 
+      {scope !== "full" && (
+        <div style={{
+          background: "#fef3c7", border: "1px solid #fbbf24", padding: 10,
+          borderRadius: 8, marginBottom: 10, fontSize: 13,
+        }}>
+          <b>🔒 عرض محدود حسب دورك:</b>{" "}
+          {scope === "accountant"
+            ? "المحاسب يرى فقط بيانات الرواتب. الجواز والرقم المدني والمستندات الشخصية والإجازات والإنذارات مخفية بموجب سياسة فصل الواجبات."
+            : "المندوب يرى فقط الوثائق الحكومية. الراتب والعقد والمسمى الوظيفي مخفية."}
+        </div>
+      )}
       <div className="tabs">
         {TABS.map(([key, label]) => (
           <button key={key} className={`tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>

@@ -207,13 +207,23 @@ def set_attendance_mode(emp_id: int, mode: str, request: Request,
 @router.get("/{emp_id}/profile")
 def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                      db: Session = Depends(get_db)):
-    """الملف المجمّع: البيانات + الإقامات + المستندات + الخصومات + الإجازات + الحضور."""
+    """الملف المجمّع: البيانات + الإقامات + المستندات + الخصومات + الإجازات + الحضور.
+
+    R2 §2 — نطاق العرض حسب الدور:
+      - المحاسب: بيانات الرواتب فقط (راتب/بدلات/خصومات/إضافي/بنك)؛ يُخفى:
+        الجواز، الرقم المدني، العنوان، المستندات الشخصية، الإجازات، الإنذارات، EOS.
+      - المندوب (PRO): بيانات حكومية فقط (إقامات/جوازات/تراخيص)؛ يُخفى:
+        الراتب، تاريخ التعيين، المسمى الوظيفي، العقد.
+    """
     emp = _get_emp(db, user, emp_id)
     # الإقامات/أذونات العمل شأن حكومي → تُعرَض للمندوب/الإدارة العليا فقط
     from ..permissions import has_permission
     from ..deps import get_user_perms
     perms = get_user_perms(user, db)
     is_admin = user.role == "super_admin"
+    is_self = user.employee_id == emp.id  # R2 §3 — الموظف يرى ملفه كاملاً حتى لو دوره إداري
+    is_accountant = user.role == "accountant" and not is_self
+    is_pro = user.role == "delegate" and not is_self
     can_gov = is_admin or has_permission(user.role, perms, "manage_permits")
     can_view_actual = is_admin or has_permission(user.role, perms, "view_actual_salary")
     can_edit_actual = is_admin or has_permission(user.role, perms, "edit_actual_salary")
@@ -241,9 +251,34 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     if not can_view_pii:
         emp_out["civil_id"] = mask_civil_id(emp_out.get("civil_id"))
         emp_out["passport_number"] = mask_passport(emp_out.get("passport_number"))
+
+    # R2-A — المحاسب: يمسح كل الحقول الهوياتية/العقدية من الـpayload
+    #        (لا يحتاجها لتشغيل الرواتب — الاسم + الرقم الوظيفي كافيان للتعرّف)
+    ACCOUNTANT_STRIP = {
+        "civil_id", "passport_number", "passport_expiry", "date_of_birth",
+        "address", "nationality", "gender", "marital_status", "email", "phone",
+        "personal_photo_path", "health_insurance",
+        "contract_type", "contract_start_date", "contract_end_date",
+    }
+    # R2-B — المندوب (PRO): يمسح الحقول المالية/العقدية
+    PRO_STRIP = {
+        "basic_salary", "actual_salary", "hire_date", "job_title",
+        "contract_type", "contract_start_date", "contract_end_date",
+    }
+    if is_accountant:
+        for k in ACCOUNTANT_STRIP:
+            if k in emp_out: emp_out[k] = None
+    if is_pro:
+        for k in PRO_STRIP:
+            if k in emp_out: emp_out[k] = None
+
     return {
         "employee": emp_out,
         "pii_masked": not can_view_pii,
+        # R2 §2 — العلامة اللي الفرونت يستخدمها لتخفي التبويبات الممنوعة
+        "view_scope": ("accountant" if is_accountant
+                       else "pro" if is_pro
+                       else "full"),
         # الراتب الفعلي يُعرَض/يُعدَّل حسب الصلاحية المالية فقط
         "actual_salary": emp.actual_salary if can_view_actual else None,
         "can_view_actual_salary": can_view_actual,
