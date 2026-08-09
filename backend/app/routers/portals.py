@@ -19,13 +19,14 @@ router = APIRouter(prefix="/gov-portals", tags=["gov-portals"])
 
 
 CATEGORY_LABELS = {
-    "residency": "الإقامات",
-    "work_permits": "تصاريح العمل",
+    "manpower": "العمل والعمالة",
+    "residency": "الإقامات والداخلية",
     "civil_id": "البطاقة المدنية",
-    "moci": "وزارة التجارة",
-    "municipality": "البلدية",
+    "moci": "التجارة والشركات",
+    "municipality": "البلدية والفروع",
+    "customs": "الجمارك والاستيراد",
     "insurance": "التأمينات",
-    "other": "أخرى",
+    "other_services": "التصديقات والخدمات المساندة",
 }
 
 
