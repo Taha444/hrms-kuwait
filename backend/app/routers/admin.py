@@ -86,3 +86,69 @@ def system_info(user: models.User = Depends(require_super_admin)):
         "reset_allowed": _reset_allowed(),
         "server_time_utc": datetime.utcnow().isoformat() + "Z",
     }
+
+
+@router.get("/db-status")
+def db_status(user: models.User = Depends(require_super_admin)):
+    """R9 §15 — تشخيص DB: عدّاد الجداول الأساسية + آخر migration + orphans.
+    مفيد لتشخيص "الطلبات فاضية / القوالب فاضية" بدون SQL مباشر."""
+    from sqlalchemy import func, select, text
+    from ..database import SessionLocal
+
+    counts: dict = {}
+    last_rev: str | None = None
+    orphan_users: int = 0
+    with SessionLocal() as db:
+        for model, name in [
+            (models.User, "users"),
+            (models.Employee, "employees"),
+            (models.Company, "companies"),
+            (models.Branch, "branches"),
+            (models.RequestType, "request_types"),
+            (models.DocumentTemplate, "document_templates"),
+            (models.Request, "requests"),
+            (models.Document, "documents"),
+            (models.NotificationTemplate, "notification_templates"),
+            (models.GovernmentPortal, "government_portals"),
+        ]:
+            try:
+                counts[name] = db.scalar(select(func.count()).select_from(model))
+            except Exception as e:
+                counts[name] = f"ERROR: {str(e)[:80]}"
+
+        try:
+            row = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+            last_rev = row[0] if row else None
+        except Exception as e:
+            last_rev = f"ERROR: {str(e)[:80]}"
+
+        try:
+            orphan_users = db.scalar(select(func.count()).select_from(models.User).where(
+                models.User.employee_id.is_(None),
+                models.User.role.notin_(("super_admin", "company_owner")),
+                models.User.is_active == True,  # noqa: E712
+            )) or 0
+        except Exception:
+            orphan_users = -1
+
+    return {
+        "counts": counts,
+        "last_alembic_revision": last_rev,
+        "orphan_users_needing_link": orphan_users,
+        "environment": "production" if settings.is_production else "development",
+    }
+
+
+@router.post("/ensure-catalog")
+def ensure_catalog(request: Request,
+                  user: models.User = Depends(require_super_admin)):
+    """R9 §15 — تشغيل يدوي لحقن request types + templates الافتراضية.
+    نفس المنطق اللي يشتغل في bootstrap على كل startup. idempotent."""
+    from ..catalog_seed import ensure_default_catalog
+    from ..database import SessionLocal
+    with SessionLocal() as db:
+        report = ensure_default_catalog(db)
+        audit(db, user, "ensure_catalog", entity_type="system", request=request,
+              after=report)
+        db.commit()
+    return report

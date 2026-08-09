@@ -73,6 +73,8 @@ def main():
 
     if has_data:
         print("[bootstrap] القاعدة تحتوي بيانات بالفعل — تخطّي التعبئة (حفاظًا على البيانات).")
+        # R9 §15 — كفالة catalog الافتراضي (request types + templates) في كل startup
+        _ensure_catalog()
         # R9 §14 — auto-link pass دائم: يفحص كل حساب unlinked ويربطه بموظف مطابق
         _run_auto_link()
         return
@@ -95,6 +97,27 @@ def main():
     seed.run()
     # حتى بعد الـseed، شغّل auto-link (في التطوير الـseed بيربط بالفعل، بس آمن لو أي فرق)
     _run_auto_link()
+
+
+def _ensure_catalog() -> None:
+    """R9 §15 — يكفل وجود 53 request type + 42 قالب في DB (safety net فوق الـmigration).
+    idempotent — لو الـmigration اشتغل، لن يُضاف شيء."""
+    try:
+        from .catalog_seed import ensure_default_catalog
+        db = SessionLocal()
+        try:
+            report = ensure_default_catalog(db)
+        finally:
+            db.close()
+    except Exception as e:  # pragma: no cover
+        print(f"[bootstrap] ensure_catalog فشل: {e} — نستمر.")
+        return
+
+    if report["request_types_added"] or report["templates_added"]:
+        print(f"[bootstrap] ✓ catalog seeded: +{report['request_types_added']} request types, "
+              f"+{report['templates_added']} templates")
+    print(f"[bootstrap]   catalog totals: {report['request_types_total']} request types, "
+          f"{report['templates_total']} templates")
 
 
 def _run_auto_link() -> None:
