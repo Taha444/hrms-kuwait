@@ -941,3 +941,90 @@ def transfer_employee(emp_id: int, to_company_id: int, note: str | None = None,
           detail=f"{from_company}->{to_company_id}", request=request)
     db.commit()
     return {"ok": True, "from": from_company, "to": to_company_id}
+
+
+# ==========================================================================
+# R9 — تعيين جديد: توليد العقد الحكومي + عقد الشركة (New Hire flow)
+# ==========================================================================
+# القاعدة الحاكمة: عند التعيين نحتاج عقدين — عقد الشركة (COMPANY-CONTRACT-HIRE)
+# وعقد حكومي (GOV-CONTRACT-HIRE). العقدين يُطبعا للتوقيع ثم تُرفَع النسخ الموقّعة
+# لملف الموظف. البيانات تُملأ من مصدر السلطة (لا تعديل من الفورم).
+
+def _generate_hire_contract(db: Session, user: models.User, request: Request,
+                            emp: models.Employee, tpl_code: str, title_ar: str) -> dict:
+    """داخلي: يولّد عقد بكود template محدد ويحفظه كـissued document على الموظف."""
+    import hashlib
+    import os
+    from ..config import settings
+    from .templates import _resolve_authoritative_data, _fill_html, _generate_reference_no
+
+    tpl = db.scalar(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.code == tpl_code,
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+    ))
+    if not tpl:
+        raise HTTPException(status_code=404, detail=(
+            f"قالب العقد ({tpl_code}) غير موجود. لإضافته: /templates → إنشاء قالب "
+            f"جديد بهذا الكود مع placeholders {{employee_name}}، {{civil_id}}، "
+            f"{{basic_salary}}، {{company_name}}، {{date_today}}، {{ref_no}}."
+        ))
+
+    ctx = _resolve_authoritative_data(db, emp, extras={})
+    reference_no = _generate_reference_no(db, tpl_code, emp.company_id, tpl.version or 1)
+    ctx["ref_no"] = reference_no
+    rendered = _fill_html(tpl, ctx)
+    payload = rendered.encode("utf-8")
+    checksum = hashlib.sha256(payload).hexdigest()
+
+    folder = os.path.join(settings.upload_dir, "hire_contracts")
+    os.makedirs(folder, exist_ok=True)
+    safe_ref = reference_no.replace("/", "_")
+    fpath = os.path.join(folder, f"{safe_ref}.html")
+    with open(fpath, "wb") as f:
+        f.write(payload)
+
+    doc_type_code = f"{tpl_code.lower().replace('-', '_')}_{emp.id}"
+    doc = models.Document(
+        company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+        document_type_code=doc_type_code,
+        title=f"{title_ar} — {emp.name}",
+        file_path=fpath, mime="text/html",
+        version=1, is_current=True, uploaded_by=user.id,
+        is_issued=True, reference_no=reference_no,
+        template_version=tpl.version or 1, checksum_sha256=checksum,
+        generated_at=datetime.utcnow(), generated_by=user.id,
+    )
+    db.add(doc)
+    db.flush()
+    audit(db, user, "generate_hire_contract", "employee", emp.id,
+          detail=f"{tpl_code} → {reference_no}", request=request, company_id=emp.company_id)
+    return {
+        "ok": True, "html": rendered,
+        "document_id": doc.id, "reference_no": reference_no,
+        "checksum_sha256": checksum, "template_code": tpl_code,
+    }
+
+
+@router.post("/{emp_id}/gov-contract/generate")
+def generate_employee_gov_contract(emp_id: int, request: Request,
+                                   user: models.User = Depends(require_perm("upload_documents")),
+                                   db: Session = Depends(get_db)):
+    """R9 — يُولّد العقد الحكومي للتعيين (GOV-CONTRACT-HIRE) بيانات الموظف تلقائيًا.
+    يُحفظ كـissued document على الموظف مع reference_no وchecksum."""
+    emp = _get_emp(db, user, emp_id)
+    result = _generate_hire_contract(db, user, request, emp,
+                                     "GOV-CONTRACT-HIRE", "العقد الحكومي — تعيين")
+    db.commit()
+    return result
+
+
+@router.post("/{emp_id}/company-contract/generate")
+def generate_employee_company_contract(emp_id: int, request: Request,
+                                      user: models.User = Depends(require_perm("upload_documents")),
+                                      db: Session = Depends(get_db)):
+    """R9 — يُولّد عقد العمل بين الشركة والعامل (COMPANY-CONTRACT-HIRE)."""
+    emp = _get_emp(db, user, emp_id)
+    result = _generate_hire_contract(db, user, request, emp,
+                                     "COMPANY-CONTRACT-HIRE", "عقد العمل")
+    db.commit()
+    return result

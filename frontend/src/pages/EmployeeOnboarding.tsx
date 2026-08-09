@@ -253,6 +253,31 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
     finally { setBusy(false); }
   };
 
+  // ============ R9 — Generate hire contract (Step 4) ============
+  // يفتح العقد المولّد HTML في تبويب جديد للطباعة والتوقيع.
+  const [contractsGenerated, setContractsGenerated] = useState<string[]>([]);
+  const generateHireContract = async (kind: "gov" | "company") => {
+    if (!savedEmp?.id) return;
+    setErr(""); setBusy(true);
+    try {
+      const endpoint = kind === "gov" ? "gov-contract/generate" : "company-contract/generate";
+      const r = await api.post(`/employees/${savedEmp.id}/${endpoint}`);
+      // اعرض HTML في تبويب جديد للطباعة
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.open();
+        w.document.write(r.data.html);
+        w.document.close();
+      }
+      const label = kind === "gov"
+        ? (isEn ? "Government contract" : "العقد الحكومي")
+        : (isEn ? "Company contract" : "عقد الشركة");
+      setContractsGenerated([...contractsGenerated, `${label} — ${r.data.reference_no}`]);
+    } catch (e: any) {
+      setErr(errMsg(e, isEn ? "Contract generation failed" : "فشل توليد العقد"));
+    } finally { setBusy(false); }
+  };
+
   // ============ Render progress ============
   const Steps = () => (
     <div className="row" style={{ gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -689,6 +714,34 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                 {uploadedDocs.length > 0 && (
                   <ul style={{ marginTop: 8 }}>
                     {uploadedDocs.map((d, i) => <li key={i}>✓ {d}</li>)}
+                  </ul>
+                )}
+              </div>
+
+              {/* R9 — تعيين جديد: توليد عقد الشركة + العقد الحكومي */}
+              <div style={{ marginTop: 16, padding: 12, borderTop: "2px solid var(--gold, #c8a24a)" }}>
+                <h4 style={{ margin: "0 0 8px" }}>
+                  {isEn ? "Hire Contracts (print → sign → upload signed)"
+                        : "عقود التعيين (طباعة → توقيع → رفع النسخة الموقّعة)"}
+                </h4>
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 10px" }}>
+                  {isEn
+                    ? "New hire needs both: a company employment contract, and a government contract."
+                    : "التعيين الجديد يحتاج عقدين: عقد العمل بين الشركة والعامل، وعقد حكومي (وزارة الداخلية)."}
+                </p>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={() => generateHireContract("company")} disabled={busy}
+                          style={{ background: "var(--brand)" }}>
+                    {isEn ? "🖨️ Generate Company Contract" : "🖨️ توليد عقد الشركة"}
+                  </button>
+                  <button onClick={() => generateHireContract("gov")} disabled={busy}
+                          style={{ background: "#0a7f3f" }}>
+                    {isEn ? "🖨️ Generate Government Contract" : "🖨️ توليد العقد الحكومي"}
+                  </button>
+                </div>
+                {contractsGenerated.length > 0 && (
+                  <ul style={{ marginTop: 10, fontSize: 13 }}>
+                    {contractsGenerated.map((c, i) => <li key={i}>✓ {c}</li>)}
                   </ul>
                 )}
               </div>

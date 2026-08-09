@@ -49,13 +49,16 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
     """يُعيد كل المستندات الحالية (is_current=True) مع metadata كاملة.
 
     R8 §2 — للمستندات المخصّصة (type يبدأ بـ"custom:") نُعيد بيانات إضافية
-    من extracted_data_json (name_en, doc_number, issuing_authority, notes).
+    من extracted_data_json (name_en, doc_number, issuing_authority, notes,
+    assigned_pro_id/name — R9).
     """
     rows = db.scalars(select(models.Document).where(
         models.Document.entity_type == entity_type,
         models.Document.entity_id == entity_id,
         models.Document.is_current == True,  # noqa: E712
     )).all()
+    # cache للأسماء لتجنّب استعلام لكل مستند
+    pro_id_to_name: dict[int, str] = {}
     out = []
     for d in rows:
         item = {
@@ -72,6 +75,14 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
             item["doc_number"] = meta.get("doc_number")
             item["issuing_authority"] = meta.get("issuing_authority")
             item["notes"] = meta.get("notes")
+            # R9 — PRO المسؤول عن متابعة تجديد المستند
+            pro_id = meta.get("assigned_pro_id")
+            if pro_id:
+                item["assigned_pro_id"] = int(pro_id) if str(pro_id).isdigit() else None
+                if item["assigned_pro_id"] and item["assigned_pro_id"] not in pro_id_to_name:
+                    u = db.get(models.User, item["assigned_pro_id"])
+                    pro_id_to_name[item["assigned_pro_id"]] = u.full_name if u else "—"
+                item["assigned_pro_name"] = pro_id_to_name.get(item["assigned_pro_id"])
         out.append(item)
     return out
 
@@ -145,6 +156,7 @@ async def add_custom_document(
     issuing_authority: str | None = Form(None),
     notes: str | None = Form(None),
     notify_on_expiry: bool = Form(False),
+    assigned_pro_id: int | None = Form(None),
     file: UploadFile = File(...),
     user: models.User = Depends(require_perm("upload_documents")),
     db: Session = Depends(get_db),
@@ -152,9 +164,11 @@ async def add_custom_document(
     """R8 §2 — يضيف مستندًا مخصّصًا يظهر كعنصر مستقل بلا استبدال أي مستند آخر.
 
     - type يُخزَّن كـ"custom:{slug}" حيث slug مشتقّ من name_ar (يحتفظ بالفريدية)
-    - metadata (name_en, doc_number, authority, notes) في extracted_data_json
+    - metadata (name_en, doc_number, authority, notes, assigned_pro_id) في extracted_data_json
     - نفس النظام يعمل لشركة (entity_type='company') وفرع (entity_type='branch')
     - يحترم Scope: assert_same_company على الكيان المطلوب
+    - assigned_pro_id (R9): PRO محدد لمتابعة تجديد المستند — يستقبل تنبيه الانتهاء
+      بدل الـfallback على كل مندوبي الشركة.
     """
     if entity_type not in ("company", "branch"):
         raise HTTPException(status_code=400, detail="entity_type must be 'company' or 'branch'")
@@ -185,12 +199,20 @@ async def add_custom_document(
     slug = re.sub(r"[^\w؀-ۿ]+", "_", name_ar.strip())[:40]
     doc_type = f"custom:{slug}_{int(__import__('time').time())}"
 
+    # تحقق من صحة assigned_pro_id: يجب أن ينتمي لنفس الشركة ودوره delegate
+    if assigned_pro_id is not None:
+        pro = db.get(models.User, assigned_pro_id)
+        if not pro or pro.company_id != company_id or pro.role != "delegate":
+            raise HTTPException(status_code=400,
+                              detail="assigned_pro_id: يجب أن يكون مندوبًا (delegate) في نفس الشركة")
+
     meta = {
         "name_ar": name_ar.strip(),
         "name_en": (name_en or "").strip() or None,
         "doc_number": (doc_number or "").strip() or None,
         "issuing_authority": (issuing_authority or "").strip() or None,
         "notes": (notes or "").strip() or None,
+        "assigned_pro_id": assigned_pro_id,
     }
     doc = models.Document(
         company_id=company_id,

@@ -205,10 +205,16 @@ def daily_scan(db: Session) -> dict:
         )
         created += 1
 
-    # 2) المستندات (جوازات وغيرها)
+    # 2) المستندات (جوازات وغيرها + custom docs)
+    #    R9 — للمستندات المخصّصة (type يبدأ بـ"custom:") التنبيه opt-in عبر notify_on_expiry.
+    #    لو حُدِّد assigned_pro_id في metadata، التنبيه يذهب لهذا المندوب فقط بدل كل مندوبي الشركة.
     for doc in db.scalars(
         select(models.Document).where(models.Document.is_current == True, models.Document.expiry_date.isnot(None))  # noqa: E712
     ).all():
+        is_custom = (doc.document_type_code or "").startswith("custom:")
+        # المستندات المخصّصة: نتخطى ما لم يُفعّل notify_on_expiry
+        if is_custom and not doc.notify_on_expiry:
+            continue
         days_left = (doc.expiry_date - today).days
         bucket = expiry_bucket(days_left)
         if bucket is None:
@@ -216,14 +222,35 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         dk = f"doc_expiring:{doc.id}:{bucket}"
         title = doc.title or doc.document_type_code
-        # مستندات رسمية (جوازات/إقامات) → شأن حكومي للمندوب فقط
-        notify_roles(
-            db, doc.company_id, ["delegate"],
-            type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
-            detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
-            related_entity_type="document", related_entity_id=doc.id,
-            severity=sev, due_date=doc.expiry_date, dedup_key=dk,
-        )
+
+        # R9 — لو المستند المخصّص له مندوب محدد، أرسل له فقط
+        assigned_pro_id: int | None = None
+        if is_custom and isinstance(doc.extracted_data_json, dict):
+            raw = doc.extracted_data_json.get("assigned_pro_id")
+            if isinstance(raw, int):
+                assigned_pro_id = raw
+            elif isinstance(raw, str) and raw.isdigit():
+                assigned_pro_id = int(raw)
+
+        if assigned_pro_id:
+            # مندوب محدد
+            create_task(
+                db, company_id=doc.company_id, assignee_user_id=assigned_pro_id,
+                type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
+                detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
+                related_entity_type="document", related_entity_id=doc.id,
+                severity=sev, due_date=doc.expiry_date,
+                dedup_key=f"{dk}:u{assigned_pro_id}",
+            )
+        else:
+            # مستندات رسمية (جوازات/إقامات) أو custom بلا PRO محدد → كل المندوبين
+            notify_roles(
+                db, doc.company_id, ["delegate"],
+                type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
+                detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
+                related_entity_type="document", related_entity_id=doc.id,
+                severity=sev, due_date=doc.expiry_date, dedup_key=dk,
+            )
         if doc.entity_type == "employee":
             notify_employee_self(
                 db, doc.entity_id, type="doc_expiring",

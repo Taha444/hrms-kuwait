@@ -11,7 +11,8 @@ import { fmtKuwaitDate } from "../utils/datetime";
 type CustomDocForm = {
   name_ar: string; name_en: string; doc_number: string;
   issue_date: string; expiry_date: string; issuing_authority: string;
-  notes: string; notify_on_expiry: boolean; file: File | null;
+  notes: string; notify_on_expiry: boolean;
+  assigned_pro_id: number | null; file: File | null;
 };
 
 export default function Archive() {
@@ -30,14 +31,21 @@ export default function Archive() {
   const [customForm, setCustomForm] = useState<{ entityType: string; entityId: number } | null>(null);
   const [customData, setCustomData] = useState<CustomDocForm>({
     name_ar: "", name_en: "", doc_number: "", issue_date: "", expiry_date: "",
-    issuing_authority: "", notes: "", notify_on_expiry: false, file: null,
+    issuing_authority: "", notes: "", notify_on_expiry: false,
+    assigned_pro_id: null, file: null,
   });
+  // R9 — PRO users للتعيين على مستندات مخصّصة
+  const [proUsers, setProUsers] = useState<any[]>([]);
 
   const loadCompany = () => api.get("/archive/company").then((r) => { setData(r.data); setFileNo(r.data.company.file_number || ""); });
   const loadBranch = (id: number) => api.get(`/archive/branch/${id}`).then((r) => setBranchData(r.data));
   useEffect(() => {
     loadCompany().catch(() => {});
     api.get("/branches").then((r) => { setBranches(r.data); if (r.data[0]) { setBranchId(r.data[0].id); loadBranch(r.data[0].id); } });
+    // R9 — قائمة المندوبين للتعيين على مستندات مخصّصة
+    api.get("/users").then((r) => setProUsers(
+      (r.data || []).filter((u: any) => u.role === "delegate" && u.is_active !== false)
+    )).catch(() => {});
   }, []);
 
   const saveFileNo = async () => {
@@ -78,13 +86,14 @@ export default function Archive() {
       if (customData.issuing_authority) fd.append("issuing_authority", customData.issuing_authority);
       if (customData.notes) fd.append("notes", customData.notes);
       fd.append("notify_on_expiry", String(customData.notify_on_expiry));
+      if (customData.assigned_pro_id) fd.append("assigned_pro_id", String(customData.assigned_pro_id));
       fd.append("file", customData.file);
       await api.post("/archive/custom-doc", fd);
       setMsg(isEn ? `Added: ${customData.name_ar}` : `تمت الإضافة: ${customData.name_ar}`);
       setCustomForm(null);
       setCustomData({ name_ar: "", name_en: "", doc_number: "", issue_date: "",
                       expiry_date: "", issuing_authority: "", notes: "",
-                      notify_on_expiry: false, file: null });
+                      notify_on_expiry: false, assigned_pro_id: null, file: null });
       if (customForm.entityType === "company") loadCompany();
       else loadBranch(customForm.entityId);
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
@@ -262,6 +271,23 @@ export default function Archive() {
                       : "إشعار قبل 30 يومًا من الانتهاء"}
               </label>
             </div>
+            {customData.notify_on_expiry && (
+              <div className="field">
+                <label>{isEn ? "Assign to PRO (optional)" : "المندوب المسؤول عن المتابعة (اختياري)"}</label>
+                <select value={customData.assigned_pro_id ?? ""}
+                        onChange={(e) => setCustomData({ ...customData,
+                          assigned_pro_id: e.target.value ? +e.target.value : null })}>
+                  <option value="">{isEn ? "All PROs in the company" : "كل المندوبين في الشركة"}</option>
+                  {proUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name || u.civil_id}</option>
+                  ))}
+                </select>
+                <small className="muted">
+                  {isEn ? "If empty, all delegates receive the alert."
+                        : "لو فارغ، كل مندوبي الشركة يستلمون التنبيه."}
+                </small>
+              </div>
+            )}
             <div className="field">
               <label>{isEn ? "File *" : "الملف *"}</label>
               <input type="file" required
@@ -321,6 +347,11 @@ function CustomDocsSection({ entityType, entityId, documents, onAdd, onReplace,
                   <div style={{ color: new Date(d.expiry_date) < new Date() ? "var(--danger)" : "inherit" }}>
                     {isEn ? "Expires: " : "ينتهي: "}{d.expiry_date}
                     {d.notify_on_expiry && <span style={{ marginInlineStart: 6 }}>🔔</span>}
+                  </div>
+                )}
+                {d.assigned_pro_name && (
+                  <div style={{ color: "#0b3b54" }}>
+                    {isEn ? "PRO: " : "المسؤول: "}<b>{d.assigned_pro_name}</b>
                   </div>
                 )}
                 {d.notes && <div className="muted">{d.notes}</div>}
