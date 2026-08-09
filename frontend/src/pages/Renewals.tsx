@@ -86,6 +86,13 @@ export default function Renewals() {
 
   const setRenewing = () => act(() => api.post(`/renewals/${sel.id}/renewing`));
 
+  // R8 §3 — توليد العقد الحكومي (يفتح نافذة جديدة بالـHTML للطباعة مباشرة)
+  const generateGovContract = () => act(async () => {
+    const r = await api.post(`/renewals/${sel.id}/gov-contract/generate`);
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
+  }, "✓ تم توليد العقد الحكومي — اطبعه ووقّعه ثم ارفع النسخة الموقّعة");
+
   // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)
   const [gov, setGov] = useState({
     gov_reference_no: "", fees_amount: "", fees_receipt_no: "",
@@ -238,10 +245,18 @@ export default function Renewals() {
                     <input aria-label={t("rnw_reject_reason")} placeholder={t("rnw_reject_reason")} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ maxWidth: 220 }} />
                     <button className="danger" onClick={() => decide("rejected")}>{t("rnw_reject")}</button></>
                 )}
-                {/* المندوب: العقود */}
+                {/* المندوب: العقود
+                    R8 §3 — عقد الشركة اختياري في التجديد (الفارق عن التعيين). العقد الحكومي فقط الإلزامي. */}
                 {isPro && sel.status === "awaiting_contracts" && (
-                  <>{!hasDoc("renewal_contract_gov") && <UploadBtn docType="renewal_contract_gov" label={t("rnw_upload_contract_gov")} />}
-                    {!hasDoc("renewal_contract_internal") && <UploadBtn docType="renewal_contract_internal" label={t("rnw_upload_contract_internal")} />}</>
+                  <>
+                    <button onClick={generateGovContract} style={{ background: "#0e5a54", color: "white" }}>
+                      🖨️ توليد العقد الحكومي (تلقائي)
+                    </button>
+                    {!hasDoc("renewal_contract_gov") && <UploadBtn docType="renewal_contract_gov" label={t("rnw_upload_contract_gov")} />}
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      (عقد الشركة الداخلي اختياري — يُطلب فقط عند التعيين الأول)
+                    </span>
+                  </>
                 )}
                 {/* الموظف: النسخ الموقّعة */}
                 {isEmp && sel.status === "awaiting_signature" && (

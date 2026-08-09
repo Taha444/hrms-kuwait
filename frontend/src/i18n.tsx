@@ -42,6 +42,7 @@ const dict: Record<string, { ar: string; en: string }> = {
   users: { ar: "المستخدمون والصلاحيات", en: "Users & Permissions" },
   system_health: { ar: "حالة النظام", en: "System Health" },
   self_service_section: { ar: "خدمتي الذاتية", en: "My Self-Service" },
+  gov_portals_nav: { ar: "روابط حكومية", en: "Government Portals" },
   change_password: { ar: "تغيير كلمة المرور", en: "Change Password" },
   // أفعال شائعة
   save: { ar: "حفظ", en: "Save" },

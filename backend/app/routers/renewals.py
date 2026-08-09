@@ -498,3 +498,93 @@ def hr_verify_renewal(rid: int, request: Request,
           company_id=rn.company_id)
     db.commit()
     return _serialize(db, rn)
+
+
+# ==========================================================================
+# R8 §3 — توليد العقد الحكومي لتجديد الإقامة
+# ==========================================================================
+# القاعدة الحاكمة: عند التجديد نحتاج **فقط** العقد الحكومي (بلا عقد الشركة).
+# عقد الشركة يُوقَّع مرة واحدة عند التعيين. النموذج يُقرأ من DocumentTemplate
+# بكود "GOV-CONTRACT-RENEWAL" (يُضاف من الإدارة عبر /templates بعد الحصول على
+# نموذج وزارة الداخلية الرسمي). البيانات تُملأ تلقائيًا من الموظف/الشركة.
+
+@router.post("/{rid}/gov-contract/generate")
+def generate_gov_contract(rid: int, request: Request,
+                          user: models.User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    """R8 §3 — يُولّد العقد الحكومي لطلب تجديد. يستخدم template بكود
+    GOV-CONTRACT-RENEWAL ويُعبّئ بيانات الموظف والشركة تلقائيًا (authoritative).
+    يُعيد HTML جاهز للطباعة + reference_no + checksum."""
+    from ..routers.templates import _resolve_authoritative_data, _fill_html, _generate_reference_no
+    import hashlib
+
+    rn = _get_renewal(db, user, rid)
+    perms = get_user_perms(user, db)
+    if not (_is_pro(user, perms) or user.employee_id == rn.employee_id):
+        raise HTTPException(status_code=403, detail="فقط المندوب أو الموظف صاحب الطلب")
+
+    emp = db.get(models.Employee, rn.employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+
+    # ابحث عن قالب العقد الحكومي (يُنشأ يدويًا من إدارة القوالب مرة واحدة)
+    tpl = db.scalar(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.code == "GOV-CONTRACT-RENEWAL",
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+    ))
+    if not tpl:
+        raise HTTPException(status_code=404, detail=(
+            "قالب العقد الحكومي (GOV-CONTRACT-RENEWAL) غير موجود. "
+            "لإضافته: /templates → إنشاء قالب جديد بكود GOV-CONTRACT-RENEWAL "
+            "وضع نص وزارة الداخلية الرسمي مع placeholders {{employee_name}}، "
+            "{{civil_id}}، {{passport_number}}، {{nationality}}، {{job_title}}، "
+            "{{company_name}}، {{company_name_en}}، {{commercial_reg}}، "
+            "{{basic_salary}}، {{date_today}}، {{ref_no}}."
+        ))
+
+    # حقول العقد الحكومي — كلها authoritative (لا يعدّلها المستخدم)
+    ctx = _resolve_authoritative_data(db, emp, extras={})
+    company = db.get(models.Company, rn.company_id)
+    permit = db.get(models.Permit, rn.permit_id) if rn.permit_id else None
+    ctx.update({
+        "renewal_id": str(rn.id),
+        "old_permit_number": (permit.number if permit else "") or "",
+        "old_permit_expiry": (permit.expiry_date.isoformat() if permit and permit.expiry_date else ""),
+        "company_file_number": (company.file_number if company else "") or "",
+    })
+    reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id, tpl.version or 1)
+    ctx["ref_no"] = reference_no
+
+    rendered = _fill_html(tpl, ctx)
+    pdf_bytes = rendered.encode("utf-8")
+    checksum = hashlib.sha256(pdf_bytes).hexdigest()
+
+    # احفظ كـissued document على الموظف مربوط بالتجديد
+    folder = os.path.join(settings.upload_dir, "gov_contracts")
+    os.makedirs(folder, exist_ok=True)
+    safe_ref = reference_no.replace("/", "_")
+    fpath = os.path.join(folder, f"{safe_ref}.html")
+    with open(fpath, "wb") as f:
+        f.write(pdf_bytes)
+
+    doc = models.Document(
+        company_id=rn.company_id, entity_type="employee", entity_id=emp.id,
+        document_type_code=f"gov_contract_renewal_{rn.id}",
+        title=f"العقد الحكومي — تجديد إقامة {emp.name}",
+        file_path=fpath, mime="text/html",
+        version=1, is_current=True, uploaded_by=user.id,
+        is_issued=True, reference_no=reference_no,
+        template_version=tpl.version or 1, checksum_sha256=checksum,
+        generated_at=datetime.utcnow(), generated_by=user.id,
+    )
+    db.add(doc)
+    db.flush()
+    audit(db, user, "generate_gov_contract", "residency_renewal", rn.id,
+          detail=f"gov contract → {reference_no}", request=request, company_id=rn.company_id)
+    db.commit()
+    return {
+        "ok": True, "html": rendered,
+        "document_id": doc.id, "reference_no": reference_no,
+        "checksum_sha256": checksum,
+        "note": "اطبع العقد → الموظف يوقّعه → ارفع النسخة الموقّعة عبر upload بـdoc_type=renewal_signed_gov",
+    }

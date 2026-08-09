@@ -343,6 +343,8 @@ class Document(Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
     generated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     signature_version: Mapped[int | None] = mapped_column(Integer)
+    # R8 §2 — Dynamic Custom Documents: يفعّل تنبيهات قبل الانتهاء لمستندات مخصّصة
+    notify_on_expiry: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Task(Base):
@@ -644,6 +646,30 @@ class PayrollRun(Base):
     # Adjustment run بعد قفل الفترة الأصلية
     adjustment_of_run_id: Mapped[int | None] = mapped_column(ForeignKey("payroll_runs.id"))
     adjustment_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class GovernmentPortal(Base):
+    """R8 §1 — روابط المواقع الحكومية للمندوب (PRO). قابلة للتعديل من الإدارة بلا كود.
+
+    مثال: PACI (بطاقة مدنية)، Sahel، PIFSS، Ministry of Commerce، إلخ.
+    الترتيب داخل كل فئة يتحكم فيه sort_order (أصغر يظهر أولاً).
+    """
+    __tablename__ = "government_portals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name_ar: Mapped[str] = mapped_column(String(200))
+    name_en: Mapped[str | None] = mapped_column(String(200))
+    description_ar: Mapped[str | None] = mapped_column(Text)
+    description_en: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(String(500))
+    # فئات: residency / work_permits / civil_id / moci / municipality / insurance / other
+    category: Mapped[str] = mapped_column(String(30), default="other", index=True)
+    icon: Mapped[str | None] = mapped_column(String(60))  # emoji أو icon name اختياري
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
 class SalaryChangeRequest(Base):
