@@ -85,10 +85,28 @@ def list_templates(company_id: int | None = None,
             continue
         if cid is not None and t.company_id not in (None, cid):
             continue
-        out.append({"id": t.id, "name": t.name, "name_en": t.name_en, "category": t.category,
-                    "is_global": t.company_id is None,
+        out.append({"id": t.id, "code": t.code, "name": t.name, "name_en": t.name_en,
+                    "category": t.category, "is_global": t.company_id is None,
                     "placeholders": sorted(set(_TOKEN_RE.findall(t.body_html)))})
     return out
+
+
+@router.get("/exists")
+def templates_exist(codes: str,
+                    user: models.User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """R9 §11 — يستعلم عن وجود قوالب بأكواد محددة (comma-separated).
+    الردّ: `{"CODE1": true, "CODE2": false}`. المستخدم أي دور مسجّل.
+    الاستخدام النموذجي: الـfrontend يفحص قبل عرض زر توليد لتجنب 404 لاحق.
+    """
+    codes_list = [c.strip() for c in codes.split(",") if c.strip()]
+    if not codes_list:
+        return {}
+    found = set(db.scalars(select(models.DocumentTemplate.code).where(
+        models.DocumentTemplate.code.in_(codes_list),
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+    )).all())
+    return {code: (code in found) for code in codes_list}
 
 
 @router.get("/{tpl_id}")

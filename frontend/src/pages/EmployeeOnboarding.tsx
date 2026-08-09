@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 
@@ -256,23 +256,41 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
   // ============ R9 — Generate hire contract (Step 4) ============
   // يفتح العقد المولّد HTML في تبويب جديد للطباعة والتوقيع.
   const [contractsGenerated, setContractsGenerated] = useState<string[]>([]);
-  const generateHireContract = async (kind: "gov" | "company") => {
+  // R9 §11 — تحقق من وجود قوالب التعيين
+  const [hireTplExists, setHireTplExists] = useState<Record<string, boolean> | null>(null);
+  useEffect(() => {
+    api.get("/templates/exists", { params: { codes: "GOV-CONTRACT-HIRE,COMPANY-CONTRACT-HIRE" } })
+      .then((r) => setHireTplExists(r.data))
+      .catch(() => setHireTplExists(null));
+  }, []);
+  const generateHireContract = async (kind: "gov" | "company", format: "html" | "pdf" = "html") => {
     if (!savedEmp?.id) return;
     setErr(""); setBusy(true);
     try {
       const endpoint = kind === "gov" ? "gov-contract/generate" : "company-contract/generate";
-      const r = await api.post(`/employees/${savedEmp.id}/${endpoint}`);
-      // اعرض HTML في تبويب جديد للطباعة
-      const w = window.open("", "_blank");
-      if (w) {
-        w.document.open();
-        w.document.write(r.data.html);
-        w.document.close();
+      if (format === "pdf") {
+        // R9 §5 — نطلب PDF ونحفظه كملف
+        const r = await api.post(`/employees/${savedEmp.id}/${endpoint}?format=pdf`, null,
+                                { responseType: "blob" });
+        const url = URL.createObjectURL(r.data);
+        window.open(url, "_blank");
+        const label = kind === "gov"
+          ? (isEn ? "Government contract (PDF)" : "العقد الحكومي (PDF)")
+          : (isEn ? "Company contract (PDF)" : "عقد الشركة (PDF)");
+        setContractsGenerated([...contractsGenerated, label]);
+      } else {
+        const r = await api.post(`/employees/${savedEmp.id}/${endpoint}`);
+        const w = window.open("", "_blank");
+        if (w) {
+          w.document.open();
+          w.document.write(r.data.html);
+          w.document.close();
+        }
+        const label = kind === "gov"
+          ? (isEn ? "Government contract" : "العقد الحكومي")
+          : (isEn ? "Company contract" : "عقد الشركة");
+        setContractsGenerated([...contractsGenerated, `${label} — ${r.data.reference_no}`]);
       }
-      const label = kind === "gov"
-        ? (isEn ? "Government contract" : "العقد الحكومي")
-        : (isEn ? "Company contract" : "عقد الشركة");
-      setContractsGenerated([...contractsGenerated, `${label} — ${r.data.reference_no}`]);
     } catch (e: any) {
       setErr(errMsg(e, isEn ? "Contract generation failed" : "فشل توليد العقد"));
     } finally { setBusy(false); }
@@ -729,14 +747,45 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                     ? "New hire needs both: a company employment contract, and a government contract."
                     : "التعيين الجديد يحتاج عقدين: عقد العمل بين الشركة والعامل، وعقد حكومي (وزارة الداخلية)."}
                 </p>
+                {/* R9 §11 — تحذير عند غياب قالب */}
+                {hireTplExists && (
+                  (hireTplExists["COMPANY-CONTRACT-HIRE"] === false ||
+                   hireTplExists["GOV-CONTRACT-HIRE"] === false) && (
+                    <div className="err" style={{ fontSize: 12, marginBottom: 8 }}>
+                      ⚠ {hireTplExists["COMPANY-CONTRACT-HIRE"] === false && <code>COMPANY-CONTRACT-HIRE</code>}
+                      {hireTplExists["COMPANY-CONTRACT-HIRE"] === false && hireTplExists["GOV-CONTRACT-HIRE"] === false && " · "}
+                      {hireTplExists["GOV-CONTRACT-HIRE"] === false && <code>GOV-CONTRACT-HIRE</code>}
+                      : {isEn ? "template(s) missing — auto-generate disabled. Ask admin to create in /templates."
+                             : "قالب/قوالب غير موجودة — التوليد التلقائي معطّل. اطلب من الإدارة إنشائها في /templates."}
+                    </div>
+                  )
+                )}
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => generateHireContract("company")} disabled={busy}
-                          style={{ background: "var(--brand)" }}>
-                    {isEn ? "🖨️ Generate Company Contract" : "🖨️ توليد عقد الشركة"}
+                  <button onClick={() => generateHireContract("company", "html")}
+                          disabled={busy || (hireTplExists?.["COMPANY-CONTRACT-HIRE"] === false)}
+                          style={{
+                            background: (hireTplExists?.["COMPANY-CONTRACT-HIRE"] === false) ? "#999" : "var(--brand)",
+                            cursor: (hireTplExists?.["COMPANY-CONTRACT-HIRE"] === false) ? "not-allowed" : "pointer",
+                          }}>
+                    {isEn ? "🖨️ Company Contract (HTML)" : "🖨️ عقد الشركة (HTML)"}
                   </button>
-                  <button onClick={() => generateHireContract("gov")} disabled={busy}
-                          style={{ background: "#0a7f3f" }}>
-                    {isEn ? "🖨️ Generate Government Contract" : "🖨️ توليد العقد الحكومي"}
+                  <button onClick={() => generateHireContract("company", "pdf")}
+                          disabled={busy || (hireTplExists?.["COMPANY-CONTRACT-HIRE"] === false)}
+                          className="ghost" title="PDF">
+                    📄 PDF
+                  </button>
+                  <button onClick={() => generateHireContract("gov", "html")}
+                          disabled={busy || (hireTplExists?.["GOV-CONTRACT-HIRE"] === false)}
+                          style={{
+                            background: (hireTplExists?.["GOV-CONTRACT-HIRE"] === false) ? "#999" : "#0a7f3f",
+                            cursor: (hireTplExists?.["GOV-CONTRACT-HIRE"] === false) ? "not-allowed" : "pointer",
+                          }}>
+                    {isEn ? "🖨️ Government Contract (HTML)" : "🖨️ العقد الحكومي (HTML)"}
+                  </button>
+                  <button onClick={() => generateHireContract("gov", "pdf")}
+                          disabled={busy || (hireTplExists?.["GOV-CONTRACT-HIRE"] === false)}
+                          className="ghost" title="PDF">
+                    📄 PDF
                   </button>
                 </div>
                 {contractsGenerated.length > 0 && (

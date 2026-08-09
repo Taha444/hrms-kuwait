@@ -48,6 +48,14 @@ export default function Renewals() {
     setItems(r.data);
     if (sel) { const u = r.data.find((x: any) => x.id === sel.id); if (u) setSel(u); }
   }).catch((e) => setErr(errMsg(e, t("error"))));
+
+  // R9 §11 — تحقق من وجود قالب العقد الحكومي عند التحميل
+  const [govContractTplExists, setGovContractTplExists] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.get("/templates/exists", { params: { codes: "GOV-CONTRACT-RENEWAL" } })
+      .then((r) => setGovContractTplExists(!!r.data["GOV-CONTRACT-RENEWAL"]))
+      .catch(() => setGovContractTplExists(null));  // لا نُظهر التحذير عند فشل الاتصال
+  }, []);
   useEffect(() => { load(); }, []);
 
   const act = async (fn: () => Promise<any>, ok?: string) => {
@@ -249,7 +257,19 @@ export default function Renewals() {
                     R8 §3 — عقد الشركة اختياري في التجديد (الفارق عن التعيين). العقد الحكومي فقط الإلزامي. */}
                 {isPro && sel.status === "awaiting_contracts" && (
                   <>
-                    <button onClick={generateGovContract} style={{ background: "#0e5a54", color: "white" }}>
+                    {govContractTplExists === false && (
+                      <div className="err" style={{ width: "100%", fontSize: 12 }}>
+                        ⚠ قالب <code>GOV-CONTRACT-RENEWAL</code> غير موجود — زر التوليد التلقائي معطّل.
+                        على الإدارة إنشاؤه من صفحة <b>القوالب /templates</b> أولاً، أو قم بالرفع اليدوي.
+                      </div>
+                    )}
+                    <button onClick={generateGovContract}
+                            disabled={govContractTplExists === false}
+                            style={{
+                              background: govContractTplExists === false ? "#999" : "#0e5a54",
+                              color: "white",
+                              cursor: govContractTplExists === false ? "not-allowed" : "pointer",
+                            }}>
                       🖨️ توليد العقد الحكومي (تلقائي)
                     </button>
                     {!hasDoc("renewal_contract_gov") && <UploadBtn docType="renewal_contract_gov" label={t("rnw_upload_contract_gov")} />}
@@ -258,10 +278,17 @@ export default function Renewals() {
                     </span>
                   </>
                 )}
-                {/* الموظف: النسخ الموقّعة */}
+                {/* الموظف: النسخ الموقّعة — R9 §1: الحكومي فقط إلزامي */}
                 {isEmp && sel.status === "awaiting_signature" && (
-                  <>{!hasDoc("renewal_signed_gov") && <UploadBtn docType="renewal_signed_gov" label={t("rnw_upload_signed_gov")} />}
-                    {!hasDoc("renewal_signed_internal") && <UploadBtn docType="renewal_signed_internal" label={t("rnw_upload_signed_internal")} />}</>
+                  <>
+                    {!hasDoc("renewal_signed_gov") && <UploadBtn docType="renewal_signed_gov" label={t("rnw_upload_signed_gov")} />}
+                    {!hasDoc("renewal_signed_internal") && (
+                      <>
+                        <UploadBtn docType="renewal_signed_internal" label={t("rnw_upload_signed_internal")} />
+                        <span className="muted" style={{ fontSize: 11 }}>(اختياري)</span>
+                      </>
+                    )}
+                  </>
                 )}
                 {/* المندوب: بدء التجديد */}
                 {isPro && sel.status === "contracts_signed" && (

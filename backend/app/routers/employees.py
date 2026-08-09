@@ -951,8 +951,13 @@ def transfer_employee(emp_id: int, to_company_id: int, note: str | None = None,
 # لملف الموظف. البيانات تُملأ من مصدر السلطة (لا تعديل من الفورم).
 
 def _generate_hire_contract(db: Session, user: models.User, request: Request,
-                            emp: models.Employee, tpl_code: str, title_ar: str) -> dict:
-    """داخلي: يولّد عقد بكود template محدد ويحفظه كـissued document على الموظف."""
+                            emp: models.Employee, tpl_code: str, title_ar: str,
+                            format: str = "html"):
+    """داخلي: يولّد عقد بكود template محدد ويحفظه كـissued document على الموظف.
+
+    format='html' → dict فيه HTML للطباعة عبر المتصفح (رد JSON)
+    format='pdf'  → FileResponse مباشرة (R9 §5)
+    """
     import hashlib
     import os
     from ..config import settings
@@ -973,22 +978,35 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
     reference_no = _generate_reference_no(db, tpl_code, emp.company_id, tpl.version or 1)
     ctx["ref_no"] = reference_no
     rendered = _fill_html(tpl, ctx)
-    payload = rendered.encode("utf-8")
-    checksum = hashlib.sha256(payload).hexdigest()
+
+    # R9 §5 — pdf output لو مطلوب
+    is_pdf = (format or "").lower() == "pdf"
+    if is_pdf:
+        from ..pdf_export import render_html_contract_pdf
+        company = db.get(models.Company, emp.company_id)
+        content_bytes = render_html_contract_pdf(
+            rendered, title=f"{title_ar} — {emp.name}",
+            subtitle=(company.name if company else ""), reference_no=reference_no,
+        )
+        mime = "application/pdf"; ext = "pdf"
+    else:
+        content_bytes = rendered.encode("utf-8")
+        mime = "text/html"; ext = "html"
+    checksum = hashlib.sha256(content_bytes).hexdigest()
 
     folder = os.path.join(settings.upload_dir, "hire_contracts")
     os.makedirs(folder, exist_ok=True)
     safe_ref = reference_no.replace("/", "_")
-    fpath = os.path.join(folder, f"{safe_ref}.html")
+    fpath = os.path.join(folder, f"{safe_ref}.{ext}")
     with open(fpath, "wb") as f:
-        f.write(payload)
+        f.write(content_bytes)
 
     doc_type_code = f"{tpl_code.lower().replace('-', '_')}_{emp.id}"
     doc = models.Document(
         company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
         document_type_code=doc_type_code,
         title=f"{title_ar} — {emp.name}",
-        file_path=fpath, mime="text/html",
+        file_path=fpath, mime=mime,
         version=1, is_current=True, uploaded_by=user.id,
         is_issued=True, reference_no=reference_no,
         template_version=tpl.version or 1, checksum_sha256=checksum,
@@ -997,7 +1015,11 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
     db.add(doc)
     db.flush()
     audit(db, user, "generate_hire_contract", "employee", emp.id,
-          detail=f"{tpl_code} → {reference_no}", request=request, company_id=emp.company_id)
+          detail=f"{tpl_code} → {reference_no} ({ext})", request=request,
+          company_id=emp.company_id)
+    if is_pdf:
+        from fastapi.responses import FileResponse
+        return FileResponse(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
     return {
         "ok": True, "html": rendered,
         "document_id": doc.id, "reference_no": reference_no,
@@ -1007,24 +1029,30 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
 
 @router.post("/{emp_id}/gov-contract/generate")
 def generate_employee_gov_contract(emp_id: int, request: Request,
+                                   format: str = "html",
                                    user: models.User = Depends(require_perm("upload_documents")),
                                    db: Session = Depends(get_db)):
     """R9 — يُولّد العقد الحكومي للتعيين (GOV-CONTRACT-HIRE) بيانات الموظف تلقائيًا.
-    يُحفظ كـissued document على الموظف مع reference_no وchecksum."""
+    يُحفظ كـissued document على الموظف مع reference_no وchecksum.
+    format=pdf يُعيد FileResponse مباشرة (R9 §5)."""
     emp = _get_emp(db, user, emp_id)
     result = _generate_hire_contract(db, user, request, emp,
-                                     "GOV-CONTRACT-HIRE", "العقد الحكومي — تعيين")
+                                     "GOV-CONTRACT-HIRE", "العقد الحكومي — تعيين",
+                                     format=format)
     db.commit()
     return result
 
 
 @router.post("/{emp_id}/company-contract/generate")
 def generate_employee_company_contract(emp_id: int, request: Request,
+                                      format: str = "html",
                                       user: models.User = Depends(require_perm("upload_documents")),
                                       db: Session = Depends(get_db)):
-    """R9 — يُولّد عقد العمل بين الشركة والعامل (COMPANY-CONTRACT-HIRE)."""
+    """R9 — يُولّد عقد العمل بين الشركة والعامل (COMPANY-CONTRACT-HIRE).
+    format=pdf يُعيد FileResponse مباشرة."""
     emp = _get_emp(db, user, emp_id)
     result = _generate_hire_contract(db, user, request, emp,
-                                     "COMPANY-CONTRACT-HIRE", "عقد العمل")
+                                     "COMPANY-CONTRACT-HIRE", "عقد العمل",
+                                     format=format)
     db.commit()
     return result

@@ -36,16 +36,14 @@ def test_normal_renewal_full_flow(client):
     rid = rn["id"]
 
     pro = auth_headers(login(client, *PRO))
-    # المندوب يرفع العقدين → بانتظار توقيع الموظف
-    for kind in ("renewal_contract_gov", "renewal_contract_internal"):
-        client.post(f"/api/renewals/{rid}/upload", headers=pro,
-                    data={"doc_type": kind}, files=_f())
+    # R9 §1 — التجديد يحتاج العقد الحكومي فقط للانتقال (الداخلي مسموح لكن اختياري)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "renewal_contract_gov"}, files=_f())
     assert client.get(f"/api/renewals/{rid}", headers=pro).json()["status"] == "awaiting_signature"
 
-    # الموظف يرفع النسختين الموقّعتين → تم رفع العقود الموقّعة
-    for kind in ("renewal_signed_gov", "renewal_signed_internal"):
-        client.post(f"/api/renewals/{rid}/upload", headers=emp,
-                    data={"doc_type": kind}, files=_f())
+    # الموظف يرفع النسخة الموقّعة الحكومية → تم رفع العقود الموقّعة
+    client.post(f"/api/renewals/{rid}/upload", headers=emp,
+                data={"doc_type": "renewal_signed_gov"}, files=_f())
     assert client.get(f"/api/renewals/{rid}", headers=pro).json()["status"] == "contracts_signed"
 
     # المندوب: جاري التجديد ثم رفع إذن العمل → بانتظار البطاقة

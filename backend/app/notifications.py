@@ -232,8 +232,37 @@ def daily_scan(db: Session) -> dict:
             elif isinstance(raw, str) and raw.isdigit():
                 assigned_pro_id = int(raw)
 
-        if assigned_pro_id:
-            # مندوب محدد
+        # R9 §10 — للمستندات المخصّصة نستخدم قالب DOC-CUSTOM-EXPIRING (SLA + channel routing)
+        if is_custom:
+            entity_kind = "الشركة" if doc.entity_type == "company" else "الفرع"
+            entity_name = ""
+            if doc.entity_type == "company":
+                ent = db.get(models.Company, doc.entity_id)
+                entity_name = ent.name if ent else f"#{doc.entity_id}"
+            elif doc.entity_type == "branch":
+                ent = db.get(models.Branch, doc.entity_id)
+                entity_name = ent.name if ent else f"#{doc.entity_id}"
+            ctx = {"title": title, "days_left": str(days_left),
+                   "expiry_date": doc.expiry_date.isoformat(),
+                   "entity_kind": entity_kind, "entity_name": entity_name}
+
+            if assigned_pro_id:
+                notify_from_template(
+                    db, code="DOC-CUSTOM-EXPIRING", assignee_user_id=assigned_pro_id,
+                    company_id=doc.company_id, context=ctx,
+                    related_entity_type="document", related_entity_id=doc.id,
+                    dedup_key=f"{dk}:u{assigned_pro_id}", severity=sev,
+                )
+            else:
+                for u in users_by_role(db, doc.company_id, ["delegate"]):
+                    notify_from_template(
+                        db, code="DOC-CUSTOM-EXPIRING", assignee_user_id=u.id,
+                        company_id=doc.company_id, context=ctx,
+                        related_entity_type="document", related_entity_id=doc.id,
+                        dedup_key=f"{dk}:u{u.id}", severity=sev,
+                    )
+        elif assigned_pro_id:
+            # مستندات ثابتة مع مندوب محدد (غير شائع لكن مدعوم)
             create_task(
                 db, company_id=doc.company_id, assignee_user_id=assigned_pro_id,
                 type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
@@ -243,7 +272,7 @@ def daily_scan(db: Session) -> dict:
                 dedup_key=f"{dk}:u{assigned_pro_id}",
             )
         else:
-            # مستندات رسمية (جوازات/إقامات) أو custom بلا PRO محدد → كل المندوبين
+            # مستندات رسمية (جوازات/إقامات) بدون PRO محدد → كل المندوبين
             notify_roles(
                 db, doc.company_id, ["delegate"],
                 type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",

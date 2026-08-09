@@ -193,6 +193,79 @@ class ArabicPDF:
         return self.buf.getvalue()
 
 
+def render_html_contract_pdf(html_body: str, title: str, subtitle: str = "",
+                             reference_no: str | None = None) -> bytes:
+    """R9 §5 — يحوّل HTML عقد (توليد من DocumentTemplate) إلى PDF عربي رسمي.
+
+    الاستراتيجية بسيطة ومتينة: نُفكّك HTML لسلسلة كتل نصية عبر HTMLParser
+    (بلا تنفيذ أي JS)، ونمرّر كل كتلة لـArabicPDF.paragraph. العناوين (h1-h3)
+    تُعرَض بحجم أكبر، والقوائم <li> كنقاط. الأسطر الفارغة تُبقى فاصلاً.
+
+    نتيجة: PDF قابل للتنزيل والطباعة، مع خط عربي مضمّن، بدل الاعتماد على
+    طباعة المتصفح من HTML.
+    """
+    from html.parser import HTMLParser
+
+    doc = ArabicPDF(title=title, subtitle=subtitle)
+    if reference_no:
+        doc.kv("رقم مرجعي", reference_no)
+
+    class _Extract(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.blocks: list[tuple[str, str]] = []  # (kind, text)
+            self._buf: list[str] = []
+            self._current_kind = "p"
+            self._in_li = False
+
+        def _flush(self, kind: str = "p"):
+            text = " ".join("".join(self._buf).split()).strip()
+            if text:
+                self.blocks.append((kind, text))
+            self._buf = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("h1", "h2", "h3", "p", "div", "li", "br", "hr"):
+                self._flush(self._current_kind)
+            if tag in ("h1", "h2"):
+                self._current_kind = "h1"
+            elif tag == "h3":
+                self._current_kind = "h2"
+            elif tag == "li":
+                self._current_kind = "bullet"
+                self._in_li = True
+            elif tag == "hr":
+                self.blocks.append(("hr", ""))
+
+        def handle_endtag(self, tag):
+            if tag in ("h1", "h2", "h3", "p", "div", "li"):
+                self._flush(self._current_kind)
+                self._current_kind = "p"
+                if tag == "li":
+                    self._in_li = False
+
+        def handle_data(self, data):
+            self._buf.append(data)
+
+    p = _Extract()
+    p.feed(html_body or "")
+    p._flush(p._current_kind)
+
+    for kind, text in p.blocks:
+        if kind == "h1":
+            doc.section(text)
+        elif kind == "h2":
+            doc._text(text, size=12, wrap=True, bold_gap=0.7 * cm)
+        elif kind == "bullet":
+            doc.bullet(text)
+        elif kind == "hr":
+            doc._line_break(0.4 * cm)
+        else:
+            if text:
+                doc.paragraph(text)
+    return doc.bytes()
+
+
 def render_request_pdf(rt, req, emp, company, approvals, body_lines: list[str],
                        verification_code: str | None = None,
                        employee_signature: str | None = None,

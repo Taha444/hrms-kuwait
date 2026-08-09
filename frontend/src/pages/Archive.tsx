@@ -110,6 +110,58 @@ export default function Archive() {
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
+  // R9 §3 — Edit metadata (بدون تغيير الملف)
+  const [editForm, setEditForm] = useState<any | null>(null);
+  const openEdit = (doc: any) => {
+    setEditForm({
+      id: doc.id,
+      name_ar: doc.title || "",
+      name_en: doc.name_en || "",
+      doc_number: doc.doc_number || "",
+      issuing_authority: doc.issuing_authority || "",
+      notes: doc.notes || "",
+      expiry_date: doc.expiry_date || "",
+      notify_on_expiry: !!doc.notify_on_expiry,
+      assigned_pro_id: doc.assigned_pro_id ?? null,
+      _entityType: doc._entityType,
+      _entityId: doc._entityId,
+    });
+  };
+  const submitEdit = async () => {
+    if (!editForm) return;
+    const fd = new FormData();
+    fd.append("name_ar", editForm.name_ar);
+    fd.append("name_en", editForm.name_en);
+    fd.append("doc_number", editForm.doc_number);
+    fd.append("issuing_authority", editForm.issuing_authority);
+    fd.append("notes", editForm.notes);
+    if (editForm.expiry_date) fd.append("expiry_date", editForm.expiry_date);
+    fd.append("notify_on_expiry", String(editForm.notify_on_expiry));
+    if (editForm.assigned_pro_id) fd.append("assigned_pro_id", String(editForm.assigned_pro_id));
+    else fd.append("clear_assigned_pro", "true");
+    try {
+      await api.put(`/archive/custom-doc/${editForm.id}`, fd);
+      setMsg(isEn ? "Updated" : "تم التحديث");
+      setEditForm(null);
+      if (editForm._entityType === "company") loadCompany();
+      else loadBranch(editForm._entityId);
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  // R9 §3 — Delete نهائي
+  const deleteCustomDoc = async (doc: any) => {
+    const confirmMsg = isEn
+      ? `Delete "${doc.title}" and ALL its versions? This cannot be undone.`
+      : `حذف "${doc.title}" وكل نسخه؟ هذا الإجراء لا يمكن التراجع عنه.`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      await api.delete(`/archive/custom-doc/${doc.id}`);
+      setMsg(isEn ? "Deleted" : "تم الحذف");
+      if (doc._entityType === "company") loadCompany();
+      else loadBranch(doc._entityId);
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
   // شبكة خانات المستندات الرسمية
   const DocGrid = ({ entityType, entityId, docTypes, documents, reload }: any) => (
     <div className="grid cards">
@@ -175,10 +227,12 @@ export default function Archive() {
           {/* R8 §2 — Custom Docs section */}
           <CustomDocsSection
             entityType="company" entityId={data.company.id}
-            documents={data.documents.filter((d: any) => d.is_custom)}
+            documents={data.documents.filter((d: any) => d.is_custom)
+              .map((d: any) => ({ ...d, _entityType: "company", _entityId: data.company.id }))}
             reload={loadCompany}
             onAdd={() => setCustomForm({ entityType: "company", entityId: data.company.id })}
             onReplace={replaceCustomDoc}
+            onEdit={openEdit} onDelete={deleteCustomDoc}
             can={can} isEn={isEn} lang={lang}
           />
         </>
@@ -200,10 +254,12 @@ export default function Archive() {
               {/* R8 §2 — Custom docs for this branch */}
               <CustomDocsSection
                 entityType="branch" entityId={branchData.branch.id}
-                documents={branchData.documents.filter((d: any) => d.is_custom)}
+                documents={branchData.documents.filter((d: any) => d.is_custom)
+                  .map((d: any) => ({ ...d, _entityType: "branch", _entityId: branchData.branch.id }))}
                 reload={() => loadBranch(branchData.branch.id)}
                 onAdd={() => setCustomForm({ entityType: "branch", entityId: branchData.branch.id })}
                 onReplace={replaceCustomDoc}
+                onEdit={openEdit} onDelete={deleteCustomDoc}
                 can={can} isEn={isEn} lang={lang}
               />
             </>
@@ -304,13 +360,91 @@ export default function Archive() {
           </div>
         </div>
       )}
+
+      {/* R9 §3 — Modal: تعديل metadata لمستند مخصّص */}
+      {editForm && (
+        <div role="dialog" aria-modal="true" onClick={() => setEditForm(null)}
+             style={{ position: "fixed", inset: 0, background: "rgba(11,59,84,0.5)",
+                     display: "grid", placeItems: "center", zIndex: 1000, padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()}
+               style={{ background: "white", borderRadius: 12, padding: 24, maxWidth: 640,
+                       width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <h3 style={{ marginTop: 0 }}>
+              {isEn ? "Edit custom document" : "تعديل المستند المخصّص"}
+            </h3>
+            {err && <div className="err">{err}</div>}
+            <div className="field">
+              <label>{isEn ? "Name (Arabic)" : "الاسم بالعربية"}</label>
+              <input value={editForm.name_ar}
+                     onChange={(e) => setEditForm({ ...editForm, name_ar: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>{isEn ? "Name (English)" : "الاسم بالإنجليزية"}</label>
+              <input value={editForm.name_en}
+                     onChange={(e) => setEditForm({ ...editForm, name_en: e.target.value })} />
+            </div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div className="field" style={{ flex: 1, minWidth: 180 }}>
+                <label>{isEn ? "Document number" : "رقم المستند"}</label>
+                <input value={editForm.doc_number}
+                       onChange={(e) => setEditForm({ ...editForm, doc_number: e.target.value })} />
+              </div>
+              <div className="field" style={{ flex: 1, minWidth: 180 }}>
+                <label>{isEn ? "Issuing authority" : "جهة الإصدار"}</label>
+                <input value={editForm.issuing_authority}
+                       onChange={(e) => setEditForm({ ...editForm, issuing_authority: e.target.value })} />
+              </div>
+            </div>
+            <div className="field">
+              <label>{isEn ? "Expiry date" : "تاريخ الانتهاء"}</label>
+              <input type="date" value={editForm.expiry_date}
+                     onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>{isEn ? "Notes" : "ملاحظات"}</label>
+              <textarea rows={2} value={editForm.notes}
+                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+            </div>
+            <div className="field">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={editForm.notify_on_expiry}
+                       onChange={(e) => setEditForm({ ...editForm, notify_on_expiry: e.target.checked })} />
+                {isEn ? "Send expiry notification 30 days before"
+                      : "إشعار قبل 30 يومًا من الانتهاء"}
+              </label>
+            </div>
+            {editForm.notify_on_expiry && (
+              <div className="field">
+                <label>{isEn ? "Assign to PRO (optional)" : "المندوب المسؤول (اختياري)"}</label>
+                <select value={editForm.assigned_pro_id ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm,
+                          assigned_pro_id: e.target.value ? +e.target.value : null })}>
+                  <option value="">{isEn ? "All PROs" : "كل المندوبين"}</option>
+                  {proUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name || u.civil_id}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+              <button className="ghost" onClick={() => setEditForm(null)}>
+                {isEn ? "Cancel" : "إلغاء"}
+              </button>
+              <button onClick={submitEdit}>
+                {isEn ? "Save changes" : "حفظ التعديلات"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // R8 §2 — قسم عرض المستندات المخصّصة (custom docs) لأي كيان (شركة/فرع)
+// R9 §3 — إضافة onEdit + onDelete
 function CustomDocsSection({ entityType, entityId, documents, onAdd, onReplace,
-                             can, isEn, lang }: any) {
+                             onEdit, onDelete, can, isEn, lang }: any) {
   return (
     <div className="card" style={{ marginTop: 16, borderTop: "3px solid var(--gold, #c8a24a)" }}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -356,7 +490,7 @@ function CustomDocsSection({ entityType, entityId, documents, onAdd, onReplace,
                 )}
                 {d.notes && <div className="muted">{d.notes}</div>}
               </div>
-              <div className="row" style={{ marginTop: 8, gap: 6 }}>
+              <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: "wrap" }}>
                 <a href={`/api/documents/latest?entity_type=${entityType}&entity_id=${entityId}&document_type_code=${encodeURIComponent(d.type)}`}
                    target="_blank" rel="noopener noreferrer" className="btn ghost sm"
                    style={{ textDecoration: "none" }}>
@@ -369,6 +503,19 @@ function CustomDocsSection({ entityType, entityId, documents, onAdd, onReplace,
                            onChange={(e) => e.target.files &&
                              onReplace(d.id, e.target.files[0], () => window.location.reload())} />
                   </label>
+                )}
+                {can("upload_documents") && onEdit && (
+                  <button className="btn ghost sm" onClick={() => onEdit(d)}
+                          title={isEn ? "Edit metadata" : "تعديل البيانات"}>
+                    ✎ {isEn ? "Edit" : "تعديل"}
+                  </button>
+                )}
+                {can("upload_documents") && onDelete && (
+                  <button className="btn ghost sm" onClick={() => onDelete(d)}
+                          style={{ color: "var(--danger, #b91c1c)" }}
+                          title={isEn ? "Delete document" : "حذف المستند"}>
+                    🗑 {isEn ? "Delete" : "حذف"}
+                  </button>
                 )}
               </div>
             </div>

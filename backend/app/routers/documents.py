@@ -162,9 +162,10 @@ async def upload_document(
 
 @router.get("/latest")
 def latest_document(entity_type: str, entity_id: int, document_type_code: str,
+                    request: Request,
                     user: models.User = Depends(require_perm("view_documents")),
                     db: Session = Depends(get_db)):
-    """تنزيل أحدث نسخة لنوع مستند معيّن."""
+    """تنزيل أحدث نسخة لنوع مستند معيّن. R9 §4: كل تنزيل يظهر في Audit."""
     doc = db.scalar(select(models.Document).where(
         models.Document.entity_type == entity_type,
         models.Document.entity_id == entity_id,
@@ -174,6 +175,10 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
     if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     assert_same_company(user, doc.company_id, db=db)
+    audit(db, user, "download_document", entity_type, entity_id,
+          detail=f"{document_type_code} v{doc.version}",
+          request=request, company_id=doc.company_id)
+    db.commit()
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 

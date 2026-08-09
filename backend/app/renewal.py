@@ -40,14 +40,27 @@ STATUS_LABELS = {
 
 # مستندات المعاملة ونوع كل منها
 DOC_CONTRACT_GOV = "renewal_contract_gov"          # عقد العمل الحكومي (يرفعه المندوب)
-DOC_CONTRACT_INTERNAL = "renewal_contract_internal"  # العقد الداخلي (يرفعه المندوب)
+DOC_CONTRACT_INTERNAL = "renewal_contract_internal"  # (اختياري R9) — تركة قديمة
 DOC_SIGNED_GOV = "renewal_signed_gov"              # النسخة الموقّعة (الموظف)
-DOC_SIGNED_INTERNAL = "renewal_signed_internal"    # النسخة الموقّعة (الموظف)
+DOC_SIGNED_INTERNAL = "renewal_signed_internal"    # (اختياري R9) — تركة قديمة
 DOC_WORK_PERMIT = "work_permit"                    # إذن العمل الجديد (ملف الموظف)
 DOC_CIVIL_CARD = "civil_id"                        # البطاقة المدنية الجديدة (ملف الموظف)
 
-CONTRACT_DOCS = (DOC_CONTRACT_GOV, DOC_CONTRACT_INTERNAL)
-SIGNED_DOCS = (DOC_SIGNED_GOV, DOC_SIGNED_INTERNAL)
+# R9 §1 — تغيير جوهري في workflow:
+# **التجديد يحتاج العقد الحكومي فقط**؛ عقد الشركة يُوقَّع مرة واحدة عند التعيين
+# الأصلي ولا يُعاد كل مرة. الرفع اللاحق للعقد الداخلي مسموح (تركة قديمة) لكن
+# ليس مطلوبًا لانتقال الحالة.
+#
+# REQUIRED_* = يجب رفعه للانتقال من AWAITING_CONTRACTS → AWAITING_SIGNATURE
+# ACCEPTED_* = مسموح رفعه في المرحلة (يشمل الاختياري القديم)
+REQUIRED_CONTRACT_DOCS = (DOC_CONTRACT_GOV,)
+REQUIRED_SIGNED_DOCS = (DOC_SIGNED_GOV,)
+ACCEPTED_CONTRACT_DOCS = (DOC_CONTRACT_GOV, DOC_CONTRACT_INTERNAL)
+ACCEPTED_SIGNED_DOCS = (DOC_SIGNED_GOV, DOC_SIGNED_INTERNAL)
+
+# aliases خلفية لكود قديم أو تنزيل مستندات موجودة سابقًا (السلوك السابق: يشمل الاثنين)
+CONTRACT_DOCS = ACCEPTED_CONTRACT_DOCS
+SIGNED_DOCS = ACCEPTED_SIGNED_DOCS
 
 
 def classify(days_left: int) -> str | None:

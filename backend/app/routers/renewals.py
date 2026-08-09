@@ -345,27 +345,28 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
     is_pro = _is_pro(user, perms)
     is_owner_emp = user.employee_id == rn.employee_id
 
-    # المندوب يرفع العقدين (بانتظار رفع العقود)
-    if doc_kind in R.CONTRACT_DOCS:
+    # المندوب يرفع العقود (بانتظار رفع العقود). R9 §1: يكفي العقد الحكومي.
+    if doc_kind in R.ACCEPTED_CONTRACT_DOCS:
         if not is_pro:
             raise HTTPException(status_code=403, detail="رفع العقود خاص بالمندوب")
         if rn.status != R.AWAITING_CONTRACTS:
             raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع العقود")
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
                         "عقد حكومي" if doc_kind == R.DOC_CONTRACT_GOV else "عقد داخلي", file)
-        if all(_has(db, "renewal", rn.id, c) for c in R.CONTRACT_DOCS):
+        # R9 §1: التجديد يحتاج فقط العقد الحكومي للانتقال — العقد الداخلي اختياري
+        if all(_has(db, "renewal", rn.id, c) for c in R.REQUIRED_CONTRACT_DOCS):
             rn.status = R.AWAITING_SIGNATURE
             _notify_stage(db, rn)
 
-    # الموظف يرفع النسخ الموقّعة (بانتظار توقيع الموظف)
-    elif doc_kind in R.SIGNED_DOCS:
+    # الموظف يرفع النسخ الموقّعة (بانتظار توقيع الموظف). R9 §1: يكفي الموقّع الحكومي.
+    elif doc_kind in R.ACCEPTED_SIGNED_DOCS:
         if not (is_owner_emp or is_pro):
             raise HTTPException(status_code=403, detail="خاص بالموظف صاحب الطلب")
         if rn.status != R.AWAITING_SIGNATURE:
             raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع الموقّع")
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
                         "موقّع حكومي" if doc_kind == R.DOC_SIGNED_GOV else "موقّع داخلي", file)
-        if all(_has(db, "renewal", rn.id, c) for c in R.SIGNED_DOCS):
+        if all(_has(db, "renewal", rn.id, c) for c in R.REQUIRED_SIGNED_DOCS):
             rn.status = R.CONTRACTS_SIGNED
             _notify_stage(db, rn)
 
@@ -510,11 +511,13 @@ def hr_verify_renewal(rid: int, request: Request,
 
 @router.post("/{rid}/gov-contract/generate")
 def generate_gov_contract(rid: int, request: Request,
+                          format: str = "html",
                           user: models.User = Depends(get_current_user),
                           db: Session = Depends(get_db)):
     """R8 §3 — يُولّد العقد الحكومي لطلب تجديد. يستخدم template بكود
     GOV-CONTRACT-RENEWAL ويُعبّئ بيانات الموظف والشركة تلقائيًا (authoritative).
-    يُعيد HTML جاهز للطباعة + reference_no + checksum."""
+    format=html (افتراضي) → JSON مع HTML للمعاينة/الطباعة.
+    format=pdf → يُعيد FileResponse مباشرة (application/pdf) — R9 §5."""
     from ..routers.templates import _resolve_authoritative_data, _fill_html, _generate_reference_no
     import hashlib
 
@@ -556,22 +559,38 @@ def generate_gov_contract(rid: int, request: Request,
     ctx["ref_no"] = reference_no
 
     rendered = _fill_html(tpl, ctx)
-    pdf_bytes = rendered.encode("utf-8")
-    checksum = hashlib.sha256(pdf_bytes).hexdigest()
+
+    # R9 §5 — لو طُلب PDF نُنتج ملف PDF ثنائي بدل HTML
+    if (format or "").lower() == "pdf":
+        from ..pdf_export import render_html_contract_pdf
+        pdf_bytes = render_html_contract_pdf(
+            rendered,
+            title=f"العقد الحكومي — تجديد إقامة {emp.name}",
+            subtitle=(db.get(models.Company, rn.company_id).name if rn.company_id else ""),
+            reference_no=reference_no,
+        )
+        mime = "application/pdf"
+        ext = "pdf"
+        content_bytes = pdf_bytes
+    else:
+        mime = "text/html"
+        ext = "html"
+        content_bytes = rendered.encode("utf-8")
+    checksum = hashlib.sha256(content_bytes).hexdigest()
 
     # احفظ كـissued document على الموظف مربوط بالتجديد
     folder = os.path.join(settings.upload_dir, "gov_contracts")
     os.makedirs(folder, exist_ok=True)
     safe_ref = reference_no.replace("/", "_")
-    fpath = os.path.join(folder, f"{safe_ref}.html")
+    fpath = os.path.join(folder, f"{safe_ref}.{ext}")
     with open(fpath, "wb") as f:
-        f.write(pdf_bytes)
+        f.write(content_bytes)
 
     doc = models.Document(
         company_id=rn.company_id, entity_type="employee", entity_id=emp.id,
         document_type_code=f"gov_contract_renewal_{rn.id}",
         title=f"العقد الحكومي — تجديد إقامة {emp.name}",
-        file_path=fpath, mime="text/html",
+        file_path=fpath, mime=mime,
         version=1, is_current=True, uploaded_by=user.id,
         is_issued=True, reference_no=reference_no,
         template_version=tpl.version or 1, checksum_sha256=checksum,
@@ -580,8 +599,11 @@ def generate_gov_contract(rid: int, request: Request,
     db.add(doc)
     db.flush()
     audit(db, user, "generate_gov_contract", "residency_renewal", rn.id,
-          detail=f"gov contract → {reference_no}", request=request, company_id=rn.company_id)
+          detail=f"gov contract → {reference_no} ({ext})", request=request, company_id=rn.company_id)
     db.commit()
+
+    if (format or "").lower() == "pdf":
+        return FileResponse(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
     return {
         "ok": True, "html": rendered,
         "document_id": doc.id, "reference_no": reference_no,

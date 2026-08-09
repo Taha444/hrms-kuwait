@@ -312,3 +312,122 @@ def custom_document_history(doc_id: int,
         "issue_date": d.issue_date, "expiry_date": d.expiry_date,
         "created_at": d.created_at, "uploaded_by": d.uploaded_by,
     } for d in rows]
+
+
+# =============================================================================
+# R9 §3 — Custom doc Edit metadata + Delete
+# =============================================================================
+
+@router.put("/custom-doc/{doc_id}")
+async def update_custom_document(
+    doc_id: int, request: Request,
+    name_ar: str | None = Form(None),
+    name_en: str | None = Form(None),
+    doc_number: str | None = Form(None),
+    issue_date: date | None = Form(None),
+    expiry_date: date | None = Form(None),
+    issuing_authority: str | None = Form(None),
+    notes: str | None = Form(None),
+    notify_on_expiry: bool | None = Form(None),
+    assigned_pro_id: int | None = Form(None),
+    clear_assigned_pro: bool = Form(False),
+    user: models.User = Depends(require_perm("upload_documents")),
+    db: Session = Depends(get_db),
+):
+    """R9 §3 — تعديل metadata لمستند مخصّص بدون تغيير الملف.
+    الحقول المرسلة تُعدَّل فقط؛ ما لم يُرسل يبقى كما هو.
+    لإزالة PRO المسند: أرسل clear_assigned_pro=true (بديل عن قيمة null).
+    """
+    doc = db.get(models.Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    if not (doc.document_type_code or "").startswith("custom:"):
+        raise HTTPException(status_code=400,
+                          detail="هذا المسار للمستندات المخصّصة فقط")
+    assert_same_company(user, doc.company_id, db=db)
+
+    meta = dict(doc.extracted_data_json) if isinstance(doc.extracted_data_json, dict) else {}
+    changed = []
+    if name_ar is not None and name_ar.strip():
+        meta["name_ar"] = name_ar.strip()
+        doc.title = name_ar.strip()
+        changed.append("name_ar")
+    if name_en is not None:
+        meta["name_en"] = name_en.strip() or None
+        changed.append("name_en")
+    if doc_number is not None:
+        meta["doc_number"] = doc_number.strip() or None
+        changed.append("doc_number")
+    if issuing_authority is not None:
+        meta["issuing_authority"] = issuing_authority.strip() or None
+        changed.append("issuing_authority")
+    if notes is not None:
+        meta["notes"] = notes.strip() or None
+        changed.append("notes")
+    if issue_date is not None:
+        doc.issue_date = issue_date
+        changed.append("issue_date")
+    if expiry_date is not None:
+        doc.expiry_date = expiry_date
+        changed.append("expiry_date")
+    if notify_on_expiry is not None:
+        doc.notify_on_expiry = notify_on_expiry
+        changed.append("notify_on_expiry")
+
+    # PRO المسند: تحقق من الشركة والدور قبل الحفظ
+    if clear_assigned_pro:
+        meta["assigned_pro_id"] = None
+        changed.append("assigned_pro_cleared")
+    elif assigned_pro_id is not None:
+        pro = db.get(models.User, assigned_pro_id)
+        if not pro or pro.company_id != doc.company_id or pro.role != "delegate":
+            raise HTTPException(status_code=400,
+                              detail="assigned_pro_id: يجب أن يكون مندوبًا (delegate) في نفس الشركة")
+        meta["assigned_pro_id"] = assigned_pro_id
+        changed.append("assigned_pro_id")
+
+    doc.extracted_data_json = meta
+    audit(db, user, "update_custom_document", doc.entity_type, doc.entity_id,
+          detail=f"{doc.title}: {', '.join(changed) or 'no-op'}",
+          request=request, company_id=doc.company_id)
+    db.commit()
+    return {"ok": True, "id": doc.id, "changed": changed}
+
+
+@router.delete("/custom-doc/{doc_id}")
+def delete_custom_document(doc_id: int, request: Request,
+                          user: models.User = Depends(require_perm("upload_documents")),
+                          db: Session = Depends(get_db)):
+    """R9 §3 — حذف نهائي لمستند مخصّص وكل نُسخه (Current + History).
+    يمسح الملفات من القرص أيضًا للحفاظ على المساحة.
+    """
+    ref = db.get(models.Document, doc_id)
+    if not ref:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    if not (ref.document_type_code or "").startswith("custom:"):
+        raise HTTPException(status_code=400,
+                          detail="هذا المسار للمستندات المخصّصة فقط")
+    assert_same_company(user, ref.company_id, db=db)
+
+    # كل النُسخ التي تشترك في نفس المعرّف (type + entity)
+    versions = db.scalars(select(models.Document).where(
+        models.Document.entity_type == ref.entity_type,
+        models.Document.entity_id == ref.entity_id,
+        models.Document.document_type_code == ref.document_type_code,
+    )).all()
+    deleted_count = 0
+    for v in versions:
+        # امسح الملف الفعلي (لو موجود)
+        if v.file_path and os.path.exists(v.file_path):
+            try:
+                os.remove(v.file_path)
+            except OSError:
+                pass  # نستمر حتى لو فشل مسح ملف واحد
+        db.delete(v)
+        deleted_count += 1
+
+    audit(db, user, "delete_custom_document", ref.entity_type, ref.entity_id,
+          detail=f"deleted {deleted_count} versions of: {ref.title}",
+          request=request, company_id=ref.company_id)
+    db.commit()
+    return {"ok": True, "deleted_versions": deleted_count}
