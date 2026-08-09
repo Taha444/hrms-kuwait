@@ -196,6 +196,30 @@ def link_orphan_to_employee(user_id: int, employee_id: int, request: Request,
     return {"ok": True, "user_id": target.id, "employee_id": employee_id}
 
 
+@router.post("/auto-link-employees")
+def auto_link_all_orphans(request: Request,
+                          user: models.User = Depends(require_perm("manage_users")),
+                          db: Session = Depends(get_db)):
+    """R9 §14 — يمر atomic على كل حساب unlinked ويربطه بموظف مطابق (نفس الرقم
+    المدني والشركة). idempotent — تشغيل ثاني لا يعمل شيء.
+
+    القواعد:
+    - لا يمس super_admin/company_owner (بلا employee بشكل مقصود)
+    - لا يستبدل رابط موجود
+    - لا يُنشئ Employee وهمي — يتخطى ويبلّغ لو مافيش موظف مطابق
+    - لا يسمح بربطين لنفس الموظف — يبلّغ عن التعارض
+    """
+    from ..user_employee_link import auto_link_users_to_employees
+    report = auto_link_users_to_employees(db)
+    # سجل كل ربط في Audit
+    for entry in report["linked"]:
+        audit(db, user, "auto_link_user_to_employee", "user", entry["user_id"],
+              detail=f"→ employee #{entry['employee_id']} (civil_id={entry['civil_id']})",
+              request=request)
+    db.commit()
+    return report
+
+
 @router.post("/{user_id}/toggle")
 def toggle_active(user_id: int, request: Request,
                   user: models.User = Depends(require_perm("manage_users")),

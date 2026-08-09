@@ -400,3 +400,85 @@ def test_renewal_advances_with_gov_contract_only(client):
     after = client.get(f"/api/renewals/{rid}", headers=pro).json()
     # يجب أن ينتقل مباشرة بعد العقد الحكومي فقط (بدون رفع العقد الداخلي)
     assert after["status"] == "awaiting_signature"
+
+
+# ============================================================================
+# R9 §14 — Auto-link users ↔ employees
+# ============================================================================
+
+def test_auto_link_idempotent(client):
+    """auto-link ما يعمل شيء لو كل الحسابات مربوطة (idempotent)."""
+    admin = auth_headers(login(client, *ADMIN))
+    r1 = client.post("/api/users/auto-link-employees", headers=admin)
+    assert r1.status_code == 200
+
+    r2 = client.post("/api/users/auto-link-employees", headers=admin)
+    assert r2.status_code == 200
+    # التشغيل الثاني: صفر ربط جديد
+    assert len(r2.json()["linked"]) == 0
+
+
+def test_auto_link_reports_no_employee(client):
+    """user يتيم بدون employee مطابق يظهر في no_employee بدل ما يفشل الكل."""
+    from app.database import SessionLocal
+    from app import models
+    from app.security import hash_password
+
+    admin = auth_headers(login(client, *ADMIN))
+    db = SessionLocal()
+    orphan_id = None
+    try:
+        cid = db.scalar(select(models.Company.id))
+        orphan = models.User(
+            civil_id="999999999999", password_hash=hash_password("x"),
+            full_name="Orphan Test", role="hr", company_id=cid,
+            is_active=True, must_change_password=False,
+        )
+        db.add(orphan); db.commit()
+        orphan_id = orphan.id
+    finally:
+        db.close()
+
+    try:
+        r = client.post("/api/users/auto-link-employees", headers=admin)
+        assert r.status_code == 200
+        no_emp_ids = [x["user_id"] for x in r.json()["no_employee"]]
+        assert orphan_id in no_emp_ids
+    finally:
+        # نظافة: احذف الـuser المُختبر
+        db = SessionLocal()
+        try:
+            u = db.get(models.User, orphan_id) if orphan_id else None
+            if u:
+                db.delete(u); db.commit()
+        finally:
+            db.close()
+
+
+def test_auto_link_requires_manage_users_permission(client):
+    """endpoint خاص بأدوار manage_users فقط — الموظف مرفوض."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/users/auto-link-employees", headers=emp)
+    assert r.status_code == 403
+
+
+def test_auto_link_does_not_touch_super_admin(client):
+    """super_admin عمدًا بلا employee record — auto-link يتخطاه."""
+    from app.database import SessionLocal
+    from app import models
+
+    admin = auth_headers(login(client, *ADMIN))
+    r = client.post("/api/users/auto-link-employees", headers=admin)
+    assert r.status_code == 200
+
+    # super_admin يجب أن يبقى employee_id=NULL
+    db = SessionLocal()
+    try:
+        sa = db.scalar(select(models.User).where(models.User.role == "super_admin"))
+        assert sa is not None
+        assert sa.employee_id is None
+        # ولا يظهر في linked/no_employee
+        for group in ("linked", "no_employee", "conflicts"):
+            assert not any(x.get("user_id") == sa.id for x in r.json().get(group, []))
+    finally:
+        db.close()

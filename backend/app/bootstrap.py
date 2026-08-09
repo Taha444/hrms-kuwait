@@ -73,6 +73,8 @@ def main():
 
     if has_data:
         print("[bootstrap] القاعدة تحتوي بيانات بالفعل — تخطّي التعبئة (حفاظًا على البيانات).")
+        # R9 §14 — auto-link pass دائم: يفحص كل حساب unlinked ويربطه بموظف مطابق
+        _run_auto_link()
         return
 
     is_prod = settings.is_production
@@ -91,6 +93,38 @@ def main():
     print("[bootstrap] قاعدة فارغة — تعبئة بيانات البداية (seed كامل)...")
     from . import seed
     seed.run()
+    # حتى بعد الـseed، شغّل auto-link (في التطوير الـseed بيربط بالفعل، بس آمن لو أي فرق)
+    _run_auto_link()
+
+
+def _run_auto_link() -> None:
+    """R9 §14 — atomic pass يربط كل user unlinked بموظف مطابق (idempotent).
+    يطبع تقرير مختصر. أي فشل لا يوقف الـstartup."""
+    try:
+        from .user_employee_link import auto_link_users_to_employees
+        db = SessionLocal()
+        try:
+            report = auto_link_users_to_employees(db)
+        finally:
+            db.close()
+    except Exception as e:  # pragma: no cover
+        print(f"[bootstrap] auto-link فشل: {e} — نستمر.")
+        return
+
+    if report["linked"]:
+        print(f"[bootstrap] ✓ auto-linked {len(report['linked'])} user↔employee pairs")
+        for row in report["linked"][:8]:
+            print(f"  · {row['role']} {row['name']} (civil_id={row['civil_id']}) → emp #{row['employee_id']}")
+        if len(report["linked"]) > 8:
+            print(f"  ... و{len(report['linked']) - 8} آخرين")
+    if report["no_employee"]:
+        print(f"[bootstrap] ⚠ {len(report['no_employee'])} حساب بدون employee مطابق (يحتاج إنشاء يدوي):")
+        for row in report["no_employee"][:5]:
+            print(f"  · {row['role']} {row['name']} (civil_id={row['civil_id']})")
+    if report["conflicts"]:
+        print(f"[bootstrap] ⚠ {len(report['conflicts'])} تعارض (الموظف مربوط بحساب آخر):")
+        for row in report["conflicts"][:5]:
+            print(f"  · user #{row['user_id']} تعارض مع user #{row['other_user_id']}")
 
 
 if __name__ == "__main__":

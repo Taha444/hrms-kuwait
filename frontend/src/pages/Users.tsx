@@ -86,13 +86,66 @@ export default function Users() {
     openPerms(sel);
   };
 
+  // R9 §14 — auto-link report state
+  const [linkReport, setLinkReport] = useState<any | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const runAutoLink = async () => {
+    setLinkBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await api.post("/users/auto-link-employees");
+      setLinkReport(r.data);
+      const n = r.data.linked?.length || 0;
+      setMsg(n > 0
+        ? `تم ربط ${n} حساب بموظفاتهم`
+        : "لا حسابات جديدة للربط — كل الحسابات مربوطة بالفعل");
+      load();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+    finally { setLinkBusy(false); }
+  };
+
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2>{t("users_title")}</h2>
-        <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button onClick={runAutoLink} disabled={linkBusy} className="ghost"
+                  title="يربط أي حساب بلا employee بموظف مطابق نفس الرقم المدني والشركة">
+            🔗 ربط تلقائي بالموظفين
+          </button>
+          <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>
+        </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
+      {linkReport && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--brand)", marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h4 style={{ margin: 0 }}>تقرير الربط التلقائي</h4>
+            <button className="ghost sm" onClick={() => setLinkReport(null)}>×</button>
+          </div>
+          <div style={{ fontSize: 13, marginTop: 8 }}>
+            <div>✓ <b>{linkReport.linked?.length || 0}</b> ربط ناجح</div>
+            {linkReport.no_employee?.length > 0 && (
+              <div style={{ color: "#b45309" }}>
+                ⚠ <b>{linkReport.no_employee.length}</b> حساب بدون موظف مطابق — يحتاج إنشاء Employee record:
+                <ul style={{ marginTop: 4 }}>
+                  {linkReport.no_employee.slice(0, 5).map((x: any) => (
+                    <li key={x.user_id}>{x.role} — {x.name} ({x.civil_id})</li>
+                  ))}
+                  {linkReport.no_employee.length > 5 && <li>... و{linkReport.no_employee.length - 5} آخرين</li>}
+                </ul>
+              </div>
+            )}
+            {linkReport.conflicts?.length > 0 && (
+              <div style={{ color: "var(--danger)" }}>
+                ⚠ <b>{linkReport.conflicts.length}</b> تعارض (الموظف مربوط بحساب آخر)
+              </div>
+            )}
+            <div className="muted" style={{ marginTop: 4 }}>
+              فُحص إجمالاً: {linkReport.total_scanned} حساب unlinked
+            </div>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <div className="card">
