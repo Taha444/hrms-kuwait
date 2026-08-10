@@ -208,18 +208,33 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
     company = db.get(models.Company, emp.company_id)
     branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
     department = db.get(models.Department, emp.department_id) if emp.department_id else None
+
+    # P0-#11 — bilingual contract_type + clauses للعقد الحكومي الرسمي (PAM template)
+    is_indefinite = emp.contract_type == "indefinite"
+    contract_type_ar = "غير محدد المدة" if is_indefinite else "محدد المدة"
+    contract_type_en = "of indefinite term" if is_indefinite else "of definite term"
+    # Clause إضافية لو محدد المدة: "لمدة سنة واحدة" (يمكن للـextras تعديلها)
+    contract_term_clause_ar = "" if is_indefinite else "، لمدة سنة واحدة قابلة للتجديد باتفاق الطرفين لمدد مماثلة لا تتجاوز خمس سنوات"
+    contract_term_clause_en = "" if is_indefinite else ", for a term of ONE YEAR renewable with the approval of the parties for similar terms not exceeding five years"
+
     return {
         "employee_name": emp.name or "",
         "employee_name_en": emp.name_en or "",
         "employee_id": str(emp.id),
         "employee_no": emp.employee_no or "",  # R1-B — الرقم الوظيفي الرسمي
         "civil_id": emp.civil_id or "",
+        "passport_number": emp.passport_number or "",  # P0-#11 — نموذج PAM يحتاجه
+        "date_of_birth": emp.date_of_birth.isoformat() if emp.date_of_birth else "",
         "job_title": emp.job_title or "",
         "department": department.name if department else "",
         "nationality": emp.nationality or "",
         "basic_salary": f"{emp.basic_salary:.3f} د.ك" if emp.basic_salary else "",
         "hire_date": emp.hire_date.isoformat() if emp.hire_date else "",
-        "contract_type": "غير محدد المدة" if emp.contract_type == "indefinite" else "محدد المدة",
+        "contract_type": contract_type_ar,  # backward compat (النص القديم)
+        "contract_type_ar": contract_type_ar,
+        "contract_type_en": contract_type_en,
+        "contract_term_clause_ar": contract_term_clause_ar,
+        "contract_term_clause_en": contract_term_clause_en,
         "branch_name": branch.name if branch else "",
         "phone": emp.phone or "",
         "company_name": company.name if company else "",
@@ -227,6 +242,10 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "commercial_reg": (company.commercial_reg or "") if company else "",
         "date_today": date.today().isoformat(),
         "ref_no": f"{emp.company_id}-{emp.id}-{datetime.now():%Y%m%d}",
+        # P0-#11 — قيم افتراضية من قانون العمل الكويتي (قابلة للـoverride عبر extras):
+        "probation_days": "100",
+        "annual_leave_days": "30",
+        "special_conditions": "لا يوجد / None",
     }
 
 
