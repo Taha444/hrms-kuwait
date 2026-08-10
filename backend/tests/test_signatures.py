@@ -126,8 +126,10 @@ def test_employee_signature_replacement_goes_to_pending_not_active(client):
     assert old_active and os.path.exists(old_active)
 
     # الاستبدال الثاني (نفس الموظف، عنده توقيع بالفعل) → pending
+    # P1-#15 — reason إلزامي للاستبدال (query param)
     png2 = _minimal_png(width=150, height=50)
     r = client.post("/api/me/signature", headers=emp,
+                    params={"reason": "توقيع جديد أوضح"},
                     files={"file": ("b.png", png2, "image/png")})
     assert r.json()["status"] == "pending_approval"
     # القديم لسه نشط
@@ -144,8 +146,9 @@ def test_hr_can_approve_pending_replacement(client):
     # الرفع الأول (active)
     client.post("/api/me/signature", headers=emp,
                 files={"file": ("a.png", _minimal_png(100, 40), "image/png")})
-    # الاستبدال (pending)
+    # الاستبدال (pending) — P1-#15 reason إلزامي
     client.post("/api/me/signature", headers=emp,
+                params={"reason": "توقيع جديد بعد تحديث الهوية"},
                 files={"file": ("b.png", _minimal_png(150, 50), "image/png")})
 
     from app.database import SessionLocal
@@ -244,6 +247,8 @@ def test_upload_isolates_signature_from_notebook_rings(client):
 def test_upload_processes_photo_removes_background_saves_transparent_png(client):
     """SIG-02: صورة الرفع تُعالج → PNG شفاف الخلفية بحجم متناسب مع الـ ink فقط."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
+    # P1-#15 — reason إلزامي للاستبدال. clean state أولاً لضمان أول-رفع (بلا reason).
+    client.delete("/api/me/signature", headers=emp)
     raw_png = _signature_png(width=400, height=300)  # صورة كبيرة بها ink صغير
     r = client.post("/api/me/signature", headers=emp,
                     files={"file": ("sig.png", raw_png, "image/png")})

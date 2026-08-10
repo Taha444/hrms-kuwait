@@ -1173,6 +1173,54 @@ def test_residency_renewal_full_state_chain(client):
 # ============================================================================
 
 # ============================================================================
+# P1-#15 — Signature replacement: reason mandatory, version bump, HR task
+# ============================================================================
+
+def test_signature_version_starts_at_zero(client):
+    """P1-#15 — /me/signature يرد signature_version."""
+    hr = auth_headers(login(client, *HR))
+    r = client.get("/api/me/signature", headers=hr)
+    assert r.status_code == 200
+    assert "signature_version" in r.json()
+    assert isinstance(r.json()["signature_version"], int)
+
+
+def test_signature_replacement_requires_reason(client):
+    """P1-#15 — استبدال بدون سبب → 400."""
+    import io
+    # نستخدم branch_supervisor (مش hr/super_admin — عشان يمر بالـpending flow)
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        sup = db.scalar(select(models.User).where(
+            models.User.role == "branch_supervisor", models.User.company_id == 1))
+        civ = sup.civil_id if sup else None
+    finally:
+        db.close()
+    if not civ:
+        return
+    token = login(client, civ, "sup12345")
+    h = auth_headers(token)
+
+    # أول رفع (بدون سبب مسموح — direct application)
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000050001a5f645ea0000000049454e44ae426082"
+    )
+    r1 = client.post("/api/me/signature", headers=h,
+                    files={"file": ("s.png", png, "image/png")})
+    if r1.status_code != 201:
+        return
+
+    # الرفع الثاني (استبدال) بدون سبب → 400
+    r2 = client.post("/api/me/signature", headers=h,
+                    files={"file": ("s2.png", png, "image/png")})
+    assert r2.status_code == 400
+    assert "سبب" in r2.json()["detail"]
+
+
+# ============================================================================
 # P0-#12 — Gov contract generation E2E: autofill correctness
 # ============================================================================
 

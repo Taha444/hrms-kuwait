@@ -90,6 +90,8 @@ class User(Base):
     pending_signature_path: Mapped[str | None] = mapped_column(String(400))
     pending_signature_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime)
     pending_signature_reason: Mapped[str | None] = mapped_column(String(300))
+    # P1-#15 — رقم نسخة التوقيع الحالي (يُبدَّل مع كل approve)
+    signature_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # R9 §16 — Multi-company user (مندوب يخدم شركتين مثل محمد فاروق):
     #   is_cross_company=True → company_id يكون NULL، والحساب مربوط بعدة شركات
     #   عبر جدول user_company_links (سطر لكل شركة، فيه employee_id في تلك الشركة).

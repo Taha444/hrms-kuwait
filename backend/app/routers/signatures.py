@@ -24,6 +24,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import audit, get_current_user
 from ..safe_files import read_limited, unique_path
+from sqlalchemy import select as _select
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/me/signature", tags=["signature"])
@@ -31,6 +32,37 @@ router = APIRouter(prefix="/me/signature", tags=["signature"])
 _ALLOWED_MIME = {"image/png", "image/jpeg", "image/jpg"}
 _ALLOWED_EXT = {".png", ".jpg", ".jpeg"}
 _MAX_BYTES = 500 * 1024  # 500 KB — كافٍ لصورة توقيع بجودة عالية
+
+
+def _create_pending_signature_task(db: Session, target_user: models.User) -> None:
+    """P1-#15 — ينشئ HR task واحدة لطلب استبدال معلّق. dedup بـuser id."""
+    from ..notifications import create_task, users_by_role
+    dk = f"sig_replacement_pending:u{target_user.id}"
+    for hr in users_by_role(db, target_user.company_id, ["hr"]):
+        create_task(
+            db, company_id=target_user.company_id, assignee_user_id=hr.id,
+            type="signature_replacement", severity="warning",
+            title=f"طلب استبدال توقيع: {target_user.full_name or target_user.civil_id}",
+            detail=f"السبب: {target_user.pending_signature_reason}",
+            related_entity_type="user", related_entity_id=target_user.id,
+            dedup_key=f"{dk}:hr{hr.id}",
+        )
+
+
+def _close_pending_signature_tasks(db: Session, target_user_id: int, action: str) -> int:
+    """P1-#15 — يقفل HR tasks المرتبطة بطلب استبدال معلّق (بعد approve/reject).
+    Returns: عدد المهام اللي اتقفلت."""
+    from datetime import datetime, timezone
+    closed = db.scalars(_select(models.Task).where(
+        models.Task.related_entity_type == "user",
+        models.Task.related_entity_id == target_user_id,
+        models.Task.type == "signature_replacement",
+        models.Task.status.in_(("open", "in_progress")),
+    )).all()
+    for t in closed:
+        t.status = "done"
+        t.completed_at = datetime.now(timezone.utc)
+    return len(closed)
 
 
 def _signatures_folder() -> str:
@@ -166,9 +198,11 @@ def _process_signature(input_bytes: bytes) -> bytes:
 
 @router.get("")
 def get_my_signature_info(user: models.User = Depends(get_current_user)):
-    """يعرض بيانات التوقيع الحالي (بدون الصورة نفسها) — تُنزَّل عبر /image."""
+    """يعرض بيانات التوقيع الحالي (بدون الصورة نفسها) — تُنزَّل عبر /image.
+    P1-#15 — يشمل version الحالي (يتحدد مع كل approve)."""
     return {
         "has_signature": bool(user.signature_path and os.path.exists(user.signature_path)),
+        "signature_version": user.signature_version,  # P1-#15
         "updated_at": user.signature_updated_at,
         # PILOT-P0-5 — إشارة لطلب استبدال معلّق (يظهر للمستخدم "بانتظار موافقة HR")
         "has_pending_replacement": bool(
@@ -252,15 +286,31 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
         return {"ok": True, "status": "active", "updated_at": now,
                 "size_bytes": len(processed), "raw_size_bytes": len(data)}
 
+    # P1-#15 — الاستبدال يستوجب سبب صريح (Business rule: التوقيع verifiable evidence)
+    if not (reason and reason.strip()):
+        # نظّف الملف اللي كتبناه للتو (المستخدم يعيد الرفع مع سبب)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=400,
+                          detail="سبب استبدال التوقيع إلزامي — اكتب سبب التغيير")
+
     # استبدال يحتاج موافقة HR — نحفظ في pending، القديم يفضل نشط
     # لو في pending قديم نحذفه (يستبدله الجديد)
     old_pending = user.pending_signature_path
     user.pending_signature_path = path
     user.pending_signature_uploaded_at = now
-    user.pending_signature_reason = (reason or "").strip() or None
+    user.pending_signature_reason = reason.strip()
+    # P1-#15 — audit مفصّل مع correlation + before/after
     audit(db, user, "signature_replacement_requested", "user", user.id,
-          detail=f"reason={user.pending_signature_reason or '-'} raw={len(data)}B",
-          request=request)
+          detail=f"reason={user.pending_signature_reason} raw={len(data)}B",
+          request=request, correlation_id=f"sig:{user.id}",
+          before={"signature_version": user.signature_version,
+                 "has_signature": bool(user.signature_path)},
+          after={"pending": True, "reason": user.pending_signature_reason})
+    # P1-#15 — إشعار HR بالطلب (task واحدة لكل مستخدم — dedup)
+    _create_pending_signature_task(db, user)
     db.commit()
     if old_pending and os.path.exists(old_pending) and old_pending != path:
         try:
@@ -358,12 +408,23 @@ def approve_replacement(target_user_id: int, request: Request,
     if not target.pending_signature_path:
         raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
     old_active = target.signature_path
+    old_version = target.signature_version
+    saved_reason = target.pending_signature_reason
     target.signature_path = target.pending_signature_path
     target.signature_updated_at = datetime.now(timezone.utc)
+    target.signature_version = old_version + 1  # P1-#15 — bump version
     target.pending_signature_path = None
     target.pending_signature_uploaded_at = None
     target.pending_signature_reason = None
-    audit(db, user, "signature_replacement_approved", "user", target.id, request=request)
+    # P1-#15 — audit مفصّل: correlation, before/after, من اعتمد
+    audit(db, user, "signature_replacement_approved", "user", target.id,
+          detail=f"v{old_version}→v{target.signature_version} reason={saved_reason or '-'}",
+          request=request, correlation_id=f"sig:{target.id}",
+          before={"signature_version": old_version, "pending": True},
+          after={"signature_version": target.signature_version,
+                "approved_by": user.id, "approver_role": user.role})
+    # P1-#15 — اقفل الـHR tasks المرتبطة بهذا الاستبدال
+    _close_pending_signature_tasks(db, target.id, "approved")
     db.commit()
     if old_active and os.path.exists(old_active) and old_active != target.signature_path:
         try:
@@ -386,11 +447,19 @@ def reject_replacement(target_user_id: int, request: Request, reason: str | None
     if not target.pending_signature_path:
         raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
     old_pending = target.pending_signature_path
+    old_reason = target.pending_signature_reason
     target.pending_signature_path = None
     target.pending_signature_uploaded_at = None
     target.pending_signature_reason = None
+    # P1-#15 — audit مفصّل + close tasks
     audit(db, user, "signature_replacement_rejected", "user", target.id,
-          detail=reason, request=request)
+          detail=f"rejection_reason={reason or '-'} orig_reason={old_reason or '-'}",
+          request=request, correlation_id=f"sig:{target.id}",
+          before={"signature_version": target.signature_version,
+                 "pending": True, "user_reason": old_reason},
+          after={"pending": False, "rejected_by": user.id,
+                "rejector_role": user.role, "rejection_reason": reason})
+    _close_pending_signature_tasks(db, target.id, "rejected")
     db.commit()
     if old_pending and os.path.exists(old_pending):
         try:
