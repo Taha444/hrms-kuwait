@@ -10,7 +10,8 @@ export type User = {
   permissions: string[];
   must_change_password: boolean;
   employee_id: number | null;
-  is_cross_company: boolean;
+  is_cross_company: boolean;         // موسّع: super_admin/owner/متعدد الشركات
+  needs_company_selection?: boolean; // ضيّق: فقط المستخدمين الفعليين متعددي الشركات
   // R9 §17 — صورة البروفايل
   has_avatar?: boolean;
   avatar_updated_at?: string | null;

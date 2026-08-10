@@ -21,7 +21,10 @@ export default function Login() {
     setBusy(true);
     try {
       const u = await login(civilId.trim(), password, requires2fa ? totpCode.trim() : undefined);
-      nav(u.must_change_password ? "/change-password" : (u.is_cross_company ? "/select-company" : "/"));
+      // R9 §16 — /select-company فقط لمستخدمي is_cross_company الفعليين (مثل محمد فاروق)
+      // super_admin/owner لهم آلية picker مختلفة (localStorage-based)
+      const needsPicker = (u as any).needs_company_selection === true;
+      nav(u.must_change_password ? "/change-password" : (needsPicker ? "/select-company" : "/"));
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       // V2.2 §9 — backend returns {requires_2fa: true} on first login attempt for TOTP-enabled users

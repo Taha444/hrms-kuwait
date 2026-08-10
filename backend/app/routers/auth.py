@@ -207,15 +207,19 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     from ..permissions import is_cross_company_user
-
     return {
         "id": user.id, "civil_id": user.civil_id, "full_name": user.full_name,
         "role": user.role, "company_id": user.company_id, "email": user.email,
         "must_change_password": user.must_change_password,
         "employee_id": user.employee_id,
-        # R9 §16 — يشمل المستخدم متعدد الشركات (is_cross_company flag)
+        # is_cross_company: مفهوم موسّع "يشوف شركات متعددة" — يشمل super_admin/owner
+        # (متوافق مع كود سابق يعتمد عليه لعرض CompanyPicker للـsuper_admin).
         "is_cross_company": is_cross_company_user(user),
-        # R9 §17 — أيضًا bool للـavatar (يُستخدم في UI لعرض الصورة بدل الأيقونة)
+        # R9 §16 — needs_company_selection: التمييز الحقيقي — يدل هل المستخدم
+        # يحتاج شاشة /select-company المخصّصة (JWT-based picker) أم لا.
+        # True فقط للـflag الفعلي، False لـsuper_admin/owner (اللي عندهم CompanyPicker).
+        "needs_company_selection": bool(user.is_cross_company),
+        # R9 §17 — bool للـavatar (يُستخدم في UI لعرض الصورة بدل الأيقونة)
         "has_avatar": bool(user.avatar_path),
         "avatar_updated_at": (user.avatar_updated_at.isoformat()
                              if user.avatar_updated_at else None),

@@ -179,7 +179,7 @@ function Sidebar({ open }: { open: boolean }) {
 
       <div className="sb-foot">
         {/* R9 §16 — مستخدم متعدد الشركات (مثل مندوب يخدم شركتين): زر تبديل الشركة */}
-        {user?.is_cross_company && user?.role !== "super_admin" && user?.role !== "company_owner" && (
+        {(user as any)?.needs_company_selection === true && (
           <Item to="/select-company" icon="companies" label={t("switch_company") || "تبديل الشركة"} />
         )}
         <Item to="/change-password" icon="key" label={t("change_password")} />
@@ -451,7 +451,9 @@ export default function App() {
       <Route path="/notification-prefs" element={<Protected><NotificationPrefs /></Protected>} />
       <Route path="/select-company" element={
         !user ? <Navigate to="/login" replace />
-        : user.is_cross_company ? <SelectCompany /> : <Navigate to="/" replace />
+        : (user as any).needs_company_selection === true
+          ? <SelectCompany />
+          : <Navigate to="/" replace />
       } />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/tasks" element={<Protected><Tasks /></Protected>} />
