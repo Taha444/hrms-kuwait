@@ -783,6 +783,15 @@ def _finalize(db: Session, req: models.Request) -> None:
                 stage_label="فشل تطبيق التصحيح", approver_role="system",
                 decision="apply_failed", note=note,
             ))
+            # P0-#7 — audit apply failure كسطر واضح مربوط بالـrequest
+            db.add(models.AuditLog(
+                company_id=req.company_id, user_id=None,
+                action="request_apply_failed", entity_type="request",
+                entity_id=req.id, detail=f"reason: {note}",
+                correlation_id=f"req:{req.id}",
+                after_json={"status": req.status, "current_stage": req.current_stage,
+                          "reason": note},
+            ))
             _notify_employee_from_template(
                 db, req, code="NTF-035",
                 context={"request_type": rt.name if rt else req.request_type_code,
@@ -807,9 +816,25 @@ def _finalize(db: Session, req: models.Request) -> None:
             stage_label="تطبيق تصحيح الحضور", approver_role="system",
             decision="approved", note=note,
         ))
+        # P0-#7 — audit apply success
+        db.add(models.AuditLog(
+            company_id=req.company_id, user_id=None,
+            action="request_apply_success", entity_type="request",
+            entity_id=req.id, detail=note,
+            correlation_id=f"req:{req.id}",
+        ))
 
     req.status = "completed"
     req.closed_at = datetime.now(timezone.utc)
+    # P0-#7 — audit completion (transition to terminal state)
+    db.add(models.AuditLog(
+        company_id=req.company_id, user_id=None,
+        action="request_completed", entity_type="request",
+        entity_id=req.id,
+        detail=f"{rt.code if rt else req.request_type_code}",
+        correlation_id=f"req:{req.id}",
+        after_json={"status": "completed", "closed_at": req.closed_at.isoformat()},
+    ))
     _notify_employee_from_template(
         db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
         dedup_key=f"req_done:{req.id}",

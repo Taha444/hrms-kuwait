@@ -232,7 +232,11 @@ def submit_request(data: schemas.RequestIn, request: Request,
             raise HTTPException(status_code=400, detail="تاريخ نهاية الإجازة قبل بدايتها")
 
     req = workflow.create_request(db, emp, user, rt, data.payload_json)
-    audit(db, user, "submit_request", "request", req.id, detail=rt.code, request=request, company_id=emp.company_id)
+    audit(db, user, "submit_request", "request", req.id, detail=rt.code,
+          request=request, company_id=emp.company_id,
+          correlation_id=f"req:{req.id}",
+          after={"status": req.status, "current_stage": req.current_stage,
+                "type": rt.code})
     db.commit()
     st = workflow.status_info(req.status)
     return {"ok": True, "id": req.id, "status": req.status, "status_label": st["label"],
@@ -333,8 +337,14 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
             status_code=400,
             detail="هذه المرحلة تكتمل برفع إذن المغادرة (documents) لا بالاعتماد المباشر",
         )
+    # P0-#7 — capture before-state for audit trail
+    before = {"status": req.status, "current_stage": req.current_stage}
     req = workflow.decide(db, req, user, data.decision, data.note, rt)
-    audit(db, user, f"request_{data.decision}", "request", req.id, request=request, company_id=req.company_id)
+    audit(db, user, f"request_{data.decision}", "request", req.id,
+          detail=data.note, request=request, company_id=req.company_id,
+          correlation_id=f"req:{req.id}",
+          before=before,
+          after={"status": req.status, "current_stage": req.current_stage})
     st = workflow.status_info(req.status)
     return {"ok": True, "status": req.status, "status_label": st["label"], "current_stage": req.current_stage}
 
@@ -344,11 +354,15 @@ def cancel(req_id: int, request: Request, note: str | None = None,
            user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    before = {"status": req.status, "current_stage": req.current_stage}
     try:
         req = workflow.cancel(db, req, user, note, rt)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    audit(db, user, "request_cancel", "request", req.id, request=request, company_id=req.company_id)
+    audit(db, user, "request_cancel", "request", req.id,
+          detail=note, request=request, company_id=req.company_id,
+          correlation_id=f"req:{req.id}", before=before,
+          after={"status": req.status})
     return {"ok": True, "status": req.status}
 
 
@@ -359,13 +373,17 @@ def resubmit_request(req_id: int, request: Request, data: dict | None = None,
     ويعيد الطلب لمرحلة الاعتماد الأولى دون إنشاء طلب جديد."""
     req = _get_req(db, user, req_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    before = {"status": req.status, "current_stage": req.current_stage}
     try:
         req = workflow.resubmit(db, req, user, (data or {}).get("payload_json"), rt)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    audit(db, user, "request_resubmit", "request", req.id, request=request, company_id=req.company_id)
+    audit(db, user, "request_resubmit", "request", req.id,
+          request=request, company_id=req.company_id,
+          correlation_id=f"req:{req.id}", before=before,
+          after={"status": req.status, "current_stage": req.current_stage})
     return {"ok": True, "status": req.status, "current_stage": req.current_stage}
 
 

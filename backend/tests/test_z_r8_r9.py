@@ -977,3 +977,36 @@ def test_apply_failed_status_map(client):
     assert info["v15"] == "FAILED"
     assert "فشل" in info["label"] or "Failed" in info["label"]
     assert info["code"] == "APPLY_FAILED"
+
+
+# ============================================================================
+# P0-#7 — Audit: correlation_id + before/after على transitions
+# ============================================================================
+
+def test_audit_submit_has_correlation_id_and_after(client):
+    """P0-#7 — submit_request يترك سطر audit فيه correlation_id + after_json."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"},
+    })
+    if r.status_code != 201:
+        return
+    req_id = r.json()["id"]
+
+    db = SessionLocal()
+    try:
+        log = db.scalar(select(models.AuditLog).where(
+            models.AuditLog.action == "submit_request",
+            models.AuditLog.entity_id == req_id,
+        ).order_by(models.AuditLog.id.desc()))
+        assert log is not None
+        assert log.correlation_id == f"req:{req_id}"
+        assert log.after_json is not None
+        assert "status" in log.after_json
+    finally:
+        db.close()
