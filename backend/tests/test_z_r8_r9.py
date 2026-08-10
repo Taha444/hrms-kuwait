@@ -646,17 +646,17 @@ def test_cross_company_select_company_issues_scoped_token(client):
 
 
 def test_cross_company_cannot_select_non_member_company(client):
-    """R9 §16 — لو حاول يختار شركة مش عضو فيها، يفشل بـ403."""
+    """R9 §16 — لو حاول يختار شركة غير مسموحة، يفشل (404 لو مش موجودة، 403 لو مش عضو)."""
     ctx = _setup_cross_company_user(client)
     try:
         r = client.post("/api/auth/login", json={
             "civil_id": ctx["civil_id"], "password": ctx["password"],
         })
         h = auth_headers(r.json()["access_token"])
-        # حاول اختيار شركة ID كبير (مش موجود أو مش عضو)
+        # حاول اختيار شركة ID كبير (مش موجود أو مش عضو) → 404 (مش موجود) أو 403 (مش عضو)
         sel = client.post("/api/auth/select-company", headers=h,
                          params={"company_id": 99999})
-        assert sel.status_code == 403
+        assert sel.status_code in (403, 404)
     finally:
         _cleanup_cross_company_user(ctx["user_id"])
 
@@ -822,3 +822,56 @@ def test_avatar_appears_in_auth_me(client):
     me = client.get("/api/auth/me", headers=hr).json()
     assert "has_avatar" in me
     assert isinstance(me["has_avatar"], bool)
+
+
+# ============================================================================
+# P0-#1 — Unified /auth/select-company for owner/super_admin (Portfolio pick)
+# ============================================================================
+
+def test_admin_can_select_any_company(client):
+    """super_admin يقدر يختار أي شركة عبر /auth/select-company (لا 400)."""
+    token = login(client, *ADMIN)
+    r = client.post("/api/auth/select-company", headers=auth_headers(token),
+                   params={"company_id": 1})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["active_company_id"] == 1
+    assert body["is_cross_company"] is True
+
+
+def test_owner_can_select_any_company(client):
+    """company_owner يقدر يختار أي شركة (portfolio)."""
+    token = login(client, "111111111111", "owner123")
+    r = client.post("/api/auth/select-company", headers=auth_headers(token),
+                   params={"company_id": 2})
+    assert r.status_code == 200
+    assert r.json()["active_company_id"] == 2
+
+
+def test_my_companies_kind_field(client):
+    """/auth/my-companies يرد kind يميّز portfolio / member / single."""
+    admin = auth_headers(login(client, *ADMIN))
+    r_admin = client.get("/api/auth/my-companies", headers=admin).json()
+    assert r_admin["kind"] == "portfolio"
+    assert len(r_admin["companies"]) >= 2
+
+    mgr = auth_headers(login(client, *MGR))
+    r_mgr = client.get("/api/auth/my-companies", headers=mgr).json()
+    assert r_mgr["kind"] == "single"
+    assert len(r_mgr["companies"]) == 1
+
+
+def test_admin_select_nonexistent_company_404(client):
+    """اختيار شركة مش موجودة → 404 (مش 400)."""
+    admin = auth_headers(login(client, *ADMIN))
+    r = client.post("/api/auth/select-company", headers=admin,
+                   params={"company_id": 99999})
+    assert r.status_code == 404
+
+
+def test_regular_user_still_rejected_from_select(client):
+    """موظف عادي (بدون cross-company) لسه يرجع 400."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/auth/select-company", headers=emp,
+                   params={"company_id": 1})
+    assert r.status_code == 400

@@ -119,8 +119,13 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
 @router.get("/my-companies")
 def my_companies(user: models.User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
-    """R9 §16 — قائمة الشركات للمستخدم متعدد الشركات (للـpicker بعد الدخول).
-    للمستخدم العادي: قائمة فيها شركته الواحدة."""
+    """R9 §16 + P0-#1 — قائمة الشركات المتاحة للمستخدم للاختيار من الـpicker.
+
+    التمييز:
+    - is_cross_company (flag, مثل محمد فاروق): فقط الشركات في UserCompanyLink
+    - super_admin / company_owner: كل الشركات (portfolio view)
+    - غيرهم: شركتهم الواحدة فقط
+    """
     if user.is_cross_company:
         links = db.scalars(select(models.UserCompanyLink).where(
             models.UserCompanyLink.user_id == user.id
@@ -131,51 +136,79 @@ def my_companies(user: models.User = Depends(get_current_user),
             if co:
                 out.append({"id": co.id, "name": co.name, "name_en": co.name_en,
                           "role": lk.role})
-        return {"is_cross_company": True, "companies": out}
-    # مستخدم عادي: شركته الحالية فقط (أو الكل لـsuper_admin)
+        return {"is_cross_company": True, "kind": "member", "companies": out}
+    # super_admin/owner: portfolio كامل — يشوفوا الكل ويختاروا أي
     if user.role in ("super_admin", "company_owner"):
         all_co = db.scalars(select(models.Company)).all()
-        return {"is_cross_company": False,
-                "companies": [{"id": c.id, "name": c.name, "name_en": c.name_en,
-                              "role": user.role} for c in all_co]}
+        return {
+            "is_cross_company": True,  # widened concept — يشوف multiple
+            "kind": "portfolio",
+            "companies": [{"id": c.id, "name": c.name, "name_en": c.name_en,
+                          "role": user.role} for c in all_co],
+        }
+    # مستخدم عادي: شركة واحدة
     if user.company_id:
         co = db.get(models.Company, user.company_id)
-        return {"is_cross_company": False,
+        return {"is_cross_company": False, "kind": "single",
                 "companies": [{"id": co.id, "name": co.name, "name_en": co.name_en,
                               "role": user.role}] if co else []}
-    return {"is_cross_company": False, "companies": []}
+    return {"is_cross_company": False, "kind": "none", "companies": []}
 
 
 @router.post("/select-company", response_model=schemas.TokenOut)
 def select_company(company_id: int, request: Request,
                   user: models.User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-    """R9 §16 — يختار المستخدم متعدد الشركات شركة يشتغل فيها.
-    يعيد access_token جديد بـactive_company_id — كل الطلبات التالية تُوجَّه لتلك الشركة.
-    لغير المتعدد الشركات: يفشل بـ400 (لا يحتاج اختيار)."""
-    if not user.is_cross_company:
+    """R9 §16 + P0-#1 (unified) — يختار المستخدم شركة يشتغل فيها.
+
+    مدعوم لكل مستخدم يشوف أكثر من شركة:
+    - super_admin / company_owner: يقدر يختار أي شركة موجودة (informational).
+      لا يقيد نطاق البيانات — لا يزال يقدر يمرّر company_id في queries.
+    - is_cross_company flag (مثل محمد فاروق): يقتصر على شركاته المرتبطة
+      عبر UserCompanyLink فقط. الاختيار يُطبَّق كـhard filter عبر JWT claim
+      في get_current_user (يفرض user.company_id + employee_id لهذا الطلب).
+
+    الرد: token جديد بـactive_company_id claim.
+    لغير المصرح لهم بأي شركات متعددة: 400.
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    is_admin_cross = user.role in CROSS_COMPANY_ROLES  # super_admin/owner
+    is_flag_cross = bool(user.is_cross_company)         # delegate متعدد
+
+    if not (is_admin_cross or is_flag_cross):
         raise HTTPException(status_code=400,
                           detail="هذا الحساب مش متعدد الشركات — لا يحتاج اختيار.")
-    # تحقق من العضوية
-    link = db.scalar(select(models.UserCompanyLink).where(
-        models.UserCompanyLink.user_id == user.id,
-        models.UserCompanyLink.company_id == company_id,
-    ))
-    if not link:
-        raise HTTPException(status_code=403,
-                          detail=f"لست عضوًا في الشركة #{company_id}")
+
+    # التحقق من الشركة
+    company = db.get(models.Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail=f"الشركة #{company_id} غير موجودة")
+
+    # For flag-based cross-company (delegate): must be a member
+    if is_flag_cross and not is_admin_cross:
+        link = db.scalar(select(models.UserCompanyLink).where(
+            models.UserCompanyLink.user_id == user.id,
+            models.UserCompanyLink.company_id == company_id,
+        ))
+        if not link:
+            raise HTTPException(status_code=403,
+                              detail=f"لست عضوًا في الشركة #{company_id}")
 
     audit(db, user, "select_company", "user", user.id,
-          detail=f"active_company_id={company_id}", request=request,
-          company_id=company_id)
+          detail=f"active_company_id={company_id} ({'admin' if is_admin_cross else 'member'})",
+          request=request, company_id=company_id)
     db.commit()
 
+    # For admin cross-company (super_admin/owner), company_id in response reflects
+    # their selection but user.company_id in DB stays NULL (they can still see all).
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
                                         active_company_id=company_id),
         refresh_token=create_refresh_token(user.id),
         must_change_password=user.must_change_password,
-        role=user.role, full_name=user.full_name, company_id=company_id,
+        role=user.role, full_name=user.full_name,
+        company_id=company_id,  # informational — for UI display
         permissions=_perm_list(user, db),
         is_cross_company=True, active_company_id=company_id,
     )
