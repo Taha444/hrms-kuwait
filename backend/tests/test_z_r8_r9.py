@@ -1010,3 +1010,63 @@ def test_audit_submit_has_correlation_id_and_after(client):
         assert "status" in log.after_json
     finally:
         db.close()
+
+
+# ============================================================================
+# P0-#10 — Expiry engine dedup + idempotent scan
+# ============================================================================
+
+def test_expiry_scan_idempotent_no_duplicate_tasks(client):
+    """P0-#10 — تشغيل daily_scan مرتين → مافيش duplicate tasks للـdocument نفسه."""
+    from app.database import SessionLocal
+    from app.notifications import daily_scan
+    from app import models
+    from sqlalchemy import select, func
+    from datetime import date, timedelta
+
+    # أضف مستند expiry_date قريب لأي موظف عشان يدخل الـscan
+    db = SessionLocal()
+    doc_id = None
+    try:
+        emp = db.scalar(select(models.Employee).limit(1))
+        assert emp is not None
+        cid = emp.company_id
+        # مستند بتاريخ انتهاء بعد 15 يوم (في bucket 15)
+        doc = models.Document(
+            company_id=cid, entity_type="employee", entity_id=emp.id,
+            document_type_code="passport", title="Test passport",
+            expiry_date=date.today() + timedelta(days=15),
+            version=1, is_current=True,
+        )
+        db.add(doc); db.commit(); doc_id = doc.id
+
+        # المسح الأول
+        daily_scan(db)
+        first_count = db.scalar(select(func.count()).select_from(models.Task).where(
+            models.Task.related_entity_type == "document",
+            models.Task.related_entity_id == doc_id,
+            models.Task.type == "doc_expiring",
+            models.Task.status.in_(("open", "in_progress")),
+        ))
+        assert first_count >= 1
+
+        # المسح الثاني — يجب ألا يزيد العدد
+        daily_scan(db)
+        second_count = db.scalar(select(func.count()).select_from(models.Task).where(
+            models.Task.related_entity_type == "document",
+            models.Task.related_entity_id == doc_id,
+            models.Task.type == "doc_expiring",
+            models.Task.status.in_(("open", "in_progress")),
+        ))
+        assert second_count == first_count, \
+            f"scan idempotency broken: {first_count} → {second_count}"
+    finally:
+        if doc_id:
+            db.execute(models.Task.__table__.delete().where(
+                models.Task.related_entity_type == "document",
+                models.Task.related_entity_id == doc_id,
+            ))
+            db.execute(models.Document.__table__.delete().where(
+                models.Document.id == doc_id))
+            db.commit()
+        db.close()

@@ -208,6 +208,8 @@ def daily_scan(db: Session) -> dict:
     # 2) المستندات (جوازات وغيرها + custom docs)
     #    R9 — للمستندات المخصّصة (type يبدأ بـ"custom:") التنبيه opt-in عبر notify_on_expiry.
     #    لو حُدِّد assigned_pro_id في metadata، التنبيه يذهب لهذا المندوب فقط بدل كل مندوبي الشركة.
+    #    P0-#10 — dedup صارم: مهمة واحدة نشطة لكل document current. أي محاولة إنشاء
+    #    تانية لنفس الـdocument (بأي bucket/مستلم) تُتخطى حتى لو dedup_key مختلف.
     for doc in db.scalars(
         select(models.Document).where(models.Document.is_current == True, models.Document.expiry_date.isnot(None))  # noqa: E712
     ).all():
@@ -222,6 +224,17 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         dk = f"doc_expiring:{doc.id}:{bucket}"
         title = doc.title or doc.document_type_code
+
+        # P0-#10 — تحقق entity-level: هل فيه open/in_progress task لنفس الـdocument؟
+        existing_task_for_doc = db.scalar(select(models.Task).where(
+            models.Task.related_entity_type == "document",
+            models.Task.related_entity_id == doc.id,
+            models.Task.type == "doc_expiring",
+            models.Task.status.in_(("open", "in_progress")),
+        ))
+        if existing_task_for_doc:
+            # فيه مهمة نشطة بالفعل لهذا المستند — نتخطى (لا نُكرر task لنفس المستند)
+            continue
 
         # R9 — لو المستند المخصّص له مندوب محدد، أرسل له فقط
         assigned_pro_id: int | None = None

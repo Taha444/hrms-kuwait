@@ -258,6 +258,9 @@ async def replace_custom_document(
 
     # القديم → history
     old.is_current = False
+    # P0-#10 — اقفل any open expiry tasks لهذا المستند القديم
+    from .documents import _close_expiry_tasks_for
+    _close_expiry_tasks_for(db, old.id)
 
     # اكتب الملف الجديد
     folder = os.path.join(settings.upload_dir, "custom_docs", old.entity_type)
@@ -416,7 +419,10 @@ def delete_custom_document(doc_id: int, request: Request,
         models.Document.document_type_code == ref.document_type_code,
     )).all()
     deleted_count = 0
+    from .documents import _close_expiry_tasks_for
     for v in versions:
+        # P0-#10 — اقفل expiry tasks قبل الحذف
+        _close_expiry_tasks_for(db, v.id)
         # امسح الملف الفعلي (لو موجود)
         if v.file_path and os.path.exists(v.file_path):
             try:

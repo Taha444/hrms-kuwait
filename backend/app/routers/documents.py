@@ -19,6 +19,31 @@ from ..safe_files import read_limited, unique_path
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+def _close_expiry_tasks_for(db: Session, doc_id: int) -> int:
+    """P0-#10 — يقفل كل open/in_progress expiry tasks المرتبطة بمستند معين.
+    يُستدعى عند: استبدال المستند بنسخة جديدة، حذفه، أو تجديده.
+    Returns: عدد المهام اللي اتقفلت."""
+    from datetime import datetime, timezone
+    closed = db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "document",
+        models.Task.related_entity_id == doc_id,
+        models.Task.type == "doc_expiring",
+        models.Task.status.in_(("open", "in_progress")),
+    )).all()
+    for t in closed:
+        t.status = "done"
+        t.completed_at = datetime.now(timezone.utc)
+    # audit trail — نسجل event لكل task مُغلَق
+    for t in closed:
+        db.add(models.AuditLog(
+            company_id=t.company_id, user_id=None,
+            action="expiry_task_auto_closed", entity_type="task",
+            entity_id=t.id, detail=f"document #{doc_id} replaced/renewed",
+            correlation_id=f"doc:{doc_id}",
+        ))
+    return len(closed)
+
+
 # ==============================================================================
 # V1.5 Phase 4 — Canonical Documents catalog (public, no auth needed)
 # ==============================================================================
@@ -123,6 +148,10 @@ async def upload_document(
     new_version = (max((d.version for d in prev), default=0)) + 1
     for d in prev:
         d.is_current = False
+        # P0-#10 — عند استبدال النسخة (تجديد/رفع جديد): اقفل أي open expiry tasks
+        # لهذا الـdocument تلقائيًا. النسخة الجديدة هتلقى tasks جديدة من daily_scan
+        # بناءً على expiry_date الجديد.
+        _close_expiry_tasks_for(db, d.id)
 
     doc = models.Document(
         company_id=company_id, entity_type=entity_type, entity_id=entity_id,
