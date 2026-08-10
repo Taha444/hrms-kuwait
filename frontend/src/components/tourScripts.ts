@@ -330,6 +330,59 @@ const PRO_STEPS: StepDef[] = [
   },
 ];
 
+// P1-#20 — جولة صاحب الشركة (portfolio + oversight only, no operational actions)
+const OWNER_STEPS: StepDef[] = [
+  {
+    target: '[data-tour="dashboard-header"]',
+    page: "/",
+    title: { ar: "لوحة المالك — Portfolio", en: "Owner Portfolio" },
+    body: {
+      ar: "نظرة رقابية على كل شركاتك. الأرقام مجمَّعة عبر الشركات — يمكن التصفية بشركة معينة.",
+      en: "Read-only overview across all your companies. Aggregated by default — filter to one company anytime.",
+    },
+  },
+  {
+    target: '[data-tour="nav-employees"]',
+    title: { ar: "الموظفون", en: "Employees" },
+    body: {
+      ar: "عرض كامل لموظفي الشركات. لا صلاحية إضافة/تعديل (رقابي فقط).",
+      en: "Full read view of employees across companies. No add/edit — oversight only.",
+    },
+  },
+  {
+    target: '[data-tour="nav-reports"]',
+    title: { ar: "التقارير", en: "Reports" },
+    body: {
+      ar: "تقارير مجمّعة قابلة للتصدير. كل تصدير حسّاس يطلب سبب صريح للـaudit.",
+      en: "Aggregated reports, exportable. Every sensitive export requires an explicit reason for audit.",
+    },
+  },
+  {
+    target: '[data-tour="nav-payroll"]',
+    title: { ar: "الرواتب — قراءة فقط", en: "Payroll — Read-Only" },
+    body: {
+      ar: "المالك يشوف المسيّرات والإجماليات، بس مافيش صلاحية تشغيل/اعتماد. المحاسب/HR هم المسؤولون.",
+      en: "You see runs and totals, but cannot prepare or approve. Accountant/HR handle operations.",
+    },
+  },
+  {
+    target: '[data-tour="nav-audit"]',
+    title: { ar: "سجل التدقيق", en: "Audit Log" },
+    body: {
+      ar: "كل عملية حسّاسة مسجَّلة: من فعل ماذا، متى، ومن أي جهاز. Correlation ID يربط الأحداث المتعلقة.",
+      en: "Every sensitive action logged: who did what, when, from where. Correlation IDs link related events.",
+    },
+  },
+  {
+    target: '[data-tour="nav-tasks"]',
+    title: { ar: "المهام", en: "Tasks" },
+    body: {
+      ar: "شارة المهام تظهر المتأخرات والتصعيدات — لن تُسند لك مهام تشغيلية بحكم الدور الرقابي.",
+      en: "Task badge shows overdue and escalations — no operational tasks are assigned to your oversight role.",
+    },
+  },
+];
+
 // خريطة الأدوار → مصفوفة الخطوات
 const ROLE_TOURS: Record<string, StepDef[]> = {
   employee: EMPLOYEE_STEPS,
@@ -339,7 +392,9 @@ const ROLE_TOURS: Record<string, StepDef[]> = {
   accountant: ACCOUNTANT_STEPS,
   delegate: PRO_STEPS,
   admin_employee: EMPLOYEE_STEPS,
-  // super_admin و company_owner لا يحتاجون جولة — يشوفون كل شيء بحكم الدور
+  // P1-#20 — owner يحصل على portfolio tour مركّز على العرض والحوكمة
+  company_owner: OWNER_STEPS,
+  // super_admin يشوف كل شيء بحكم الدور — لا يحتاج جولة موجّهة
 };
 
 /** يحوّل نصوص الجولة للغة الحالية، ويُرجع مصفوفة TourStep جاهزة للـTourDriver. */
