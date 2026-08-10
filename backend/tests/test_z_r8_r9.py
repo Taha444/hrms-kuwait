@@ -1083,8 +1083,172 @@ def test_hr_sees_leave_dates(client):
 
 
 # ============================================================================
+# P0-#13 — Residency renewal E2E (state transitions + doc chain)
+# ============================================================================
+
+def test_residency_renewal_full_state_chain(client):
+    """P0-#13 — تجديد كامل: awaiting_contracts → awaiting_signature → contracts_signed
+    → renewing → awaiting_civil_card → pending_hr_verify → completed.
+
+    يتحقق من كل transition بالتسلسل الصحيح على حسب الـstate machine الحالي."""
+    import io
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    # نستخدم موظف عنده permit مفتوح للتجديد (لو موجود). لو مافيش، skip.
+    emp_h = auth_headers(login(client, *EMP))
+    exists = client.get("/api/renewals", headers=emp_h).json()
+    open_rn = next((rn for rn in exists if rn["status"] == "awaiting_contracts"), None)
+    if not open_rn:
+        r = client.post("/api/renewals", headers=emp_h)
+        if r.status_code != 201:
+            return
+        if r.json()["status"] != "awaiting_contracts":
+            return
+        rid = r.json()["id"]
+    else:
+        rid = open_rn["id"]
+
+    pro = auth_headers(login(client, *PRO))
+
+    # PRO يرفع العقد الحكومي (P0-#13 §1 — يكفي وحده لانتقال الحالة)
+    up = client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                    data={"doc_type": "renewal_contract_gov"},
+                    files={"file": ("gov.pdf", io.BytesIO(b"gov"), "application/pdf")})
+    assert up.status_code == 200
+    after1 = client.get(f"/api/renewals/{rid}", headers=pro).json()
+    assert after1["status"] == "awaiting_signature"
+
+    # الموظف يرفع النسخة الموقّعة الحكومية
+    up2 = client.post(f"/api/renewals/{rid}/upload", headers=emp_h,
+                     data={"doc_type": "renewal_signed_gov"},
+                     files={"file": ("signed.pdf", io.BytesIO(b"signed"), "application/pdf")})
+    assert up2.status_code == 200
+    after2 = client.get(f"/api/renewals/{rid}", headers=pro).json()
+    assert after2["status"] == "contracts_signed"
+
+    # PRO يبدأ التجديد
+    r_renew = client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    assert r_renew.status_code == 200
+    assert r_renew.json()["status"] == "renewing"
+
+    # PRO يرفع إذن العمل الجديد
+    up3 = client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                     data={"doc_type": "work_permit"},
+                     files={"file": ("wp.pdf", io.BytesIO(b"wp"), "application/pdf")})
+    assert up3.status_code == 200
+    after3 = client.get(f"/api/renewals/{rid}", headers=pro).json()
+    assert after3["status"] == "awaiting_civil_card"
+
+    # PRO يعبّي metadata الحكومية
+    from datetime import date, timedelta
+    fin = client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "GOV-TEST-999",
+        "fees_amount": "150.500",
+        "fees_receipt_no": "R-999",
+        "new_permit_number": "RES-NEW-999",
+        "new_expiry_date": (date.today() + timedelta(days=730)).isoformat(),
+    })
+    assert fin.status_code == 200
+
+    # الموظف يرفع البطاقة المدنية
+    up4 = client.post(f"/api/renewals/{rid}/upload", headers=emp_h,
+                     data={"doc_type": "civil_id"},
+                     files={"file": ("cid.pdf", io.BytesIO(b"cid"), "application/pdf")})
+    assert up4.status_code == 200
+    after4 = client.get(f"/api/renewals/{rid}", headers=pro).json()
+    assert after4["status"] == "pending_hr_verify"
+
+    # HR يتحقق ويغلق
+    hr = auth_headers(login(client, *HR))
+    verify = client.post(f"/api/renewals/{rid}/hr-verify", headers=hr,
+                        data={"note": "تم التحقق"})
+    assert verify.status_code == 200
+    assert verify.json()["status"] == "completed"
+
+
+# ============================================================================
 # P0-#8 — Payroll lifecycle: reopen with reason
 # ============================================================================
+
+# ============================================================================
+# P0-#12 — Gov contract generation E2E: autofill correctness
+# ============================================================================
+
+def test_gov_contract_autofills_employee_fields(client):
+    """P0-#12 — العقد الحكومي يُمَلأ بالحقول الموثوقة من ملف الموظف."""
+    _seed_contract_template(client, "GOV-CONTRACT-HIRE")
+    mgr = auth_headers(login(client, *MGR))
+    emps = client.get("/api/employees", headers=mgr).json()
+    if not emps:
+        return
+    emp = emps[0]
+    emp_id = emp["id"]
+
+    r = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    html = body["html"]
+
+    # بيانات الموظف الأساسية لازم تظهر في الـHTML
+    if emp.get("name"):
+        assert emp["name"] in html, "employee name should appear in generated contract"
+    if emp.get("civil_id"):
+        assert emp["civil_id"] in html, "civil_id should appear"
+    if emp.get("job_title"):
+        assert emp["job_title"] in html, "job_title should appear"
+
+    # metadata من الـissued document
+    assert body["reference_no"].startswith("GOV-CONTRACT-HIRE/")
+    assert len(body["checksum_sha256"]) == 64
+    assert body["document_id"] > 0
+
+
+def test_gov_contract_pdf_and_html_both_generate(client):
+    """P0-#12 — HTML format = JSON مع html، PDF format = FileResponse."""
+    _seed_contract_template(client, "COMPANY-CONTRACT-HIRE")
+    mgr = auth_headers(login(client, *MGR))
+    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+
+    # HTML default
+    r_html = client.post(f"/api/employees/{emp_id}/company-contract/generate", headers=mgr)
+    assert r_html.status_code == 200
+    assert "html" in r_html.json()
+
+    # PDF explicit
+    r_pdf = client.post(f"/api/employees/{emp_id}/company-contract/generate",
+                        headers=mgr, params={"format": "pdf"})
+    assert r_pdf.status_code == 200
+    assert r_pdf.headers["content-type"] == "application/pdf"
+    assert r_pdf.content[:4] == b"%PDF"
+
+
+def test_gov_contract_saves_as_issued_document(client):
+    """P0-#12 — التوليد يحفظ صف Document بـis_issued=True مع كل الـmetadata."""
+    _seed_contract_template(client, "GOV-CONTRACT-HIRE")
+    mgr = auth_headers(login(client, *MGR))
+    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+
+    r = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
+    doc_id = r.json()["document_id"]
+
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        doc = db.get(models.Document, doc_id)
+        assert doc is not None
+        assert doc.is_issued is True
+        assert doc.reference_no is not None
+        assert doc.checksum_sha256 is not None
+        assert doc.generated_at is not None
+        assert doc.generated_by is not None
+        assert doc.entity_type == "employee"
+        assert doc.entity_id == emp_id
+    finally:
+        db.close()
+
 
 def test_payroll_reopen_requires_reason(client):
     """P0-#8 — /reopen بدون سبب → 400."""
