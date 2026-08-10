@@ -174,8 +174,8 @@ class EmployeeIn(BaseModel):
     @field_validator("civil_id")
     @classmethod
     def _civil(cls, v):
-        if v and not (v.isdigit() and 6 <= len(v) <= 12):
-            raise ValueError("الرقم المدني يجب أن يكون أرقامًا (6 إلى 12 خانة)")
+        if v and not re.fullmatch(r"(?:[A-Za-z]{2}\d{7,10}|\d{6,12})", v):
+            raise ValueError("الرقم المدني يجب أن يكون أرقامًا (6 إلى 12 خانة) أو حرفين ثم أرقام (7 إلى 10 خانات)")
         return v
 
     @field_validator("basic_salary", "annual_leave_balance")
@@ -212,8 +212,8 @@ class EmployeeCreateIn(EmployeeIn):
     @field_validator("civil_id")
     @classmethod
     def _civil_required(cls, v):
-        if not v or not v.strip() or not (v.isdigit() and 6 <= len(v) <= 12):
-            raise ValueError("الرقم المدني مطلوب ويجب أن يكون أرقامًا (6 إلى 12 خانة)")
+        if not v or not v.strip() or not re.fullmatch(r"(?:[A-Za-z]{2}\d{7,10}|\d{6,12})", v):
+            raise ValueError("الرقم المدني مطلوب ويجب أن يكون أرقامًا (6 إلى 12 خانة) أو حرفين ثم أرقام (7 إلى 10 خانات)")
         return v
 
     @field_validator("name")
