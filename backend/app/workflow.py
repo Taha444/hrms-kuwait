@@ -581,12 +581,13 @@ def _notify_employee_from_template(db: Session, req: models.Request, code: str,
 
 
 def _close_open_tasks(db: Session, req: models.Request) -> None:
-    """يغلق تلقائيًا أي مهام مفتوحة مرتبطة بطلب وصل لحالة نهائية (رُفض/أُلغي/اكتمل) —
-    كانت تبقى «مفتوحة» في صندوق المهام رغم انتهاء الطلب المرتبطة به (QA-P1-TASK-01)."""
+    """يغلق تلقائيًا أي مهام مفتوحة/قيد التنفيذ مرتبطة بطلب وصل لحالة نهائية
+    (رُفض/أُلغي/اكتمل) — كانت تبقى «مفتوحة» في صندوق المهام رغم انتهاء الطلب
+    المرتبطة به (QA-P1-TASK-01). P1-#18 — يشمل in_progress كمان."""
     open_tasks = db.scalars(select(models.Task).where(
         models.Task.related_entity_type == "request",
         models.Task.related_entity_id == req.id,
-        models.Task.status == "open",
+        models.Task.status.in_(("open", "in_progress")),
     )).all()
     for t in open_tasks:
         t.status = "dismissed"

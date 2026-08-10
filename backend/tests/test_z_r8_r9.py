@@ -1083,6 +1083,65 @@ def test_hr_sees_leave_dates(client):
 
 
 # ============================================================================
+# P1-#18 — Notifications: close tasks (open + in_progress) on terminal state
+# ============================================================================
+
+def test_terminal_request_closes_in_progress_tasks(client):
+    """P1-#18 — رفض طلب يقفل tasks حتى لو كانت in_progress (مش open فقط)."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"},
+    })
+    if r.status_code != 201:
+        return
+    req_id = r.json()["id"]
+
+    # اضطر task لتكون in_progress يدويًا
+    db = SessionLocal()
+    try:
+        stage_task = db.scalar(select(models.Task).where(
+            models.Task.related_entity_type == "request",
+            models.Task.related_entity_id == req_id,
+            models.Task.status == "open",
+        ))
+        if stage_task:
+            stage_task.status = "in_progress"
+            db.commit()
+    finally:
+        db.close()
+
+    # الآن ارفض من company_manager
+    mgr = auth_headers(login(client, *MGR))
+    decide = client.post(f"/api/requests/{req_id}/decide", headers=mgr, json={
+        "decision": "rejected", "note": "test rejection",
+    })
+    if decide.status_code != 200:
+        return
+
+    # tasks المرتبطة بالطلب لازم كلها مقفولة (لا open ولا in_progress)
+    db = SessionLocal()
+    try:
+        still_open = db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "request",
+            models.Task.related_entity_id == req_id,
+            models.Task.status.in_(("open", "in_progress")),
+            models.Task.type != "request_update",  # notifications عن الرفض نفسه
+        )).all()
+        # المهام الأصلية (زي stage tasks) لازم اتقفلت
+        stage_still_open = [t for t in still_open if t.type != "request_update"]
+        assert len(stage_still_open) == 0, \
+            f"tasks stayed open after rejection: {[t.type for t in stage_still_open]}"
+    finally:
+        db.close()
+
+
+# ============================================================================
 # P1-#17 — Accountant export: minimum necessary payroll data
 # ============================================================================
 
