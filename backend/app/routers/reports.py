@@ -34,18 +34,36 @@ def _scoped_branches(user, db, branch_id: int | None) -> set[int] | None:
     return allowed
 
 
-def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = None):
+def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = None,
+                   viewer_role: str | None = None):
+    """P1-#17 — Accountant يحصل على minimum necessary payroll data فقط:
+    employee_no, name, basic_salary, contract_type, hire_date, civil_id (text), status.
+    محذوف من عرض المحاسب: nationality, job_title (لا use case مالي موثّق).
+
+    HR/company_manager/super_admin/owner يحصلون على الـfull set كما قبل.
+    """
     q = select(models.Employee).where(models.Employee.status != "archived")
     if cid is not None:
         q = q.where(models.Employee.company_id == cid)
     if branch_ids is not None:
         q = q.where(models.Employee.branch_id.in_(branch_ids))
     emps = db.scalars(q.order_by(models.Employee.name)).all()
-    headers = ["الرقم الوظيفي", "الاسم", "الرقم المدني", "الجنسية", "المسمى",
-               "الراتب الأساسي", "تاريخ التعيين", "نوع العقد", "الحالة"]
-    rows = [[e.employee_no or "", e.name, e.civil_id or "", e.nationality or "",
-             e.job_title or "", e.basic_salary, e.hire_date.isoformat() if e.hire_date else "",
-             e.contract_type, e.status] for e in emps]
+
+    if viewer_role == "accountant":
+        # scope مالي فقط — نحذف nationality/job_title (لا حاجة لهم في العمليات المالية)
+        headers = ["الرقم الوظيفي", "الاسم", "الرقم المدني",
+                   "الراتب الأساسي", "تاريخ التعيين", "نوع العقد", "الحالة"]
+        rows = [[e.employee_no or "", e.name, e.civil_id or "",
+                 e.basic_salary,
+                 e.hire_date.isoformat() if e.hire_date else "",
+                 e.contract_type, e.status] for e in emps]
+    else:
+        headers = ["الرقم الوظيفي", "الاسم", "الرقم المدني", "الجنسية", "المسمى",
+                   "الراتب الأساسي", "تاريخ التعيين", "نوع العقد", "الحالة"]
+        rows = [[e.employee_no or "", e.name, e.civil_id or "", e.nationality or "",
+                 e.job_title or "", e.basic_salary,
+                 e.hire_date.isoformat() if e.hire_date else "",
+                 e.contract_type, e.status] for e in emps]
     return headers, rows
 
 
@@ -55,8 +73,12 @@ def export_employees(request: Request, fmt: str = "xlsx", company_id: int | None
                      user: models.User = Depends(require_perm("export_reports")),
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
-    headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id))
-    audit(db, user, "EXPORT_REPORT", "report", None, detail=f"employees:{reason or ''}", request=request, company_id=cid)
+    # P1-#17 — نمرّر دور المستخدم عشان _employee_rows يقلّم الأعمدة للمحاسب
+    headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id),
+                                  viewer_role=user.role)
+    audit(db, user, "EXPORT_REPORT", "report", None,
+          detail=f"employees:{reason or ''} scope={user.role}",
+          request=request, company_id=cid)
     db.commit()
     if fmt == "csv":
         return _file(exports.to_csv(headers, rows), "employees.csv", CSV_MIME)

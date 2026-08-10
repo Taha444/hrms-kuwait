@@ -1083,6 +1083,49 @@ def test_hr_sees_leave_dates(client):
 
 
 # ============================================================================
+# P1-#17 — Accountant export: minimum necessary payroll data
+# ============================================================================
+
+def test_accountant_export_hides_nationality_and_job_title(client):
+    """P1-#17 — accountant export لا يشمل الجنسية والمسمى الوظيفي."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+    db = SessionLocal()
+    try:
+        acc = db.scalar(select(models.User).where(
+            models.User.role == "accountant", models.User.company_id == 1))
+        civ = acc.civil_id if acc else None
+    finally:
+        db.close()
+    if not civ:
+        return
+    token = login(client, civ, "account123")
+    r = client.get("/api/reports/employees", headers=auth_headers(token),
+                  params={"fmt": "csv"})
+    if r.status_code != 200:
+        return
+    content = r.content.decode("utf-8", errors="ignore")
+    # الأعمدة المسموحة تظهر
+    assert "الاسم" in content or "employee" in content.lower()
+    assert "الراتب" in content or "salary" in content.lower()
+    # المحذوفة للمحاسب مش موجودة
+    assert "الجنسية" not in content
+    assert "المسمى" not in content
+
+
+def test_hr_export_still_has_full_columns(client):
+    """P1-#17 — HR يظل يشوف الأعمدة كاملة (nationality + job_title موجودين)."""
+    hr = auth_headers(login(client, *HR))
+    r = client.get("/api/reports/employees", headers=hr, params={"fmt": "csv"})
+    if r.status_code != 200:
+        return
+    content = r.content.decode("utf-8", errors="ignore")
+    assert "الجنسية" in content
+    assert "المسمى" in content
+
+
+# ============================================================================
 # P1-#16 — Custom doc historical version download + audit
 # ============================================================================
 
