@@ -14,6 +14,7 @@ from .routers import (
     archive,
     attendance,
     auth,
+    avatars,
     portals as portals_router,
     companies,
     dashboard,
@@ -189,7 +190,7 @@ for r in (auth, companies, users, employees, org, attendance, kiosk, documents, 
           requests_router, templates, payroll_router, reports, pro, archive, search,
           operations, audit_router, eos, dashboard, selfservice, renewals, notification_settings,
           verify, delegations, feature_flags_router, signatures, signatories, twofa,
-          admin_router, portals_router):
+          admin_router, portals_router, avatars):
     app.include_router(r.router, prefix="/api")
 # PILOT-P0-5 — hr_router للاستبدالات المعلّقة (prefix مختلف عن /me/signature)
 app.include_router(signatures.hr_router, prefix="/api")

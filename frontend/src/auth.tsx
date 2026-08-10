@@ -11,6 +11,9 @@ export type User = {
   must_change_password: boolean;
   employee_id: number | null;
   is_cross_company: boolean;
+  // R9 §17 — صورة البروفايل
+  has_avatar?: boolean;
+  avatar_updated_at?: string | null;
 };
 
 type AuthCtx = {

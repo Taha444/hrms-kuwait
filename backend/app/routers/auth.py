@@ -215,6 +215,10 @@ def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_
         "employee_id": user.employee_id,
         # R9 §16 — يشمل المستخدم متعدد الشركات (is_cross_company flag)
         "is_cross_company": is_cross_company_user(user),
+        # R9 §17 — أيضًا bool للـavatar (يُستخدم في UI لعرض الصورة بدل الأيقونة)
+        "has_avatar": bool(user.avatar_path),
+        "avatar_updated_at": (user.avatar_updated_at.isoformat()
+                             if user.avatar_updated_at else None),
         "permissions": _perm_list(user, db),
     }
 

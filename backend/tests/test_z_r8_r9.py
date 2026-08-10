@@ -730,3 +730,95 @@ def test_enable_cross_company_requires_super_admin(client):
         db.close()
     r = client.post(f"/api/users/{pro_uid}/enable-cross-company", headers=mgr)
     assert r.status_code == 403
+
+
+# ============================================================================
+# R9 §17 — User avatar upload
+# ============================================================================
+
+def test_avatar_status_initially_empty(client):
+    """/me/avatar بدون رفع سابق → has_avatar=false."""
+    mgr = auth_headers(login(client, *MGR))
+    r = client.get("/api/me/avatar", headers=mgr)
+    assert r.status_code == 200
+    assert r.json()["has_avatar"] is False
+
+
+def test_avatar_upload_and_serve(client):
+    """رفع صورة PNG صغيرة → /me/avatar/image يرد الملف."""
+    mgr = auth_headers(login(client, *MGR))
+    # PNG صالح صغير (1x1 pixel)
+    png_bytes = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000050001a5f645ea0000000049454e44ae426082"
+    )
+    files = {"file": ("avatar.png", png_bytes, "image/png")}
+    r = client.post("/api/me/avatar", headers=mgr, files=files)
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
+
+    # الحالة تعكس الرفع
+    st = client.get("/api/me/avatar", headers=mgr).json()
+    assert st["has_avatar"] is True
+    assert st["updated_at"] is not None
+
+    # الصورة تُعاد بالـMIME الصحيح
+    img = client.get("/api/me/avatar/image", headers=mgr)
+    assert img.status_code == 200
+    assert img.headers["content-type"] == "image/png"
+    assert len(img.content) > 0
+
+
+def test_avatar_rejects_wrong_mime(client):
+    """PDF مثلاً مرفوض بـ415."""
+    mgr = auth_headers(login(client, *MGR))
+    files = {"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")}
+    r = client.post("/api/me/avatar", headers=mgr, files=files)
+    assert r.status_code == 415
+
+
+def test_avatar_delete_removes(client):
+    """DELETE يرد has_avatar=false."""
+    mgr = auth_headers(login(client, *MGR))
+    # ارفع أولاً
+    png_bytes = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000050001a5f645ea0000000049454e44ae426082"
+    )
+    client.post("/api/me/avatar", headers=mgr,
+                files={"file": ("a.png", png_bytes, "image/png")})
+    # امسح
+    d = client.delete("/api/me/avatar", headers=mgr)
+    assert d.status_code == 200
+    # الحالة بعد المسح
+    st = client.get("/api/me/avatar", headers=mgr).json()
+    assert st["has_avatar"] is False
+
+
+def test_avatar_other_users_can_see_avatar(client):
+    """GET /users/{id}/avatar/image — أي مستخدم مسجّل يقدر يشوف صورة الآخرين."""
+    mgr = auth_headers(login(client, *MGR))
+    png_bytes = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000050001a5f645ea0000000049454e44ae426082"
+    )
+    client.post("/api/me/avatar", headers=mgr,
+                files={"file": ("a.png", png_bytes, "image/png")})
+
+    # جيب mgr user_id
+    me = client.get("/api/auth/me", headers=mgr).json()
+    mgr_uid = me["id"]
+
+    # مستخدم آخر (HR) يشوف صورة المدير
+    hr = auth_headers(login(client, *HR))
+    r = client.get(f"/api/users/{mgr_uid}/avatar/image", headers=hr)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+
+
+def test_avatar_appears_in_auth_me(client):
+    """/auth/me يشمل has_avatar bool."""
+    hr = auth_headers(login(client, *HR))
+    me = client.get("/api/auth/me", headers=hr).json()
+    assert "has_avatar" in me
+    assert isinstance(me["has_avatar"], bool)

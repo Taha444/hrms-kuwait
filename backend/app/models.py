@@ -96,6 +96,9 @@ class User(Base):
     #   عند الدخول: يختار الشركة → JWT يحمل active_company_id → السيرفر يستنتج
     #   employee_id تلقائيًا لكل طلب.
     is_cross_company: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # R9 §17 — صورة البروفايل (اختيارية، يرفعها المستخدم لتحل محل الأيقونة الافتراضية)
+    avatar_path: Mapped[str | None] = mapped_column(String(400))
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     permissions: Mapped[list[UserPermission]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

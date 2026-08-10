@@ -189,10 +189,16 @@ function Sidebar({ open }: { open: boolean }) {
 }
 
 function Topbar({ onMenu }: { onMenu?: () => void }) {
-  const { user, logout, activeCompanyId, setActiveCompany } = useAuth();
+  const { user, logout, refreshUser, activeCompanyId, setActiveCompany } = useAuth();
   const { t, lang, toggle } = useI18n();
   const nav = useNavigate();
   const [companyName, setCompanyName] = useState<string>("");
+  // R9 §17 — avatar upload state
+  const [avatarModal, setAvatarModal] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarErr, setAvatarErr] = useState("");
+  // cache-bust key: يتغير مع كل رفع عشان المتصفح يعيد التحميل
+  const avatarKey = user?.avatar_updated_at || "0";
 
   useEffect(() => {
     if (!user?.is_cross_company) return;
@@ -202,6 +208,30 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
       setCompanyName(c?.name || t("pick_company"));
     }).catch(() => {});
   }, [activeCompanyId, user]);
+
+  const uploadAvatar = async (file: File) => {
+    setAvatarBusy(true); setAvatarErr("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post("/me/avatar", fd);
+      await refreshUser();
+      setAvatarModal(false);
+    } catch (e: any) {
+      setAvatarErr(e?.response?.data?.detail || "فشل رفع الصورة");
+    } finally { setAvatarBusy(false); }
+  };
+  const deleteAvatar = async () => {
+    if (!window.confirm(lang === "en" ? "Delete avatar?" : "حذف الصورة؟")) return;
+    setAvatarBusy(true);
+    try {
+      await api.delete("/me/avatar");
+      await refreshUser();
+      setAvatarModal(false);
+    } catch (e: any) {
+      setAvatarErr(e?.response?.data?.detail || "فشل الحذف");
+    } finally { setAvatarBusy(false); }
+  };
 
   const th = roleTheme(user?.role);
 
@@ -235,8 +265,16 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
         <Icon name="dashboard" size={18} />
       </button>
       <div className="user-chip">
-        <div className="avatar" style={{ background: `linear-gradient(145deg, ${th.c1}, ${th.c2})` }} title={roleAr(user?.role || "")}>
-          <Icon name={th.icon} size={18} />
+        <div className="avatar"
+             style={{
+               background: user?.has_avatar
+                 ? `url(/api/me/avatar/image?t=${avatarKey}) center/cover`
+                 : `linear-gradient(145deg, ${th.c1}, ${th.c2})`,
+               cursor: "pointer",
+             }}
+             onClick={() => { setAvatarErr(""); setAvatarModal(true); }}
+             title={lang === "en" ? "Change avatar" : "تغيير الصورة"}>
+          {!user?.has_avatar && <Icon name={th.icon} size={18} />}
         </div>
         <div className="meta">
           <b>{user?.full_name}</b>
@@ -244,6 +282,62 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
         </div>
       </div>
       <button className="icon-btn" onClick={logout} title={t("logout")}><Icon name="logout" size={18} /></button>
+
+      {/* R9 §17 — Avatar upload modal */}
+      {avatarModal && (
+        <div role="dialog" aria-modal="true" onClick={() => setAvatarModal(false)}
+             style={{ position: "fixed", inset: 0, background: "rgba(11,59,84,0.5)",
+                     display: "grid", placeItems: "center", zIndex: 1500, padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()}
+               style={{ background: "white", borderRadius: 12, padding: 24,
+                       maxWidth: 420, width: "100%" }}>
+            <h3 style={{ marginTop: 0 }}>
+              {lang === "en" ? "Profile Photo" : "صورة البروفايل"}
+            </h3>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div style={{
+                width: 120, height: 120, borderRadius: "50%",
+                margin: "0 auto 12px",
+                background: user?.has_avatar
+                  ? `url(/api/me/avatar/image?t=${avatarKey}) center/cover`
+                  : `linear-gradient(145deg, ${th.c1}, ${th.c2})`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {!user?.has_avatar && <Icon name={th.icon} size={48} />}
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {user?.full_name}
+              </div>
+            </div>
+            {avatarErr && <div className="err" style={{ marginBottom: 12 }}>{avatarErr}</div>}
+            <div className="field">
+              <label>{lang === "en"
+                ? "Choose image (PNG/JPG/WEBP · ≤2 MB)"
+                : "اختر صورة (PNG/JPG/WEBP · ≤2 ميجا)"}</label>
+              <input type="file" accept="image/png,image/jpeg,image/webp"
+                     disabled={avatarBusy}
+                     onChange={(e) => e.target.files?.[0] && uploadAvatar(e.target.files[0])} />
+            </div>
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
+              {user?.has_avatar && (
+                <button className="ghost" onClick={deleteAvatar} disabled={avatarBusy}
+                        style={{ color: "var(--danger, #b91c1c)" }}>
+                  🗑 {lang === "en" ? "Remove" : "حذف"}
+                </button>
+              )}
+              <button className="ghost" onClick={() => setAvatarModal(false)}
+                      style={{ marginInlineStart: "auto" }}>
+                {lang === "en" ? "Close" : "إغلاق"}
+              </button>
+            </div>
+            {avatarBusy && (
+              <p className="muted" style={{ fontSize: 12, textAlign: "center", marginTop: 8 }}>
+                {lang === "en" ? "Uploading..." : "جاري الرفع..."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
