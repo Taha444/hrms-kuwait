@@ -296,6 +296,31 @@ async def replace_custom_document(
     return {"ok": True, "id": new_doc.id, "version": new_doc.version}
 
 
+@router.get("/custom-doc/{doc_id}/download")
+def download_custom_document_version(doc_id: int, request: Request,
+                                     user: models.User = Depends(require_perm("view_documents")),
+                                     db: Session = Depends(get_db)):
+    """P1-#16 — تنزيل أي نسخة تاريخية بمعرّفها (custom docs).
+    كل تنزيل يُسجَّل في audit مع correlation=doc:{id} و is_current/version للنسخة.
+    مُتاح للـcurrent وأي نسخة تاريخية — عزل الشركة مفروض."""
+    from fastapi.responses import FileResponse
+    doc = db.get(models.Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="النسخة غير موجودة")
+    if not (doc.document_type_code or "").startswith("custom:"):
+        raise HTTPException(status_code=400, detail="هذا المسار للمستندات المخصّصة فقط")
+    assert_same_company(user, doc.company_id, db=db)
+    if not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="الملف مش موجود على الخادم")
+    audit(db, user, "download_custom_doc_version", doc.entity_type, doc.entity_id,
+          detail=f"doc#{doc.id} v{doc.version} is_current={doc.is_current}",
+          request=request, company_id=doc.company_id,
+          correlation_id=f"doc:{doc.id}")
+    db.commit()
+    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+                       media_type=doc.mime or "application/octet-stream")
+
+
 @router.get("/custom-doc/{doc_id}/history")
 def custom_document_history(doc_id: int,
                             user: models.User = Depends(require_perm("view_documents")),

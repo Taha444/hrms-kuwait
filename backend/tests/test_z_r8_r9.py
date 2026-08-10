@@ -1083,6 +1083,54 @@ def test_hr_sees_leave_dates(client):
 
 
 # ============================================================================
+# P1-#16 — Custom doc historical version download + audit
+# ============================================================================
+
+def test_custom_doc_historical_download_audited(client):
+    """P1-#16 — تنزيل نسخة تاريخية بمعرّفها + audit سطر لكل تنزيل."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    mgr = auth_headers(login(client, *MGR))
+    cid = client.get("/api/archive/company", headers=mgr).json()["company"]["id"]
+
+    # add custom doc
+    r = client.post("/api/archive/custom-doc", headers=mgr, files=_f(b"v1"), data={
+        "entity_type": "company", "entity_id": str(cid), "name_ar": "hist test",
+    })
+    if r.status_code != 201:
+        return
+    doc_id = r.json()["id"]
+
+    # replace to create v2
+    r2 = client.post(f"/api/archive/custom-doc/{doc_id}/replace",
+                    headers=mgr, files=_f(b"v2"))
+    assert r2.status_code == 200
+    v2_id = r2.json()["id"]
+
+    # التاريخ يعرض النسختين
+    hist = client.get(f"/api/archive/custom-doc/{doc_id}/history", headers=mgr).json()
+    version_ids = [h["id"] for h in hist]
+    assert doc_id in version_ids and v2_id in version_ids
+
+    # نزّل النسخة القديمة (v1)
+    d1 = client.get(f"/api/archive/custom-doc/{doc_id}/download", headers=mgr)
+    assert d1.status_code == 200
+
+    # audit سطر ظهر
+    db = SessionLocal()
+    try:
+        log = db.scalar(select(models.AuditLog).where(
+            models.AuditLog.action == "download_custom_doc_version",
+            models.AuditLog.correlation_id == f"doc:{doc_id}",
+        ).order_by(models.AuditLog.id.desc()))
+        assert log is not None
+    finally:
+        db.close()
+
+
+# ============================================================================
 # P0-#13 — Residency renewal E2E (state transitions + doc chain)
 # ============================================================================
 
