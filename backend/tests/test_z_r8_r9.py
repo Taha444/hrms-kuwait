@@ -1082,6 +1082,60 @@ def test_hr_sees_leave_dates(client):
     assert payload.get("end_date") == d2
 
 
+# ============================================================================
+# P0-#8 — Payroll lifecycle: reopen with reason
+# ============================================================================
+
+def test_payroll_reopen_requires_reason(client):
+    """P0-#8 — /reopen بدون سبب → 400."""
+    admin = auth_headers(login(client, *ADMIN))
+    # جرّب على أي run موجود
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+    db = SessionLocal()
+    try:
+        pr = db.scalar(select(models.PayrollRun).where(
+            models.PayrollRun.status.in_(("approved", "finalized"))
+        ))
+        pr_id = pr.id if pr else None
+    finally:
+        db.close()
+    if not pr_id:
+        return  # ما فيش run بالحالة دي في الـseed
+    r = client.post(f"/api/payroll/runs/{pr_id}/reopen", headers=admin,
+                   params={"reason": ""})
+    assert r.status_code in (400, 422)  # 400 من الـfn، 422 من Pydantic
+
+
+def test_payroll_reopen_super_admin_only(client):
+    """P0-#8 — /reopen فقط لـsuper_admin."""
+    hr = auth_headers(login(client, *HR))
+    r = client.post("/api/payroll/runs/1/reopen", headers=hr,
+                   params={"reason": "خطأ في الحسابات"})
+    assert r.status_code == 403
+
+
+def test_payroll_reopen_rejects_locked(client):
+    """P0-#8 — locked ما يُعاد فتحه — يحتاج adjustment_run."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+    admin = auth_headers(login(client, *ADMIN))
+    db = SessionLocal()
+    try:
+        pr = db.scalar(select(models.PayrollRun).where(
+            models.PayrollRun.status == "locked"))
+        pr_id = pr.id if pr else None
+    finally:
+        db.close()
+    if not pr_id:
+        return
+    r = client.post(f"/api/payroll/runs/{pr_id}/reopen", headers=admin,
+                   params={"reason": "test"})
+    assert r.status_code == 409
+
+
 def test_expiry_scan_idempotent_no_duplicate_tasks(client):
     """P0-#10 — تشغيل daily_scan مرتين → مافيش duplicate tasks للـdocument نفسه."""
     from app.database import SessionLocal

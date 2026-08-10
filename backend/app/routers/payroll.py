@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, payroll as payroll_engine
 from ..database import get_db
-from ..deps import audit, require_perm, scope_company_id
+from ..deps import audit, require_perm, require_super_admin, scope_company_id
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
 
@@ -189,6 +189,47 @@ def lock_run(run_id: int, request: Request,
     audit(db, user, "lock_payroll_run", "payroll_run", pr.id, detail=pr.period, request=request)
     db.commit()
     return {"ok": True, "status": pr.status}
+
+
+@router.post("/runs/{run_id}/reopen")
+def reopen_run(run_id: int, reason: str, request: Request,
+              user: models.User = Depends(require_super_admin),
+              db: Session = Depends(get_db)):
+    """P0-#8 — إعادة فتح مسيّر (approved/finalized → prepared) لتصحيح خطأ قبل الـlock.
+
+    القيود:
+    - super_admin فقط (Business impact عالي).
+    - reason إلزامي — يظهر في audit مع correlation_id.
+    - locked ما يُعاد فتحه — يحتاج adjustment_run بدل ذلك.
+    - يمسح الـapproved/finalized markers (لكن يحتفظ prepared_by/at الأصليين).
+    """
+    from ..deps import assert_same_company
+    if not reason or not reason.strip():
+        raise HTTPException(status_code=400, detail="سبب إعادة الفتح مطلوب")
+    pr = db.get(models.PayrollRun, run_id)
+    if not pr:
+        raise HTTPException(status_code=404, detail="المسيّر غير موجود")
+    assert_same_company(user, pr.company_id, db=db)
+    if pr.status not in ("approved", "finalized"):
+        raise HTTPException(status_code=409, detail=(
+            f"لا يمكن إعادة فتح مسيّر بحالة '{pr.status}'. "
+            "المسموح: approved أو finalized. الـlocked يحتاج adjustment_run."
+        ))
+
+    before_status = pr.status
+    pr.status = "prepared"
+    # نمسح markers المراحل اللاحقة — الاعتماد لازم يُعاد
+    pr.approved_by_user_id = None
+    pr.approved_at = None
+    pr.finalized_by_user_id = None
+    pr.finalized_at = None
+    audit(db, user, "reopen_payroll_run", "payroll_run", pr.id,
+          detail=f"from={before_status} reason={reason.strip()}", request=request,
+          correlation_id=f"payroll:{pr.id}",
+          before={"status": before_status},
+          after={"status": "prepared", "reason": reason.strip()})
+    db.commit()
+    return {"ok": True, "status": "prepared", "reopened_from": before_status}
 
 
 @router.post("/runs/{run_id}/adjustment")
