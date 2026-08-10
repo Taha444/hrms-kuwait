@@ -73,7 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("cross_company_options", JSON.stringify(r.data.companies));
       localStorage.removeItem("active_company_id");
       // نرد user بدون data كامل — الـpicker هيوجهنا لـselect-company
-      return { is_cross_company: true, companies: r.data.companies } as any;
+      return {
+        is_cross_company: true,
+        needs_company_selection: true,  // Login.tsx يقرأها لتوجيه /select-company
+        companies: r.data.companies,
+      } as any;
     }
     localStorage.removeItem("cross_company_options");
     await refreshUser();

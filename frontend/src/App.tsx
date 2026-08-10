@@ -452,8 +452,10 @@ export default function App() {
       <Route path="/select-company" element={
         !user ? <Navigate to="/login" replace />
         : (user as any).needs_company_selection === true
-          ? <SelectCompany />
-          : <Navigate to="/" replace />
+          ? <SelectCompany />          // مندوب متعدد الشركات (محمد فاروق)
+          : user.is_cross_company
+            ? <CompanyPicker />        // super_admin / owner — الآلية القديمة
+            : <Navigate to="/" replace />
       } />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/tasks" element={<Protected><Tasks /></Protected>} />
