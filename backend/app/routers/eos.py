@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
-from ..deps import assert_same_company, require_perm
+from ..deps import assert_same_company, require_perm, require_super_admin
 
 router = APIRouter(prefix="/eos", tags=["eos"])
 
@@ -19,14 +19,24 @@ def reasons():
 
 
 @router.post("/calculate")
-def calculate(data: schemas.EosIn, user: models.User = Depends(require_perm("calculate_eos"))):
+def calculate(data: schemas.EosIn,
+              user: models.User = Depends(require_super_admin)):
+    """P0-#9 — حاسبة حرّة (test-only). super_admin فقط.
+
+    ⚠ ليست للتسويات الفعلية — النتيجة لا تُحفظ ولا تُنسب لأي موظف.
+    للتسويات الرسمية استخدم /eos/for-employee بمعرّف موظف حقيقي.
+    """
     try:
-        return eos_engine.calculate_eos(
+        result = eos_engine.calculate_eos(
             basic_salary=data.basic_salary, hire_date=data.hire_date, end_date=data.end_date,
             reason=data.reason, contract_type=data.contract_type,
             used_leave_days=data.used_leave_days, annual_leave_days=data.annual_leave_days,
             day_divisor=data.day_divisor or 26, max_months=data.max_months or 18,
         )
+        result["warning"] = ("هذه حاسبة اختبار فقط — بدون موظف. "
+                          "للتسويات الرسمية استخدم /eos/for-employee.")
+        result["is_test_only"] = True
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
