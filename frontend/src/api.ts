@@ -29,6 +29,17 @@ api.interceptors.response.use(
   (r) => r,
   async (error) => {
     const original = error.config;
+    // R9 §16 — مستخدم متعدد الشركات بلا active_company → السيرفر بيرد 428
+    // نوجّه لصفحة اختيار الشركة (إلا لو هو أصلاً في الصفحة)
+    if (error.response?.status === 428) {
+      const detail = error.response?.data?.detail;
+      const code = typeof detail === "object" ? detail?.code : null;
+      if (code === "COMPANY_SELECTION_REQUIRED" &&
+          !window.location.pathname.startsWith("/select-company")) {
+        window.location.href = "/select-company";
+      }
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401 && !original._retry && !refreshing) {
       const refresh = localStorage.getItem("refresh_token");
       if (refresh) {

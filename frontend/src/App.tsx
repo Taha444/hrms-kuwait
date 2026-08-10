@@ -12,6 +12,7 @@ import ChangePassword from "./pages/ChangePassword";
 import TwoFactor from "./pages/TwoFactor";
 import NotificationPrefs from "./pages/NotificationPrefs";
 import CompanyPicker from "./pages/CompanyPicker";
+import SelectCompany from "./pages/SelectCompany";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import MyProfile from "./pages/MyProfile";
@@ -177,6 +178,10 @@ function Sidebar({ open }: { open: boolean }) {
       )}
 
       <div className="sb-foot">
+        {/* R9 §16 — مستخدم متعدد الشركات (مثل مندوب يخدم شركتين): زر تبديل الشركة */}
+        {user?.is_cross_company && user?.role !== "super_admin" && user?.role !== "company_owner" && (
+          <Item to="/select-company" icon="companies" label={t("switch_company") || "تبديل الشركة"} />
+        )}
         <Item to="/change-password" icon="key" label={t("change_password")} />
       </div>
     </aside>
@@ -352,7 +357,7 @@ export default function App() {
       <Route path="/notification-prefs" element={<Protected><NotificationPrefs /></Protected>} />
       <Route path="/select-company" element={
         !user ? <Navigate to="/login" replace />
-        : user.is_cross_company ? <CompanyPicker /> : <Navigate to="/" replace />
+        : user.is_cross_company ? <SelectCompany /> : <Navigate to="/" replace />
       } />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/tasks" element={<Protected><Tasks /></Protected>} />

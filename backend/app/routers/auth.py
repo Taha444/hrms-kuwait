@@ -91,12 +91,93 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
     audit(db, user, "login", "user", user.id, request=request)
     db.commit()
 
+    # R9 §16 — مستخدم متعدد الشركات: نرد قائمة شركاته للـpicker.
+    # التوكن يُنشأ بلا active_company_id — بعد الاختيار يُصدَر توكن جديد.
+    companies_list: list[dict] | None = None
+    if user.is_cross_company:
+        links = db.scalars(select(models.UserCompanyLink).where(
+            models.UserCompanyLink.user_id == user.id
+        )).all()
+        companies_list = []
+        for lk in links:
+            co = db.get(models.Company, lk.company_id)
+            if co:
+                companies_list.append({"id": co.id, "name": co.name,
+                                       "name_en": co.name_en, "role": lk.role})
+
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id),
         refresh_token=create_refresh_token(user.id),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),
+        is_cross_company=user.is_cross_company,
+        companies=companies_list,
+    )
+
+
+@router.get("/my-companies")
+def my_companies(user: models.User = Depends(get_current_user),
+                db: Session = Depends(get_db)):
+    """R9 §16 — قائمة الشركات للمستخدم متعدد الشركات (للـpicker بعد الدخول).
+    للمستخدم العادي: قائمة فيها شركته الواحدة."""
+    if user.is_cross_company:
+        links = db.scalars(select(models.UserCompanyLink).where(
+            models.UserCompanyLink.user_id == user.id
+        )).all()
+        out = []
+        for lk in links:
+            co = db.get(models.Company, lk.company_id)
+            if co:
+                out.append({"id": co.id, "name": co.name, "name_en": co.name_en,
+                          "role": lk.role})
+        return {"is_cross_company": True, "companies": out}
+    # مستخدم عادي: شركته الحالية فقط (أو الكل لـsuper_admin)
+    if user.role in ("super_admin", "company_owner"):
+        all_co = db.scalars(select(models.Company)).all()
+        return {"is_cross_company": False,
+                "companies": [{"id": c.id, "name": c.name, "name_en": c.name_en,
+                              "role": user.role} for c in all_co]}
+    if user.company_id:
+        co = db.get(models.Company, user.company_id)
+        return {"is_cross_company": False,
+                "companies": [{"id": co.id, "name": co.name, "name_en": co.name_en,
+                              "role": user.role}] if co else []}
+    return {"is_cross_company": False, "companies": []}
+
+
+@router.post("/select-company", response_model=schemas.TokenOut)
+def select_company(company_id: int, request: Request,
+                  user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """R9 §16 — يختار المستخدم متعدد الشركات شركة يشتغل فيها.
+    يعيد access_token جديد بـactive_company_id — كل الطلبات التالية تُوجَّه لتلك الشركة.
+    لغير المتعدد الشركات: يفشل بـ400 (لا يحتاج اختيار)."""
+    if not user.is_cross_company:
+        raise HTTPException(status_code=400,
+                          detail="هذا الحساب مش متعدد الشركات — لا يحتاج اختيار.")
+    # تحقق من العضوية
+    link = db.scalar(select(models.UserCompanyLink).where(
+        models.UserCompanyLink.user_id == user.id,
+        models.UserCompanyLink.company_id == company_id,
+    ))
+    if not link:
+        raise HTTPException(status_code=403,
+                          detail=f"لست عضوًا في الشركة #{company_id}")
+
+    audit(db, user, "select_company", "user", user.id,
+          detail=f"active_company_id={company_id}", request=request,
+          company_id=company_id)
+    db.commit()
+
+    return schemas.TokenOut(
+        access_token=create_access_token(user.id, user.role, user.company_id,
+                                        active_company_id=company_id),
+        refresh_token=create_refresh_token(user.id),
+        must_change_password=user.must_change_password,
+        role=user.role, full_name=user.full_name, company_id=company_id,
+        permissions=_perm_list(user, db),
+        is_cross_company=True, active_company_id=company_id,
     )
 
 
@@ -111,25 +192,29 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
+    # R9 §16 — refresh لا يعيد active_company_id — على cross-company user يعيد الاختيار
+    # (نتوقع أن التوكن يُستهلك عبر واجهة تسجل تلقائيًا اختيار الشركة الأخير من localStorage).
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id),
         refresh_token=create_refresh_token(user.id),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),
+        is_cross_company=user.is_cross_company,
     )
 
 
 @router.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from ..permissions import CROSS_COMPANY_ROLES
+    from ..permissions import is_cross_company_user
 
     return {
         "id": user.id, "civil_id": user.civil_id, "full_name": user.full_name,
         "role": user.role, "company_id": user.company_id, "email": user.email,
         "must_change_password": user.must_change_password,
         "employee_id": user.employee_id,
-        "is_cross_company": user.role in CROSS_COMPANY_ROLES,
+        # R9 §16 — يشمل المستخدم متعدد الشركات (is_cross_company flag)
+        "is_cross_company": is_cross_company_user(user),
         "permissions": _perm_list(user, db),
     }
 

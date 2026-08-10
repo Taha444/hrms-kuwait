@@ -90,10 +90,37 @@ class User(Base):
     pending_signature_path: Mapped[str | None] = mapped_column(String(400))
     pending_signature_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime)
     pending_signature_reason: Mapped[str | None] = mapped_column(String(300))
+    # R9 §16 — Multi-company user (مندوب يخدم شركتين مثل محمد فاروق):
+    #   is_cross_company=True → company_id يكون NULL، والحساب مربوط بعدة شركات
+    #   عبر جدول user_company_links (سطر لكل شركة، فيه employee_id في تلك الشركة).
+    #   عند الدخول: يختار الشركة → JWT يحمل active_company_id → السيرفر يستنتج
+    #   employee_id تلقائيًا لكل طلب.
+    is_cross_company: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     permissions: Mapped[list[UserPermission]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+
+
+class UserCompanyLink(Base):
+    """R9 §16 — عضوية user في شركة (لمستخدمي is_cross_company=True).
+
+    كل سطر يربط user_id بـcompany_id مع employee_id (سجل الموظف في تلك الشركة).
+    الشرط: employee.company_id لازم يطابق company_id (نفرضه في service layer).
+    الفريدية: (user_id, company_id) — يُمنع سطرين لنفس الشركة.
+    """
+    __tablename__ = "user_company_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "company_id", name="uq_user_company_link"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
+    role: Mapped[str] = mapped_column(String(30), default="delegate")  # الدور في هذه الشركة
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
 class UserPermission(Base):

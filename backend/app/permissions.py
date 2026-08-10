@@ -175,6 +175,15 @@ ATTENDANCE_ROLES = {"employee"}
 # الأدوار التي ترى كل الشركات (تختار بينها)
 CROSS_COMPANY_ROLES = {"super_admin", "company_owner"}
 
+
+def is_cross_company_user(user) -> bool:
+    """R9 §16 — يشمل حاملي flag is_cross_company (متعدد الشركات).
+    مثال: مندوب يخدم شركتين مثل محمد فاروق. للاستخدام في deps.py
+    بدل الفحص المباشر user.role in CROSS_COMPANY_ROLES."""
+    if user.role in CROSS_COMPANY_ROLES:
+        return True
+    return bool(getattr(user, "is_cross_company", False))
+
 # تسمية عربية لكل دور — تُستخدم لعرض سلسلة الاعتماد في المستندات المطبوعة (PDF/HTML) بدل
 # رمز الدور التقني الخام (P0-04: لا يظهر company_manager/hr/branch_supervisor في مستند رسمي).
 ROLE_LABEL_AR: dict[str, str] = {

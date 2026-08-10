@@ -482,3 +482,251 @@ def test_auto_link_does_not_touch_super_admin(client):
             assert not any(x.get("user_id") == sa.id for x in r.json().get(group, []))
     finally:
         db.close()
+
+
+# ============================================================================
+# R9 §16 — Multi-company user (cross-company delegate)
+# ============================================================================
+
+def _setup_cross_company_user(client) -> dict:
+    """يهيّئ مستخدم متعدد الشركات (مثل محمد فاروق) + عضويتين + employees.
+    يعود بالـmetadata: user_id, civil_id, password, company_ids, employee_ids."""
+    from app.database import SessionLocal
+    from app import models
+    from app.security import hash_password
+
+    admin = auth_headers(login(client, *ADMIN))
+    db = SessionLocal()
+    try:
+        # جيب أول شركتين + PROs الحاليين (المفروض متلينكين)
+        companies = db.scalars(select(models.Company).limit(2)).all()
+        assert len(companies) >= 2, "seed لازم فيه شركتين"
+        cid1, cid2 = companies[0].id, companies[1].id
+
+        # أنشئ Employee record في كل شركة بنفس الـcivil_id
+        civ = "555555555555"
+        emp1 = db.scalar(select(models.Employee).where(
+            models.Employee.civil_id == civ, models.Employee.company_id == cid1))
+        if not emp1:
+            emp1 = models.Employee(
+                company_id=cid1, civil_id=civ, name="محمد فاروق - الاتحاد",
+                job_title="مندوب حكومي", hire_date=None,
+                contract_type="indefinite", status="active",
+            )
+            db.add(emp1); db.flush()
+        emp2 = db.scalar(select(models.Employee).where(
+            models.Employee.civil_id == civ, models.Employee.company_id == cid2))
+        if not emp2:
+            emp2 = models.Employee(
+                company_id=cid2, civil_id=civ, name="محمد فاروق - ميلانو",
+                job_title="مندوب حكومي", hire_date=None,
+                contract_type="indefinite", status="active",
+            )
+            db.add(emp2); db.flush()
+
+        # أنشئ User (متعدد الشركات)
+        existing = db.scalar(select(models.User).where(models.User.civil_id == civ))
+        if existing:
+            # لو باقٍ من تست سابق، امسحه لبداية نظيفة
+            db.execute(models.UserCompanyLink.__table__.delete().where(
+                models.UserCompanyLink.user_id == existing.id))
+            db.delete(existing); db.commit()
+
+        pw = "farouq123"
+        user = models.User(
+            civil_id=civ, password_hash=hash_password(pw),
+            full_name="محمد فاروق", role="delegate",
+            is_cross_company=True, company_id=None, employee_id=None,
+            is_active=True, must_change_password=False,
+        )
+        db.add(user); db.flush()
+        uid = user.id
+        db.commit()
+    finally:
+        db.close()
+
+    # أضف company links عبر الـendpoint (يختبر endpoint فعلي)
+    r1 = client.post(f"/api/users/{uid}/company-links", headers=admin,
+                    params={"company_id": cid1, "employee_id": emp1.id, "role": "delegate"})
+    assert r1.status_code == 200, r1.text
+    r2 = client.post(f"/api/users/{uid}/company-links", headers=admin,
+                    params={"company_id": cid2, "employee_id": emp2.id, "role": "delegate"})
+    assert r2.status_code == 200, r2.text
+
+    return {"user_id": uid, "civil_id": civ, "password": pw,
+            "company_ids": [cid1, cid2], "employee_ids": [emp1.id, emp2.id]}
+
+
+def _cleanup_cross_company_user(uid: int):
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        db.execute(models.UserCompanyLink.__table__.delete().where(
+            models.UserCompanyLink.user_id == uid))
+        u = db.get(models.User, uid)
+        if u:
+            db.delete(u)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_cross_company_login_returns_companies_list(client):
+    """R9 §16 — login لمستخدم متعدد الشركات يعيد قائمة شركاته."""
+    ctx = _setup_cross_company_user(client)
+    try:
+        r = client.post("/api/auth/login", json={
+            "civil_id": ctx["civil_id"], "password": ctx["password"],
+        })
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["is_cross_company"] is True
+        assert body["company_id"] is None  # قبل الاختيار
+        assert body["companies"] is not None
+        assert len(body["companies"]) == 2
+        cids = {c["id"] for c in body["companies"]}
+        assert cids == set(ctx["company_ids"])
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_cross_company_must_select_before_using_app(client):
+    """R9 §16 — بدون اختيار شركة، أي endpoint يرد 428 COMPANY_SELECTION_REQUIRED."""
+    ctx = _setup_cross_company_user(client)
+    try:
+        r = client.post("/api/auth/login", json={
+            "civil_id": ctx["civil_id"], "password": ctx["password"],
+        })
+        token = r.json()["access_token"]
+        h = auth_headers(token)
+        # /auth/me مسموح (لعرض بيانات المستخدم)
+        me = client.get("/api/auth/me", headers=h)
+        assert me.status_code == 200
+        # /employees مثلاً مرفوض بلا active_company
+        emp_list = client.get("/api/employees", headers=h)
+        assert emp_list.status_code == 428
+        detail = emp_list.json()["detail"]
+        assert detail.get("code") == "COMPANY_SELECTION_REQUIRED"
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_cross_company_select_company_issues_scoped_token(client):
+    """R9 §16 — POST /select-company يعيد token جديد يشتغل مع الشركة المختارة."""
+    ctx = _setup_cross_company_user(client)
+    try:
+        r = client.post("/api/auth/login", json={
+            "civil_id": ctx["civil_id"], "password": ctx["password"],
+        })
+        h = auth_headers(r.json()["access_token"])
+
+        # اختر الشركة الأولى
+        sel = client.post("/api/auth/select-company", headers=h,
+                         params={"company_id": ctx["company_ids"][0]})
+        assert sel.status_code == 200
+        assert sel.json()["active_company_id"] == ctx["company_ids"][0]
+
+        # التوكن الجديد يشتغل — يقدر يشوف employees
+        h2 = auth_headers(sel.json()["access_token"])
+        emps = client.get("/api/employees", headers=h2)
+        assert emps.status_code == 200
+        # كل الموظفين اللي بيشوفهم من الشركة الأولى فقط
+        for e in emps.json():
+            assert e["company_id"] == ctx["company_ids"][0]
+
+        # /auth/me يرد company_id = الشركة المختارة و employee_id = من الـlink
+        me = client.get("/api/auth/me", headers=h2)
+        assert me.status_code == 200
+        me_data = me.json()
+        assert me_data["company_id"] == ctx["company_ids"][0]
+        assert me_data["employee_id"] == ctx["employee_ids"][0]
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_cross_company_cannot_select_non_member_company(client):
+    """R9 §16 — لو حاول يختار شركة مش عضو فيها، يفشل بـ403."""
+    ctx = _setup_cross_company_user(client)
+    try:
+        r = client.post("/api/auth/login", json={
+            "civil_id": ctx["civil_id"], "password": ctx["password"],
+        })
+        h = auth_headers(r.json()["access_token"])
+        # حاول اختيار شركة ID كبير (مش موجود أو مش عضو)
+        sel = client.post("/api/auth/select-company", headers=h,
+                         params={"company_id": 99999})
+        assert sel.status_code == 403
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_cross_company_add_link_requires_matching_employee_company(client):
+    """R9 §16 — إضافة link بموظف من شركة مختلفة يفشل."""
+    ctx = _setup_cross_company_user(client)
+    admin = auth_headers(login(client, *ADMIN))
+    try:
+        # حاول أضف link بشركة X + موظف من شركة Y
+        r = client.post(f"/api/users/{ctx['user_id']}/company-links", headers=admin,
+                       params={"company_id": ctx["company_ids"][0],
+                              "employee_id": ctx["employee_ids"][1]})  # emp من company_ids[1]
+        assert r.status_code == 400
+        assert "ينتمي" in r.json()["detail"] or "company" in r.json()["detail"].lower()
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_cross_company_switch_between_companies(client):
+    """R9 §16 — نفس المستخدم يبدّل بين شركتين — كل مرة يشوف بيانات مختلفة."""
+    ctx = _setup_cross_company_user(client)
+    try:
+        r = client.post("/api/auth/login", json={
+            "civil_id": ctx["civil_id"], "password": ctx["password"],
+        })
+        h_pre = auth_headers(r.json()["access_token"])
+
+        # الشركة 1
+        s1 = client.post("/api/auth/select-company", headers=h_pre,
+                        params={"company_id": ctx["company_ids"][0]})
+        h1 = auth_headers(s1.json()["access_token"])
+        emps1 = client.get("/api/employees", headers=h1).json()
+        cids1 = {e["company_id"] for e in emps1}
+        assert cids1 == {ctx["company_ids"][0]}
+
+        # الشركة 2 (توكن جديد)
+        s2 = client.post("/api/auth/select-company", headers=h_pre,
+                        params={"company_id": ctx["company_ids"][1]})
+        h2 = auth_headers(s2.json()["access_token"])
+        emps2 = client.get("/api/employees", headers=h2).json()
+        cids2 = {e["company_id"] for e in emps2}
+        assert cids2 == {ctx["company_ids"][1]}
+
+        # الاثنين مختلفين — العزل شغّال
+        assert cids1 != cids2
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
+def test_non_cross_company_user_cannot_select_company(client):
+    """R9 §16 — مستخدم عادي يحاول endpoint /select-company يفشل بـ400."""
+    pro = auth_headers(login(client, *PRO))
+    r = client.post("/api/auth/select-company", headers=pro,
+                   params={"company_id": 1})
+    assert r.status_code == 400
+    assert "متعدد الشركات" in r.json()["detail"] or "cross" in r.json()["detail"].lower()
+
+
+def test_enable_cross_company_requires_super_admin(client):
+    """R9 §16 — /enable-cross-company لـsuper_admin فقط."""
+    mgr = auth_headers(login(client, *MGR))
+    # جيب ID مستخدم delegate عشوائي
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        pro_user = db.scalar(select(models.User).where(models.User.role == "delegate"))
+        pro_uid = pro_user.id if pro_user else 1
+    finally:
+        db.close()
+    r = client.post(f"/api/users/{pro_uid}/enable-cross-company", headers=mgr)
+    assert r.status_code == 403

@@ -76,6 +76,38 @@ def get_current_user(
     if imp_id is not None:
         request.state.original_user_id = int(imp_id)
 
+    # R9 §16 — مستخدم متعدد الشركات: طبّق active_company_id من JWT
+    # transiently على user.company_id + user.employee_id لكل هذا الطلب.
+    # لا يُحفظ في DB — بس يُقلّد شركة/موظف المستخدم لأغراض العزل.
+    if getattr(user, "is_cross_company", False):
+        active_cid = payload.get("active_company_id")
+        if active_cid:
+            link = db.scalar(select(models.UserCompanyLink).where(
+                models.UserCompanyLink.user_id == user.id,
+                models.UserCompanyLink.company_id == int(active_cid),
+            ))
+            if link:
+                # لا نلمس الـpersisted rows — تعديل ذاكرة الطلب فقط
+                user.company_id = link.company_id
+                user.employee_id = link.employee_id
+                # حفظ marker لأي منطق مستقبلي يعرف إنه cross-company
+                request.state.active_company_id = link.company_id
+            else:
+                # active_company_id في التوكن مش عضوية حالية — نطلب اختيار جديد
+                raise HTTPException(status_code=403, detail=(
+                    "الشركة المختارة لم تعد ضمن عضوياتك — سجّل دخولاً واختر شركة."
+                ))
+        else:
+            # مستخدم متعدد شركات بلا active — يسمح فقط لـauth endpoints لاختيار الشركة
+            path = request.url.path
+            allowed_paths = ("/auth/me", "/auth/logout", "/auth/select-company",
+                            "/auth/my-companies", "/auth/change-password")
+            if not any(path.endswith(p) for p in allowed_paths):
+                raise HTTPException(status_code=428, detail={
+                    "code": "COMPANY_SELECTION_REQUIRED",
+                    "message": "لازم تختار الشركة اللي تشتغل عليها أولاً.",
+                })
+
     return user
 
 

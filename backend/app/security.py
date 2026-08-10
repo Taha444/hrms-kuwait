@@ -44,11 +44,17 @@ def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
 
 
 def create_access_token(subject: int, role: str, company_id: int | None,
-                        impersonator_id: int | None = None) -> str:
+                        impersonator_id: int | None = None,
+                        active_company_id: int | None = None) -> str:
+    """R9 §16 — active_company_id يُستخدم لمستخدمي is_cross_company:
+    التوكن يحمل company_id=NULL لكن active_company_id=X، والسيرفر يستنتج منه
+    الشركة الحالية + employee_id عبر UserCompanyLink."""
     claims = {"sub": str(subject), "role": role, "company_id": company_id}
     if impersonator_id is not None:
         # يتيح تسجيل impersonate_end لاحًقا (P1-04) بمعرفة من بدأ الانتحال فعًلا
         claims["impersonator_id"] = impersonator_id
+    if active_company_id is not None:
+        claims["active_company_id"] = int(active_company_id)
     return _create_token(
         claims,
         timedelta(minutes=settings.access_token_expire_minutes),

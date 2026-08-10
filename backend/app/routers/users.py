@@ -220,6 +220,155 @@ def auto_link_all_orphans(request: Request,
     return report
 
 
+# =============================================================================
+# R9 §16 — Multi-Company User Management
+# =============================================================================
+
+@router.post("/{user_id}/enable-cross-company")
+def enable_cross_company(user_id: int, request: Request,
+                        user: models.User = Depends(require_super_admin),
+                        db: Session = Depends(get_db)):
+    """R9 §16 — يفعّل flag is_cross_company على user موجود.
+    - يمسح company_id (كان يشير لشركة واحدة → الآن NULL)
+    - يمسح employee_id (كان يشير لسجل موظف واحد → الآن يُحسم من link حسب الشركة النشطة)
+    - super_admin فقط لأن هذا تغيير معماري في نطاق الحساب
+    - المستخدم لازم يعمل تسجيل خروج ثم دخول عشان الـflag يفعل"""
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if target.role in ("super_admin", "company_owner"):
+        raise HTTPException(status_code=400,
+                          detail="super_admin/company_owner cross-company بالفعل — لا يحتاج flag")
+    target.is_cross_company = True
+    old_company = target.company_id
+    old_emp = target.employee_id
+    target.company_id = None
+    target.employee_id = None
+    audit(db, user, "enable_cross_company", "user", target.id,
+          detail=f"was company_id={old_company}, employee_id={old_emp}",
+          request=request)
+    db.commit()
+    return {"ok": True, "user_id": target.id, "is_cross_company": True,
+            "note": "أضف company links عبر POST /users/{id}/company-links ثم اطلب من المستخدم إعادة الدخول"}
+
+
+@router.post("/{user_id}/company-links")
+def add_company_link(user_id: int, request: Request,
+                    company_id: int, employee_id: int,
+                    role: str = "delegate",
+                    user: models.User = Depends(require_super_admin),
+                    db: Session = Depends(get_db)):
+    """R9 §16 — يضيف عضوية شركة لمستخدم متعدد الشركات.
+    - يتحقق: employee.company_id == company_id (لا خلط شركات)
+    - يتحقق: user.is_cross_company=True
+    - يتحقق: ما فيش user آخر مربوط بهذا employee
+    - Idempotent: لو الرابط موجود لنفس الاثنين، يرجع 200 بدون تكرار
+    """
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if not target.is_cross_company:
+        raise HTTPException(status_code=400,
+                          detail="فعّل is_cross_company أولاً عبر /enable-cross-company")
+
+    company = db.get(models.Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+
+    emp = db.get(models.Employee, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    if emp.company_id != company_id:
+        raise HTTPException(status_code=400,
+                          detail=f"الموظف #{employee_id} ينتمي للشركة #{emp.company_id} مش #{company_id}")
+
+    # ما فيش user آخر مربوط بنفس الموظف عبر user.employee_id (single link)
+    other = db.scalar(select(models.User).where(
+        models.User.employee_id == employee_id,
+        models.User.id != user_id,
+    ))
+    if other:
+        raise HTTPException(status_code=409,
+                          detail=f"الموظف #{employee_id} مربوط بحساب آخر #{other.id}")
+
+    # ولا user آخر متعدد الشركات مربوط بنفس الموظف عبر link
+    other_link = db.scalar(select(models.UserCompanyLink).where(
+        models.UserCompanyLink.employee_id == employee_id,
+        models.UserCompanyLink.user_id != user_id,
+    ))
+    if other_link:
+        raise HTTPException(status_code=409,
+                          detail=f"الموظف #{employee_id} مربوط عبر link لحساب آخر #{other_link.user_id}")
+
+    # هل الرابط موجود بالفعل؟
+    existing = db.scalar(select(models.UserCompanyLink).where(
+        models.UserCompanyLink.user_id == user_id,
+        models.UserCompanyLink.company_id == company_id,
+    ))
+    if existing:
+        if existing.employee_id != employee_id:
+            existing.employee_id = employee_id
+            existing.role = role
+            audit(db, user, "update_company_link", "user", user_id,
+                  detail=f"company#{company_id} → emp#{employee_id}", request=request)
+            db.commit()
+        return {"ok": True, "link_id": existing.id, "updated": True}
+
+    link = models.UserCompanyLink(
+        user_id=user_id, company_id=company_id, employee_id=employee_id,
+        role=role, created_by=user.id,
+    )
+    db.add(link)
+    db.flush()
+    audit(db, user, "add_company_link", "user", user_id,
+          detail=f"company#{company_id} + emp#{employee_id} ({role})",
+          request=request, company_id=company_id)
+    db.commit()
+    return {"ok": True, "link_id": link.id, "created": True}
+
+
+@router.get("/{user_id}/company-links")
+def list_company_links(user_id: int,
+                      user: models.User = Depends(require_perm("manage_users")),
+                      db: Session = Depends(get_db)):
+    """R9 §16 — يعرض عضويات user متعدد الشركات."""
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    links = db.scalars(select(models.UserCompanyLink).where(
+        models.UserCompanyLink.user_id == user_id
+    )).all()
+    out = []
+    for lk in links:
+        co = db.get(models.Company, lk.company_id)
+        emp = db.get(models.Employee, lk.employee_id)
+        out.append({
+            "id": lk.id, "company_id": lk.company_id,
+            "company_name": co.name if co else None,
+            "employee_id": lk.employee_id,
+            "employee_name": emp.name if emp else None,
+            "role": lk.role, "created_at": lk.created_at,
+        })
+    return {"user_id": user_id, "is_cross_company": target.is_cross_company,
+            "links": out}
+
+
+@router.delete("/{user_id}/company-links/{link_id}")
+def remove_company_link(user_id: int, link_id: int, request: Request,
+                       user: models.User = Depends(require_super_admin),
+                       db: Session = Depends(get_db)):
+    """R9 §16 — يمسح عضوية شركة (لو المستخدم ما عاد يخدمها)."""
+    link = db.get(models.UserCompanyLink, link_id)
+    if not link or link.user_id != user_id:
+        raise HTTPException(status_code=404, detail="الرابط غير موجود")
+    audit(db, user, "remove_company_link", "user", user_id,
+          detail=f"removed link #{link_id} (company#{link.company_id})",
+          request=request, company_id=link.company_id)
+    db.delete(link)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{user_id}/toggle")
 def toggle_active(user_id: int, request: Request,
                   user: models.User = Depends(require_perm("manage_users")),

@@ -41,6 +41,11 @@ class TokenOut(BaseModel):
     full_name: str | None = None
     company_id: int | None = None
     permissions: list[str] = []
+    # R9 §16 — لو المستخدم is_cross_company، الحقل ده يحتوي قائمة شركاته
+    # لعرضها في picker. لغير المتعدد الشركات: None (يشتغل مباشرة).
+    is_cross_company: bool = False
+    companies: list[dict] | None = None
+    active_company_id: int | None = None
 
 
 class RefreshIn(BaseModel):

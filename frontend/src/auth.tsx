@@ -17,6 +17,7 @@ type AuthCtx = {
   user: User | null;
   loading: boolean;
   login: (civil_id: string, password: string, totp_code?: string) => Promise<User>;
+  selectCompany: (companyId: number) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   can: (perm: string) => boolean;
@@ -63,6 +64,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (totp_code) body.totp_code = totp_code;
     const r = await api.post("/auth/login", body);
     setTokens(r.data.access_token, r.data.refresh_token);
+    // R9 §16 — مستخدم متعدد الشركات: نحفظ قائمة شركاته للـpicker
+    if (r.data.is_cross_company && r.data.companies) {
+      localStorage.setItem("cross_company_options", JSON.stringify(r.data.companies));
+      localStorage.removeItem("active_company_id");
+      // نرد user بدون data كامل — الـpicker هيوجهنا لـselect-company
+      return { is_cross_company: true, companies: r.data.companies } as any;
+    }
+    localStorage.removeItem("cross_company_options");
+    await refreshUser();
+    const me = await api.get("/auth/me");
+    setUser(me.data);
+    return me.data as User;
+  };
+
+  // R9 §16 — استدعاء endpoint select-company بعد اختيار شركة من الـpicker
+  const selectCompany = async (companyId: number) => {
+    const r = await api.post(`/auth/select-company?company_id=${companyId}`);
+    setTokens(r.data.access_token, r.data.refresh_token);
+    localStorage.removeItem("cross_company_options");
+    setActiveCompany(String(companyId));
     await refreshUser();
     const me = await api.get("/auth/me");
     setUser(me.data);
@@ -101,8 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const impersonatingName = localStorage.getItem("imp_name");
 
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, can, activeCompanyId,
-      setActiveCompany, impersonatingName, impersonate, stopImpersonating }}>
+    <Ctx.Provider value={{ user, loading, login, selectCompany, logout, refreshUser, can,
+      activeCompanyId, setActiveCompany, impersonatingName, impersonate, stopImpersonating }}>
       {children}
     </Ctx.Provider>
   );
