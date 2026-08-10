@@ -43,10 +43,27 @@ def perm_catalog(user: models.User = Depends(require_perm("manage_users"))):
 def list_users(company_id: int | None = None,
                user: models.User = Depends(require_perm("manage_users")),
                db: Session = Depends(get_db)):
+    """قائمة المستخدمين مع فلترة اختيارية بالشركة.
+
+    R9 §16 — مستخدمو is_cross_company (يخدمون شركات متعددة، company_id=NULL) يظهرون
+    عند فلترة أي شركة يخدمونها — نتحقق عبر user_company_links.
+    """
     cid = scope_company_id(user, company_id)
     q = select(models.User)
     if cid is not None:
-        q = q.where(models.User.company_id == cid)
+        # R9 §16 — يشمل: users بـcompany_id مطابق OR cross-company users مربوطون بها
+        cross_company_uids = {
+            uid for uid in db.scalars(select(models.UserCompanyLink.user_id).where(
+                models.UserCompanyLink.company_id == cid
+            )).all()
+        }
+        if cross_company_uids:
+            q = q.where(
+                (models.User.company_id == cid) |
+                (models.User.id.in_(cross_company_uids))
+            )
+        else:
+            q = q.where(models.User.company_id == cid)
     return list(db.scalars(q).all())
 
 
