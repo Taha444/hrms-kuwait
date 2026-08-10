@@ -42,12 +42,15 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
         models.EmployeeEvent.employee_id == emp.id,
         models.EmployeeEvent.kind == "warning",
     ).order_by(models.EmployeeEvent.created_at.desc())).all()
+    # P0-#14 — Leave Privacy: الموظف لا يرى start_date/end_date/days في My Profile.
+    # HR والإدارة يرون كل شيء (لكن هذا endpoint خاص بـMy Profile فقط — الموظف نفسه).
+    # يُعرض فقط: النوع (سنوية/مرضية/...) والحالة (معتمَدة/مرفوضة).
     return {
         "employee": schemas.EmployeeOut.model_validate(emp),
         "documents": [{"id": d.id, "type": d.document_type_code, "title": d.title,
                        "expiry_date": d.expiry_date, "version": d.version} for d in docs],
-        "leaves": [{"id": l.id, "type": l.leave_type, "start_date": l.start_date,
-                    "end_date": l.end_date, "days": l.days, "status": l.status} for l in leaves],
+        "leaves": [{"id": l.id, "type": l.leave_type, "status": l.status}
+                   for l in leaves],
         "warnings": [{"id": w.id, "title": w.title, "detail": w.detail,
                       "date": (w.date or w.created_at.date())} for w in warnings],
     }

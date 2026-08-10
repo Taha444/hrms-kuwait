@@ -614,14 +614,25 @@ ROLE_AR = {
 }
 
 
+_LEAVE_CODES = {"leave", "REQVAC", "REQSICK", "annual_leave", "sick_leave",
+                "unpaid_leave", "hajj_leave", "maternity_leave"}
+
+
 def _mask_leave_dates_for_employee(payload: dict, request_type_code: str,
                                    viewer_role: str, is_own_request: bool) -> dict:
-    """PILOT-P0-3: يخفي تواريخ الإجازة من عرض الموظف عن طلبه الخاص.
+    """PILOT-P0-3 + P0-#14: يخفي تواريخ الإجازة من عرض الموظف عن طلبه الخاص.
 
-    القاعدة: الموظف يرى type/status/reason فقط دون start_date/end_date/days —
-    الـ HR والمدير والمسؤول يرون كل شيء لتخطيط الجداول. لا يُطبَّق الإخفاء إلا
-    للموظف عارض طلبه (is_own_request=True) وطلبات نوع leave تحديدًا."""
-    if not (request_type_code in ("leave",) and viewer_role == "employee" and is_own_request):
+    القاعدة: الموظف/الشخص صاحب الطلب يرى type/status/reason فقط دون
+    start_date/end_date/days/return_date. الـ HR والمدير والمسؤول يرون كل شيء
+    لتخطيط الجداول.
+
+    P0-#14 — يُطبَّق أيضًا على الأدوار الإدارية اللي بيقدّموا طلبات لأنفسهم
+    (HR/Manager/Supervisor مربوطين بـEmployee record) — البيانات تكون حسّاسة
+    حتى لو الشخص إداري.
+
+    يشمل كل canonical + legacy leave codes.
+    """
+    if not (request_type_code in _LEAVE_CODES and is_own_request):
         return payload
     HIDDEN = {"start_date", "end_date", "days", "return_date"}
     return {k: v for k, v in (payload or {}).items() if k not in HIDDEN}
@@ -636,9 +647,12 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
     # V1.5 canonical resolver: يعرض الكود الجديد للطلب بجانب الكود القديم في seed
     from .. import v15_registry
     canonical_info = v15_registry.resolve_request(req.request_type_code)
-    # PILOT-P0-3: إخفاء تواريخ الإجازة من عرض الموظف لطلبه الخاص
-    is_own = bool(viewer and viewer.employee_id == req.employee_id
-                  and viewer.role == "employee")
+    # PILOT-P0-3 + P0-#14: إخفاء تواريخ الإجازة من عرض الشخص صاحب الطلب.
+    # يشمل الموظف العادي + الأدوار الإدارية اللي مربوطة بـEmployee record
+    # وبتقدّم طلب لنفسها (self-request) — HR/Manager/Supervisor.
+    # HR/Manager يرون بيانات موظفين آخرين كاملة، بس ما يرون بياناتهم الخاصة.
+    is_own = bool(viewer and viewer.employee_id
+                  and viewer.employee_id == req.employee_id)
     payload_view = _mask_leave_dates_for_employee(
         req.payload_json or {}, req.request_type_code,
         viewer.role if viewer else "", is_own,

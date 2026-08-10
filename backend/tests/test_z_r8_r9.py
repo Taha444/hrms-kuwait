@@ -1016,6 +1016,72 @@ def test_audit_submit_has_correlation_id_and_after(client):
 # P0-#10 — Expiry engine dedup + idempotent scan
 # ============================================================================
 
+# ============================================================================
+# P0-#14 — Leave privacy: mask start/end dates for own requests
+# ============================================================================
+
+def test_my_profile_leaves_hide_dates(client):
+    """P0-#14 — /me/profile للـleaves ما يظهر start_date/end_date/days."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.get("/api/me/profile", headers=emp)
+    if r.status_code != 200:
+        return
+    for leave in r.json().get("leaves", []):
+        assert "start_date" not in leave, f"leave shouldn't expose start_date: {leave}"
+        assert "end_date" not in leave, f"leave shouldn't expose end_date: {leave}"
+        assert "days" not in leave, f"leave shouldn't expose days: {leave}"
+        # يظل يعرض النوع والحالة
+        assert "type" in leave or "status" in leave
+
+
+def test_own_leave_request_dates_masked(client):
+    """P0-#14 — الموظف يقدّم leave، ويحاول عرض تفاصيله — يجب إخفاء التواريخ."""
+    from datetime import date, timedelta
+    emp_h = auth_headers(login(client, *EMP))
+    d1 = (date.today() + timedelta(days=30)).isoformat()
+    d2 = (date.today() + timedelta(days=32)).isoformat()
+    r = client.post("/api/requests", headers=emp_h, json={
+        "request_type_code": "leave",
+        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual"},
+    })
+    if r.status_code != 201:
+        return
+    req_id = r.json()["id"]
+
+    # الموظف يعرض طلبه → payload masked
+    detail = client.get(f"/api/requests/{req_id}", headers=emp_h).json()
+    payload = detail.get("payload", {})
+    assert "start_date" not in payload, f"employee shouldn't see start_date: {payload}"
+    assert "end_date" not in payload, f"employee shouldn't see end_date: {payload}"
+    assert detail.get("payload_masked") is True
+
+
+def test_hr_sees_leave_dates(client):
+    """P0-#14 — HR يشوف تواريخ الإجازة كاملة (مش مربوطة بموظفه)."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+    from datetime import date, timedelta
+
+    emp_h = auth_headers(login(client, *EMP))
+    d1 = (date.today() + timedelta(days=45)).isoformat()
+    d2 = (date.today() + timedelta(days=47)).isoformat()
+    r = client.post("/api/requests", headers=emp_h, json={
+        "request_type_code": "leave",
+        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual"},
+    })
+    if r.status_code != 201:
+        return
+    req_id = r.json()["id"]
+
+    hr = auth_headers(login(client, *HR))
+    detail = client.get(f"/api/requests/{req_id}", headers=hr).json()
+    payload = detail.get("payload", {})
+    # HR (مش نفس الموظف) يشوف التواريخ
+    assert payload.get("start_date") == d1
+    assert payload.get("end_date") == d2
+
+
 def test_expiry_scan_idempotent_no_duplicate_tasks(client):
     """P0-#10 — تشغيل daily_scan مرتين → مافيش duplicate tasks للـdocument نفسه."""
     from app.database import SessionLocal
