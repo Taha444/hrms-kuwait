@@ -50,7 +50,7 @@ REGISTRY: dict[str, dict] = {
         "default": False,
     },
     V15_LEGACY_CATALOG_HIDDEN: {
-        "description_ar": "يخفي أكواد PRN-* وREQ-* القديمة من كتالوج الطلبات — يعرض canonical فقط",
+        "description_ar": "يخفي أكواد legacy القديمة من كتالوج الطلبات — يعرض canonical فقط",
         "default": False,
     },
 }
