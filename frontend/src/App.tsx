@@ -60,7 +60,11 @@ function useAccess() {
   const isEmployee = !!user?.employee_id; // فقط من له ملف موظف يبصم حضورًا
   const isOwner = user?.role === "company_owner"; // مالك: واجهة رقابية مقيّدة (اطلاع فقط)
   const isCrossCompany = ["super_admin", "company_owner"].includes(user?.role || "");
-  const canReview = ["super_admin", "company_manager"].includes(user?.role || "");
+  // P0-#4 — نفس Permission Source الـbackend (view_attendance):
+  // super_admin/company_manager/hr/branch_supervisor/accountant/delegate كلهم عندهم view_attendance
+  // (كل واحد بنطاقه — supervisor يشوف فروعه، hr/manager يشوفوا الشركة، إلخ)
+  const canReview = can("view_attendance") ||
+    ["super_admin", "company_manager"].includes(user?.role || "");
   // مركز العمليات والأرشيف يعرضان معاملات حكومية/تراخيص — للـ PRO/الإدارة العليا فقط
   const canOperations = can("manage_permits") || can("manage_licenses") || user?.role === "super_admin";
   const canArchive = can("manage_licenses") || can("manage_company") || user?.role === "super_admin";

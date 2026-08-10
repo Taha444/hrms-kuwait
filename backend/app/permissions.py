@@ -100,8 +100,10 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # لا إعدادات نظام/شركات/قوالب/تدقيق/نقل بين الشركات (الإدارة العليا).
     # submit_request إلزامي (P0-05): مدير الشركة يبدأ نيابًة عن الموظف طلبات إدارية/داخلية
     # كثيرة (ترقية، نقل، تجديد عقد...)، وبدونها كان /requests (POST) يرفضه بـ403.
+    # P0-#4: أضفنا record_attendance لأن المدير موظف كمان (يبصم لنفسه إن كان مربوطًا بـEmployee).
     "company_manager": {"view_employee", "create_employee", "edit_employee", "delete_employee",
                         "view_documents", "upload_documents", "manage_leaves", "view_attendance",
+                        "record_attendance",  # للـMy Attendance الشخصية
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
                         "manage_users", "submit_request"},
@@ -123,7 +125,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # مسؤول الفرع: إدارة فرعه فقط — متابعة موظفيه، مراجعة الطلبات، رفع التقارير.
     # النطاق مقيّد بفروعه (resolve_scope=multi) فلا يرى بيانات الفروع الأخرى.
     # submit_request (P0-05): يبدأ طلبات تشغيلية عن موظفيه (تغيير وردية، مهمة خارجية...).
+    # P0-#4: أضفنا record_attendance — مسؤول الفرع موظف أيضًا (يبصم لنفسه).
     "branch_supervisor": {"view_employee", "view_attendance", "approve_request",
+                          "record_attendance",  # للـMy Attendance الشخصية
                           "view_tasks", "view_reports", "export_reports", "submit_request"},
     # الشؤون القانونية/HR: مسؤول عن الموظفين فقط (لا حكومة/إقامات/تراخيص).
     # دورة حياة الموظف: إضافة/تعديل/عقود (مستندات)/إجازات/إنذارات/خصومات/EOS + خطابات الإنذار (قوالب).
@@ -138,6 +142,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
            "approve_request", "calculate_eos", "terminate_employee",
            "manage_templates", "view_tasks",
            "view_attendance", "manage_attendance",  # تصحيح واعتماد سجلات الحضور (FIX-015)
+           "record_attendance",  # P0-#4: HR موظف أيضًا (للـMy Attendance الشخصية)
            "submit_request"},
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
     # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR. submit_request (P0-05): يبدأ معاملات

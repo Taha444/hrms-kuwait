@@ -875,3 +875,55 @@ def test_regular_user_still_rejected_from_select(client):
     r = client.post("/api/auth/select-company", headers=emp,
                    params={"company_id": 1})
     assert r.status_code == 400
+
+
+# ============================================================================
+# P0-#4 — Attendance permissions unified across roles
+# ============================================================================
+
+def test_hr_can_access_attendance_review(client):
+    """HR له view_attendance → يقدر يفتح /attendance/review."""
+    hr = auth_headers(login(client, *HR))
+    r = client.get("/api/attendance/review", headers=hr)
+    # ما نتوقعش 403 (المشكلة في UI/route كانت بتمنعه رغم الـAPI مسموح)
+    assert r.status_code != 403
+
+
+def test_supervisor_can_access_attendance_review(client):
+    """Supervisor له view_attendance → يقدر يفتح /attendance/review لفروعه."""
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        sup = db.scalar(select(models.User).where(
+            models.User.role == "branch_supervisor",
+            models.User.company_id == 1,
+        ))
+        civ = sup.civil_id if sup else None
+    finally:
+        db.close()
+    if not civ:
+        return  # ما فيش supervisor في seed
+    token = login(client, civ, "sup12345")
+    r = client.get("/api/attendance/review", headers=auth_headers(token))
+    assert r.status_code != 403
+
+
+def test_hr_manager_supervisor_have_record_attendance(client):
+    """P0-#4 — HR/Manager/Supervisor لازم يقدروا يبصموا (record_attendance).
+    قبل التعديل مكانوش عندهم الصلاحية دي رغم إنهم موظفين."""
+    admin = auth_headers(login(client, *ADMIN))
+    # جيب permission list لكل دور
+    for civ, pw, role in [(MGR[0], MGR[1], "company_manager"),
+                          (HR[0], HR[1], "hr")]:
+        h = auth_headers(login(client, civ, pw))
+        me = client.get("/api/auth/me", headers=h).json()
+        assert "record_attendance" in me["permissions"], \
+            f"{role} missing record_attendance"
+
+
+def test_employee_cannot_access_attendance_review(client):
+    """موظف عادي بدون view_attendance → 403 على /attendance/review."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.get("/api/attendance/review", headers=emp)
+    assert r.status_code == 403
