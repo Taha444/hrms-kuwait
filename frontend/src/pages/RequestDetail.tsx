@@ -117,13 +117,20 @@ export default function RequestDetail() {
         <div className="field"><label htmlFor="rd-note">{t("rd_note_optional")}</label>
           <input id="rd-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
 
-        {req.status === "pending" && can("approve_request") && (
+        {/* P1-#19 — الأزرار تظهر فقط للموافق الحالي (backend authoritative via can_current_user_decide) */}
+        {req.status === "pending" && can("approve_request") && req.can_current_user_decide && (
           <div className="row">
             <button onClick={() => decide("approved")}>{t("rd_approve")}</button>
             <button className="danger" onClick={() => decide("rejected")}>{t("rd_reject")}</button>
             {req.current_stage < 2 && (
               <button className="warn" onClick={() => decide("returned")}>{t("rd_return")}</button>
             )}
+          </div>
+        )}
+        {/* لو المستخدم عنده approve_request لكن مش الموافق الحالي — نبيّن السبب بدل الإخفاء الصامت */}
+        {req.status === "pending" && can("approve_request") && !req.can_current_user_decide && (
+          <div className="muted" style={{ fontSize: 13, padding: 8 }}>
+            هذا الطلب ينتظر اعتماد جهة أخرى — لست الموافق الحالي في هذه المرحلة.
           </div>
         )}
 

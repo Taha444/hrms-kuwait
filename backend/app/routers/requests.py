@@ -657,6 +657,17 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         req.payload_json or {}, req.request_type_code,
         viewer.role if viewer else "", is_own,
     )
+    # P1-#19 — can_decide flag للـUI: الأزرار تظهر فقط للموافق الحالي.
+    # Backend authoritative — الـfrontend يعتمد عليه لغلق الأزرار بدل حساب محلي.
+    can_current_user_decide = False
+    if viewer and req.status == "pending" and req.current_stage < len(chain):
+        try:
+            can_current_user_decide = workflow.can_decide(
+                db, req, viewer, chain[req.current_stage], rt=rt
+            )
+        except Exception:
+            can_current_user_decide = False
+
     data = {
         "id": req.id, "type": req.request_type_code,
         "type_name": rt.name if rt else req.request_type_code,
@@ -669,6 +680,8 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         "total_stages": len(chain),
         "payload": payload_view, "payload_masked": is_own and payload_view != (req.payload_json or {}),
         "created_at": req.created_at,
+        # P1-#19 — الـUI تخفي أزرار الاعتماد لو false (بدل عرضها ومنع الـclick بـ403)
+        "can_current_user_decide": can_current_user_decide,
     }
     if full:
         approvals = db.scalars(select(models.RequestApproval).where(
