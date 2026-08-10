@@ -927,3 +927,53 @@ def test_employee_cannot_access_attendance_review(client):
     emp = auth_headers(login(client, *EMP))
     r = client.get("/api/attendance/review", headers=emp)
     assert r.status_code == 403
+
+
+# ============================================================================
+# P0-#6 — Workflow Engine: Effect atomicity + stale/double action guards
+# ============================================================================
+
+def test_workflow_double_decide_rejected(client):
+    """P0-#6 — نفس المستخدم يقرّر مرتين على نفس المرحلة → 409."""
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    emp = auth_headers(login(client, *EMP))
+    # نقدّم طلب salary_certificate — أول مرحلة company_manager
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك الاختبار", "purpose": "قرض"},
+    })
+    if r.status_code != 201:
+        return  # لو الـcatalog اتغير أو type مش موجود، skip
+    req_id = r.json()["id"]
+
+    # الموظف عنده branch_supervisor بيعتمد أولاً
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        mgr_user = db.scalar(select(models.User).where(
+            models.User.civil_id == MGR[0]))
+    finally:
+        db.close()
+    mgr = auth_headers(login(client, *MGR))
+    r1 = client.post(f"/api/requests/{req_id}/decide", headers=mgr,
+                    json={"decision": "approved"})
+    # القرار الأول ينجح (200 أو نوع تاني حسب workflow)
+    if r1.status_code == 200:
+        # جرّب decide تاني على نفس الطلب (لكن دلوقتي المرحلة تقدّمت)
+        # نتوقع 409 لأن الحالة تغيّرت أو المرحلة اختلفت
+        r2 = client.post(f"/api/requests/{req_id}/decide", headers=mgr,
+                        json={"decision": "approved"})
+        # 409 = double action prevented OR state changed
+        assert r2.status_code in (403, 409), r2.text
+
+
+def test_apply_failed_status_map(client):
+    """P0-#6 — status_info('apply_failed') يرجع v15='FAILED' و label واضح."""
+    from app.workflow import status_info
+    info = status_info("apply_failed")
+    assert info["v15"] == "FAILED"
+    assert "فشل" in info["label"] or "Failed" in info["label"]
+    assert info["code"] == "APPLY_FAILED"

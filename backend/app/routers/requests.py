@@ -293,7 +293,24 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
         raise HTTPException(status_code=409, detail="لا يمكن اتخاذ قرار في هذه الحالة")
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt)
+    # P0-#6 — منع stale action: current_stage غير صالح (بره النطاق) في حالة pending
+    if req.current_stage < 0 or req.current_stage >= len(chain):
+        raise HTTPException(status_code=409, detail=(
+            f"حالة غير متناسقة: current_stage={req.current_stage} خارج نطاق السلسلة "
+            f"(طول {len(chain)}). أعد فتح الطلب."
+        ))
     stage = chain[req.current_stage]
+    # P0-#6 — منع double action: تأكد إن الـuser ما اتخذ قرار في هذه المرحلة مسبقًا
+    from sqlalchemy import select
+    already_decided = db.scalar(select(models.RequestApproval).where(
+        models.RequestApproval.request_id == req.id,
+        models.RequestApproval.stage_order == req.current_stage,
+        models.RequestApproval.approver_user_id == user.id,
+        models.RequestApproval.decision.in_(("approved", "rejected", "returned")),
+    ))
+    if already_decided:
+        raise HTTPException(status_code=409,
+                          detail="اتخذت قرارًا في هذه المرحلة مسبقًا — لا يمكن التكرار")
     if not workflow.can_decide(db, req, user, stage, rt=rt):
         raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
     # V2.2 §5 — منع الاعتماد الذاتي فقط للطلبات التي تخصّ الموظف نفسه (ملفه الشخصي).

@@ -100,6 +100,10 @@ STATUS_MAP: dict[str, dict[str, str]] = {
     "rejected": {"code": "REJECTED", "v15": "REJECTED", "label": "مرفوض"},
     "cancelled": {"code": "CANCELLED", "v15": "CANCELLED", "label": "ملغى"},
     "returned": {"code": "NEEDS_INFO", "v15": "NEEDS_INFO", "label": "بحاجة معلومات إضافية"},
+    # P0-#6 — Effect Failure: distinct terminal-ish status. الطلب معتمَد من الجميع لكن
+    # التطبيق الآلي فشل (مثلاً: تصحيح حضور ما لقيش السجل). ليست returned (اللي بيرجع للـsubmitter)
+    # ولا rejected (اللي بيقفل الطلب) — الحالة دي بتفتح مسار "action required" للإدارة.
+    "apply_failed": {"code": "APPLY_FAILED", "v15": "FAILED", "label": "فشل التطبيق — يحتاج إجراء"},
 }
 
 
@@ -755,17 +759,29 @@ def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool
 def _finalize(db: Session, req: models.Request) -> None:
     rt = get_request_type(db, req.company_id, req.request_type_code)
 
+    # P0-#6 — Apply Effect atomicity:
+    # - Success → status="completed", current_stage stays at len(chain) (past-end).
+    # - Failure → status="apply_failed" (distinct status), current_stage rolled back to
+    #   len(chain)-1 (last approved stage) لتجنب حالة تناقضية:
+    #   "current_stage=2/2 + status=returned + all approvals done".
+    #   الحالة الجديدة "apply_failed" واضحة للـUI والـaudit — مش returned (اللي بيرجع
+    #   للـsubmitter لتعديل بيانات) ولا rejected (اللي بيقفل الطلب).
+    chain_len = len(_chain(rt)) if rt else 0
+
     # PILOT-P0-4 — تصحيح الحضور: نطبّق الأثر الفعلي قبل ما نعتبر الطلب Completed
     if req.request_type_code == "REQATT":
         applied, note = _apply_attendance_correction(db, req)
         if not applied:
-            # لا نغلق كـ Completed — نبقى في IN_EXECUTION مع علامة "Failed to Apply"
-            # الطلب يرجع للمقدّم كـ NEEDS_INFO لتصحيح البيانات المفقودة
-            req.status = "returned"
+            # roll back current_stage — نجعله يشير للمرحلة الأخيرة اللي اعتُمدت فعلاً
+            # (بدل من len(chain) = past-end الحالة التناقضية)
+            if chain_len > 0:
+                req.current_stage = chain_len - 1
+            req.status = "apply_failed"
+            req.closed_at = None  # ما نغلقه — يحتاج إجراء
             db.add(models.RequestApproval(
                 request_id=req.id, stage_order=req.current_stage,
                 stage_label="فشل تطبيق التصحيح", approver_role="system",
-                decision="rejected", note=note,
+                decision="apply_failed", note=note,
             ))
             _notify_employee_from_template(
                 db, req, code="NTF-035",
@@ -773,6 +789,16 @@ def _finalize(db: Session, req: models.Request) -> None:
                          "reason": note},
                 dedup_key=f"req_att_fail:{req.id}",
             )
+            # الإدارة (HR) تحتاج task ثانية لمعرفة إن فيه إجراء يدوي مطلوب
+            for u in users_by_role(db, req.company_id, ["hr", "company_manager"]):
+                create_task(
+                    db, company_id=req.company_id, type="apply_failed",
+                    assignee_user_id=u.id,
+                    title=f"فشل تطبيق طلب معتمَد: {rt.name if rt else req.request_type_code}",
+                    detail=f"طلب #{req.id} — السبب: {note}",
+                    related_entity_type="request", related_entity_id=req.id,
+                    dedup_key=f"req_apply_failed:{req.id}", severity="critical",
+                )
             _close_open_tasks(db, req)
             return
         # نجح التطبيق — نسجّل ملاحظة قبل/بعد كـ approval trail
