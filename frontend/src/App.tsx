@@ -197,8 +197,26 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
   const [avatarModal, setAvatarModal] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarErr, setAvatarErr] = useState("");
-  // cache-bust key: يتغير مع كل رفع عشان المتصفح يعيد التحميل
-  const avatarKey = user?.avatar_updated_at || "0";
+  // R9 §17 — نستخدم axios عشان يبعت Bearer token، ثم blob URL للـ<img>
+  // (background: url(...) في CSS ما يقدرش يبعت الـAuthorization header)
+  const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user?.has_avatar) {
+      setAvatarBlobUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    api.get("/me/avatar/image", { responseType: "blob" }).then((r) => {
+      if (cancelled) return;
+      objectUrl = URL.createObjectURL(r.data);
+      setAvatarBlobUrl(objectUrl);
+    }).catch(() => { if (!cancelled) setAvatarBlobUrl(null); });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [user?.has_avatar, user?.avatar_updated_at]);
 
   useEffect(() => {
     if (!user?.is_cross_company) return;
@@ -267,14 +285,14 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
       <div className="user-chip">
         <div className="avatar"
              style={{
-               background: user?.has_avatar
-                 ? `url(/api/me/avatar/image?t=${avatarKey}) center/cover`
+               background: avatarBlobUrl
+                 ? `url(${avatarBlobUrl}) center/cover`
                  : `linear-gradient(145deg, ${th.c1}, ${th.c2})`,
                cursor: "pointer",
              }}
              onClick={() => { setAvatarErr(""); setAvatarModal(true); }}
              title={lang === "en" ? "Change avatar" : "تغيير الصورة"}>
-          {!user?.has_avatar && <Icon name={th.icon} size={18} />}
+          {!avatarBlobUrl && <Icon name={th.icon} size={18} />}
         </div>
         <div className="meta">
           <b>{user?.full_name}</b>
@@ -298,12 +316,12 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
               <div style={{
                 width: 120, height: 120, borderRadius: "50%",
                 margin: "0 auto 12px",
-                background: user?.has_avatar
-                  ? `url(/api/me/avatar/image?t=${avatarKey}) center/cover`
+                background: avatarBlobUrl
+                  ? `url(${avatarBlobUrl}) center/cover`
                   : `linear-gradient(145deg, ${th.c1}, ${th.c2})`,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                {!user?.has_avatar && <Icon name={th.icon} size={48} />}
+                {!avatarBlobUrl && <Icon name={th.icon} size={48} />}
               </div>
               <div className="muted" style={{ fontSize: 12 }}>
                 {user?.full_name}
