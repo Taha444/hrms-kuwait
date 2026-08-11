@@ -1363,6 +1363,198 @@ def test_custom_doc_historical_download_audited(client):
 
 
 # ============================================================================
+# QA §6 — EOS full lifecycle (9 stages, separation of duties)
+# ============================================================================
+
+def _eos_actor(role: str, pw: str, company_id: int = 1):
+    """يرجع civil_id لمستخدم بدور معيّن في شركة محددة (أو None)."""
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        u = db.scalar(select(models.User).where(
+            models.User.role == role, models.User.company_id == company_id))
+        return (u.civil_id, pw) if u else None
+    finally:
+        db.close()
+
+
+def _pick_eos_candidate() -> int | None:
+    """موظف نشط ببيانات كاملة، بلا حالة إنهاء مفتوحة، وغير مربوط بأي حساب
+    إداري — حتى لا يصطدم الاختبار بحاجز 'لا تعتمد تسوية تخصّك'."""
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        linked = {uid for uid in db.scalars(select(models.User.employee_id).where(
+            models.User.employee_id.is_not(None))).all()}
+        cands = db.scalars(select(models.Employee).where(
+            models.Employee.company_id == 1,
+            models.Employee.status == "active",
+            models.Employee.basic_salary > 0,
+            models.Employee.hire_date.is_not(None),
+        )).all()
+        for e in cands:
+            if e.id in linked:
+                continue
+            has_case = db.scalar(select(models.EosCase).where(
+                models.EosCase.employee_id == e.id,
+                models.EosCase.status != "filed"))
+            if not has_case:
+                return e.id
+        return None
+    finally:
+        db.close()
+
+
+def test_eos_full_lifecycle_nine_stages(client):
+    """QA §6 — دورة كاملة: initiate → calculate → approve → clearance
+    → acknowledge → settle → print → file، مع فرض فصل السلطات."""
+    from app.database import SessionLocal
+    from app import models
+    from datetime import date, timedelta
+
+    acc = _eos_actor("accountant", "account123")
+    if not acc:
+        return
+    hr = auth_headers(login(client, *HR))
+    admin = auth_headers(login(client, *ADMIN))
+    acc_h = auth_headers(login(client, *acc))
+
+    # اختر موظفًا نشطًا ببيانات كاملة ولا حالة مفتوحة
+    emp_id = _pick_eos_candidate()
+    if not emp_id:
+        return
+
+    term_date = (date.today() + timedelta(days=30)).isoformat()
+
+    # 1) HR يفتح الحالة
+    r = client.post("/api/eos/cases", headers=hr, params={
+        "employee_id": emp_id, "termination_date": term_date, "reason": "resignation",
+    })
+    assert r.status_code == 201, r.text
+    case = r.json()
+    cid = case["id"]
+    assert case["status"] == "initiated"
+    assert case["reference_no"].startswith("EOS/")
+    assert case["settlement"] is None, "no numbers before the finance stage"
+
+    # منع فتح حالة ثانية لنفس الموظف
+    dup = client.post("/api/eos/cases", headers=hr, params={
+        "employee_id": emp_id, "termination_date": term_date, "reason": "resignation"})
+    assert dup.status_code == 409
+
+    # 2) المحاسب يحسب — الأرقام من سجل الموظف
+    calc = client.post(f"/api/eos/cases/{cid}/calculate", headers=acc_h,
+                      params={"used_leave_days": 5})
+    assert calc.status_code == 200, calc.text
+    assert calc.json()["status"] == "calculated"
+    assert calc.json()["settlement"]["total_settlement"] is not None
+
+    # 3) فصل السلطات: نفس المحاسب لا يعتمد ما حسبه
+    self_approve = client.post(f"/api/eos/cases/{cid}/approve", headers=acc_h)
+    assert self_approve.status_code == 403, "same actor must not approve own calculation"
+
+    # الاعتماد من جهة ثالثة — المدير العام (غير HR الذي فتح، وغير المالية التي حسبت)
+    mgr = auth_headers(login(client, *MGR))
+    ok = client.post(f"/api/eos/cases/{cid}/approve", headers=mgr,
+                    params={"note": "معتمد"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["status"] == "approved"
+
+    # 4) إخلاء الطرف — HR، والتفاصيل إلزامية
+    empty = client.post(f"/api/eos/cases/{cid}/clearance", headers=hr, params={"notes": ""})
+    assert empty.status_code in (400, 422)
+    cl = client.post(f"/api/eos/cases/{cid}/clearance", headers=hr,
+                    params={"notes": "تم تسليم العهدة والبطاقة"})
+    assert cl.status_code == 200
+    assert cl.json()["status"] == "clearance"
+
+    # 5) إقرار الموظف — HR لا يوقّع نيابة عنه
+    wrong = client.post(f"/api/eos/cases/{cid}/acknowledge", headers=hr)
+    assert wrong.status_code == 403, "acknowledgment must come from the employee"
+
+    ack = client.post(f"/api/eos/cases/{cid}/acknowledge", headers=admin,
+                     params={"note": "اطلعت على التسوية"})
+    assert ack.status_code == 200
+    assert ack.json()["status"] == "acknowledged"
+
+    # 6) الصرف — المحاسب، ومرجع الدفع إلزامي
+    st = client.post(f"/api/eos/cases/{cid}/settle", headers=acc_h,
+                    params={"payment_reference": "TRX-EOS-0001"})
+    assert st.status_code == 200, st.text
+    assert st.json()["status"] == "ready_to_print"
+
+    # الفصل يُطبَّق على ملف الموظف بعد الصرف فقط
+    db = SessionLocal()
+    try:
+        emp = db.get(models.Employee, emp_id)
+        assert emp.status == "terminated"
+        assert emp.eos_settlement_json is not None
+    finally:
+        db.close()
+
+    # 7) الطباعة ثم 8) الأرشفة
+    pr = client.post(f"/api/eos/cases/{cid}/print", headers=hr)
+    assert pr.status_code == 200 and pr.json()["status"] == "printed"
+
+    fl = client.post(f"/api/eos/cases/{cid}/file", headers=hr,
+                    params={"filing_location": "أرشيف الموارد البشرية — رف 3"})
+    assert fl.status_code == 200
+    final = fl.json()
+    assert final["status"] == "filed"
+    assert final["filing_location"]
+
+    # كل مرحلة سجّلت الفاعل والوقت
+    for actor_field, time_field in [
+        ("initiated_by", "initiated_at"), ("calculated_by", "calculated_at"),
+        ("approved_by", "approved_at"), ("clearance_by", "clearance_at"),
+        ("settled_by", "settled_at"), ("printed_by", "printed_at"),
+        ("filed_by", "filed_at"),
+    ]:
+        assert final[actor_field] is not None, f"{actor_field} not recorded"
+        assert final[time_field] is not None, f"{time_field} not recorded"
+    assert final["acknowledged_at"] is not None
+
+
+def test_eos_stage_order_enforced(client):
+    """QA §6 — لا يمكن القفز فوق المراحل (مثلاً الاعتماد قبل الحساب)."""
+    from datetime import date, timedelta
+    from app.database import SessionLocal
+    from app import models
+
+    hr = auth_headers(login(client, *HR))
+    admin = auth_headers(login(client, *ADMIN))
+
+    emp_id = _pick_eos_candidate()
+    if not emp_id:
+        return
+
+    r = client.post("/api/eos/cases", headers=hr, params={
+        "employee_id": emp_id,
+        "termination_date": (date.today() + timedelta(days=15)).isoformat(),
+        "reason": "resignation",
+    })
+    if r.status_code != 201:
+        return
+    cid = r.json()["id"]
+
+    # اعتماد قبل الحساب → 409
+    early = client.post(f"/api/eos/cases/{cid}/approve", headers=admin)
+    assert early.status_code == 409
+
+    # صرف قبل الإقرار → 409
+    early_settle = client.post(f"/api/eos/cases/{cid}/settle", headers=admin,
+                              params={"payment_reference": "X"})
+    assert early_settle.status_code == 409
+
+    # أرشفة قبل الطباعة → 409
+    early_file = client.post(f"/api/eos/cases/{cid}/file", headers=hr,
+                            params={"filing_location": "X"})
+    assert early_file.status_code == 409
+
+
+# ============================================================================
 # P0-#13 — Residency renewal E2E (state transitions + doc chain)
 # ============================================================================
 

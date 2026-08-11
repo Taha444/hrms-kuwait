@@ -106,6 +106,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         "record_attendance",  # للـMy Attendance الشخصية
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
+                        # QA §6: مرحلة "Authorized Approval" في إنهاء الخدمة — جهة ثالثة
+                        # غير من حسب التسوية (المالية) وغير من فتح الحالة (HR).
+                        "approve_termination",
                         "manage_users", "submit_request"},
     # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
     # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
@@ -119,6 +122,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                    "submit_request", "record_attendance", "approve_request",
                    # PILOT-P0-8: المحاسب هو المُعتمِد المالي لإنهاء الخدمة (فصل السلطات عن HR)
                    "approve_termination",
+                   # QA §6: مرحلة "Finance Calculation" في دورة إنهاء الخدمة — المالية
+                   # تحسب التسوية من سجل الموظف، وHR يفتح الحالة، وجهة ثالثة تعتمد.
+                   "calculate_eos",
                    # PILOT-P0-11a: المحاسب يحتاج مراجعة الحضور قبل قفل الرواتب (منع تشغيل رواتب
                    # على بيانات ناقصة). لا يحق له تعديل السجلات (manage_attendance يبقى مع HR).
                    "view_attendance"},

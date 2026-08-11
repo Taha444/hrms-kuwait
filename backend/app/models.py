@@ -107,6 +107,60 @@ class User(Base):
     )
 
 
+class EosCase(Base):
+    """QA §6 — دورة حياة إنهاء الخدمة الكاملة (9 مراحل، فصل سلطات).
+
+    initiated → calculated → approved → clearance → acknowledged
+              → settled → ready_to_print → printed → filed
+
+    من ينفّذ ماذا (Separation of Duties):
+      initiate   : HR (يفتح الحالة ويحدد تاريخ وسبب الإنهاء)
+      calculate  : المحاسب/المالية (يحسب من ملف الموظف — لا قيم افتراضية)
+      approve    : صاحب صلاحية approve_termination، ويجب ألا يكون هو من حسب
+      clearance  : HR (إخلاء الطرف: عهد/مستندات/تسليم)
+      acknowledge: الموظف نفسه (إقرار باطلاعه على التسوية)
+      settle     : المحاسب (تأكيد الصرف الفعلي)
+      print/file : HR (الأرشفة الورقية)
+
+    settlement_json يُملأ في مرحلة الحساب من سجل الموظف (راتب/تاريخ تعيين)
+    ولا يُقبَل من الإدخال — نفس قاعدة /eos/for-employee.
+    """
+    __tablename__ = "eos_cases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="initiated", index=True)
+    reference_no: Mapped[str | None] = mapped_column(String(60), unique=True, index=True)
+
+    termination_date: Mapped[date | None] = mapped_column(Date)
+    termination_reason: Mapped[str | None] = mapped_column(String(40))
+    used_leave_days: Mapped[float] = mapped_column(Float, default=0)
+    settlement_json: Mapped[dict | None] = mapped_column(JSON)
+
+    initiated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    initiated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    calculated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    calculated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    clearance_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    clearance_at: Mapped[datetime | None] = mapped_column(DateTime)
+    clearance_notes: Mapped[str | None] = mapped_column(Text)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    acknowledgment_note: Mapped[str | None] = mapped_column(Text)
+    settled_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    payment_reference: Mapped[str | None] = mapped_column(String(80))
+    printed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    filed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    filed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    filing_location: Mapped[str | None] = mapped_column(String(200))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class UserSignatureVersion(Base):
     """QA §12 — سجل نسخ التوقيع غير القابل للتعديل (immutable evidence trail).
 
