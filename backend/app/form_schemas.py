@@ -423,10 +423,41 @@ SCHEMAS: dict[str, dict] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# ربط أكواد أنواع الطلبات (V1.3، جدول request_types) بمفاتيح الـschemas.
+#
+# المفاتيح هنا اختيرت بأسماء مختصرة (REQCERT/REQPERM/REQREN...) بينما كتالوج
+# أنواع الطلبات يستخدم أكوادًا أطول (REQCERTSAL/REQPER/REQRESN...). الاختلاف
+# جعل get_schema يعيد None لـ34 نوعًا من 53، فتسقط كلها على النموذج العام
+# (تاريخ/مبلغ/تفاصيل) بدل نموذجها الحقيقي.
+#
+# كل سطر هنا تحقّقنا من تطابق اسم النوع مع حقول الـschema — لا تخمين بالاسم:
+# مثلاً REQTRN اسمه "طلب تدريب" لا نقل، فيُربط بـREQTRAIN لا REQTRANS.
+# الأنواع الإدارية (ADM*) لا نماذج لها عمدًا — سجلات داخلية لا يملؤها موظف.
+# ---------------------------------------------------------------------------
+REQUEST_TYPE_SCHEMA_MAP: dict[str, str] = {
+    "REQPER": "REQPERM",        # طلب إذن أثناء الدوام
+    "exit_permission": "REQPERM",  # طلب إذن خروج/استئذان (نفس نموذج الإذن)
+    "REQCERTSAL": "REQCERT",    # طلب شهادة راتب
+    "REQCERTEMP": "REQCERT",    # طلب شهادة لمن يهمه الأمر
+    "REQCERTEXP": "REQCERT",    # طلب شهادة خبرة
+    "REQDATA": "REQUPD",        # طلب تعديل البيانات الشخصية
+    "REQRESN": "REQREN",        # طلب تجديد إقامة عادي
+    "REQRESE": "REQREN",        # طلب تجديد إقامة مبكر (نفس النموذج، renewal_type يميّز)
+    "REQCID": "REQCIVIL",       # طلب تحديث/تجديد البطاقة المدنية
+    "REQPROMO": "REQPROM",      # طلب ترقية أو تعديل راتب
+    "REQTRF": "REQTRANS",       # طلب نقل داخلي
+    "REQTRN": "REQTRAIN",       # طلب تدريب
+}
+
+
 def get_schema(code: str) -> dict | None:
-    """يعيد schema بالكود الـcanonical أو عبر legacy alias."""
+    """يعيد schema بالكود الـcanonical أو عبر legacy alias أو خريطة أكواد V1.3."""
     if code in SCHEMAS:
         return SCHEMAS[code]
+    mapped = REQUEST_TYPE_SCHEMA_MAP.get(code)
+    if mapped and mapped in SCHEMAS:
+        return SCHEMAS[mapped]
     for canonical, s in SCHEMAS.items():
         if code in (s.get("meta") or {}).get("legacy_aliases", []):
             return s

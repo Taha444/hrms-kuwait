@@ -1028,6 +1028,56 @@ def test_employees_list_survives_nonconforming_legacy_rows(client):
         db.close()
 
 
+def test_creation_catalog_is_not_empty_and_covers_core_types(client):
+    """REGRESSION — تفعيل v15_legacy_catalog_hidden كان يخفي 48 نوعًا صالحًا
+    (canonical=None) ويترك الخمسة المُستبدَلة معروضة رغم رفض POST لها، فتصبح
+    شاشة "طلب جديد" إما فارغة أو كلها أنواع مرفوضة."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.get("/api/requests/types", headers=emp,
+                   params={"creatable_only": True})
+    assert r.status_code == 200
+    codes = {t["code"] for t in r.json()}
+    assert len(codes) >= 10, f"creation catalog nearly empty: {sorted(codes)}"
+    # الأنواع الأساسية للموظف لازم تكون متاحة للإنشاء
+    for core in ("leave", "REQATT", "REQCERTSAL", "REQADV"):
+        assert core in codes, f"core request type missing from creation catalog: {core}"
+
+
+def test_spec_request_types_have_real_schemas(client):
+    """REGRESSION — مفاتيح الـschemas (REQCERT/REQPERM/REQREN) انحرفت عن أكواد
+    أنواع الطلبات (REQCERTSAL/REQPER/REQRESN)، فكان get_schema يعيد None و34 نوعًا
+    يسقط على النموذج العام (تاريخ/مبلغ/تفاصيل) بدل نموذجه الحقيقي."""
+    from app.form_schemas import get_schema
+
+    expected_field = {
+        "leave": "start_date",
+        "REQATT": "attendance_date",
+        "REQCERTSAL": "purpose",
+        "REQDATA": "field_to_update",
+        "REQDOC": "document_type",
+        "REQPER": "permission_date",
+        "REQADV": "amount",
+        "REQRESN": "residency_expiry",
+        "REQPAY": "payroll_period",
+        "REQEXP": "expense_date",
+    }
+    for code, field in expected_field.items():
+        schema = get_schema(code)
+        assert schema, f"{code} has no schema -> falls back to the generic form"
+        fields = {f["code"] for f in schema["fields"]}
+        assert field in fields, f"{code} resolved to the wrong schema (missing {field})"
+
+
+def test_training_code_not_mapped_to_transfer_schema(client):
+    """الربط بالاسم وحده كان سيخلط REQTRN (طلب تدريب) مع REQTRANS (نقل)."""
+    from app.form_schemas import get_schema
+    train = get_schema("REQTRN")
+    transfer = get_schema("REQTRF")
+    assert train and transfer
+    assert "to_branch_id" in {f["code"] for f in transfer["fields"]}
+    assert "to_branch_id" not in {f["code"] for f in train["fields"]}
+
+
 def test_creatable_catalog_matches_what_post_accepts(client):
     """FIX — كل نوع في creation catalog لازم POST يقبله (مافيش legacy معروض ثم مرفوض)."""
     from app import feature_flags as ff
@@ -1056,6 +1106,68 @@ def test_creatable_catalog_matches_what_post_accepts(client):
             f"creation catalog exposes legacy alias '{t['code']}' "
             f"(canonical={canonical}) which POST /requests rejects"
         )
+
+
+def test_catalog_and_post_agree_with_legacy_flag_ON(client):
+    """REGRESSION — الحالة الفعلية على الإنتاج: v15_legacy_catalog_hidden مفعّل.
+
+    الاختبار السابق كان يخرج مبكرًا لو الفلاج مقفول، فلم يفحص أبدًا الحالة التي
+    كسرت الإنتاج. هنا نفعّله صراحةً ثم نتحقق أن الكتالوج ليس فارغًا وأن كل نوع
+    فيه يقبله POST فعلًا.
+    """
+    from app.database import SessionLocal
+    from app import models, feature_flags as ff
+
+    db = SessionLocal()
+    created = None
+    try:
+        row = db.scalar(select(models.FeatureFlag).where(
+            models.FeatureFlag.key == ff.V15_LEGACY_CATALOG_HIDDEN,
+            models.FeatureFlag.company_id.is_(None)))
+        if row:
+            prev = row.value
+            row.value = "on"
+        else:
+            prev = None
+            created = models.FeatureFlag(
+                key=ff.V15_LEGACY_CATALOG_HIDDEN, company_id=None, value="on")
+            db.add(created)
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        emp = auth_headers(login(client, *EMP))
+        listing = client.get("/api/requests/types", headers=emp,
+                             params={"creatable_only": True})
+        assert listing.status_code == 200
+        codes = [t["code"] for t in listing.json()]
+        assert codes, "creation catalog is EMPTY with the flag on"
+        assert "leave" in codes, "leave disappeared from the catalog with the flag on"
+
+        # وكل نوع معروض يقبله POST — نجرّب أول نوع بحمولة صالحة
+        r = client.post("/api/requests", headers=emp, json={
+            "request_type_code": "leave",
+            "payload_json": {"start_date": "2027-03-01", "end_date": "2027-03-03",
+                             "days": 3, "leave_type": "annual"},
+        })
+        assert r.status_code != 400 or "LEGACY_ALIAS_BLOCKED" not in str(r.json()), (
+            f"catalog offered 'leave' but POST rejected it: {r.text[:200]}"
+        )
+    finally:
+        db = SessionLocal()
+        try:
+            row = db.scalar(select(models.FeatureFlag).where(
+                models.FeatureFlag.key == ff.V15_LEGACY_CATALOG_HIDDEN,
+                models.FeatureFlag.company_id.is_(None)))
+            if row:
+                if prev is None:
+                    db.delete(row)
+                else:
+                    row.value = prev
+            db.commit()
+        finally:
+            db.close()
 
 
 def test_return_resubmit_reapprove_full_cycle(client):

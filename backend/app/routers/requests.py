@@ -83,6 +83,33 @@ def registry(user: models.User = Depends(get_current_user)):
     }
 
 
+def superseded_by(db: Session, company_id: int | None, code: str) -> str | None:
+    """المرجع الوحيد لسؤال: هل هذا الكود مُستبدَل بنوع طلب أحدث؟
+
+    يعيد كود البديل إن وُجد فعلًا، أو None.
+
+    القاعدة: الاستبدال حقيقي فقط لو كان هناك RequestType آخر **نشط ومتاح** يمثّل
+    نفس الـcanonical workflow. مجرد وجود canonical id في خريطة الـaliases لا يكفي:
+    أكواد WF-* هي معرّفات workflow لا أكواد أنواع طلبات، ولا يوجد صف RequestType
+    يحملها. منع الإنشاء بناءً على وجودها يعني تعطيل الميزة نهائيًا لا ترحيلها.
+
+    هذه الدالة يستدعيها كلٌّ من كتالوج الإنشاء و submit_request، فيستحيل أن
+    يعرض الكتالوج نوعًا يرفضه الخادم — وهو بالضبط ما حدث سابقًا حين حسب كلٌّ
+    منهما القاعدة بنفسه.
+    """
+    from .. import v15_registry
+    canonical = v15_registry.resolve_request(code).get("canonical")
+    if not canonical or canonical == code:
+        return None
+    # هل يوجد نوع طلب نشط كوده هو الـcanonical نفسه؟
+    replacement = db.scalar(select(models.RequestType).where(
+        models.RequestType.code == canonical,
+        models.RequestType.is_active == True,  # noqa: E712
+        models.RequestType.company_id.in_((None, company_id)),
+    ))
+    return canonical if replacement else None
+
+
 @router.get("/types")
 def list_request_types(category: str | None = None, creatable_only: bool = False,
                        user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -120,13 +147,15 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         seen.add(rt.code)
         canonical_info = v15_registry.resolve_request(rt.code)
         canonical_code = canonical_info.get("canonical")
-        if hide_legacy and not canonical_code:
+        # كتالوج الإنشاء = ما يقبله POST /requests بالضبط، عبر نفس الدالة
+        # (superseded_by) التي يستخدمها submit_request للرفض.
+        replacement = superseded_by(db, cid, rt.code)
+        if creatable_only and replacement:
             continue
-        # FIX — creation catalog: يجب أن يطابق ما يقبله POST /requests بالضبط.
-        # submit_request يرفض بـ LEGACY_ALIAS_BLOCKED أي كود له canonical مختلف عنه
-        # (عندما v15_legacy_catalog_hidden مفعّل). كنا نعرضه في القائمة رغم ذلك،
-        # فيختاره المستخدم ويصطدم بخطأ عند الإرسال.
-        if creatable_only and hide_legacy and canonical_code and canonical_code != rt.code:
+        # hide_legacy: يخفي الأنواع المُستبدَلة فعلًا فقط. سابقًا كان يخفي كل نوع
+        # بلا canonical id — وهو 48 نوعًا من كتالوج V1.3 صالحة تمامًا — فيفرغ
+        # القائمة من كل ما يمكن إنشاؤه ويترك المُستبدَل وحده معروضًا.
+        if hide_legacy and replacement:
             continue
         entry: dict = {
             "code": rt.code, "name": rt.name, "category": rt.category,
@@ -207,22 +236,22 @@ def submit_request(data: schemas.RequestIn, request: Request,
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
 
-    # R6-A §5 — Backend Allowlist: لو الشركة فعّلت إخفاء legacy، نرفض POST
-    # على الأكواد القديمة (لا يكفي إخفاؤها من الـcatalog؛ الـUI القديمة أو الـAPI
-    # الخارجية قد تحاول إنشاء طلب مباشرة). نقترح canonical البديل صراحًة.
-    from .. import feature_flags as ff
-    from .. import v15_registry
-    if ff.is_enabled(db, emp.company_id, ff.V15_LEGACY_CATALOG_HIDDEN):
-        info = v15_registry.resolve_request(data.request_type_code)
-        canonical = info.get("canonical")
-        # الكود القديم = له canonical مختلف عن نفسه = legacy
-        if canonical and canonical != data.request_type_code:
-            raise HTTPException(status_code=400, detail={
-                "code": "LEGACY_ALIAS_BLOCKED",
-                "message": f"الكود «{data.request_type_code}» قديم — استخدم «{canonical}» بدلاً منه.",
-                "canonical": canonical,
-                "legacy_code": data.request_type_code,
-            })
+    # R6-A §5 — Backend Allowlist: نرفض POST على كود مُستبدَل بنوع أحدث متاح،
+    # لأن إخفاءه من الكتالوج وحده لا يكفي (واجهة قديمة أو API خارجي قد ينشئ مباشرة).
+    #
+    # الشرط الحاسم: البديل يجب أن يكون **موجودًا فعلًا** كنوع طلب نشط. الرفض بمجرد
+    # وجود canonical id في خريطة الـaliases كان يمنع إنشاء leave/salary_certificate/
+    # exit_permission/advance/loan نهائيًا — فأكواد WF-* معرّفات workflow لا أنواع
+    # طلبات، ولا يوجد صف RequestType يحملها ليحلّ محلها. superseded_by يفرض هذا
+    # الشرط، وهو نفسه ما يستخدمه كتالوج الإنشاء فلا يتباعد الاثنان.
+    replacement = superseded_by(db, emp.company_id, data.request_type_code)
+    if replacement:
+        raise HTTPException(status_code=400, detail={
+            "code": "LEGACY_ALIAS_BLOCKED",
+            "message": f"الكود «{data.request_type_code}» قديم — استخدم «{replacement}» بدلاً منه.",
+            "canonical": replacement,
+            "legacy_code": data.request_type_code,
+        })
 
     # V2.2 §4 Form Schema Engine: التحقق من الحقول والقيود الشرطية والحدود
     from .. import form_schemas
