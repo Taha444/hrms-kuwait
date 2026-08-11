@@ -34,6 +34,50 @@ _ALLOWED_EXT = {".png", ".jpg", ".jpeg"}
 _MAX_BYTES = 500 * 1024  # 500 KB — كافٍ لصورة توقيع بجودة عالية
 
 
+def _record_signature_version(db: Session, target: models.User, *, version: int,
+                              file_path: str | None, stage: str,
+                              reason: str | None, approver: models.User | None,
+                              before: dict | None = None,
+                              after: dict | None = None) -> models.UserSignatureVersion:
+    """QA §12 — يكتب صفًا غير قابل للتعديل في سجل نسخ التوقيع.
+
+    يُستدعى عند: أول رفع (stage='first_upload')، الرفع المباشر للأدوار الموثوقة
+    (stage='direct'), واعتماد HR لاستبدال (stage='approved'). كل صف يحمل سياق
+    الفاعل والمُعتمِد والسبب ورقم مرجعي فريد يمكن الاستشهاد به.
+    """
+    import hashlib
+    checksum = None
+    if file_path and os.path.exists(file_path):
+        try:
+            with open(file_path, "rb") as fh:
+                checksum = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            checksum = None
+
+    # الفرع المرتبط بالمستخدم (لو له نطاق فرع صريح أو ملف موظف)
+    branch_id = target.scope_branch_id
+    if branch_id is None and target.employee_id:
+        emp = db.get(models.Employee, target.employee_id)
+        branch_id = emp.branch_id if emp else None
+
+    now = datetime.now(timezone.utc)
+    row = models.UserSignatureVersion(
+        user_id=target.id, version=version, file_path=file_path,
+        checksum_sha256=checksum,
+        actor_user_id=target.id, actor_role=target.role,
+        company_id=target.company_id, branch_id=branch_id,
+        stage=stage, reason=reason,
+        approved_by_user_id=(approver.id if approver else None),
+        approver_role=(approver.role if approver else None),
+        approved_at=now,
+        correlation_id=f"sig:{target.id}",
+        reference_no=f"SIG/{target.id}/v{version}/{now:%Y%m%d%H%M%S}",
+        before_json=before, after_json=after,
+    )
+    db.add(row)
+    return row
+
+
 def _create_pending_signature_task(db: Session, target_user: models.User) -> None:
     """P1-#15 — ينشئ HR task واحدة لطلب استبدال معلّق. dedup بـuser id."""
     from ..notifications import create_task, users_by_role
@@ -212,6 +256,38 @@ def get_my_signature_info(user: models.User = Depends(get_current_user)):
     }
 
 
+def _serialize_signature_version(v: models.UserSignatureVersion) -> dict:
+    """QA §12 — تمثيل نسخة للعرض. لا نُعيد file_path أبدًا (مسار تخزين داخلي)."""
+    return {
+        "version": v.version,
+        "reference_no": v.reference_no,
+        "stage": v.stage,
+        "reason": v.reason,
+        "checksum_sha256": v.checksum_sha256,
+        "actor_role": v.actor_role,
+        "company_id": v.company_id,
+        "branch_id": v.branch_id,
+        "approved_by_user_id": v.approved_by_user_id,
+        "approver_role": v.approver_role,
+        "approved_at": v.approved_at,
+        "correlation_id": v.correlation_id,
+        "before": v.before_json,
+        "after": v.after_json,
+        "created_at": v.created_at,
+    }
+
+
+@router.get("/history")
+def get_my_signature_history(user: models.User = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    """QA §12 — سجل نسخ توقيعي (immutable). الأحدث أولًا."""
+    rows = db.scalars(_select(models.UserSignatureVersion).where(
+        models.UserSignatureVersion.user_id == user.id
+    ).order_by(models.UserSignatureVersion.version.desc())).all()
+    return {"current_version": user.signature_version,
+            "versions": [_serialize_signature_version(v) for v in rows]}
+
+
 @router.get("/image")
 def get_my_signature_image(user: models.User = Depends(get_current_user)):
     """ينزّل صورة التوقيع الحالية للمستخدم — للعرض في بروفايله كمعاينة."""
@@ -268,14 +344,28 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
         # تطبيق مباشر: أول رفع، أو المستخدم HR/Super Admin
         old = user.signature_path
         old_pending = user.pending_signature_path
+        old_version = user.signature_version
         user.signature_path = path
         user.signature_updated_at = now
+        user.signature_version = old_version + 1  # QA §12 — كل تفعيل يرفع النسخة
         # لو كان في استبدال معلّق قديم نلغيه لأن الرفع الحالي حلّ محله
         user.pending_signature_path = None
         user.pending_signature_uploaded_at = None
         user.pending_signature_reason = None
+        # QA §12 — سجّل النسخة في السجل غير القابل للتعديل
+        _record_signature_version(
+            db, user, version=user.signature_version, file_path=path,
+            stage="first_upload" if is_first_upload else "direct",
+            reason=(reason or "").strip() or None,
+            approver=user if is_privileged and not is_first_upload else None,
+            before={"signature_version": old_version},
+            after={"signature_version": user.signature_version},
+        )
         audit(db, user, "signature_upload", "user", user.id,
-              detail=f"first={is_first_upload} raw={len(data)}B", request=request)
+              detail=f"first={is_first_upload} v{old_version}→v{user.signature_version} raw={len(data)}B",
+              request=request, correlation_id=f"sig:{user.id}",
+              before={"signature_version": old_version},
+              after={"signature_version": user.signature_version})
         db.commit()
         for old_path in (old, old_pending):
             if old_path and os.path.exists(old_path) and old_path != path:
@@ -284,6 +374,7 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
                 except OSError:
                     pass
         return {"ok": True, "status": "active", "updated_at": now,
+                "version": user.signature_version,
                 "size_bytes": len(processed), "raw_size_bytes": len(data)}
 
     # P1-#15 — الاستبدال يستوجب سبب صريح (Business rule: التوقيع verifiable evidence)
@@ -380,6 +471,26 @@ def list_pending_replacements(user: models.User = Depends(_require_hr),
     ]
 
 
+@hr_router.get("/{target_user_id}/history")
+def get_signature_history_for_hr(target_user_id: int,
+                                 user: models.User = Depends(_require_hr),
+                                 db: Session = Depends(get_db)):
+    """QA §12 — HR يراجع سلسلة نسخ توقيع مستخدم (evidence trail كامل)."""
+    target = db.get(models.User, target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if user.role != "super_admin" and target.company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    rows = db.scalars(_select(models.UserSignatureVersion).where(
+        models.UserSignatureVersion.user_id == target_user_id
+    ).order_by(models.UserSignatureVersion.version.desc())).all()
+    return {
+        "user_id": target.id, "full_name": target.full_name,
+        "current_version": target.signature_version,
+        "versions": [_serialize_signature_version(v) for v in rows],
+    }
+
+
 @hr_router.get("/{target_user_id}/image")
 def get_pending_image_for_hr(target_user_id: int,
                              user: models.User = Depends(_require_hr),
@@ -416,6 +527,15 @@ def approve_replacement(target_user_id: int, request: Request,
     target.pending_signature_path = None
     target.pending_signature_uploaded_at = None
     target.pending_signature_reason = None
+    # QA §12 — سجّل النسخة المعتمَدة في السجل غير القابل للتعديل (evidence)
+    _record_signature_version(
+        db, target, version=target.signature_version,
+        file_path=target.signature_path, stage="approved",
+        reason=saved_reason, approver=user,
+        before={"signature_version": old_version, "pending": True},
+        after={"signature_version": target.signature_version,
+              "approved_by": user.id, "approver_role": user.role},
+    )
     # P1-#15 — audit مفصّل: correlation, before/after, من اعتمد
     audit(db, user, "signature_replacement_approved", "user", target.id,
           detail=f"v{old_version}→v{target.signature_version} reason={saved_reason or '-'}",

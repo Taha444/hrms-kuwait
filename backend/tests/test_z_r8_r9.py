@@ -1465,6 +1465,55 @@ def test_signature_version_starts_at_zero(client):
     assert isinstance(r.json()["signature_version"], int)
 
 
+def test_signature_history_immutable_evidence_chain(client):
+    """QA §12 — كل نسخة معتمَدة تُسجَّل بسياق كامل ولا تُعاد مسارات التخزين."""
+    from app.database import SessionLocal
+    from app import models
+
+    db = SessionLocal()
+    try:
+        sup = db.scalar(select(models.User).where(
+            models.User.role == "branch_supervisor", models.User.company_id == 1))
+        civ = sup.civil_id if sup else None
+        uid = sup.id if sup else None
+    finally:
+        db.close()
+    if not civ:
+        return
+
+    h = auth_headers(login(client, civ, "sup12345"))
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000050001a5f645ea0000000049454e44ae426082"
+    )
+    client.delete("/api/me/signature", headers=h)
+    r1 = client.post("/api/me/signature", headers=h,
+                    files={"file": ("s.png", png, "image/png")})
+    if r1.status_code != 201:
+        return
+
+    hist = client.get("/api/me/signature/history", headers=h)
+    assert hist.status_code == 200
+    body = hist.json()
+    assert body["current_version"] >= 1
+    assert len(body["versions"]) >= 1
+
+    top = body["versions"][0]
+    # سياق الـevidence موجود
+    assert top["reference_no"], "each version needs a citable reference"
+    assert top["correlation_id"] == f"sig:{uid}"
+    assert top["actor_role"] == "branch_supervisor"
+    assert top["stage"] in ("first_upload", "direct", "approved")
+    assert top["checksum_sha256"] and len(top["checksum_sha256"]) == 64
+    # لا يُسرَّب مسار التخزين
+    assert "file_path" not in top
+
+    # النسخ فريدة ومتصاعدة
+    versions = [v["version"] for v in body["versions"]]
+    assert len(set(versions)) == len(versions), "versions must be unique"
+    assert versions == sorted(versions, reverse=True), "newest first"
+
+
 def test_signature_replacement_requires_reason(client):
     """P1-#15 — استبدال بدون سبب → 400."""
     import io

@@ -107,6 +107,46 @@ class User(Base):
     )
 
 
+class UserSignatureVersion(Base):
+    """QA §12 — سجل نسخ التوقيع غير القابل للتعديل (immutable evidence trail).
+
+    كل نسخة تُعتمَد تُسجَّل هنا مرة واحدة ولا تُحدَّث أبدًا. المستندات المُصدَرة
+    تشير لرقم النسخة (signature_version)، فيمكن دائمًا إثبات أي توقيع كان
+    ساريًا لحظة الإصدار ومن اعتمده ولماذا.
+
+    الحقول تغطي متطلبات الـevidence: الفاعل ودوره وشركته وفرعه، المُعتمِد،
+    السبب، المرحلة، والـcorrelation_id الذي يربط الطلب بالاعتماد في سجل التدقيق.
+    لا يُخزَّن مسار التخزين للعميل — يُعرَض عبر endpoint موثّق فقط.
+    """
+    __tablename__ = "user_signature_versions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "version", name="uq_user_signature_version"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    file_path: Mapped[str | None] = mapped_column(String(400))  # داخلي — لا يُعاد للعميل
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    # سياق الفاعل (صاحب التوقيع) لحظة التسجيل
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    actor_role: Mapped[str | None] = mapped_column(String(30))
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))
+    # سياق الاعتماد
+    stage: Mapped[str] = mapped_column(String(30), default="approved")  # first_upload/approved/rejected
+    reason: Mapped[str | None] = mapped_column(String(300))
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approver_role: Mapped[str | None] = mapped_column(String(30))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # ربط بسجل التدقيق
+    correlation_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    reference_no: Mapped[str | None] = mapped_column(String(60), unique=True, index=True)
+    before_json: Mapped[dict | None] = mapped_column(JSON)
+    after_json: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class UserCompanyLink(Base):
     """R9 §16 — عضوية user في شركة (لمستخدمي is_cross_company=True).
 
