@@ -970,6 +970,78 @@ def test_workflow_double_decide_rejected(client):
         assert r2.status_code in (403, 409), r2.text
 
 
+def test_creatable_catalog_matches_what_post_accepts(client):
+    """FIX — كل نوع في creation catalog لازم POST يقبله (مافيش legacy معروض ثم مرفوض)."""
+    from app import feature_flags as ff
+    from app.database import SessionLocal
+    from app import v15_registry
+
+    emp = auth_headers(login(client, *EMP))
+    creatable = client.get("/api/requests/types", headers=emp,
+                          params={"creatable_only": True}).json()
+    assert isinstance(creatable, list)
+
+    db = SessionLocal()
+    try:
+        hide_legacy = ff.is_enabled(db, 1, ff.V15_LEGACY_CATALOG_HIDDEN)
+    finally:
+        db.close()
+
+    if not hide_legacy:
+        return  # الفلاج مقفول → الـbackend يقبل الكل، مافيش تعارض
+
+    # مافيش نوع في القائمة له canonical مختلف عن كوده (= legacy alias يرفضه POST)
+    for t in creatable:
+        info = v15_registry.resolve_request(t["code"])
+        canonical = info.get("canonical")
+        assert not (canonical and canonical != t["code"]), (
+            f"creation catalog exposes legacy alias '{t['code']}' "
+            f"(canonical={canonical}) which POST /requests rejects"
+        )
+
+
+def test_return_resubmit_reapprove_full_cycle(client):
+    """FIX — دورة كاملة: submit → return → resubmit → approve بنفس المستخدم.
+
+    كان الـdouble-decide guard بيشوف القرار القديم (returned) ويرفض القرار الجديد
+    بـ409 "اتخذت قرارًا مسبقًا" — الطلب يتجمّد للأبد بعد أي إعادة تقديم.
+    """
+    emp_h = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=emp_h, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك الاختبار", "purpose": "قرض شخصي"},
+    })
+    if r.status_code != 201:
+        return
+    req_id = r.json()["id"]
+
+    mgr = auth_headers(login(client, *MGR))
+    # 1) المدير يرجّع الطلب للتصحيح
+    ret = client.post(f"/api/requests/{req_id}/decide", headers=mgr, json={
+        "decision": "returned", "note": "الجهة الموجه إليها غير واضحة",
+    })
+    if ret.status_code != 200:
+        return  # المدير مش المعتمِد للمرحلة الأولى في هذا النوع
+    assert client.get(f"/api/requests/{req_id}", headers=mgr).json()["status"] == "returned"
+
+    # 2) الموظف يعيد التقديم ببيانات مصحّحة
+    re = client.post(f"/api/requests/{req_id}/resubmit", headers=emp_h, json={
+        "payload_json": {"addressed_to": "بنك الكويت الوطني", "purpose": "قرض سكني"},
+    })
+    assert re.status_code == 200, re.text
+    after_resubmit = client.get(f"/api/requests/{req_id}", headers=mgr).json()
+    assert after_resubmit["status"] == "pending"
+    assert after_resubmit["current_stage"] == 0
+
+    # 3) نفس المدير يعتمد الآن — يجب ألا يرجع 409
+    ok = client.post(f"/api/requests/{req_id}/decide", headers=mgr, json={
+        "decision": "approved", "note": "تم التصحيح",
+    })
+    assert ok.status_code == 200, \
+        f"resubmit cycle blocked by stale double-decide guard: {ok.status_code} {ok.text}"
+    assert client.get(f"/api/requests/{req_id}", headers=mgr).json()["status"] != "returned"
+
+
 def test_apply_failed_status_map(client):
     """P0-#6 — status_info('apply_failed') يرجع v15='FAILED' و label واضح."""
     from app.workflow import status_info
@@ -1420,6 +1492,51 @@ def test_gov_contract_pdf_and_html_both_generate(client):
     assert r_pdf.status_code == 200
     assert r_pdf.headers["content-type"] == "application/pdf"
     assert r_pdf.content[:4] == b"%PDF"
+
+
+def test_contract_regeneration_bumps_version_single_current(client):
+    """QA §9 — إعادة التوليد: version يزيد، ونسخة حالية واحدة فقط.
+
+    الخلل السابق: كل توليد كان يكتب version=1 و is_current=True بلا تنزيل السابق،
+    فينتج عدة "نسخ حالية" وتاريخ نسخ يرجع دائمًا لـv1.
+    """
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    _seed_contract_template(client, "GOV-CONTRACT-HIRE")
+    mgr = auth_headers(login(client, *MGR))
+    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+
+    r1 = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
+    assert r1.status_code == 200
+    r2 = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
+    assert r2.status_code == 200
+    r3 = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
+    assert r3.status_code == 200
+
+    doc_code = f"gov_contract_hire_{emp_id}"
+    db = SessionLocal()
+    try:
+        rows = db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == emp_id,
+            models.Document.document_type_code == doc_code,
+        )).all()
+        currents = [d for d in rows if d.is_current]
+        assert len(currents) == 1, \
+            f"expected exactly one current, found {len(currents)}"
+        versions = sorted(d.version for d in rows)
+        # النسخ تتصاعد 1,2,3... بلا تكرار
+        assert versions == list(range(1, len(rows) + 1)), \
+            f"versions not sequential: {versions}"
+        assert currents[0].version == max(versions), \
+            "current should be the highest version"
+        # كل نسخة لها reference_no فريد
+        refs = [d.reference_no for d in rows]
+        assert len(set(refs)) == len(refs), "reference numbers must be unique per version"
+    finally:
+        db.close()
 
 
 def test_gov_contract_saves_as_issued_document(client):

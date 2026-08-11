@@ -84,8 +84,15 @@ def registry(user: models.User = Depends(get_current_user)):
 
 
 @router.get("/types")
-def list_request_types(category: str | None = None,
+def list_request_types(category: str | None = None, creatable_only: bool = False,
                        user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """كتالوج أنواع الطلبات.
+
+    creatable_only=true → يعيد فقط الأنواع التي يقبلها POST /requests فعليًا.
+    نفس المنطق الذي يطبّقه submit_request للرفض (LEGACY_ALIAS_BLOCKED)، حتى لا
+    تعرض شاشة "طلب جديد" نوعًا يرفضه الخادم عند الإرسال. الأنواع القديمة تظل
+    متاحة بلا الفلتر لأغراض القراءة/الترحيل وعرض الطلبات التاريخية.
+    """
     cid = user.company_id
     q = select(models.RequestType).where(models.RequestType.is_active == True)  # noqa: E712
     rows = db.scalars(q).all()
@@ -114,6 +121,12 @@ def list_request_types(category: str | None = None,
         canonical_info = v15_registry.resolve_request(rt.code)
         canonical_code = canonical_info.get("canonical")
         if hide_legacy and not canonical_code:
+            continue
+        # FIX — creation catalog: يجب أن يطابق ما يقبله POST /requests بالضبط.
+        # submit_request يرفض بـ LEGACY_ALIAS_BLOCKED أي كود له canonical مختلف عنه
+        # (عندما v15_legacy_catalog_hidden مفعّل). كنا نعرضه في القائمة رغم ذلك،
+        # فيختاره المستخدم ويصطدم بخطأ عند الإرسال.
+        if creatable_only and hide_legacy and canonical_code and canonical_code != rt.code:
             continue
         entry: dict = {
             "code": rt.code, "name": rt.name, "category": rt.category,
@@ -304,14 +317,27 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
             f"(طول {len(chain)}). أعد فتح الطلب."
         ))
     stage = chain[req.current_stage]
-    # P0-#6 — منع double action: تأكد إن الـuser ما اتخذ قرار في هذه المرحلة مسبقًا
+    # P0-#6 + FIX — منع double action داخل نفس الدورة فقط.
+    # بعد resubmit تُسجَّل علامة (stage_order=-1, decision='resubmitted')؛ أي قرار قديم
+    # قبلها يخص دورة سابقة ولا يمنع اتخاذ قرار جديد. بدون هذا الفلتر كان الطلب المُعاد
+    # تقديمه يرجع 409 "اتخذت قرارًا مسبقًا" فيتجمّد للأبد.
     from sqlalchemy import select
-    already_decided = db.scalar(select(models.RequestApproval).where(
+    last_resubmit = db.scalar(select(models.RequestApproval).where(
+        models.RequestApproval.request_id == req.id,
+        models.RequestApproval.decision == "resubmitted",
+    ).order_by(models.RequestApproval.id.desc()))
+
+    dup_q = select(models.RequestApproval).where(
         models.RequestApproval.request_id == req.id,
         models.RequestApproval.stage_order == req.current_stage,
         models.RequestApproval.approver_user_id == user.id,
         models.RequestApproval.decision.in_(("approved", "rejected", "returned")),
-    ))
+    )
+    if last_resubmit:
+        # الدورة الحالية = القرارات المُسجَّلة بعد آخر إعادة تقديم فقط
+        dup_q = dup_q.where(models.RequestApproval.id > last_resubmit.id)
+
+    already_decided = db.scalar(dup_q)
     if already_decided:
         raise HTTPException(status_code=409,
                           detail="اتخذت قرارًا في هذه المرحلة مسبقًا — لا يمكن التكرار")

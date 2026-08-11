@@ -1002,12 +1002,24 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
         f.write(content_bytes)
 
     doc_type_code = f"{tpl_code.lower().replace('-', '_')}_{emp.id}"
+    # FIX — versioning: كل توليد جديد يأخذ version+1 ويُنزّل السابق من is_current.
+    # قبل الإصلاح كان كل توليد يكتب version=1 و is_current=True بلا تنزيل السابق،
+    # فينتج عدة نسخ "حالية" لنفس العقد وتاريخ نسخ يرجع دائمًا لـv1.
+    prev = db.scalars(select(models.Document).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == emp.id,
+        models.Document.document_type_code == doc_type_code,
+    )).all()
+    next_version = max((d.version for d in prev), default=0) + 1
+    for d in prev:
+        d.is_current = False
+
     doc = models.Document(
         company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
         document_type_code=doc_type_code,
         title=f"{title_ar} — {emp.name}",
         file_path=fpath, mime=mime,
-        version=1, is_current=True, uploaded_by=user.id,
+        version=next_version, is_current=True, uploaded_by=user.id,
         is_issued=True, reference_no=reference_no,
         template_version=tpl.version or 1, checksum_sha256=checksum,
         generated_at=datetime.utcnow(), generated_by=user.id,

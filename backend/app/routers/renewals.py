@@ -586,12 +586,23 @@ def generate_gov_contract(rid: int, request: Request,
     with open(fpath, "wb") as f:
         f.write(content_bytes)
 
+    # FIX — versioning: إعادة التوليد تأخذ version+1 وتُنزّل السابق (نسخة حالية واحدة فقط)
+    doc_code = f"gov_contract_renewal_{rn.id}"
+    prev = db.scalars(select(models.Document).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == emp.id,
+        models.Document.document_type_code == doc_code,
+    )).all()
+    next_version = max((d.version for d in prev), default=0) + 1
+    for d in prev:
+        d.is_current = False
+
     doc = models.Document(
         company_id=rn.company_id, entity_type="employee", entity_id=emp.id,
-        document_type_code=f"gov_contract_renewal_{rn.id}",
+        document_type_code=doc_code,
         title=f"العقد الحكومي — تجديد إقامة {emp.name}",
         file_path=fpath, mime=mime,
-        version=1, is_current=True, uploaded_by=user.id,
+        version=next_version, is_current=True, uploaded_by=user.id,
         is_issued=True, reference_no=reference_no,
         template_version=tpl.version or 1, checksum_sha256=checksum,
         generated_at=datetime.utcnow(), generated_by=user.id,

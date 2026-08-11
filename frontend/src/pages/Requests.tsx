@@ -37,7 +37,9 @@ export default function Requests() {
   };
   useEffect(() => {
     load();
-    api.get("/requests/types").then((r) => { setTypes(r.data); setTypeCode(r.data[0]?.code || ""); });
+    // FIX — كتالوج الإنشاء: الأنواع التي يقبلها POST فعليًا فقط (بلا legacy aliases)
+    api.get("/requests/types", { params: { creatable_only: true } })
+      .then((r) => { setTypes(r.data); setTypeCode(r.data[0]?.code || ""); });
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
