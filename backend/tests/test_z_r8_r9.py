@@ -970,6 +970,64 @@ def test_workflow_double_decide_rejected(client):
         assert r2.status_code in (403, 409), r2.text
 
 
+def test_employees_list_survives_nonconforming_legacy_rows(client):
+    """ROOT CAUSE — GET /employees كان 500 لأن EmployeeOut يرث مدقّقات الإدخال.
+
+    أي صف مُدخَل يدويًا بـSQL (رقم مدني بحروف/طول مختلف، attendance_mode خارج
+    القائمة) كان يرفع ValidationError داخل response_model فيسقط القائمة كلها
+    بـ500 — لشركة واحدة فقط (اللي بياناتها دخلت يدويًا) بينما الأخرى تعمل.
+    """
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    bad_ids = []
+    try:
+        cid = db.scalar(select(models.Company.id).order_by(models.Company.id))
+        # صفوف تحاكي الإدخال اليدوي المخالف لمدقّقات الإدخال
+        for civ, mode, name in [
+            ("ABC-123", "none", "Legacy Non-Digit Civil ID"),   # civil_id بحروف وشرطة
+            ("12345", "none", "Legacy Short Civil ID"),          # أقصر من 6
+            ("277113001845", "manual", "Legacy Bad Attendance"), # نمط حضور خارج القائمة
+        ]:
+            e = models.Employee(
+                company_id=cid, civil_id=civ, name=name, job_title="اختبار",
+                basic_salary=100, contract_type="indefinite", status="active",
+                attendance_mode=mode, attendance_exempt=False,
+                annual_leave_balance=30,
+            )
+            db.add(e)
+            db.flush()
+            bad_ids.append(e.id)
+        db.commit()
+
+        # القائمة لازم تُرجَع 200 وتشمل الصفوف المخالفة كما هي في القاعدة
+        mgr = auth_headers(login(client, *MGR))
+        r = client.get("/api/employees", headers=mgr, params={"limit": 500})
+        assert r.status_code == 200, \
+            f"list broke on non-conforming legacy rows: {r.status_code} {r.text[:400]}"
+        returned_ids = {e["id"] for e in r.json()}
+        for bid in bad_ids:
+            assert bid in returned_ids, f"legacy row {bid} silently dropped from list"
+
+        # ولكل الأدوار الإدارية — مش المدير بس
+        hr = auth_headers(login(client, *HR))
+        assert client.get("/api/employees", headers=hr,
+                         params={"limit": 500}).status_code == 200
+    finally:
+        db2 = SessionLocal()
+        try:
+            for bid in bad_ids:
+                obj = db2.get(models.Employee, bid)
+                if obj:
+                    db2.delete(obj)
+            db2.commit()
+        finally:
+            db2.close()
+        db.close()
+
+
 def test_creatable_catalog_matches_what_post_accepts(client):
     """FIX — كل نوع في creation catalog لازم POST يقبله (مافيش legacy معروض ثم مرفوض)."""
     from app import feature_flags as ff

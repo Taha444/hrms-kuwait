@@ -193,13 +193,54 @@ class EmployeeIn(BaseModel):
         return v
 
 
-class EmployeeOut(EmployeeIn):
+class EmployeeOut(BaseModel):
+    """مخطط القراءة — لا يرث مدقّقات الإدخال عمدًا.
+
+    الجذر الحقيقي لعطل GET /employees (500): كان EmployeeOut يرث EmployeeIn
+    ومعه field_validators الخاصة بالإدخال (civil_id بين 6 و12 رقمًا،
+    attendance_mode ضمن قائمة، القيم غير سالبة). Pydantic يشغّل هذه المدقّقات
+    أيضًا عند بناء الاستجابة، فأي صف قديم أو مُدخَل يدويًا بـSQL لا يطابقها
+    يرفع ValidationError داخل response_model فيتحول لـ500 — ويسقط القائمة
+    بالكامل بسبب صف واحد، بينما تعمل شركة أخرى دخلت بياناتها عبر الـAPI.
+
+    القاعدة: التحقق مكانه المدخلات (EmployeeIn/EmployeeCreateIn) فقط. القراءة
+    تعكس ما في قاعدة البيانات كما هو، والبيانات غير المطابقة تُعالَج بتنظيف
+    بيانات صريح لا بإسقاط الاستجابة.
+    """
     model_config = ConfigDict(from_attributes=True)
+
     id: int
     company_id: int
     status: str
-    # PILOT-P0-6 — الرقم الوظيفي المرئي (read-only، مولَّد تلقائيًا)
-    employee_no: str | None = None
+    employee_no: str | None = None  # PILOT-P0-6 — الرقم الوظيفي المرئي (read-only)
+    civil_id: str | None = None
+    name: str
+    name_en: str | None = None
+    nationality: str | None = None
+    gender: str | None = None
+    date_of_birth: date | None = None
+    marital_status: str | None = None
+    email: str | None = None
+    passport_number: str | None = None
+    passport_expiry: date | None = None
+    health_insurance: str | None = None
+    direct_manager_id: int | None = None
+    worker_type: str | None = None
+    job_title: str | None = None
+    basic_salary: float = 0
+    hire_date: date | None = None
+    contract_type: str = "indefinite"
+    license_id: int | None = None
+    actual_license_id: int | None = None
+    branch_id: int | None = None
+    actual_branch_id: int | None = None
+    department_id: int | None = None
+    shift_id: int | None = None
+    attendance_mode: str = "none"
+    annual_leave_balance: float = 30
+    phone: str | None = None
+    attendance_exempt: bool = False
+    attendance_exempt_reason: str | None = None
 
 
 class EmployeeCreateIn(EmployeeIn):
