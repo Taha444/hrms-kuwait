@@ -423,6 +423,264 @@ SCHEMAS: dict[str, dict] = {
 }
 
 
+# ============================================================================
+# نماذج أنواع V1.3 التي لم يكن لها schema — كانت تسقط على النموذج العام
+# (تاريخ/مبلغ/تفاصيل). كل نموذج هنا مصمَّم على غرض نوعه وسلسلة اعتماده الفعلية.
+# ============================================================================
+SCHEMAS.update({
+    # ------------------------- الحضور والإجازات -------------------------
+    "REQLATE": {  # تبرير تأخير — المسؤول المباشر ثم شؤون الموظفين
+        "fields": [
+            _field("late_date", "تاريخ التأخير", "date", required=True),
+            _field("expected_time", "وقت الحضور المقرر", "time", required=True),
+            _field("actual_time", "وقت الحضور الفعلي", "time", required=True),
+            _field("late_cause", "سبب التأخير", "select", required=True,
+                   options=[
+                       {"value": "traffic", "label": "ازدحام مروري"},
+                       {"value": "medical", "label": "ظرف صحي"},
+                       {"value": "family", "label": "ظرف عائلي طارئ"},
+                       {"value": "transport", "label": "عطل مواصلات"},
+                       {"value": "other", "label": "سبب آخر"},
+                   ]),
+            REASON,
+        ],
+        # الظرف الصحي يستوجب إثباتًا — بقية الأسباب لا
+        "conditional": [
+            {"when": {"late_cause": "medical"}, "require_attachments": ["medical_note"]},
+        ],
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["late_justification"], "strict_validation": False, "enforce_required": True},
+    },
+    "REQSHIFT": {  # تغيير وردية — المسؤول المباشر ثم المدير العام
+        "fields": [
+            _field("current_shift", "الوردية الحالية", "text", read_only=True),
+            _field("requested_shift_id", "الوردية المطلوبة", "shift_ref", required=True),
+            _field("effective_from", "اعتبارًا من تاريخ", "date", required=True),
+            _field("is_permanent", "دائم أم مؤقت", "select", required=True,
+                   options=[
+                       {"value": "permanent", "label": "تغيير دائم"},
+                       {"value": "temporary", "label": "تغيير مؤقت"},
+                   ]),
+            _field("effective_to", "حتى تاريخ (للمؤقت)", "date"),
+            REASON,
+        ],
+        "conditional": [
+            {"when": {"is_permanent": "temporary"}, "require": ["effective_to"]},
+        ],
+        "validation": {"end_gte_start": ["effective_from", "effective_to"]},
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["shift_change"], "strict_validation": False, "enforce_required": True},
+    },
+    "REQWLOC": {  # تكليف مؤقت بموقع/فرع — 3 مراحل اعتماد
+        "fields": [
+            _field("target_branch_id", "الفرع أو الموقع المطلوب", "branch_ref", required=True),
+            _field("from_date", "من تاريخ", "date", required=True),
+            _field("to_date", "إلى تاريخ", "date", required=True),
+            _field("transport_needed", "يحتاج مواصلات", "checkbox"),
+            _field("housing_needed", "يحتاج سكن", "checkbox"),
+            REASON,
+        ],
+        "validation": {"end_gte_start": ["from_date", "to_date"]},
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["temp_assignment", "work_location"],
+                 "strict_validation": False, "enforce_required": True},
+    },
+    "REQMIS": {  # مهمة عمل خارجية — المسؤول المباشر ثم المدير العام
+        "fields": [
+            _field("destination", "جهة المهمة", "text", required=True, max_length=200),
+            _field("from_date", "من تاريخ", "date", required=True),
+            _field("to_date", "إلى تاريخ", "date", required=True),
+            _field("mission_type", "نوع المهمة", "select", required=True,
+                   options=[
+                       {"value": "government", "label": "مراجعة جهة حكومية"},
+                       {"value": "client", "label": "زيارة عميل أو مورّد"},
+                       {"value": "training", "label": "تدريب أو مؤتمر"},
+                       {"value": "other", "label": "أخرى"},
+                   ]),
+            _field("estimated_cost", "التكلفة التقديرية (د.ك)", "number", min=0),
+            REASON,
+        ],
+        "validation": {"end_gte_start": ["from_date", "to_date"]},
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["mission", "business_trip"], "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- الإقامة والمعاملات الحكومية -------------------------
+    "REQWP": {  # تجديد إذن عمل — شؤون الموظفين ثم المدير ثم المندوب
+        "fields": [
+            _field("permit_no", "رقم إذن العمل الحالي", "text", required=True, max_length=40),
+            _field("permit_expiry", "تاريخ انتهاء الإذن", "date", required=True),
+            _field("profession", "المهنة في الإذن", "text", max_length=150),
+            _field("license_id", "الترخيص التابع له", "license_ref"),
+            _field("urgency", "درجة الاستعجال", "select",
+                   options=[
+                       {"value": "normal", "label": "عادي"},
+                       {"value": "urgent", "label": "مستعجل (قارب على الانتهاء)"},
+                   ]),
+            REASON,
+        ],
+        "attachments": {"required": [], "optional": ["current_permit", "passport_copy"]},
+        "meta": {"legacy_aliases": ["work_permit_renewal"], "strict_validation": False, "enforce_required": True},
+    },
+    "REQTRFLIC": {  # نقل عامل بين فرع أو ترخيص — 3 مراحل
+        "fields": [
+            _field("transfer_kind", "نوع النقل", "select", required=True,
+                   options=[
+                       {"value": "branch", "label": "نقل بين فروع"},
+                       {"value": "license", "label": "نقل بين تراخيص"},
+                       {"value": "both", "label": "نقل فرع وترخيص معًا"},
+                   ]),
+            _field("to_branch_id", "الفرع الجديد", "branch_ref"),
+            _field("to_license_id", "الترخيص الجديد", "license_ref"),
+            _field("effective_date", "تاريخ النفاذ", "date", required=True),
+            _field("gov_transaction_needed", "يستلزم معاملة حكومية", "checkbox"),
+            REASON,
+        ],
+        "conditional": [
+            {"when": {"transfer_kind": "branch"}, "require": ["to_branch_id"]},
+            {"when": {"transfer_kind": "license"}, "require": ["to_license_id"]},
+            {"when": {"transfer_kind": "both"}, "require": ["to_branch_id", "to_license_id"]},
+        ],
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["license_transfer"], "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- بيانات الموظف والمستندات -------------------------
+    "REQCONTACT": {  # تحديث بيانات الاتصال والطوارئ — شؤون الموظفين فقط
+        "fields": [
+            _field("new_phone", "رقم الهاتف الجديد", "text", max_length=30),
+            _field("new_email", "البريد الإلكتروني الجديد", "text", max_length=150),
+            _field("new_address", "العنوان الجديد", "textarea", max_length=300),
+            _field("emergency_name", "اسم شخص الطوارئ", "text", max_length=150),
+            _field("emergency_relation", "صلة القرابة", "text", max_length=60),
+            _field("emergency_phone", "هاتف الطوارئ", "text", max_length=30),
+            NOTES,
+        ],
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["contact_update", "emergency_contact"],
+                 "strict_validation": False, "enforce_required": True},
+    },
+    "REQFILE": {  # نسخة من ملف أو مستند — شؤون الموظفين فقط
+        "fields": [
+            _field("document_kind", "المستند المطلوب", "select", required=True,
+                   options=[
+                       {"value": "contract", "label": "عقد العمل"},
+                       {"value": "payslips", "label": "قسائم رواتب"},
+                       {"value": "certificates", "label": "شهادات صادرة"},
+                       {"value": "attendance", "label": "سجل حضور"},
+                       {"value": "full_file", "label": "الملف كاملًا"},
+                       {"value": "other", "label": "مستند آخر"},
+                   ]),
+            _field("period_from", "من تاريخ (إن وُجد)", "date"),
+            _field("period_to", "إلى تاريخ (إن وُجد)", "date"),
+            _field("copies", "عدد النسخ", "number", min=1, max=5),
+            _field("delivery_method", "طريقة التسليم", "select",
+                   options=[
+                       {"value": "pickup", "label": "استلام باليد"},
+                       {"value": "email", "label": "بريد إلكتروني"},
+                   ]),
+            REASON,
+        ],
+        "validation": {"end_gte_start": ["period_from", "period_to"]},
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["file_copy"], "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- الطلبات المالية -------------------------
+    "REQALLOW": {  # بدل أو ميزة — المسؤول المباشر ثم المدير العام
+        "fields": [
+            _field("allowance_type", "نوع البدل", "select", required=True,
+                   options=[
+                       {"value": "transport", "label": "بدل مواصلات"},
+                       {"value": "housing", "label": "بدل سكن"},
+                       {"value": "phone", "label": "بدل هاتف"},
+                       {"value": "nature_of_work", "label": "بدل طبيعة عمل"},
+                       {"value": "other", "label": "بدل آخر"},
+                   ]),
+            _field("amount", "المبلغ الشهري المطلوب (د.ك)", "number", required=True, min=0),
+            _field("effective_from", "اعتبارًا من", "date", required=True),
+            _field("is_recurring", "شهري متكرر", "checkbox"),
+            REASON,
+        ],
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["allowance"], "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- الشكاوى والتظلمات -------------------------
+    "REQVIO": {  # اعتراض على مخالفة — شؤون الموظفين ثم المدير العام
+        "fields": [
+            _field("violation_ref", "رقم المخالفة أو تاريخها", "text", required=True,
+                   max_length=80),
+            _field("violation_date", "تاريخ المخالفة", "date", required=True),
+            _field("objection_ground", "أساس الاعتراض", "select", required=True,
+                   options=[
+                       {"value": "not_committed", "label": "لم أرتكب المخالفة"},
+                       {"value": "excuse", "label": "لديّ عذر مقبول"},
+                       {"value": "disproportionate", "label": "الجزاء غير متناسب"},
+                       {"value": "procedural", "label": "خلل في الإجراء"},
+                   ]),
+            REASON,
+        ],
+        # الاعتراض بعذر يستلزم إثباتًا يدعمه
+        "conditional": [
+            {"when": {"objection_ground": "excuse"},
+             "require_attachments": ["supporting_doc"]},
+        ],
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["violation_objection"], "strict_validation": False, "enforce_required": True},
+    },
+    "REQWARN": {  # إقرار أو رد على إنذار — شؤون الموظفين فقط
+        "fields": [
+            _field("warning_ref", "رقم الإنذار أو تاريخه", "text", required=True,
+                   max_length=80),
+            _field("acknowledgment", "الموقف من الإنذار", "select", required=True,
+                   options=[
+                       {"value": "acknowledge", "label": "أقر بالاطلاع"},
+                       {"value": "acknowledge_disagree", "label": "أقر بالاطلاع مع الاعتراض"},
+                       {"value": "dispute", "label": "أعترض على مضمونه"},
+                   ]),
+            _field("response", "ردّي على الإنذار", "textarea", required=True, max_length=1000),
+        ],
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["warning_response"], "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- طلبات عامة -------------------------
+    "REQGEN": {  # طلب عام أو اقتراح — المسؤول المباشر فقط
+        "fields": [
+            _field("subject", "الموضوع", "text", required=True, max_length=200),
+            _field("request_kind", "نوع الطلب", "select", required=True,
+                   options=[
+                       {"value": "suggestion", "label": "اقتراح تطوير"},
+                       {"value": "request", "label": "طلب إداري"},
+                       {"value": "inquiry", "label": "استفسار"},
+                   ]),
+            _field("details", "التفاصيل", "textarea", required=True, max_length=1000),
+        ],
+        "attachments": {"required": [], "optional": ["supporting_doc"]},
+        "meta": {"legacy_aliases": ["general_request", "suggestion"],
+                 "strict_validation": False, "enforce_required": True},
+    },
+    # ------------------------- العقود وإنهاء الخدمة -------------------------
+    "REQCON": {  # تجديد عقد أو عدم تجديد — شؤون الموظفين ثم المدير العام
+        "fields": [
+            _field("current_contract_end", "تاريخ انتهاء العقد الحالي", "date", required=True),
+            _field("decision", "المطلوب", "select", required=True,
+                   options=[
+                       {"value": "renew", "label": "تجديد العقد"},
+                       {"value": "not_renew", "label": "عدم التجديد"},
+                       {"value": "amend", "label": "تجديد مع تعديل شروط"},
+                   ]),
+            _field("new_duration_months", "مدة التجديد (بالأشهر)", "number", min=1, max=60),
+            _field("proposed_changes", "التعديلات المقترحة", "textarea", max_length=600),
+            REASON,
+        ],
+        "conditional": [
+            {"when": {"decision": "renew"}, "require": ["new_duration_months"]},
+            {"when": {"decision": "amend"},
+             "require": ["new_duration_months", "proposed_changes"]},
+        ],
+        "attachments": {"required": [], "optional": []},
+        "meta": {"legacy_aliases": ["contract_renewal"], "strict_validation": False, "enforce_required": True},
+    },
+})
+
+
 # ---------------------------------------------------------------------------
 # ربط أكواد أنواع الطلبات (V1.3، جدول request_types) بمفاتيح الـschemas.
 #

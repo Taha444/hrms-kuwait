@@ -1068,6 +1068,63 @@ def test_spec_request_types_have_real_schemas(client):
         assert field in fields, f"{code} resolved to the wrong schema (missing {field})"
 
 
+def test_every_employee_request_type_has_a_real_form(client):
+    """كل نوع طلب يملؤه موظف لازم له نموذج حقيقي — لا يسقط على النموذج العام.
+    الأنواع الإدارية (ADM*) مستثناة: سجلات داخلية لا يملؤها موظف."""
+    from app.form_schemas import get_schema
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    generic = [rt["code"] for rt in DEFAULT_REQUEST_TYPES
+               if not rt["code"].startswith("ADM") and not get_schema(rt["code"])]
+    assert not generic, f"types still falling back to the generic form: {generic}"
+
+
+def test_new_schemas_fields_match_their_purpose(client):
+    """النماذج الـ13 الجديدة — عيّنة حقول تثبت أن كل نموذج يخصّ نوعه فعلًا
+    وليس نسخة عامة أعيد استخدامها."""
+    from app.form_schemas import get_schema
+
+    expect = {
+        "REQLATE": {"late_date", "expected_time", "actual_time", "late_cause"},
+        "REQSHIFT": {"requested_shift_id", "effective_from", "is_permanent"},
+        "REQWLOC": {"target_branch_id", "from_date", "to_date"},
+        "REQMIS": {"destination", "mission_type"},
+        "REQWP": {"permit_no", "permit_expiry"},
+        "REQTRFLIC": {"transfer_kind", "effective_date"},
+        "REQCONTACT": {"emergency_name", "emergency_phone"},
+        "REQFILE": {"document_kind", "delivery_method"},
+        "REQALLOW": {"allowance_type", "amount"},
+        "REQVIO": {"violation_ref", "objection_ground"},
+        "REQWARN": {"warning_ref", "acknowledgment", "response"},
+        "REQGEN": {"subject", "request_kind", "details"},
+        "REQCON": {"current_contract_end", "decision"},
+    }
+    for code, must_have in expect.items():
+        schema = get_schema(code)
+        assert schema, f"{code} has no schema"
+        fields = {f["code"] for f in schema["fields"]}
+        assert must_have <= fields, f"{code} missing {must_have - fields}"
+
+
+def test_required_fields_derived_from_schema(client):
+    """الحقول الإلزامية تُشتق من الـschema — لا قائمة يدوية موازية.
+    نوع جديد يعلن required في نموذجه يُفرض تلقائيًا على الخادم."""
+    from app.routers.requests import _missing_required_fields
+
+    # REQMIS غير مسجّل في REQUIRED_PAYLOAD_FIELDS — الاشتقاق هو ما يحميه
+    missing = _missing_required_fields("REQMIS", {"destination": "وزارة الداخلية"})
+    assert "from_date" in missing and "to_date" in missing and "mission_type" in missing
+
+    complete = _missing_required_fields("REQMIS", {
+        "destination": "وزارة الداخلية", "from_date": "2027-01-01",
+        "to_date": "2027-01-02", "mission_type": "government", "reason": "مراجعة",
+    })
+    assert complete == []
+
+    # التجاوز الصريح يبقى مقدَّمًا (أسماء حقول الواجهة تختلف عن الـschema)
+    assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
+
+
 def test_training_code_not_mapped_to_transfer_schema(client):
     """الربط بالاسم وحده كان سيخلط REQTRN (طلب تدريب) مع REQTRANS (نقل)."""
     from app.form_schemas import get_schema

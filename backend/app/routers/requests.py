@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import models, schemas, workflow
+from .. import form_schemas, models, schemas, workflow
 from ..config import settings
 from ..database import get_db
 from ..deps import (assert_same_company, audit, get_current_user, require_any_perm,
@@ -34,13 +34,38 @@ REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
 
 
 def _missing_required_fields(code: str, payload: dict) -> list[str]:
+    """الحقول الإلزامية الناقصة في الحمولة.
+
+    ترتيب المصادر:
+    1. REQUIRED_PAYLOAD_FIELDS — تجاوز صريح للأنواع التي تستخدم واجهتها أسماء
+       حقول تختلف عن الـschema (مثل salary_certificate: الواجهة ترسل
+       addressed_to بينما schema REQCERT يسمّيه purpose).
+    2. الحقول المعلَّمة required في schema يحمل meta.enforce_required — يُشتق
+       تلقائيًا فلا يحتاج النوع تسجيلًا يدويًا هنا.
+    3. لا هذا ولا ذاك: يكفي ألا تكون الحمولة فارغة تمامًا.
+
+    لماذا الاشتقاق اختياري (enforce_required) لا شامل: أعلام required في نماذج
+    V1.3 القديمة لم تُفرَض على الخادم يومًا، فلم تُختبر مقابل الاستخدام الفعلي
+    وبعضها لا يطابقه — REQEOS مثلاً يعلن reason/used_leave_days إلزاميين بينما
+    تدفق HR الحقيقي يرسل hire_date/last_day/salary_basis. تعميم الفرض يكسر
+    تدفقات عاملة بقيود غير محقَّقة. العلامة تُضاف لكل نوع بعد التحقق من نموذجه
+    مقابل استخدامه.
+
+    ملاحظة: قواعد conditional.require يفرضها validate_payload وهي مشروطة
+    بـmeta.strict_validation، وهي مقفولة لكل أنواع V1.3 حاليًا.
+    """
     def _blank(v):
         return v is None or (isinstance(v, str) and not v.strip())
 
     required = REQUIRED_PAYLOAD_FIELDS.get(code)
-    if required is not None:
+    if required is None:
+        schema = form_schemas.get_schema(code)
+        if schema and (schema.get("meta") or {}).get("enforce_required"):
+            required = [f["code"] for f in schema.get("fields") or []
+                        if f.get("required")]
+    if required:
         return [k for k in required if _blank(payload.get(k))]
-    # لا نموذج مخصّص لهذا النوع: يكفي ألا تكون الحمولة فارغة تمامًا
+    # لا حقول إلزامية معلَنة: يكفي ألا تكون الحمولة فارغة تمامًا
     if not payload or all(_blank(v) for v in payload.values()):
         return ["details"]
     return []
