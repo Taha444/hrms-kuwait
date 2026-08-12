@@ -7,7 +7,9 @@ def test_manager_cannot_see_or_decide_grievance(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQGRV",
-        "payload_json": {"subject": "شكوى ضد المدير العام", "details": "..."}})
+        # category حقل إلزامي في نموذج التظلّم — يعرضه النموذج العام للمستخدم
+        "payload_json": {"subject": "شكوى ضد المدير العام",
+                         "category": "management", "details": "..."}})
     assert r.status_code == 201, r.text
     rid = r.json()["id"]
 

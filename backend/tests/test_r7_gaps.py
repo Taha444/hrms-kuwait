@@ -18,7 +18,7 @@ def test_r7e_payroll_objection_requires_payslip_copy(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQPAY",
-        "payload_json": {"period": "2026-06", "reason": "خطأ"},
+        "payload_json": {"payroll_period": "2026-06", "reason": "خطأ"},
     })
     assert r.status_code == 400
     assert "payslip_copy" in r.text
@@ -26,7 +26,7 @@ def test_r7e_payroll_objection_requires_payslip_copy(client):
     # مع المرفق → 201
     r2 = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQPAY",
-        "payload_json": {"period": "2026-07", "reason": "خطأ",
+        "payload_json": {"payroll_period": "2026-07", "reason": "خطأ",
                          "_attachments": ["payslip_copy"]},
     })
     assert r2.status_code == 201, r2.text

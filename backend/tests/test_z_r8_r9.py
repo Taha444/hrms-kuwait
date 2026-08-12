@@ -1125,6 +1125,52 @@ def test_required_fields_derived_from_schema(client):
     assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
 
 
+def test_required_enforcement_coverage_is_deliberate(client):
+    """كل schema إما يفرض حقوله الإلزامية أو له سبب موثّق للاستثناء.
+    يمنع نموذجًا جديدًا من الانضمام صامتًا لقائمة غير المفروضة."""
+    from app.form_schemas import SCHEMAS, get_schema
+    from app.routers.requests import REQUIRED_PAYLOAD_FIELDS as OVERRIDE
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    # مستثنون بأسباب مذكورة في form_schemas.py
+    EXPECTED_UNENFORCED = {
+        "REQEOS", "REQCLR",   # تُنشأ برمجيًا بحمولة خاصة
+        "REQTRAVEL",          # إذن مغادرة البلاد — لا نوع طلب يستخدمه بعد
+        "REQLV", "REQADV", "REQEXP", "REQBANK",  # أنواعها محكومة بتجاوز صريح
+    }
+    unenforced = {k for k, v in SCHEMAS.items()
+                  if not (v.get("meta") or {}).get("enforce_required")}
+    assert unenforced == EXPECTED_UNENFORCED, (
+        f"unexpected: {unenforced - EXPECTED_UNENFORCED}, "
+        f"newly enforced: {EXPECTED_UNENFORCED - unenforced}"
+    )
+
+    # ولا نوع طلب بلا حماية: إما تجاوز صريح، أو schema يفرض، أو استثناء موثّق
+    codes = [rt["code"] for rt in DEFAULT_REQUEST_TYPES]
+    unguarded = []
+    for c in codes:
+        if c in OVERRIDE or c.startswith("ADM"):
+            continue
+        s = get_schema(c)
+        if s and not (s.get("meta") or {}).get("enforce_required"):
+            unguarded.append(c)
+    assert set(unguarded) <= {"REQEOS", "REQCLR"}, \
+        f"request types with unenforced schemas: {unguarded}"
+
+
+def test_early_departure_does_not_demand_passport(client):
+    """REQEXIT اسمه 'طلب مغادرة مبكرة' لكن schema REQEXIT يخص السفر للخارج،
+    فكان يطالب طالب الانصراف المبكر بجواز ووجهة. أُعيد توجيهه لنموذج الإذن."""
+    from app.form_schemas import get_schema
+    s = get_schema("REQEXIT")
+    fields = {f["code"] for f in s["fields"]}
+    assert "passport_no" not in fields and "destination" not in fields
+    assert {"permission_date", "subtype", "from_time"} <= fields
+    subtypes = {o["value"] for f in s["fields"] if f["code"] == "subtype"
+                for o in f.get("options", [])}
+    assert "early_departure" in subtypes
+
+
 def test_training_code_not_mapped_to_transfer_schema(client):
     """الربط بالاسم وحده كان سيخلط REQTRN (طلب تدريب) مع REQTRANS (نقل)."""
     from app.form_schemas import get_schema

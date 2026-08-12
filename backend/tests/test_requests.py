@@ -50,7 +50,7 @@ def test_accountant_can_decide_approval_stage_assigned_to_them(client):
     rid = client.post("/api/requests", headers=auth_headers(emp), json={
         "request_type_code": "REQPAY",
         # R7-E — payslip_copy مرفق مطلوب لاعتراض الراتب
-        "payload_json": {"period": "2026-06", "reason": "خطأ حساب",
+        "payload_json": {"payroll_period": "2026-06", "reason": "خطأ حساب",
                          "_attachments": ["payslip_copy"]},
     }).json()["id"]
     acc = login(client, "100000000007", "account123")

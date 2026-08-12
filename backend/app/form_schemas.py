@@ -393,8 +393,13 @@ SCHEMAS: dict[str, dict] = {
         "attachments": {"required": [], "optional": ["documents"]},
         "meta": {"legacy_aliases": ["government_transaction"]},
     },
-    # ------------------------- إذن مغادرة (سفر) -------------------------
-    "REQEXIT": {
+    # ------------------------- إذن مغادرة البلاد (سفر) -------------------------
+    # المفتاح كان "REQEXIT" فيتصادم مع نوع الطلب REQEXIT — واسمه "طلب مغادرة
+    # مبكرة" ونصّه في workflow.py يقول صراحة: «لا يستخدم هذا النموذج لإذن خروج
+    # السفر». التصادم كان يفرض على طالب الانصراف المبكر إدخال جواز ووجهة سفر.
+    # سُمّي باسم محتواه، وبقيت كنيته exit_permit عاملة. لا نوع طلب يستخدمه
+    # حاليًا — يبقى جاهزًا لنوع "إذن مغادرة البلاد" إن أُضيف.
+    "REQTRAVEL": {
         "fields": [
             _field("travel_date", "تاريخ السفر", "date", required=True),
             _field("return_date", "تاريخ العودة", "date", required=True),
@@ -696,6 +701,12 @@ SCHEMAS.update({
 REQUEST_TYPE_SCHEMA_MAP: dict[str, str] = {
     "REQPER": "REQPERM",        # طلب إذن أثناء الدوام
     "exit_permission": "REQPERM",  # طلب إذن خروج/استئذان (نفس نموذج الإذن)
+    # نوع REQEXIT اسمه "طلب مغادرة مبكرة" — عمل داخل الدوام. لكن schema REQEXIT
+    # يخص إذن مغادرة البلاد (destination/passport_no/return_date)، فكان يطالب من
+    # يطلب انصرافًا مبكرًا برقم جواز ووجهة سفر. المغادرة المبكرة أصلاً خيار
+    # (early_departure) داخل REQPERM، فهي موطنه الصحيح. schema REQEXIT يبقى
+    # متاحًا لنوع "إذن مغادرة البلاد" إن أُضيف لاحقًا.
+    "REQEXIT": "REQPERM",
     "REQCERTSAL": "REQCERT",    # طلب شهادة راتب
     "REQCERTEMP": "REQCERT",    # طلب شهادة لمن يهمه الأمر
     "REQCERTEXP": "REQCERT",    # طلب شهادة خبرة
@@ -707,6 +718,48 @@ REQUEST_TYPE_SCHEMA_MAP: dict[str, str] = {
     "REQTRF": "REQTRANS",       # طلب نقل داخلي
     "REQTRN": "REQTRAIN",       # طلب تدريب
 }
+
+
+# ---------------------------------------------------------------------------
+# النماذج القديمة التي روجعت حقولها الإلزامية مقابل استخدامها الفعلي، فصار
+# فرضها على الخادم آمنًا (meta.enforce_required).
+#
+# منهج المراجعة لكل نوع: مَن يرسل الحمولة فعلًا؟
+#   - نوع له نموذج مبرمج في Requests.tsx → أسماء حقوله تحكمها
+#     REQUIRED_PAYLOAD_FIELDS وتسبق الـschema دائمًا، فالفرض هنا بلا أثر.
+#   - نوع بنموذج عام → الواجهة تبنيه من الـschema نفسه، فالـschema هو المرجع
+#     وحقوله الإلزامية صحيحة بالتعريف.
+# ثم قوبل ذلك بالحمولات الفعلية في الاختبارات لاكتشاف أي تعارض.
+#
+# المستثنون عمدًا:
+#   REQEOS / REQCLR — يُنشآن برمجيًا بحمولة خاصة (hire_date/last_day/
+#     entitlements/net) لا تمر بنموذج، وschemaهما يطلب reason/used_leave_days
+#     غير الموجودَين فيها. فرضهما يكسر تدفق إنهاء الخدمة.
+#   REQEXIT — أُعيد توجيهه لـREQPERM أعلاه (تعارض دلالي في الـschema).
+# ---------------------------------------------------------------------------
+_VERIFIED_ENFORCE_REQUIRED = (
+    "REQATT",     # تصحيح حضور — الحمولة الفعلية تطابق (attendance_date/correction_type/reason)
+    "REQPERM",    # إذن/مغادرة مبكرة — نموذج عام
+    "REQCERT",    # شهادات — الحمولة الفعلية تطابق (purpose/language)
+    "REQOT",      # عمل إضافي — الحمولة الفعلية تطابق الخمسة كلها
+    "REQUPD",     # تعديل بيانات شخصية — نموذج عام
+    "REQRESIGN",  # استقالة — نموذج عام
+    "REQREN",     # تجديد إقامة — نموذج عام
+    "REQPASS",    # تحديث جواز — نموذج عام
+    "REQCIVIL",   # تحديث بطاقة مدنية — نموذج عام
+    "REQGRV",     # تظلّم — نموذج عام (category حقل حقيقي يعرضه النموذج)
+    "REQPAY",     # اعتراض رواتب — نموذج عام (اسم الحقل payroll_period)
+    "REQDED",     # اعتراض خصم — نموذج عام
+    "REQTRAIN",   # تدريب — نموذج عام
+    "REQTRANS",   # نقل داخلي — نموذج عام
+    "REQPROM",    # ترقية — نموذج عام
+    "REQGOV",     # معاملة حكومية — نموذج عام
+    "REQDOC",     # مستندات — نموذج عام
+)
+
+for _code in _VERIFIED_ENFORCE_REQUIRED:
+    SCHEMAS[_code].setdefault("meta", {})["enforce_required"] = True
+del _code
 
 
 def get_schema(code: str) -> dict | None:
