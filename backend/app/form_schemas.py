@@ -762,6 +762,22 @@ for _code in _VERIFIED_ENFORCE_REQUIRED:
 del _code
 
 
+def conditional_requirements(schema: dict, payload: dict) -> tuple[set[str], set[str]]:
+    """يقيّم قواعد conditional مقابل حمولة، ويعيد (حقول صارت إلزامية، حقول مخفية).
+
+    مصدر واحد لمطابقة الشروط يستخدمه validate_payload و_missing_required_fields
+    معًا — الاستنساخ في موضعين هو ما جعل كتالوج الإنشاء يختلف عمّا يقبله POST.
+    """
+    add: set[str] = set()
+    hidden: set[str] = set()
+    for cond in schema.get("conditional") or []:
+        when = cond.get("when") or {}
+        if all((payload or {}).get(k) == v for k, v in when.items()):
+            add.update(cond.get("require") or [])
+            hidden.update(cond.get("hide") or [])
+    return add, hidden
+
+
 def get_schema(code: str) -> dict | None:
     """يعيد schema بالكود الـcanonical أو عبر legacy alias أو خريطة أكواد V1.3."""
     if code in SCHEMAS:
@@ -794,17 +810,12 @@ def validate_payload(code: str, payload: dict) -> list[str]:
     payload = payload or {}
 
     # القيود الشرطية: يُضاف "مطلوب" لحقول conditional.require
-    dynamic_required: set[str] = set()
+    # نفس دالة المطابقة التي يستخدمها _missing_required_fields — لا استنساخ.
+    dynamic_required, hidden = conditional_requirements(s, payload)
     dynamic_required_attachments: set[str] = set()
-    hidden: set[str] = set()
     for cond in s.get("conditional") or []:
         when = cond.get("when") or {}
-        matches = all(payload.get(k) == v for k, v in when.items())
-        if matches:
-            for f in cond.get("require") or []:
-                dynamic_required.add(f)
-            for f in cond.get("hide") or []:
-                hidden.add(f)
+        if all(payload.get(k) == v for k, v in when.items()):
             # R7-E — مرفقات مطلوبة شرطيًا (مثلاً "leave sick" → medical_report)
             for att in cond.get("require_attachments") or []:
                 dynamic_required_attachments.add(att)

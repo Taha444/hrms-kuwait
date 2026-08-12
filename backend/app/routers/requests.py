@@ -61,8 +61,19 @@ def _missing_required_fields(code: str, payload: dict) -> list[str]:
     if required is None:
         schema = form_schemas.get_schema(code)
         if schema and (schema.get("meta") or {}).get("enforce_required"):
+            static = [f["code"] for f in schema.get("fields") or []
+                      if f.get("required")]
+            # القواعد الشرطية: حقل يصير إلزاميًا حسب قيمة حقل آخر — مثل
+            # "تصحيح دخول" يستلزم الدخول الصحيح، و"نقل بين فروع" يستلزم الفرع
+            # الجديد. تُطبَّق هنا لا في validate_payload لأن الأخير مشروط
+            # بـstrict_validation الذي يشغّل معه فحوص أنواع وحدود لم تُفرَض يومًا
+            # على أنواع V1.3 ولم تُختبر مقابل حمولاتها الفعلية.
+            extra, hidden = form_schemas.conditional_requirements(schema, payload)
+            wanted = {*static, *extra} - hidden
+            # نرتّبها بترتيب ظهور الحقول في النموذج ليطابق ما يراه المستخدم
+            # (extra مجموعة، فبدون ذلك يختلف ترتيب الرسالة بين استدعاء وآخر)
             required = [f["code"] for f in schema.get("fields") or []
-                        if f.get("required")]
+                        if f["code"] in wanted]
     if required:
         return [k for k in required if _blank(payload.get(k))]
     # لا حقول إلزامية معلَنة: يكفي ألا تكون الحمولة فارغة تمامًا

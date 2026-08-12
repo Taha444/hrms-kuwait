@@ -1125,6 +1125,49 @@ def test_required_fields_derived_from_schema(client):
     assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
 
 
+def test_conditional_required_rules_are_enforced(client):
+    """قواعد conditional.require تُفرض على الخادم — حقل يصير إلزاميًا حسب قيمة
+    حقل آخر. كانت إرشادًا للواجهة فقط لأن validate_payload يفرضها خلف
+    strict_validation المقفولة على كل أنواع V1.3."""
+    from app.routers.requests import _missing_required_fields as missing
+
+    att = {"attendance_date": "2027-01-15", "correction_type": "check_in",
+           "reason": "نسيت البصمة"}
+    assert missing("REQATT", att) == ["new_check_in"]
+    assert missing("REQATT", {**att, "new_check_in": "2027-01-15T08:00"}) == []
+    # "both" يستلزم الاثنين
+    assert missing("REQATT", {**att, "correction_type": "both",
+                              "new_check_in": "2027-01-15T08:00"}) == ["new_check_out"]
+
+    shift = {"requested_shift_id": 1, "effective_from": "2027-01-01",
+             "is_permanent": "temporary", "reason": "ظرف"}
+    assert missing("REQSHIFT", shift) == ["effective_to"]
+    # الدائم لا يستلزم تاريخ انتهاء
+    assert missing("REQSHIFT", {**shift, "is_permanent": "permanent"}) == []
+
+    con = {"current_contract_end": "2027-06-30", "reason": "ر"}
+    assert missing("REQCON", {**con, "decision": "renew"}) == ["new_duration_months"]
+    assert missing("REQCON", {**con, "decision": "not_renew"}) == []
+
+
+def test_conditional_hide_exempts_field_from_required(client):
+    """حقل يخفيه شرط لا يُطالَب به — REQADV يخفي months عند اختيار سلفة."""
+    from app.form_schemas import conditional_requirements, SCHEMAS
+    add, hidden = conditional_requirements(SCHEMAS["REQADV"], {"loan_type": "advance"})
+    assert "months" in hidden and "months" not in add
+    add2, _ = conditional_requirements(SCHEMAS["REQADV"], {"loan_type": "loan"})
+    assert "months" in add2
+
+
+def test_missing_fields_message_follows_form_order(client):
+    """ترتيب الحقول الناقصة يطابق ترتيبها في النموذج وثابت بين الاستدعاءات
+    (القواعد الشرطية تُجمع في set، فبدون ترتيب صريح تتبدّل الرسالة)."""
+    from app.routers.requests import _missing_required_fields as missing
+    payload = {"transfer_kind": "both", "effective_date": "2027-01-01", "reason": "ر"}
+    runs = {tuple(missing("REQTRFLIC", payload)) for _ in range(5)}
+    assert runs == {("to_branch_id", "to_license_id")}
+
+
 def test_required_enforcement_coverage_is_deliberate(client):
     """كل schema إما يفرض حقوله الإلزامية أو له سبب موثّق للاستثناء.
     يمنع نموذجًا جديدًا من الانضمام صامتًا لقائمة غير المفروضة."""
