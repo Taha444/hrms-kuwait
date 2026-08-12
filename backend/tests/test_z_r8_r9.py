@@ -1125,6 +1125,49 @@ def test_required_fields_derived_from_schema(client):
     assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
 
 
+def test_every_creatable_type_exposes_a_schema_to_the_ui(client):
+    """الواجهة تبني نموذج كل نوع من GET /requests/types/{code}/schema.
+
+    قبل ذلك كانت تعرض نموذجًا عامًا من ثلاثة حقول (date/amount/details) لكل نوع
+    بلا نموذج مبرمج — 44 من 53 — وحمولته لا تُرضي تحقق الخادم بحقول الـschema.
+    فأي نوع قابل للإنشاء بلا schema يعني نموذجًا لا يمكن إرساله.
+    """
+    emp = auth_headers(login(client, *EMP))
+    listing = client.get("/api/requests/types", headers=emp,
+                         params={"creatable_only": True})
+    assert listing.status_code == 200
+    without = []
+    for t in listing.json():
+        code = t["code"]
+        if code.startswith("ADM"):
+            continue
+        r = client.get(f"/api/requests/types/{code}/schema", headers=emp)
+        if r.status_code != 200:
+            without.append(code)
+    assert not without, f"creatable types with no schema for the UI: {without}"
+
+
+def test_hardcoded_form_list_matches_backend_exemptions(client):
+    """قائمة الأنواع ذات النموذج المبرمج في الواجهة لا بد أن تطابق مفاتيح
+    REQUIRED_PAYLOAD_FIELDS — الخادم يعفي هذه الأكواد من التحقق بمفردات الـschema،
+    فاختلاف القائمتين يعني إما نوعًا يُرفض بلا سبب أو نوعًا يفلت من التحقق."""
+    import re
+    from pathlib import Path
+    from app.routers.requests import REQUIRED_PAYLOAD_FIELDS
+
+    src = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "Requests.tsx"
+    if not src.exists():
+        return  # الواجهة غير موجودة في هذه البيئة
+    text = src.read_text(encoding="utf-8")
+    block = re.search(r"HARDCODED_FORM_TYPES\s*=\s*\[(.*?)\]", text, re.S)
+    assert block, "HARDCODED_FORM_TYPES not found in Requests.tsx"
+    ui_codes = set(re.findall(r'"([A-Za-z_]+)"', block.group(1)))
+    assert ui_codes == set(REQUIRED_PAYLOAD_FIELDS), (
+        f"only in UI: {ui_codes - set(REQUIRED_PAYLOAD_FIELDS)}, "
+        f"only in backend: {set(REQUIRED_PAYLOAD_FIELDS) - ui_codes}"
+    )
+
+
 def test_strict_validation_catches_bad_values(client):
     """التحقق الحقلي الصارم فعّال: حدود الأرقام، عضوية قيم select، وترتيب
     التواريخ. كان مقفولًا على كل أنواع V1.3 فتمر أي قيمة."""

@@ -6,6 +6,15 @@ import { useI18n } from "../i18n";
 import { ProgressMini } from "../components/RequestSteps";
 import { Skeleton, ErrorRetry, EmptyState } from "../components/States";
 import { statusAr } from "../labels";
+import SchemaForm, { missingFields, type Schema } from "../components/SchemaForm";
+
+// الأنواع التي لها نموذج مبرمج هنا. لا بد أن تطابق مفاتيح REQUIRED_PAYLOAD_FIELDS
+// في backend/app/routers/requests.py — الخادم يعفي هذه الأكواد من التحقق بمفردات
+// الـschema لأن حقولها من الواجهة لا من الـschema. اختبار في الخادم يحرس التطابق.
+const HARDCODED_FORM_TYPES = [
+  "leave", "salary_certificate", "exit_permission", "advance", "loan",
+  "REQADV", "REQBANK", "REQEXP", "REQWARN",
+];
 
 export default function Requests() {
   const { t } = useI18n();
@@ -20,6 +29,8 @@ export default function Requests() {
   const [showNew, setShowNew] = useState(false);
   const [typeCode, setTypeCode] = useState("");
   const [payload, setPayload] = useState<any>({});
+  // schema النوع المختار (null = لا schema، undefined = لم يُحمَّل بعد)
+  const [activeSchema, setActiveSchema] = useState<Schema | null | undefined>(undefined);
   const [err, setErr] = useState("");
   // من يملك view_employee (HR/مدير/مشرف/مندوب/محاسب) قد يقدّم طلًبا نيابًة عن موظف آخر —
   // كان النموذج يقدّم دائًما عن حساب المستخدم نفسه فقط (P1-01)
@@ -43,14 +54,18 @@ export default function Requests() {
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
+  // نمسح الـschema مع تغيير النوع حتى لا يُقيَّم نوع جديد بقواعد النوع السابق
+  useEffect(() => { setActiveSchema(undefined); }, [typeCode]);
+
   // PILOT-P0-2: كل ما يتغير نوع الطلب نمسح الـpayload — كانت الحقول من نوع سابق
   // (مثل amount من "سلفة") تفضل في state، والاختبار على "leave" بيسقط لأن الحقول
   // المطلوبة start_date/end_date مش موجودة في state (رغم إن المستخدم يعتقد إنه أدخلها
   // في نوع مختلف قبل ما يبدّل النوع).
   useEffect(() => { setPayload({}); setErr(""); }, [typeCode]);
 
-  // حقول إلزامية لكل نوع بنموذج مخصّص — يطابق REQUIRED_PAYLOAD_FIELDS في requests.py
+  // حقول إلزامية لكل نوع بنموذج مبرمج — يطابق REQUIRED_PAYLOAD_FIELDS في requests.py
   // (QA-P0-WF-01: منع تقديم طلب فارغ برسالة واضحة قرب الحقول قبل وصوله للخادم أصًلا)
+  // بقية الأنواع تُشتق حقولها الإلزامية من الـschema عبر missingFields.
   const REQUIRED_FIELDS: Record<string, [string, string][]> = {
     leave: [["start_date", t("req_from")], ["end_date", t("req_to")]],
     salary_certificate: [["addressed_to", t("req_addressed")], ["purpose", t("req_purpose")]],
@@ -73,9 +88,12 @@ export default function Requests() {
     const clean = Object.fromEntries(
       Object.entries(payload).filter(([, v]) => v !== "" && v !== undefined && v !== null)
     );
+    // ترتيب المصادر يطابق الخادم: نموذج مبرمج ← REQUIRED_FIELDS، وإلا الـschema.
     const required = REQUIRED_FIELDS[typeCode];
     const missing = required
       ? required.filter(([k]) => clean[k] === undefined || clean[k] === "").map(([, label]) => label)
+      : activeSchema
+      ? missingFields(activeSchema, clean).map((f) => f.label)
       : Object.keys(clean).length === 0 ? [t("req_details")] : [];
     if (missing.length) {
       setErr(`${t("req_missing_fields")}: ${missing.join("، ")}`);
@@ -228,18 +246,34 @@ export default function Requests() {
                 <input id="req-warn-response" required onChange={(e) => setPayload({ ...payload, response: e.target.value })} /></div>
             </div>
           )}
-          {!["leave", "salary_certificate", "exit_permission", "advance", "loan",
-            "REQADV", "REQBANK", "REQEXP", "REQWARN"].includes(typeCode) && typeCode && (
+          {/* الأنواع بلا نموذج مبرمج: يُبنى نموذجها من الـschema الذي يعرّفه الخادم.
+              كان هنا نموذج عام من ثلاثة حقول (date/amount/details) يُعرض لـ44 نوعًا،
+              وحمولته لا تُرضي تحقق الخادم العامل بحقول الـschema. */}
+          {!HARDCODED_FORM_TYPES.includes(typeCode) && typeCode && (
             <>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-date">{t("req_date")}</label>
-                  <input id="req-generic-date" type="date" onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-amount">{t("req_amount")}</label>
-                  <input id="req-generic-amount" type="number" min={0} onChange={(e) => setPayload({ ...payload, amount: e.target.value ? +e.target.value : undefined })} /></div>
-              </div>
-              <div className="field"><label htmlFor="req-generic-details">{t("req_details")} *</label>
-                <textarea id="req-generic-details" rows={3} required onChange={(e) => setPayload({ ...payload, details: e.target.value })} /></div>
-              <p className="muted">{t("req_details_hint")}</p>
+              <SchemaForm
+                typeCode={typeCode}
+                payload={payload}
+                onChange={setPayload}
+                onSchemaLoaded={setActiveSchema}
+              />
+              {/* لا schema لهذا النوع (نماذج ADM* الإدارية) — تبقى الحقول العامة */}
+              {activeSchema === null && (
+                <>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-date">{t("req_date")}</label>
+                      <input id="req-generic-date" type="date" value={payload.date || ""}
+                             onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
+                    <div className="field" style={{ flex: 1 }}><label htmlFor="req-generic-amount">{t("req_amount")}</label>
+                      <input id="req-generic-amount" type="number" min={0} value={payload.amount ?? ""}
+                             onChange={(e) => setPayload({ ...payload, amount: e.target.value ? +e.target.value : undefined })} /></div>
+                  </div>
+                  <div className="field"><label htmlFor="req-generic-details">{t("req_details")} *</label>
+                    <textarea id="req-generic-details" rows={3} required value={payload.details || ""}
+                              onChange={(e) => setPayload({ ...payload, details: e.target.value })} /></div>
+                  <p className="muted">{t("req_details_hint")}</p>
+                </>
+              )}
             </>
           )}
           {err && <div className="err">{err}</div>}
