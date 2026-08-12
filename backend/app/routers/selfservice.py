@@ -6,10 +6,9 @@
 """
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -46,18 +45,10 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
     # P0-#14 — Leave Privacy: الموظف لا يرى start_date/end_date/days في My Profile.
     # HR والإدارة يرون كل شيء (لكن هذا endpoint خاص بـMy Profile فقط — الموظف نفسه).
     # يُعرض فقط: النوع (سنوية/مرضية/...) والحالة (معتمَدة/مرفوضة).
-    # المستندات التي استُهلك تنزيلها — حتى تعرض الواجهة الحالة الصحيحة عند
-    # التحميل بدل أن يكتشف الموظف المنع بعد الضغط على الزر
-    spent = {
-        d_id for (d_id,) in db.execute(
-            select(models.SelfDocumentDownload.document_id).where(
-                models.SelfDocumentDownload.user_id == user.id))
-    }
     return {
         "employee": schemas.EmployeeOut.model_validate(emp),
         "documents": [{"id": d.id, "type": d.document_type_code, "title": d.title,
-                       "expiry_date": d.expiry_date, "version": d.version,
-                       "downloaded": d.id in spent} for d in docs],
+                       "expiry_date": d.expiry_date, "version": d.version} for d in docs],
         "leaves": [{"id": l.id, "type": l.leave_type, "status": l.status}
                    for l in leaves],
         "warnings": [{"id": w.id, "title": w.title, "detail": w.detail,
@@ -66,13 +57,12 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
 
 
 @router.get("/document/{document_type_code}")
-def my_document(document_type_code: str, request: Request,
+def my_document(document_type_code: str,
                 user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """تنزيل أحدث نسخة من مستند للموظف نفسه — مرة واحدة لكل نسخة.
+    """تنزيل أحدث نسخة من مستند للموظف نفسه — بلا حد لعدد المرات.
 
-    القيد الفريد على (user_id, document_id) هو الفارض الحقيقي: نُدرج السجل
-    ونُثبّته قبل إرسال الملف، فمحاولة ثانية — ولو من نافذتين في اللحظة نفسها —
-    تصطدم بالقيد. رفع نسخة أحدث يُنشئ Document جديدًا برقم مختلف فيُتاح تنزيلها.
+    مستند الموظف ملكه: يحتاجه للبنك والسفارة والجهات الحكومية، وتقييد التنزيل
+    بمرة واحدة يجعله يراجع HR لأجل نسخة من ورقته هو. لا قيد هنا عمًدا.
     """
     emp = _own_employee(user, db)
     doc = db.scalar(select(models.Document).where(
@@ -83,21 +73,6 @@ def my_document(document_type_code: str, request: Request,
     ))
     if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
-
-    db.add(models.SelfDocumentDownload(
-        user_id=user.id, document_id=doc.id,
-        document_type_code=document_type_code,
-        ip=request.client.host if request.client else None,
-    ))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=403,
-            detail="سبق تنزيل هذا المستند — التنزيل متاح مرة واحدة فقط. "
-                   "راجع شؤون الموظفين إن احتجت نسخة أخرى.")
-
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 

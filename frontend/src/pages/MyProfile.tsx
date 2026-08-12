@@ -60,22 +60,22 @@ export default function MyProfile() {
     e.target.value = "";
   };
 
-  const download = async (type: string, docId: number) => {
-    if (!confirm(t("my_download_once_confirm"))) return;
+  const download = async (type: string) => {
     setDlErr("");
-    // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 (QA-P1-DOC-01)
+    // window.open المباشر لا يرفق رمز الدخول فيرجع 401 (QA-P1-DOC-01)، لذلك
+    // نجلب الملف عبر axios. لكن window.open بعد await يقع خارج سياق ضغطة
+    // المستخدم فيحجبه مانع النوافذ المنبثقة في المحاولات التالية — وهو ما جعل
+    // التنزيل يبدو متاًحا "مرة واحدة فقط". رابط تنزيل مؤقت لا يخضع لذلك الحجب.
     try {
       const res = await api.get(`/me/document/${encodeURIComponent(type)}`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data as Blob);
-      window.open(url, "_blank");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${type}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      // نُعلّم الصف محلًيا: الخادم استهلك النصيب بالفعل، وإعادة تحميل الملف
-      // الشخصي كاملًا لأجل علم واحد إسراف
-      setP((prev: any) => ({
-        ...prev,
-        documents: prev.documents.map((d: any) =>
-          d.id === docId ? { ...d, downloaded: true } : d),
-      }));
     } catch (e: any) {
       setDlErr(errMsg(e, t("error")));
     }
@@ -131,19 +131,9 @@ export default function MyProfile() {
         <table>
           <thead><tr><th>{t("epf_col_type")}</th><th>{t("col_title")}</th><th>{t("epf_col_version")}</th><th>{t("pro_col_expiry")}</th><th></th></tr></thead>
           <tbody>
-            {/* التنزيل متاح مرة واحدة لكل نسخة. الحالة تأتي من الخادم مع الملف
-                الشخصي، فيرى الموظف أن نصيبه استُهلك قبل الضغط لا بعده. */}
             {p.documents.map((d: any) => (
               <tr key={d.id}><td>{d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date || "—"}</td>
-                <td>
-                  {d.downloaded ? (
-                    <span className="muted" style={{ fontSize: 12 }}>{t("my_download_spent")}</span>
-                  ) : (
-                    <button className="ghost sm" onClick={() => download(d.type, d.id)}>
-                      {t("my_download")}
-                    </button>
-                  )}
-                </td></tr>
+                <td><button className="ghost sm" onClick={() => download(d.type)}>{t("my_download")}</button></td></tr>
             ))}
             {!p.documents.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}
           </tbody>

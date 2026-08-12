@@ -2487,36 +2487,33 @@ def test_completion_notification_reaches_the_employee(client):
 
 
 # ===========================================================================
-# الخدمة الذاتية — تنزيل المستند مرة واحدة
+# الخدمة الذاتية — تنزيل المستند بلا قيد على العدد
 # ===========================================================================
 
-def test_self_document_download_is_once_only(client):
-    """الموظف ينزّل نسخة مستنده مرة واحدة فقط (قرار العميل).
+def test_self_document_download_is_unrestricted(client):
+    """الموظف ينزّل مستنده كلما احتاجه — لا حد لعدد المرات.
 
-    القيد الفريد (user_id, document_id) هو الفارض: المحاولة الثانية تصطدم به
-    ولا تعتمد على فحص سابق يمكن أن تتجاوزه نافذتان متزامنتان.
+    تقرير المراجعة رصد تقييد التنزيل بمرة واحدة كعطل لا كميزة: المستند ملك
+    الموظف ويحتاجه للبنك والسفارة والجهات الحكومية، وتقييده يجعله يراجع HR
+    لأجل نسخة من ورقته. هذا الاختبار يمنع إعادة إدخال القيد سهًوا.
     """
     from sqlalchemy import select
     from app import models
     from app.database import SessionLocal
 
     emp_headers = auth_headers(login(client, "100000000101", "emp12345"))
-    me = client.get("/api/auth/me", headers=emp_headers).json()
-    emp_id = me["employee_id"]
+    emp_id = client.get("/api/auth/me", headers=emp_headers).json()["employee_id"]
     assert emp_id
 
     db = SessionLocal()
     doc_id = None
     prior_ids: list[int] = []
     try:
-        # مستند حقيقي بملف على القرص
         import tempfile, os
         fd, path = tempfile.mkstemp(suffix=".pdf")
         os.write(fd, b"%PDF-1.4 test\n")
         os.close(fd)
         emp = db.get(models.Employee, emp_id)
-        # الموظف قد يملك جواًزا مبذوًرا بلا ملف على القرص، والـendpoint يأخذ أول
-        # is_current — فنعطّل الموجود مؤقًتا ليقع الاختيار على مستند الاختبار
         prior = db.scalars(select(models.Document).where(
             models.Document.entity_type == "employee",
             models.Document.entity_id == emp_id,
@@ -2534,31 +2531,15 @@ def test_self_document_download_is_once_only(client):
         db.add(doc); db.commit(); db.refresh(doc)
         doc_id = doc.id
 
-        # الملف الشخصي يعلن أنه لم يُنزَّل بعد
-        prof = client.get("/api/me/profile", headers=emp_headers).json()
-        row = next(d for d in prof["documents"] if d["id"] == doc_id)
-        assert row["downloaded"] is False
-
-        # التنزيل الأول ينجح
-        r1 = client.get("/api/me/document/passport", headers=emp_headers)
-        assert r1.status_code == 200, r1.text
-
-        # والثاني يُرفض
-        r2 = client.get("/api/me/document/passport", headers=emp_headers)
-        assert r2.status_code == 403, r2.text
-        assert "مرة واحدة" in r2.json()["detail"]
-
-        # والملف الشخصي صار يعكس ذلك
-        prof2 = client.get("/api/me/profile", headers=emp_headers).json()
-        row2 = next(d for d in prof2["documents"] if d["id"] == doc_id)
-        assert row2["downloaded"] is True
+        # ثلاث مرات متتالية — كلها تنجح
+        for attempt in range(1, 4):
+            r = client.get("/api/me/document/passport", headers=emp_headers)
+            assert r.status_code == 200, f"المحاولة {attempt} فشلت: {r.text}"
+            assert r.content.startswith(b"%PDF")
     finally:
-        db.execute(models.SelfDocumentDownload.__table__.delete().where(
-            models.SelfDocumentDownload.document_id == doc_id))
         if doc_id:
             db.execute(models.Document.__table__.delete().where(
                 models.Document.id == doc_id))
-        # نُعيد المستندات التي عطّلناها إلى حالتها
         for pid in prior_ids:
             d = db.get(models.Document, pid)
             if d:

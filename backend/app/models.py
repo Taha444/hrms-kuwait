@@ -1031,27 +1031,3 @@ class AuditLog(Base):
     before_json: Mapped[dict | None] = mapped_column(JSON)
     after_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-
-
-class SelfDocumentDownload(Base):
-    """سجل تنزيل الموظف لمستنداته من الخدمة الذاتية — تنزيل واحد لكل مستند.
-
-    قرار العميل: الموظف ينزّل نسخة مستنده مرة واحدة فقط. القيد الفريد
-    (user_id, document_id) هو ما يفرضه: محاولة ثانية تصطدم بالقيد ولا تعتمد
-    على فحص سبقها، فلا يمر تنزيلان متزامنان من نافذتين.
-
-    نُسجّل document_id لا نوع المستند: رفع نسخة جديدة يُنشئ صف Document جديدًا،
-    فيستحق تنزيًلا جديدًا — القيد يخص النسخة المحددة التي نزّلها الموظف.
-    """
-    __tablename__ = "self_document_downloads"
-    __table_args__ = (
-        UniqueConstraint("user_id", "document_id", name="uq_self_document_download"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"),
-                                             index=True)
-    document_type_code: Mapped[str | None] = mapped_column(String(50))
-    ip: Mapped[str | None] = mapped_column(String(50))
-    downloaded_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
