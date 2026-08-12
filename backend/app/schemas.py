@@ -154,7 +154,15 @@ class EmployeeIn(BaseModel):
     health_insurance: str | None = None
     direct_manager_id: int | None = None
     worker_type: str | None = None
-    job_title: str | None = None
+    job_title: str | None = None            # المهنة الرسمية (إذن العمل)
+    actual_job_title: str | None = None     # ما يؤديه فعلًا وقد يختلف عنها
+    job_title_en: str | None = None         # للعقد الحكومي ثنائي اللغة
+    nationality_en: str | None = None
+    # "fixed" تعني ساعات معلومة تُكتب رسميًا وفعليًا؛ "unfixed" تعني طبيعة عمل
+    # بلا ساعات ثابتة فلا معنى للرقمين
+    work_hours_type: str | None = None
+    official_work_hours: float | None = None
+    actual_work_hours: float | None = None
     basic_salary: float = 0                 # الراتب الرسمي (عقد/حكومي)
     hire_date: date | None = None
     contract_type: str = "indefinite"
@@ -178,12 +186,27 @@ class EmployeeIn(BaseModel):
             raise ValueError("الرقم المدني يجب أن يكون أرقامًا (6 إلى 12 خانة)")
         return v
 
-    @field_validator("basic_salary", "annual_leave_balance")
+    @field_validator("basic_salary", "annual_leave_balance",
+                     "official_work_hours", "actual_work_hours")
     @classmethod
     def _non_negative(cls, v):
         if v is not None and v < 0:
             raise ValueError("القيمة لا يمكن أن تكون سالبة")
         return v
+
+    @field_validator("official_work_hours", "actual_work_hours")
+    @classmethod
+    def _hours_in_day(cls, v):
+        if v is not None and v > 24:
+            raise ValueError("ساعات الدوام لا يمكن أن تتجاوز 24 ساعة")
+        return v
+
+    @field_validator("work_hours_type")
+    @classmethod
+    def _hours_type(cls, v):
+        if v not in (None, "", "fixed", "unfixed"):
+            raise ValueError("نوع ساعات الدوام يجب أن يكون محددة أو غير محددة")
+        return v or None
 
     @field_validator("attendance_mode")
     @classmethod
@@ -227,6 +250,14 @@ class EmployeeOut(BaseModel):
     direct_manager_id: int | None = None
     worker_type: str | None = None
     job_title: str | None = None
+    # ثنائية (رسمي/فعلي) القائمة أصلًا في الراتب والفرع والترخيص
+    actual_job_title: str | None = None
+    job_title_en: str | None = None
+    nationality_en: str | None = None
+    # ساعات الدوام: الرقمان يخصّان work_hours_type == "fixed" فقط
+    work_hours_type: str | None = None
+    official_work_hours: float | None = None
+    actual_work_hours: float | None = None
     basic_salary: float = 0
     hire_date: date | None = None
     contract_type: str = "indefinite"

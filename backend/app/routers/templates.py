@@ -210,6 +210,16 @@ _DAY_AR = ("الاثنين", "الثلاثاء", "الأربعاء", "الخمي
 _DAY_EN = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
+def _residency_number(db: Session, emp: models.Employee) -> str:
+    """رقم إقامة الموظف السارية — يُحفظ في permits لا كعمود على الموظف."""
+    p = db.scalar(
+        select(models.Permit)
+        .where(models.Permit.employee_id == emp.id, models.Permit.kind == "residency")
+        .order_by(models.Permit.expiry_date.desc())
+    )
+    return (p.number or "") if p else ""
+
+
 def _build_context(db: Session, emp: models.Employee) -> dict:
     company = db.get(models.Company, emp.company_id)
     branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
@@ -266,10 +276,11 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "company_rep_name_en": ((getattr(company, "rep_name_en", None)
                                  or company.name_en or "") if company else ""),
         "company_rep_civil_id": (getattr(company, "rep_civil_id", "") or "") if company else "",
-        # النموذج يفرّق بين رقم الجواز ورقم الإقامة في بيانات الطرف الثاني
-        "residency_number": getattr(emp, "residency_number", "") or "",
-        "nationality_en": getattr(emp, "nationality_en", None) or emp.nationality or "",
-        "job_title_en": getattr(emp, "job_title_en", None) or emp.job_title or "",
+        # النموذج يفرّق بين رقم الجواز ورقم الإقامة في بيانات الطرف الثاني.
+        # رقم الإقامة يُحفظ في permits لا كعمود على الموظف.
+        "residency_number": _residency_number(db, emp),
+        "nationality_en": emp.nationality_en or emp.nationality or "",
+        "job_title_en": emp.job_title_en or emp.job_title or "",
         # مدة العقد المحدد — نصًّا كما في النموذج
         "contract_years_ar": "سنة" if not is_indefinite else "",
         "contract_years_en": "ONE YEARS" if not is_indefinite else "",

@@ -351,6 +351,13 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         "can_edit_actual_salary": can_edit_actual,
         "created_by_name": (db.get(models.User, emp.created_by).full_name
                             if emp.created_by and db.get(models.User, emp.created_by) else None),
+        # مكان الدوام الرسمي/الفعلي — الأعمدة تحفظ المعرّفات، والواجهة تعرض
+        # الاسم؛ حلّه هنا يوفّر على كل شاشة جلب قائمة الفروع لتترجم رقًما
+        "official_branch_name": (db.get(models.Branch, emp.branch_id).name
+                                 if emp.branch_id and db.get(models.Branch, emp.branch_id) else None),
+        "actual_branch_name": (db.get(models.Branch, emp.actual_branch_id).name
+                               if emp.actual_branch_id
+                               and db.get(models.Branch, emp.actual_branch_id) else None),
         # نتيجة نهاية الخدمة المحفوظة (إن وُجدت)
         "saved_eos": (__import__("json").loads(emp.eos_settlement_json)
                       if emp.eos_settlement_json else None),

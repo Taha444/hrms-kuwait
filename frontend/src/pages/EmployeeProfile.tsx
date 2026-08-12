@@ -224,7 +224,23 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                       </span>}
                   <br /></>
               )}
+              <b>{t("fld_actual_job")}:</b> {e.actual_job_title || "—"}<br />
               <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br /><b>{t("epf_contract")}:</b> {contractTypeAr(e.contract_type)}<br />
+              <b>{t("fld_residency_expiry")}:</b>{" "}
+              {p.permits?.find((x: any) => x.kind === "residency")?.expiry_date || "—"}<br />
+              <b>{t("fld_work_place_official")}:</b> {p.official_branch_name || "—"}<br />
+              <b>{t("fld_work_place_actual")}:</b> {p.actual_branch_name || "—"}<br />
+              <b>{t("fld_work_hours_type")}:</b>{" "}
+              {e.work_hours_type === "fixed" ? t("fld_hours_fixed")
+                : e.work_hours_type === "unfixed" ? t("fld_hours_unfixed") : "—"}<br />
+              {/* الرقمان يخصّان "محددة" فقط — إخفاؤهما مع "غير محددة" مقصود:
+                  طبيعة العمل بلا ساعات ثابتة تجعل رقًما معلًنا بلا معنى */}
+              {e.work_hours_type === "fixed" && (
+                <>
+                  <b>{t("fld_hours_official")}:</b> {e.official_work_hours ?? "—"}<br />
+                  <b>{t("fld_hours_actual")}:</b> {e.actual_work_hours ?? "—"}<br />
+                </>
+              )}
               <b>{t("epf_att_mode")}:</b> {e.attendance_mode}
               {p.created_by_name && <><br /><span className="muted" style={{ fontSize: 12 }}>{t("emp_created_by")}: {p.created_by_name}</span></>}
             </div>

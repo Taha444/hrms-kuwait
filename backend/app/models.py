@@ -348,9 +348,19 @@ class Employee(Base):
     health_insurance: Mapped[str | None] = mapped_column(String(100))
     direct_manager_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))
     worker_type: Mapped[str | None] = mapped_column(String(50))  # عامل / موظف
-    job_title: Mapped[str | None] = mapped_column(String(150))
+    job_title: Mapped[str | None] = mapped_column(String(150))  # المهنة الرسمية (إذن العمل)
+    # الوظيفة الفعلية: ما يؤديه الموظف عمليًا وقد يختلف عن مهنة إذن العمل —
+    # يقابل ثنائية (رسمي/فعلي) القائمة أصلًا في الراتب والفرع والترخيص.
+    actual_job_title: Mapped[str | None] = mapped_column(String(150))
+    job_title_en: Mapped[str | None] = mapped_column(String(150))  # للعقد الحكومي ثنائي اللغة
+    nationality_en: Mapped[str | None] = mapped_column(String(80))  # للعقد الحكومي
     basic_salary: Mapped[float] = mapped_column(Float, default=0)  # الراتب الرسمي (عقد/إذن عمل/حكومي)
     actual_salary: Mapped[float | None] = mapped_column(Float)  # الراتب الفعلي (صلاحية خاصة)
+    # ساعات الدوام: "محددة" تعني ساعات معلومة تُكتب رسميًا وفعليًا، و"غير محددة"
+    # تعني طبيعة عمل بلا ساعات ثابتة (مندوب/مياومة) فلا معنى لرقمَي الساعات.
+    work_hours_type: Mapped[str | None] = mapped_column(String(20))  # fixed / unfixed
+    official_work_hours: Mapped[float | None] = mapped_column(Float)  # المعلَنة في العقد
+    actual_work_hours: Mapped[float | None] = mapped_column(Float)    # المؤدّاة فعليًا
     hire_date: Mapped[date | None] = mapped_column(Date)
     contract_type: Mapped[str] = mapped_column(String(20), default="indefinite")  # indefinite/definite
     status: Mapped[str] = mapped_column(String(20), default="active")

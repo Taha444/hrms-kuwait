@@ -23,6 +23,11 @@ type Props = {
 const emptyForm = {
   name: "", civil_id: "", basic_salary: 0,
   job_title: "", hire_date: "", contract_type: "indefinite",
+  // الوظيفة الفعلية وساعات الدوام — مراجعة العميل (الصفحة ٣)
+  actual_job_title: "",
+  work_hours_type: "",
+  official_work_hours: null as number | null,
+  actual_work_hours: null as number | null,
   branch_id: null as number | null,
   actual_branch_id: null as number | null,
   department_id: null as number | null,
@@ -349,6 +354,12 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                 onChange={(e) => setField("job_title", e.target.value)} required />
             </div>
             <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="wiz-job-actual">{isEn ? "Actual job title" : "الوظيفة الفعلية"}</label>
+              <input id="wiz-job-actual" value={form.actual_job_title}
+                placeholder={isEn ? "if different from the official one" : "إن اختلفت عن الرسمية"}
+                onChange={(e) => setField("actual_job_title", e.target.value)} />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
               <label htmlFor="wiz-salary">{isEn ? "Basic salary (KWD)" : "الراتب الأساسي (د.ك)"} *</label>
               <input id="wiz-salary" type="number" min={0.001} step="0.001"
                 value={form.basic_salary || ""}
@@ -367,6 +378,35 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                 <option value="definite">{isEn ? "Definite" : "محدد المدة"}</option>
               </select>
             </div>
+          </div>
+          {/* ساعات الدوام: رقما الساعات يظهران مع "محددة" فقط — طبيعة العمل
+              غير المحددة (مندوب/مياومة) تجعل رقًما معلًنا بلا معنى */}
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="wiz-hours-type">{isEn ? "Work hours" : "ساعات الدوام"}</label>
+              <select id="wiz-hours-type" value={form.work_hours_type}
+                onChange={(e) => setField("work_hours_type", e.target.value)}>
+                <option value="">{isEn ? "— not set —" : "— غير محدَّد —"}</option>
+                <option value="fixed">{isEn ? "Fixed" : "محددة"}</option>
+                <option value="unfixed">{isEn ? "Unfixed" : "غير محددة"}</option>
+              </select>
+            </div>
+            {form.work_hours_type === "fixed" && (
+              <>
+                <div className="field" style={{ flex: 1 }}>
+                  <label htmlFor="wiz-hours-off">{isEn ? "Official hours" : "الساعات الرسمية"}</label>
+                  <input id="wiz-hours-off" type="number" min={0} max={24} step="0.5"
+                    value={form.official_work_hours ?? ""}
+                    onChange={(e) => setField("official_work_hours", e.target.value ? +e.target.value : null)} />
+                </div>
+                <div className="field" style={{ flex: 1 }}>
+                  <label htmlFor="wiz-hours-act">{isEn ? "Actual hours" : "الساعات الفعلية"}</label>
+                  <input id="wiz-hours-act" type="number" min={0} max={24} step="0.5"
+                    value={form.actual_work_hours ?? ""}
+                    onChange={(e) => setField("actual_work_hours", e.target.value ? +e.target.value : null)} />
+                </div>
+              </>
+            )}
           </div>
           <div className="row">
             <div className="field" style={{ flex: 1 }}>

@@ -2567,3 +2567,69 @@ def test_hr_is_exempt_from_attendance(client):
                        json={"qr_token": "x"}).status_code == 403
     # ومراجعة الحضور تبقى متاحة
     assert client.get("/api/attendance/review", headers=hr).status_code in (200, 404)
+
+
+# ===========================================================================
+# حقول التوظيف والعقد الناقصة (مراجعة العميل — الصفحة ٣)
+# ===========================================================================
+
+def _put_payload(client, headers, emp_id, **changes):
+    """التعديل PUT بالكائن كاملًا — نقرأ الحالي ونغيّر ما يلزم فقط."""
+    from app import schemas
+    cur = client.get(f"/api/employees/{emp_id}", headers=headers).json()
+    allowed = set(schemas.EmployeeCreateIn.model_fields)
+    body = {k: v for k, v in cur.items() if k in allowed}
+    body.update(changes)
+    return body
+
+
+def test_employment_fields_round_trip(client):
+    """الحقول الجديدة تُحفظ وتُقرأ: الوظيفة الفعلية وساعات الدوام."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+
+    body = _put_payload(client, hr, emp_id,
+                        actual_job_title="مشرف وردية",
+                        job_title_en="Shift Supervisor",
+                        nationality_en="Egyptian",
+                        work_hours_type="fixed",
+                        official_work_hours=8, actual_work_hours=9.5)
+    r = client.put(f"/api/employees/{emp_id}", headers=hr, json=body)
+    assert r.status_code == 200, r.text
+
+    back = client.get(f"/api/employees/{emp_id}", headers=hr).json()
+    assert back["job_title_en"] == "Shift Supervisor"
+    assert back["work_hours_type"] == "fixed"
+    assert back["official_work_hours"] == 8
+    assert back["actual_work_hours"] == 9.5
+
+
+def test_work_hours_input_is_validated(client):
+    """قيم غير معروفة أو مستحيلة تُرفض بدل أن تُحفظ بصمت."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+
+    for changes in (
+        {"work_hours_type": "sometimes"},
+        {"work_hours_type": "fixed", "official_work_hours": 30},
+        {"work_hours_type": "fixed", "actual_work_hours": -1},
+    ):
+        body = _put_payload(client, hr, emp_id, **changes)
+        r = client.put(f"/api/employees/{emp_id}", headers=hr, json=body)
+        assert r.status_code == 422, f"{changes} -> {r.status_code} {r.text[:120]}"
+
+
+def test_profile_exposes_work_place_and_residency(client):
+    """الملف يعرض مكان الدوام بالاسم وتاريخ انتهاء الإقامة.
+
+    الإقامة تُحفظ في permits لا كعمود على الموظف، والفروع تُحفظ بالمعرّف —
+    فلولا حلّهما في الخادم لاحتاجت كل شاشة جلب قوائم لتترجم أرقاًما.
+    """
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+    p = client.get(f"/api/employees/{emp_id}/profile", headers=hr)
+    assert p.status_code == 200, p.text
+    body = p.json()
+    assert "official_branch_name" in body and "actual_branch_name" in body
+    assert "permits" in body
+    assert all({"kind", "expiry_date"} <= set(x) for x in body["permits"])
