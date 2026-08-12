@@ -94,6 +94,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       basic_salary: e.basic_salary ?? 0,
       hire_date: e.hire_date ?? "", contract_type: e.contract_type ?? "indefinite",
       work_hours_type: e.work_hours_type ?? "",
+      attendance_mode: e.attendance_mode ?? "qr",
+      attendance_exempt: e.attendance_exempt ?? false,
+      attendance_exempt_reason: e.attendance_exempt_reason ?? "",
       official_work_hours: e.official_work_hours ?? "",
       actual_work_hours: e.actual_work_hours ?? "",
     });
@@ -383,6 +386,34 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                       onChange={(ev) => setEditForm({ ...editForm, actual_work_hours: ev.target.value })} />
                   </div>
                 </div>
+              )}
+              {/* PERM-02 — إعدادات الحضور خلف manage_attendance لا edit_employee:
+                  إعفاء موظف من البصم قرار رقابي، ولا يصح أن يملكه من يعدّل
+                  الأسماء. الخادم يفرض نفس التفرقة فلا يكفي إخفاء الحقول. */}
+              {can("manage_attendance") && (
+                <>
+                  <div className="field">
+                    <label htmlFor="epf-edit-att-mode">{t("epf_att_mode")}</label>
+                    <select id="epf-edit-att-mode" value={editForm.attendance_mode}
+                      onChange={(ev) => setEditForm({ ...editForm, attendance_mode: ev.target.value })}>
+                      <option value="qr">{attAr("qr")}</option>
+                      <option value="gps">{attAr("gps")}</option>
+                      <option value="both">{attAr("both")}</option>
+                      <option value="none">{attAr("none")}</option>
+                    </select>
+                  </div>
+                  {/* "بدون حضور" يشترط إعفاًء بسبب موثّق — الخادم يرفض غير ذلك */}
+                  {editForm.attendance_mode === "none" && (
+                    <div className="field">
+                      <label htmlFor="epf-edit-att-reason">{t("epf_exempt_reason")}</label>
+                      <input id="epf-edit-att-reason" value={editForm.attendance_exempt_reason ?? ""}
+                        placeholder={t("epf_exempt_reason_ph")}
+                        onChange={(ev) => setEditForm({
+                          ...editForm, attendance_exempt: true,
+                          attendance_exempt_reason: ev.target.value })} />
+                    </div>
+                  )}
+                </>
               )}
               <div className="row">
                 <button onClick={saveEdit}>{t("save")}</button>

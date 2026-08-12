@@ -373,6 +373,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   fld_actual_job: { ar: "الوظيفة الفعلية", en: "Actual Job Title" },
   // نموذج تعديل بيانات الموظف
   epf_edit_data: { ar: "تعديل البيانات", en: "Edit Data" },
+  epf_exempt_reason: { ar: "سبب الإعفاء من الحضور", en: "Attendance exemption reason" },
+  epf_exempt_reason_ph: { ar: "مطلوب لتفعيل «بدون حضور»", en: "Required for 'no attendance'" },
   epf_saved: { ar: "حُفظت التعديلات", en: "Changes saved" },
   fld_name_en: { ar: "الاسم بالإنجليزية", en: "Name (English)" },
   fld_phone: { ar: "الهاتف", en: "Phone" },

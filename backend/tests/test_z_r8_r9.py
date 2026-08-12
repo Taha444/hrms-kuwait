@@ -2946,3 +2946,64 @@ def test_sec04_idle_logout_is_configurable(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     me = client.get("/api/auth/me", headers=hr).json()
     assert me["idle_logout_minutes"] == settings.idle_logout_minutes
+
+
+def test_perm02_attendance_settings_need_manage_attendance(client):
+    """PERM-02 — تعديل إعدادات الحضور عبر PUT يخضع لنفس ضوابط endpoint السياسة.
+
+    كان الـPUT بابًا خلفيًا: يقبل attendance_mode وattendance_exempt ويكتبهما
+    بلا فحص، فمن يملك edit_employee وحدها كان يقدر يُعفي موظًفا من البصم —
+    وهو قرار رقابي يخص manage_attendance.
+    """
+    from app.permissions import ROLE_DEFAULT_PERMS as R
+
+    # المدير يعدّل الموظفين ولا يملك manage_attendance
+    assert "edit_employee" in R["company_manager"]
+    assert "manage_attendance" not in R["company_manager"]
+    assert "manage_attendance" in R["hr"]
+
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+
+    body = _put_payload(client, mgr, emp_id, attendance_mode="none",
+                        attendance_exempt=True, attendance_exempt_reason="اختبار")
+    r = client.put(f"/api/employees/{emp_id}", headers=mgr, json=body)
+    assert r.status_code == 403, r.text
+
+    # وHR يملكها، لكن "بدون حضور" بلا سبب مرفوض
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    bad = _put_payload(client, hr, emp_id, attendance_mode="none",
+                       attendance_exempt=False, attendance_exempt_reason="")
+    assert client.put(f"/api/employees/{emp_id}", headers=hr, json=bad).status_code == 400
+
+    good = _put_payload(client, hr, emp_id, attendance_mode="none",
+                        attendance_exempt=True,
+                        attendance_exempt_reason="مندوب ميداني بلا وردية")
+    assert client.put(f"/api/employees/{emp_id}", headers=hr, json=good).status_code == 200
+
+
+def test_perm03_attendance_changes_reach_the_change_log(client):
+    """PERM-03 — كل تعديل يظهر في سجل التعديلات: من، متى، ماذا تغيّر.
+
+    السجل كان يقتصر على سبعة حقول مالية/تعاقدية، فتعديل نمط الحضور أو الإعفاء
+    منه لا يترك أثًرا — وهي التعديلات التي يُسأل عنها لاحًقا.
+    """
+    from app.routers.employees import CRITICAL_FIELDS
+
+    assert {"attendance_mode", "attendance_exempt", "attendance_exempt_reason",
+            "actual_job_title", "work_hours_type"} <= CRITICAL_FIELDS
+
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+
+    body = _put_payload(client, hr, emp_id, attendance_mode="both",
+                        attendance_exempt=False, attendance_exempt_reason=None,
+                        actual_job_title="مشرف ميداني")
+    assert client.put(f"/api/employees/{emp_id}", headers=hr, json=body).status_code == 200
+
+    hist = client.get(f"/api/employees/{emp_id}/change-history", headers=hr).json()
+    fields = {h["field_name"] for h in hist}
+    assert "attendance_mode" in fields, f"نمط الحضور لم يُسجَّل: {fields}"
+    row = next(h for h in hist if h["field_name"] == "attendance_mode")
+    assert row.get("changed_by") or row.get("changed_by_name"), "السجل بلا فاعل"
+    assert row.get("changed_at"), "السجل بلا توقيت"

@@ -153,8 +153,22 @@ def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_emp
 
 
 # R3-C §4 — الحقول اللي كل تعديل عليها يُسجَّل في EmployeeFieldChange (سجل نسخي دائم)
-CRITICAL_FIELDS = {"basic_salary", "actual_salary", "hire_date", "job_title",
-                   "contract_type", "contract_start_date", "contract_end_date"}
+#
+# PERM-03 — وُسِّعت لتشمل إعدادات الحضور والوظيفة الفعلية وساعات الدوام ومكان
+# الدوام. كانت مقصورة على السبعة المالية/التعاقدية، فتعديل نمط حضور موظف أو
+# إعفاؤه من البصم لم يكن يظهر في "سجل التعديلات" إطلاقًا — وهي بالضبط
+# التعديلات التي يُسأل عنها لاحًقا: من أعفى هذا الموظف من الحضور ومتى ولماذا.
+CRITICAL_FIELDS = {
+    # مالية وتعاقدية
+    "basic_salary", "actual_salary", "hire_date", "job_title",
+    "contract_type", "contract_start_date", "contract_end_date",
+    # الوظيفة الفعلية وساعات الدوام
+    "actual_job_title", "work_hours_type", "official_work_hours", "actual_work_hours",
+    # إعدادات الحضور — إعفاء موظف من البصم قرار رقابي يجب أن يُسأل عنه
+    "attendance_mode", "attendance_exempt", "attendance_exempt_reason", "shift_id",
+    # مكان الدوام الرسمي والفعلي
+    "branch_id", "actual_branch_id",
+}
 
 
 @router.put("/{emp_id}", response_model=schemas.EmployeeOut)
@@ -171,6 +185,28 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     _assert_no_duplicates(db, emp.company_id, payload.get("civil_id"),
                           payload.get("passport_number"), exclude_id=emp.id)
     _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
+
+    # PERM-02 — إعدادات الحضور تُعدَّل من هنا أيًضا، فتسري عليها نفس ضوابط
+    # endpoint السياسة المخصص بدل أن يكون الـPUT بابًا خلفيًا يتخطّاها:
+    #  1) SEC2-17 — mode='none' يشترط إعفاًء صريًحا بسبب موثّق
+    #  2) فصل الصلاحيات — تغيير سياسة الحضور يستلزم manage_attendance، ولا
+    #     يكفي edit_employee وحدها (وإلا صار من يعدّل الأسماء يُعفي من البصم)
+    _ATT_FIELDS = ("attendance_mode", "attendance_exempt", "attendance_exempt_reason",
+                   "shift_id")
+    att_changed = any(getattr(emp, f, None) != payload.get(f) for f in _ATT_FIELDS)
+    if att_changed:
+        from ..deps import get_user_perms
+        from ..permissions import has_permission
+        if not has_permission(user.role, get_user_perms(user, db), "manage_attendance"):
+            raise HTTPException(
+                status_code=403,
+                detail="تعديل إعدادات الحضور يتطلب صلاحية إدارة الحضور")
+        if payload.get("attendance_mode") == "none" and not (
+                payload.get("attendance_exempt")
+                and (payload.get("attendance_exempt_reason") or "").strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="نمط 'بدون حضور' يتطلب إعفاًء صريًحا مع سبب موثّق")
 
     # R3-C — التقاط snapshot قبل + تسجيل التغييرات الحرجة في جدول التاريخ
     eff = effective_date or date.today()
