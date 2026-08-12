@@ -35,7 +35,7 @@ def test_preferences_default_enabled_and_updatable(client):
 def test_print_and_file_send_template_driven_notification(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "loan", "payload_json": {"amount": 100, "months": 6, "reason": "ظرف"}})
+        "request_type_code": "loan", "payload_json": {"loan_type": "loan", "amount": 100, "months": 6, "first_deduction_month": "2027-01", "reason": "ظرف"}})
     rid = r.json()["id"]
     mgr = auth_headers(login(client, "100000000001", "manager123"))
     client.post(f"/api/requests/{rid}/decide", headers=mgr, json={"decision": "approved"})
@@ -44,7 +44,7 @@ def test_print_and_file_send_template_driven_notification(client):
     # لا مستند مولَّد لطلب القرض (produces_document=False) — نتحقق من شهادة الراتب بدلًا منه
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"}})
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"}})
     rid2 = r.json()["id"]
     client.post(f"/api/requests/{rid2}/decide", headers=mgr, json={"decision": "approved"})
 
@@ -64,7 +64,7 @@ def test_leave_approval_stage_is_template_driven(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-03", "days": 3}})
+        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-03", "days": 3, "leave_type": "annual", "reason": "اختبار"}})
     rid = r.json()["id"]
 
     sup = auth_headers(login(client, "100000000005", "sup12345"))

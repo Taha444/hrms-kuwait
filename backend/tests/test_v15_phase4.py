@@ -89,7 +89,7 @@ def test_generated_document_receives_od_code_from_default_template(client):
     r = client.post("/api/requests", headers=auth_headers(emp_tok), json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2026-10-01", "end_date": "2026-10-03",
-                         "days": 3, "reason": "سياحة"},
+                         "days": 3, "reason": "سياحة", "leave_type": "annual"},
     })
     rid = r.json()["id"]
     # نمرّر المسار حتى يُنتج مستند

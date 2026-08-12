@@ -759,6 +759,10 @@ _VERIFIED_ENFORCE_REQUIRED = (
     # بالبناء، وكلها بنموذج عام يُبنى من الـschema.
     "REQLATE", "REQSHIFT", "REQWLOC", "REQMIS", "REQWP", "REQTRFLIC",
     "REQCONTACT", "REQFILE", "REQALLOW", "REQVIO", "REQWARN", "REQGEN", "REQCON",
+    # الأربعة الأخيرة: كانت أنواعها تُعرض بنماذج مبرمجة في الواجهة بمفردات خاصة
+    # (addressed_to بدل purpose، subtype بدل loan_type، description بدل reason)
+    # فأُعفيت من التحقق. بعد أن صارت كل الأنواع تُبنى من الـschema لم يبقَ استثناء.
+    "REQLV", "REQADV", "REQEXP", "REQBANK",
 )
 
 for _code in _VERIFIED_ENFORCE_REQUIRED:

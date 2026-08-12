@@ -63,7 +63,7 @@ def test_print_and_file_document_are_audited(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"}})
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"}})
     rid = r.json()["id"]
     mgr = auth_headers(login(client, "100000000001", "manager123"))
     client.post(f"/api/requests/{rid}/decide", headers=mgr, json={"decision": "approved"})
@@ -83,7 +83,7 @@ def test_filed_request_document_appears_in_employee_archive(client):
     emp_h = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp_h, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "سفر"}})
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "سفر"}})
     rid = r.json()["id"]
     mgr = auth_headers(login(client, "100000000001", "manager123"))
     client.post(f"/api/requests/{rid}/decide", headers=mgr, json={"decision": "approved"})

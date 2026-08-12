@@ -87,7 +87,14 @@ export function errMsg(e: any, fallback: string): string {
   if (Array.isArray(d)) {
     return d.map((it: any) => (typeof it === "string" ? it : it?.msg || JSON.stringify(it))).join("، ");
   }
-  if (d && typeof d === "object") return (d as any).msg || JSON.stringify(d);
+  if (d && typeof d === "object") {
+    const o = d as any;
+    // شكل أخطاء محرّك النماذج: {errors: [...], message: "..."} — نعرض كل الأخطاء
+    // لا الأولى فقط، ليعرف المستخدم كل الحقول الناقصة دفعة واحدة. بدون هذا الفرع
+    // كانت الرسالة تسقط إلى JSON.stringify فيرى المستخدم JSON خامًا.
+    if (Array.isArray(o.errors) && o.errors.length) return o.errors.join("، ");
+    return o.message || o.msg || JSON.stringify(o);
+  }
   return fallback;
 }
 

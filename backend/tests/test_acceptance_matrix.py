@@ -31,7 +31,11 @@ def test_at002_empty_request_rejected(client):
         "request_type_code": "leave", "payload_json": {}
     })
     assert r.status_code == 400
-    assert "مطلوبة" in r.json()["detail"]
+    # الرفض صار من محرّك النماذج (REQLV يفرض حقوله) فيسمّي كل حقل ناقص بدل
+    # رسالة نصية واحدة — والشكل موحَّد بين مساري الرفض
+    detail = r.json()["detail"]
+    assert "مطلوب" in detail["message"]
+    assert {e.split(":")[0] for e in detail["errors"]} >= {"start_date", "end_date", "leave_type"}
 
 
 # ---------- AT-003: موظف فارغ يُرفض ولا سجل جزئي ----------
@@ -51,7 +55,7 @@ def test_at004_hr_appointment_empty_returns_message_not_crash(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-03", "days": 3}
+        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-03", "days": 3, "leave_type": "annual", "reason": "اختبار"}
     })
     rid = r.json()["id"]
     # تاريخ فارغ → 422 من التحقق، مش شاشة بيضاء (النص يخرج نص)
@@ -105,7 +109,7 @@ def test_at006_pdf_body_no_raw_keys_or_role_codes(client):
 def test_at007_finance_workflow_reaches_accountant(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "advance", "payload_json": {"amount": 200, "reason": "ظرف"}
+        "request_type_code": "advance", "payload_json": {"loan_type": "advance", "amount": 200, "first_deduction_month": "2027-01", "reason": "ظرف"}
     })
     if r.status_code != 201:
         return
@@ -156,7 +160,7 @@ def test_at011_tasks_auto_close_on_request_cancel(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2027-01-01", "end_date": "2027-01-03", "days": 3}
+        "payload_json": {"start_date": "2027-01-01", "end_date": "2027-01-03", "days": 3, "leave_type": "annual", "reason": "اختبار"}
     })
     if r.status_code != 201:
         return

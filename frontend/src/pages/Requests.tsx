@@ -8,13 +8,11 @@ import { Skeleton, ErrorRetry, EmptyState } from "../components/States";
 import { statusAr } from "../labels";
 import SchemaForm, { missingFields, type Schema } from "../components/SchemaForm";
 
-// الأنواع التي لها نموذج مبرمج هنا. لا بد أن تطابق مفاتيح REQUIRED_PAYLOAD_FIELDS
-// في backend/app/routers/requests.py — الخادم يعفي هذه الأكواد من التحقق بمفردات
-// الـschema لأن حقولها من الواجهة لا من الـschema. اختبار في الخادم يحرس التطابق.
-const HARDCODED_FORM_TYPES = [
-  "leave", "salary_certificate", "exit_permission", "advance", "loan",
-  "REQADV", "REQBANK", "REQEXP", "REQWARN",
-];
+// الأنواع التي لها نموذج مبرمج هنا بدل بنائه من الـschema. صارت فارغة: كل نوع
+// يُبنى نموذجه الآن من تعريف الخادم عبر SchemaForm. لا بد أن تطابق مفاتيح
+// REQUIRED_PAYLOAD_FIELDS في backend/app/routers/requests.py — الخادم يعفي هذه
+// الأكواد من التحقق بمفردات الـschema. اختبار في الخادم يحرس التطابق.
+const HARDCODED_FORM_TYPES: string[] = [];
 
 export default function Requests() {
   const { t } = useI18n();
@@ -63,20 +61,10 @@ export default function Requests() {
   // في نوع مختلف قبل ما يبدّل النوع).
   useEffect(() => { setPayload({}); setErr(""); }, [typeCode]);
 
-  // حقول إلزامية لكل نوع بنموذج مبرمج — يطابق REQUIRED_PAYLOAD_FIELDS في requests.py
-  // (QA-P0-WF-01: منع تقديم طلب فارغ برسالة واضحة قرب الحقول قبل وصوله للخادم أصًلا)
-  // بقية الأنواع تُشتق حقولها الإلزامية من الـschema عبر missingFields.
-  const REQUIRED_FIELDS: Record<string, [string, string][]> = {
-    leave: [["start_date", t("req_from")], ["end_date", t("req_to")]],
-    salary_certificate: [["addressed_to", t("req_addressed")], ["purpose", t("req_purpose")]],
-    exit_permission: [["date", t("req_date")], ["reason", t("req_reason")]],
-    advance: [["amount", t("req_amount")]],
-    loan: [["amount", t("req_amount")], ["months", t("req_months")]],
-    REQADV: [["subtype", t("req_subtype")], ["amount", t("req_amount")]],
-    REQBANK: [["bank_name", t("req_bank_name")], ["iban", t("req_iban")]],
-    REQEXP: [["amount", t("req_amount")], ["description", t("req_description")]],
-    REQWARN: [["warning_ref", t("req_warning_ref")], ["response", t("req_response")]],
-  };
+  // حقول إلزامية بأسماء تخص نموذجًا مبرمجًا — فارغة الآن لأن كل النماذج تُبنى من
+  // الـschema، فتُشتق حقولها الإلزامية منه عبر missingFields (QA-P0-WF-01: منع
+  // تقديم طلب فارغ برسالة واضحة قبل وصوله للخادم).
+  const REQUIRED_FIELDS: Record<string, [string, string][]> = {};
 
   const submit = async () => {
     setErr("");
@@ -149,101 +137,6 @@ export default function Requests() {
                   حسابك الإداري غير مرتبط بملف موظف — يجب اختيار موظف محدد
                 </span>
               )}
-            </div>
-          )}
-          {typeCode === "leave" && (
-            <>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}>
-                  <label htmlFor="req-leave-from">{t("req_from")} *</label>
-                  <input id="req-leave-from" type="date" required
-                         value={payload.start_date || ""}
-                         onChange={(e) => setPayload({ ...payload, start_date: e.target.value })} />
-                </div>
-                <div className="field" style={{ flex: 1 }}>
-                  <label htmlFor="req-leave-to">{t("req_to")} *</label>
-                  <input id="req-leave-to" type="date" required
-                         value={payload.end_date || ""}
-                         onChange={(e) => setPayload({ ...payload, end_date: e.target.value })} />
-                </div>
-                <div className="field" style={{ width: 100 }}>
-                  <label htmlFor="req-leave-days">{t("req_days")}</label>
-                  <input id="req-leave-days" type="number"
-                         value={payload.days || ""}
-                         onChange={(e) => setPayload({ ...payload, days: +e.target.value })} />
-                </div>
-              </div>
-              <div className="field"><label htmlFor="req-leave-reason">{t("req_reason")}</label>
-                <input id="req-leave-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
-            </>
-          )}
-          {typeCode === "salary_certificate" && (
-            <>
-              <div className="field"><label htmlFor="req-sc-addressed">{t("req_addressed")} *</label>
-                <input id="req-sc-addressed" required onChange={(e) => setPayload({ ...payload, addressed_to: e.target.value })} /></div>
-              <div className="field"><label htmlFor="req-sc-purpose">{t("req_purpose")} *</label>
-                <input id="req-sc-purpose" required onChange={(e) => setPayload({ ...payload, purpose: e.target.value })} /></div>
-            </>
-          )}
-          {typeCode === "exit_permission" && (
-            <div className="row">
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exit-date">{t("req_date")} *</label>
-                <input id="req-exit-date" type="date" required onChange={(e) => setPayload({ ...payload, date: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label htmlFor="req-exit-reason">{t("req_reason")} *</label>
-                <input id="req-exit-reason" required onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
-            </div>
-          )}
-          {(typeCode === "advance" || typeCode === "loan") && (
-            <div className="row">
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-adv-amount">{t("req_amount")} *</label>
-                <input id="req-adv-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
-              {typeCode === "loan" && (
-                <div className="field" style={{ width: 120 }}><label htmlFor="req-adv-months">{t("req_months")} *</label>
-                  <input id="req-adv-months" type="number" min={1} required onChange={(e) => setPayload({ ...payload, months: +e.target.value })} /></div>
-              )}
-              <div className="field" style={{ flex: 2 }}><label htmlFor="req-adv-reason">{t("req_reason")}</label>
-                <input id="req-adv-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
-            </div>
-          )}
-          {typeCode === "REQADV" && (
-            <div className="row">
-              <div className="field" style={{ width: 150 }}><label htmlFor="req-reqadv-subtype">{t("req_subtype")} *</label>
-                <select id="req-reqadv-subtype" required onChange={(e) => setPayload({ ...payload, subtype: e.target.value })}>
-                  <option value="advance">{t("req_subtype_advance")}</option>
-                  <option value="loan">{t("req_subtype_loan")}</option>
-                </select></div>
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-reqadv-amount">{t("req_amount")} *</label>
-                <input id="req-reqadv-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
-              <div className="field" style={{ width: 140 }}><label htmlFor="req-reqadv-installments">{t("req_installments")}</label>
-                <input id="req-reqadv-installments" type="number" min={1} onChange={(e) => setPayload({ ...payload, installments: +e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label htmlFor="req-reqadv-reason">{t("req_reason")}</label>
-                <input id="req-reqadv-reason" onChange={(e) => setPayload({ ...payload, reason: e.target.value })} /></div>
-            </div>
-          )}
-          {typeCode === "REQBANK" && (
-            <div className="row">
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-bank-name">{t("req_bank_name")} *</label>
-                <input id="req-bank-name" required onChange={(e) => setPayload({ ...payload, bank_name: e.target.value })} /></div>
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-bank-iban">{t("req_iban")} *</label>
-                <input id="req-bank-iban" required onChange={(e) => setPayload({ ...payload, iban: e.target.value })} /></div>
-            </div>
-          )}
-          {typeCode === "REQEXP" && (
-            <div className="row">
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exp-amount">{t("req_amount")} *</label>
-                <input id="req-exp-amount" type="number" min={0} required onChange={(e) => setPayload({ ...payload, amount: +e.target.value })} /></div>
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-exp-receipt">{t("req_receipt_ref")}</label>
-                <input id="req-exp-receipt" onChange={(e) => setPayload({ ...payload, receipt_ref: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label htmlFor="req-exp-description">{t("req_description")} *</label>
-                <input id="req-exp-description" required onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
-            </div>
-          )}
-          {typeCode === "REQWARN" && (
-            <div className="row">
-              <div className="field" style={{ flex: 1 }}><label htmlFor="req-warn-ref">{t("req_warning_ref")} *</label>
-                <input id="req-warn-ref" required onChange={(e) => setPayload({ ...payload, warning_ref: e.target.value })} /></div>
-              <div className="field" style={{ flex: 2 }}><label htmlFor="req-warn-response">{t("req_response")} *</label>
-                <input id="req-warn-response" required onChange={(e) => setPayload({ ...payload, response: e.target.value })} /></div>
             </div>
           )}
           {/* الأنواع بلا نموذج مبرمج: يُبنى نموذجها من الـschema الذي يعرّفه الخادم.

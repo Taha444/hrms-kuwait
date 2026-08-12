@@ -310,7 +310,7 @@ def test_generated_pdf_embeds_signature_when_available(client):
     # نقدم طلب شهادة راتب ونمرره حتى الإكمال
     r = client.post("/api/requests", headers=auth_headers(emp_tok), json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"},
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"},
     })
     rid_no_sig = r.json()["id"]
     mgr = auth_headers(login(client, "100000000001", "manager123"))
@@ -334,7 +334,7 @@ def test_generated_pdf_embeds_signature_when_available(client):
                 files={"file": ("s.png", png, "image/png")})
     r = client.post("/api/requests", headers=auth_headers(emp_tok), json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "سفر"},
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "سفر"},
     })
     rid_with_sig = r.json()["id"]
     client.post(f"/api/requests/{rid_with_sig}/decide", headers=mgr,

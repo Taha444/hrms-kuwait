@@ -236,5 +236,5 @@ def test_leave_end_before_start_rejected(client):
     emp = login(client, "100000000101", "emp12345")
     r = client.post("/api/requests", headers=auth_headers(emp), json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-08-10", "end_date": "2026-08-01"}})
+        "payload_json": {"start_date": "2026-08-10", "end_date": "2026-08-01", "leave_type": "annual", "days": 1, "reason": "اختبار"}})
     assert r.status_code == 400

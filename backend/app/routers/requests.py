@@ -17,29 +17,23 @@ from ..safe_files import read_limited, unique_path
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
-# حقول إلزامية لكل نوع طلب له نموذج مخصّص في الواجهة (Requests.tsx) — تمنع حفظ طلب فارغ
-# `{}` يدخل مسار الاعتماد الفعلي (QA-P0-WF-01). الأنواع غير المدرجة هنا (نموذج عام، أو
-# طلبات تُنشأ برمجيًا مثل REQEOS/REQCLR بحمولة خاصة بها) تُفحص فقط بألا تكون فارغة تمامًا.
-REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
-    "leave": ["start_date", "end_date"],
-    "salary_certificate": ["addressed_to", "purpose"],
-    "exit_permission": ["date", "reason"],
-    "advance": ["amount"],
-    "loan": ["amount", "months"],
-    "REQADV": ["subtype", "amount"],
-    "REQBANK": ["bank_name", "iban"],
-    "REQEXP": ["amount", "description"],
-    "REQWARN": ["warning_ref", "response"],
-}
+# تجاوزات صريحة لحقول إلزامية بأسماء تخص الواجهة لا الـschema.
+#
+# صارت فارغة بعد أن أصبحت الواجهة تبني كل النماذج من الـschema (SchemaForm):
+# لم يعد هناك نوع تختلف مفرداته عن مفردات نموذجه. تُترك موجودة كمَنفَذ لأي نوع
+# مستقبلي يحتاج نموذجًا مبرمجًا خاصًا، ويبقى ترتيب المصادر في
+# _missing_required_fields كما هو (تجاوز صريح ← schema ← حمولة غير فارغة).
+REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {}
 
 
 def _missing_required_fields(code: str, payload: dict) -> list[str]:
     """الحقول الإلزامية الناقصة في الحمولة.
 
     ترتيب المصادر:
-    1. REQUIRED_PAYLOAD_FIELDS — تجاوز صريح للأنواع التي تستخدم واجهتها أسماء
-       حقول تختلف عن الـschema (مثل salary_certificate: الواجهة ترسل
-       addressed_to بينما schema REQCERT يسمّيه purpose).
+    1. REQUIRED_PAYLOAD_FIELDS — تجاوز صريح لنوع تستخدم واجهته أسماء حقول تختلف
+       عن الـschema. فارغ اليوم: كانت فيه تسعة أنواع ذات نماذج مبرمجة (مثل
+       salary_certificate الذي كانت واجهته ترسل addressed_to بينما يسمّيه
+       REQCERT purpose) وقد صارت كلها تُبنى من الـschema.
     2. الحقول المعلَّمة required في schema يحمل meta.enforce_required — يُشتق
        تلقائيًا فلا يحتاج النوع تسجيلًا يدويًا هنا.
     3. لا هذا ولا ذاك: يكفي ألا تكون الحمولة فارغة تمامًا.
@@ -291,10 +285,8 @@ def submit_request(data: schemas.RequestIn, request: Request,
 
     # V2.2 §4 Form Schema Engine: التحقق من الحقول والقيود الشرطية والحدود
     from .. import form_schemas
-    # وجود الكود في REQUIRED_PAYLOAD_FIELDS يعني أن الواجهة تبني نموذجه بأسماء
-    # حقولها هي (مثل salary_certificate ترسل addressed_to بينما schema REQCERT
-    # يسمّيه purpose ويطلب language الذي لا يوجد في ذلك النموذج أصلاً). التحقق
-    # الحقلي الصارم بمفردات الـschema لا ينطبق على هذه الأكواد.
+    # الإعفاء يبقى للأكواد ذات النموذج المبرمج (مفرداتها من الواجهة لا الـschema).
+    # القائمة فارغة الآن لأن كل النماذج تُبنى من الـschema.
     ui_defined = data.request_type_code in REQUIRED_PAYLOAD_FIELDS
     schema_errors = form_schemas.validate_payload(
         data.request_type_code, data.payload_json or {},
@@ -308,7 +300,13 @@ def submit_request(data: schemas.RequestIn, request: Request,
     missing = _missing_required_fields(data.request_type_code, data.payload_json or {})
     if missing:
         labels = [workflow.PAYLOAD_KEY_LABELS_AR.get(k, workflow._humanize_key(k)) for k in missing]
-        raise HTTPException(status_code=400, detail=f"الحقول التالية مطلوبة: {'، '.join(labels)}")
+        # نفس شكل أخطاء المحرّك أعلاه: الحقل الناقص شرط واحد يُبلَّغ بشكلين كان
+        # على الواجهة أن تفهمهما معًا. الأنواع ذات enforce_required يمسكها المحرّك
+        # قبل الوصول هنا، فهذا المسار للأنواع بلا schema مفروض.
+        raise HTTPException(status_code=400, detail={
+            "errors": [f"{k}: {lbl} مطلوب" for k, lbl in zip(missing, labels)],
+            "message": f"الحقول التالية مطلوبة: {'، '.join(labels)}",
+        })
 
     # تحقّق منطق التواريخ لطلبات الإجازة
     if data.request_type_code == "leave":

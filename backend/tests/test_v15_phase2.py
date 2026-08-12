@@ -46,7 +46,7 @@ def test_request_detail_exposes_canonical_workflow_and_v15_status(client):
     emp_token = login(client, "100000000101", "emp12345")
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-09-15", "end_date": "2026-09-16", "days": 2},
+        "payload_json": {"start_date": "2026-09-15", "end_date": "2026-09-16", "days": 2, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     d = client.get(f"/api/requests/{rid}", headers=auth_headers(emp_token)).json()

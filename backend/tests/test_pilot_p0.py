@@ -64,7 +64,7 @@ def test_P0_3_employee_own_leave_hides_dates(client):
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2027-05-01", "end_date": "2027-05-03", "days": 3,
-                         "reason": "ظرف عائلي"},
+                         "reason": "ظرف عائلي", "leave_type": "annual"},
     })
     rid = r.json()["id"]
     # الموظف نفسه: التواريخ مخفية
@@ -345,7 +345,7 @@ def test_v22_leave_e2e_completes_and_produces_document(client):
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2027-08-01", "end_date": "2027-08-03",
-                         "days": 3, "reason": "شخصي"},
+                         "days": 3, "reason": "شخصي", "leave_type": "annual"},
     })
     assert r.status_code == 201, r.text
     rid = r.json()["id"]
@@ -577,7 +577,7 @@ def test_v22_wf010_expense_reimbursement_smoke(client):
         "request_type_code": "REQEXP",
         # R7-E — receipt مرفق مطلوب لصرف المصروفات
         "payload_json": {"expense_date": "2027-06-01", "category": "travel",
-                         "amount": 50, "description": "تاكسي مهمة عمل",
+                         "amount": 50, "reason": "تاكسي مهمة عمل",
                          "_attachments": ["receipt"]},
     })
     assert r.status_code == 201, r.text
@@ -738,7 +738,7 @@ def test_v22_self_approval_on_own_leave_rejected(client):
     r = client.post("/api/requests", headers=mgr, json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2027-06-01", "end_date": "2027-06-03",
-                         "days": 3, "reason": "شخصي"},
+                         "days": 3, "reason": "شخصي", "leave_type": "annual"},
     })
     if r.status_code != 201:
         # لو المدير ليس له employee_id فلا يستطيع تقديم أصلًا — نتخطّى بلطف

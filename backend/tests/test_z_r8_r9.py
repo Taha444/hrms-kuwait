@@ -943,7 +943,7 @@ def test_workflow_double_decide_rejected(client):
     # نقدّم طلب salary_certificate — أول مرحلة company_manager
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك الاختبار", "purpose": "قرض"},
+        "payload_json": {"purpose": "بنك الاختبار", "language": "ar", "notes": "قرض"},
     })
     if r.status_code != 201:
         return  # لو الـcatalog اتغير أو type مش موجود، skip
@@ -1121,8 +1121,18 @@ def test_required_fields_derived_from_schema(client):
     })
     assert complete == []
 
-    # التجاوز الصريح يبقى مقدَّمًا (أسماء حقول الواجهة تختلف عن الـschema)
-    assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
+    # الاشتقاق يسري عبر الاسم البديل أيضًا: salary_certificate كان له تجاوز صريح
+    # بأسماء نموذجه المبرمج (addressed_to)، وبعد بنائه من الـschema صارت حقوله
+    # الإلزامية هي حقول REQCERT نفسها بالترتيب المعلن فيه
+    assert _missing_required_fields("salary_certificate", {}) == ["purpose", "language"]
+
+    # التجاوز الصريح يبقى مقدَّمًا على الاشتقاق لو سُجِّل نوع مستقبلي فيه
+    from app.routers.requests import REQUIRED_PAYLOAD_FIELDS
+    REQUIRED_PAYLOAD_FIELDS["REQMIS"] = ["ui_only_field"]
+    try:
+        assert _missing_required_fields("REQMIS", {}) == ["ui_only_field"]
+    finally:
+        del REQUIRED_PAYLOAD_FIELDS["REQMIS"]
 
 
 def test_every_creatable_type_exposes_a_schema_to_the_ui(client):
@@ -1150,7 +1160,10 @@ def test_every_creatable_type_exposes_a_schema_to_the_ui(client):
 def test_hardcoded_form_list_matches_backend_exemptions(client):
     """قائمة الأنواع ذات النموذج المبرمج في الواجهة لا بد أن تطابق مفاتيح
     REQUIRED_PAYLOAD_FIELDS — الخادم يعفي هذه الأكواد من التحقق بمفردات الـschema،
-    فاختلاف القائمتين يعني إما نوعًا يُرفض بلا سبب أو نوعًا يفلت من التحقق."""
+    فاختلاف القائمتين يعني إما نوعًا يُرفض بلا سبب أو نوعًا يفلت من التحقق.
+
+    القائمتان فارغتان الآن (كل النماذج تُبنى من الـschema)، ويبقى الاختبار
+    ليحرس تطابقهما لو أُعيد إدخال نموذج مبرمج لنوع ما."""
     import re
     from pathlib import Path
     from app.routers.requests import REQUIRED_PAYLOAD_FIELDS
@@ -1159,7 +1172,8 @@ def test_hardcoded_form_list_matches_backend_exemptions(client):
     if not src.exists():
         return  # الواجهة غير موجودة في هذه البيئة
     text = src.read_text(encoding="utf-8")
-    block = re.search(r"HARDCODED_FORM_TYPES\s*=\s*\[(.*?)\]", text, re.S)
+    # يتحمّل التعليق النوعي بين الاسم و«=» (const X: string[] = [...])
+    block = re.search(r"HARDCODED_FORM_TYPES\s*(?::[^=]*)?=\s*\[(.*?)\]", text, re.S)
     assert block, "HARDCODED_FORM_TYPES not found in Requests.tsx"
     ui_codes = set(re.findall(r'"([A-Za-z_]+)"', block.group(1)))
     assert ui_codes == set(REQUIRED_PAYLOAD_FIELDS), (
@@ -1196,21 +1210,24 @@ def test_strict_validation_catches_bad_values(client):
     assert any("to_date" in e for e in reversed_dates), reversed_dates
 
 
-def test_strict_skipped_for_ui_defined_payloads(client):
-    """الأكواد ذات النموذج المبرمج تُعفى من التحقق الحقلي: مفرداتها تخص واجهتها.
-    نموذج شهادة الراتب يجمع addressed_to+purpose ولا حقل لغة فيه أصلاً، بينما
-    schema REQCERT يطلب language — فتطبيقه عليها كان يرفض كل طلب شهادة راتب."""
+def test_no_type_is_exempt_from_schema_validation(client):
+    """لم يعد أي نوع معفى من التحقق بمفردات الـschema.
+
+    كان الإعفاء لازمًا للأنواع التسعة ذات النموذج المبرمج: مفرداتها تأتي من
+    الواجهة لا من الـschema (شهادة الراتب كانت تجمع addressed_to ولا حقل لغة
+    فيها أصلاً بينما REQCERT يطلبه). بعد أن صارت كل النماذج تُبنى من الـschema
+    لم يبقَ اختلاف مفردات، فلا استثناء. المَنفَذ يبقى في الكود لنوع مستقبلي
+    يحتاج نموذجًا مبرمجًا خاصًا.
+    """
     from app.form_schemas import validate_payload as validate
     from app.routers.requests import REQUIRED_PAYLOAD_FIELDS
 
-    ui_payload = {"addressed_to": "بنك الكويت", "purpose": "قرض"}
-    assert validate("salary_certificate", ui_payload, strict=False) == []
-    # وبدون الإعفاء كان يفشل — ما يثبت أن الإعفاء هو ما يحميه
-    assert validate("salary_certificate", ui_payload) != []
-
-    # كل كود بنموذج مبرمج مسجّل في REQUIRED_PAYLOAD_FIELDS، وهو ما يقرأه
-    # submit_request ليقرر الإعفاء
-    assert "salary_certificate" in REQUIRED_PAYLOAD_FIELDS
+    assert REQUIRED_PAYLOAD_FIELDS == {}, (
+        f"types still exempt from schema validation: {sorted(REQUIRED_PAYLOAD_FIELDS)}"
+    )
+    # وحمولة شهادة الراتب بمفردات الـschema تمر بالتحقق الكامل بلا إعفاء
+    assert validate("salary_certificate",
+                    {"purpose": "بنك الكويت", "language": "ar", "notes": "قرض"}) == []
 
 
 def test_salary_certificate_still_submittable(client):
@@ -1218,7 +1235,7 @@ def test_salary_certificate_still_submittable(client):
     emp = auth_headers(login(client, *EMP))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك الكويت الوطني", "purpose": "قرض سكني"},
+        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar", "notes": "قرض سكني"},
     })
     assert r.status_code == 201, r.text
 
@@ -1277,7 +1294,6 @@ def test_required_enforcement_coverage_is_deliberate(client):
     EXPECTED_UNENFORCED = {
         "REQEOS", "REQCLR",   # تُنشأ برمجيًا بحمولة خاصة
         "REQTRAVEL",          # إذن مغادرة البلاد — لا نوع طلب يستخدمه بعد
-        "REQLV", "REQADV", "REQEXP", "REQBANK",  # أنواعها محكومة بتجاوز صريح
     }
     unenforced = {k for k, v in SCHEMAS.items()
                   if not (v.get("meta") or {}).get("enforce_required")}
@@ -1393,7 +1409,7 @@ def test_catalog_and_post_agree_with_legacy_flag_ON(client):
         r = client.post("/api/requests", headers=emp, json={
             "request_type_code": "leave",
             "payload_json": {"start_date": "2027-03-01", "end_date": "2027-03-03",
-                             "days": 3, "leave_type": "annual"},
+                             "days": 3, "leave_type": "annual", "reason": "اختبار"},
         })
         assert r.status_code != 400 or "LEGACY_ALIAS_BLOCKED" not in str(r.json()), (
             f"catalog offered 'leave' but POST rejected it: {r.text[:200]}"
@@ -1423,7 +1439,7 @@ def test_return_resubmit_reapprove_full_cycle(client):
     emp_h = auth_headers(login(client, *EMP))
     r = client.post("/api/requests", headers=emp_h, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك الاختبار", "purpose": "قرض شخصي"},
+        "payload_json": {"purpose": "بنك الاختبار", "language": "ar", "notes": "قرض شخصي"},
     })
     if r.status_code != 201:
         return
@@ -1440,7 +1456,7 @@ def test_return_resubmit_reapprove_full_cycle(client):
 
     # 2) الموظف يعيد التقديم ببيانات مصحّحة
     re = client.post(f"/api/requests/{req_id}/resubmit", headers=emp_h, json={
-        "payload_json": {"addressed_to": "بنك الكويت الوطني", "purpose": "قرض سكني"},
+        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar", "notes": "قرض سكني"},
     })
     assert re.status_code == 200, re.text
     after_resubmit = client.get(f"/api/requests/{req_id}", headers=mgr).json()
@@ -1478,7 +1494,7 @@ def test_audit_submit_has_correlation_id_and_after(client):
     emp = auth_headers(login(client, *EMP))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"},
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"},
     })
     if r.status_code != 201:
         return
@@ -1528,7 +1544,7 @@ def test_own_leave_request_dates_masked(client):
     d2 = (date.today() + timedelta(days=32)).isoformat()
     r = client.post("/api/requests", headers=emp_h, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual"},
+        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual", "reason": "اختبار"},
     })
     if r.status_code != 201:
         return
@@ -1554,7 +1570,7 @@ def test_hr_sees_leave_dates(client):
     d2 = (date.today() + timedelta(days=47)).isoformat()
     r = client.post("/api/requests", headers=emp_h, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual"},
+        "payload_json": {"start_date": d1, "end_date": d2, "days": 3, "leave_type": "annual", "reason": "اختبار"},
     })
     if r.status_code != 201:
         return
@@ -1582,7 +1598,7 @@ def test_terminal_request_closes_in_progress_tasks(client):
     emp = auth_headers(login(client, *EMP))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"},
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"},
     })
     if r.status_code != 201:
         return

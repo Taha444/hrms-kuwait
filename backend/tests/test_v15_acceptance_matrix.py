@@ -19,7 +19,7 @@ def test_RW_01_employee_cannot_open_colleague_request(client):
     emp1 = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp1, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-11-01", "end_date": "2026-11-02", "days": 2},
+        "payload_json": {"start_date": "2026-11-01", "end_date": "2026-11-02", "days": 2, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     # زميل يحاول فتحه
@@ -34,7 +34,7 @@ def test_RW_02_manager_out_of_scope_cannot_open_request(client):
     emp1 = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp1, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-11-05", "end_date": "2026-11-06", "days": 2},
+        "payload_json": {"start_date": "2026-11-05", "end_date": "2026-11-06", "days": 2, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     mgr_other = auth_headers(login(client, "200000000001", "manager123"))
@@ -47,7 +47,7 @@ def test_RW_04_leave_within_balance_generates_document(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-12-01", "end_date": "2026-12-03", "days": 3},
+        "payload_json": {"start_date": "2026-12-01", "end_date": "2026-12-03", "days": 3, "leave_type": "annual", "reason": "اختبار"},
     })
     assert r.status_code == 201
     # الحالة الأولية تحمل status_v15
@@ -79,7 +79,7 @@ def test_RW_10_returned_request_reused_by_submitter(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2027-01-01", "end_date": "2027-01-03", "days": 3},
+        "payload_json": {"start_date": "2027-01-01", "end_date": "2027-01-03", "days": 3, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     # المشرف يرجعها
@@ -133,7 +133,7 @@ def test_RW_17_idempotent_action_prevents_duplicate(client):
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2027-02-01", "end_date": "2027-02-02", "days": 2},
+        "payload_json": {"start_date": "2027-02-01", "end_date": "2027-02-02", "days": 2, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     sup = auth_headers(login(client, "100000000005", "sup12345"))
@@ -149,7 +149,7 @@ def test_RW_18_policy_change_does_not_retroactively_alter_existing_request(clien
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2027-03-01", "end_date": "2027-03-02", "days": 2},
+        "payload_json": {"start_date": "2027-03-01", "end_date": "2027-03-02", "days": 2, "leave_type": "annual", "reason": "اختبار"},
     })
     rid = r.json()["id"]
     payload_before = client.get(f"/api/requests/{rid}", headers=emp).json()["payload"]

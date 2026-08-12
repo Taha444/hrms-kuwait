@@ -31,7 +31,7 @@ def test_new_request_types_available(client):
 def test_advance_request_flows_to_accountant(client):
     emp = login(client, "100000000101", "emp12345")
     rid = client.post("/api/requests", headers=auth_headers(emp), json={
-        "request_type_code": "advance", "payload_json": {"amount": 200, "reason": "ظرف"}}).json()["id"]
+        "request_type_code": "advance", "payload_json": {"loan_type": "advance", "amount": 200, "first_deduction_month": "2027-01", "reason": "ظرف"}}).json()["id"]
     # المدير يعتمد → ينتقل الطلب للمحاسب للتنفيذ
     mgr = login(client, "100000000001", "manager123")
     client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
@@ -77,7 +77,7 @@ def test_generated_document_has_working_verification_code(client):
     emp = login(client, "100000000101", "emp12345")
     rid = client.post("/api/requests", headers=auth_headers(emp), json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك", "purpose": "قرض"}}).json()["id"]
+        "payload_json": {"purpose": "بنك", "language": "ar", "notes": "قرض"}}).json()["id"]
     mgr = login(client, "100000000001", "manager123")
     client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
 
@@ -189,7 +189,7 @@ def test_full_leave_workflow(client):
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2026-08-01", "end_date": "2026-08-10",
-                         "days": 10, "reason": "سفر"},
+                         "days": 10, "reason": "سفر", "leave_type": "annual"},
     })
     assert r.status_code == 201, r.text
     req_id = r.json()["id"]
@@ -256,7 +256,7 @@ def test_manager_can_cancel_anytime(client):
     emp_token = login(client, "100000000101", "emp12345")
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-05", "days": 5},
+        "payload_json": {"start_date": "2026-09-01", "end_date": "2026-09-05", "days": 5, "leave_type": "annual", "reason": "اختبار"},
     })
     req_id = r.json()["id"]
     mgr = login(client, "100000000001", "manager123")
@@ -270,7 +270,7 @@ def test_request_stages_progress(client):
     emp_token = login(client, "100000000101", "emp12345")
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-10-01", "end_date": "2026-10-03", "days": 3},
+        "payload_json": {"start_date": "2026-10-01", "end_date": "2026-10-03", "days": 3, "leave_type": "annual", "reason": "اختبار"},
     })
     req_id = r.json()["id"]
     # المرحلة 0 الآن (مسؤول الفرع)
@@ -293,7 +293,7 @@ def test_salary_certificate_to_pickup(client):
     emp_token = login(client, "100000000101", "emp12345")
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "salary_certificate",
-        "payload_json": {"addressed_to": "بنك الكويت", "purpose": "قرض"},
+        "payload_json": {"purpose": "بنك الكويت", "language": "ar", "notes": "قرض"},
     })
     req_id = r.json()["id"]
     mgr = login(client, "100000000001", "manager123")

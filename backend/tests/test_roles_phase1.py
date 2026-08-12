@@ -152,7 +152,7 @@ def test_employee_cannot_view_colleague_request(client):
     emp1 = login(client, "100000000101", "emp12345")
     rid = client.post("/api/requests", headers=auth_headers(emp1), json={
         "request_type_code": "leave",
-        "payload_json": {"start_date": "2026-08-01", "end_date": "2026-08-03", "days": 3, "reason": "x"},
+        "payload_json": {"start_date": "2026-08-01", "end_date": "2026-08-03", "days": 3, "reason": "x", "leave_type": "annual"},
     }).json()["id"]
     # زميل آخر لا يستطيع الاطلاع على الطلب
     emp2 = login(client, "100000000102", "emp12345")
