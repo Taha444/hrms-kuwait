@@ -420,25 +420,10 @@ def get_my_pending_signature_image(user: models.User = Depends(get_current_user)
     return FileResponse(user.pending_signature_path, media_type="image/png")
 
 
-@router.delete("")
-def delete_my_signature(request: Request,
-                        user: models.User = Depends(get_current_user),
-                        db: Session = Depends(get_db)):
-    """يحذف التوقيع الحالي — المستندات المستقبلية تعود لسطر توقيع فارغ."""
-    if not user.signature_path:
-        raise HTTPException(status_code=404, detail="لا يوجد توقيع محفوظ")
-    old = user.signature_path
-    user.signature_path = None
-    user.signature_updated_at = datetime.now(timezone.utc)
-    audit(db, user, "signature_delete", "user", user.id, request=request)
-    db.commit()
-    if old and os.path.exists(old):
-        try:
-            os.remove(old)
-        except OSError:
-            pass
-    return {"ok": True}
-
+# PROF-04 — حذف التوقيع أُزيل من الـAPI لا من الواجهة وحدها.
+# التوقيع سند للمستندات المُصدَرة سابًقا: حذفه يترك مستندات موقَّعة بلا مرجع
+# يُثبت التوقيع الذي حُقن فيها. التغيير يمر بطلب REQSIG المعتمَد من HR، وسجل
+# النسخ (UserSignatureVersion) يحفظ كل نسخة سرت يوًما.
 
 # ============================================================================
 # PILOT-P0-5 — HR endpoints لإدارة طلبات استبدال التوقيع

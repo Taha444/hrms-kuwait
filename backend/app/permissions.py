@@ -101,10 +101,11 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # submit_request: لنفسه فقط. كان يبدأ نيابًة عن الموظف طلبات إدارية (ترقية،
     # نقل، تجديد عقد...) حتى قُصر التقديم نيابًة على HR وحده — انظر ON_BEHALF_ROLES.
     # تلك الطلبات صار يفتحها HR.
-    # P0-#4: أضفنا record_attendance لأن المدير موظف كمان (يبصم لنفسه إن كان مربوطًا بـEmployee).
+    # ATT-03: record_attendance نُزعت بقرار العميل — لا شاشة حضور للمدير.
+    # كانت تُمنح له ليبصم لنفسه (P0-#4)، لكنه يعتمد الطلبات ويمنح الصلاحيات،
+    # فبصمه لنفسه يخلط الرقابة بالخضوع لها. view_attendance تبقى للمتابعة.
     "company_manager": {"view_employee", "create_employee", "edit_employee", "delete_employee",
                         "view_documents", "upload_documents", "manage_leaves", "view_attendance",
-                        "record_attendance",  # للـMy Attendance الشخصية
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
                         # QA §6: مرحلة "Authorized Approval" في إنهاء الخدمة — جهة ثالثة

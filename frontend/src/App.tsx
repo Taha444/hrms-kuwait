@@ -162,8 +162,8 @@ function Sidebar({ open }: { open: boolean }) {
         {/* R8 §1 — الروابط الحكومية: المندوب والأدوار الإدارية.
             HR أُزيل بقرار العميل: المعاملات الحكومية اختصاص المندوب، وHR
             يتابعها من الطلبات لا من بوابات الجهات مباشرة. */}
-        {(canOperations || user?.role === "super_admin" || user?.role === "company_owner" ||
-          user?.role === "company_manager") && (
+        {(canOperations || user?.role === "super_admin" ||
+          user?.role === "company_owner") && (
           <Item to="/gov-portals" icon="globe" label={t("gov_portals_nav") || "روابط حكومية"} />
         )}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
@@ -507,7 +507,7 @@ export default function App() {
       <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")}><Users /></Guarded>} />
       <Route path="/system-health" element={<Guarded need={(a) => a.user?.role === "super_admin"}><SystemHealth /></Guarded>} />
       {/* hr مُزال من القائمة: إخفاء الرابط وحده لا يمنع فتح المسار مباشرة */}
-      <Route path="/gov-portals" element={<Guarded need={(a) => ["super_admin","company_owner","company_manager","accountant","delegate","admin_employee"].includes(a.user?.role || "")}><GovernmentPortals /></Guarded>} />
+      <Route path="/gov-portals" element={<Guarded need={(a) => ["super_admin","company_owner","accountant","delegate","admin_employee"].includes(a.user?.role || "")}><GovernmentPortals /></Guarded>} />
       {/* R7-B — 404 صريحة بدل إعادة توجيه صامت (كان يحجب أخطاء التوجيه) */}
       <Route path="*" element={<Protected><NotFound /></Protected>} />
     </Routes>

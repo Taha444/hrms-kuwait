@@ -8,6 +8,28 @@ import zlib
 from tests.conftest import auth_headers, login
 
 
+def _clear_signature(civil_id: str = "100000000101"):
+    """تصفير توقيع المستخدم مباشرة في القاعدة.
+
+    كانت الاختبارات تستدعي DELETE /api/me/signature لهذا الغرض، وقد أُزيل من
+    الـAPI (PROF-04): التوقيع سند للمستندات المُصدَرة فلا يُحذف بضغطة. التصفير
+    هنا تهيئة اختبار لا سلوك منتَج.
+    """
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        u = db.scalar(select(models.User).where(models.User.civil_id == civil_id))
+        if u:
+            u.signature_path = None
+            u.pending_signature_path = None
+            u.pending_signature_reason = None
+            db.commit()
+    finally:
+        db.close()
+
 def _signature_png(width: int = 200, height: int = 60) -> bytes:
     """يبني صورة PNG بها ink داكن (خطوط سوداء) على خلفية بيضاء — ليمر معالج SIG-02."""
     from PIL import Image, ImageDraw
@@ -110,7 +132,7 @@ def test_replace_signature_by_hr_deletes_old_file_directly(client):
 def test_employee_signature_replacement_goes_to_pending_not_active(client):
     """PILOT-P0-5: الموظف رفع مرة أولى (active)، ثم استبدال → pending، القديم يفضل نشط."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
-    client.delete("/api/me/signature", headers=emp)  # نمسح لو موجود
+    _clear_signature()
     png1 = _minimal_png(width=100, height=40)
     r = client.post("/api/me/signature", headers=emp,
                     files={"file": ("a.png", png1, "image/png")})
@@ -142,8 +164,7 @@ def test_employee_signature_replacement_goes_to_pending_not_active(client):
 def test_hr_can_approve_pending_replacement(client):
     """HR يعتمد الاستبدال المعلّق → القديم يتحذف، الجديد يبقى نشط."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
-    client.delete("/api/me/signature", headers=emp)
-    # الرفع الأول (active)
+    _clear_signature()
     client.post("/api/me/signature", headers=emp,
                 files={"file": ("a.png", _minimal_png(100, 40), "image/png")})
     # الاستبدال (pending) — P1-#15 reason إلزامي
@@ -181,18 +202,6 @@ def test_hr_can_approve_pending_replacement(client):
     assert not os.path.exists(old_active)
 
 
-def test_delete_signature_removes_file_and_clears_row(client):
-    emp = auth_headers(login(client, "100000000101", "emp12345"))
-    png = _minimal_png()
-    client.post("/api/me/signature", headers=emp,
-                files={"file": ("s.png", png, "image/png")})
-    r = client.delete("/api/me/signature", headers=emp)
-    assert r.status_code == 200
-    # get بعد الحذف يرجع has_signature=False
-    info = client.get("/api/me/signature", headers=emp).json()
-    assert info["has_signature"] is False
-
-
 def test_signature_isolated_per_user(client):
     """المستخدم أ يرفع توقيع → المستخدم ب لا يراه."""
     a = auth_headers(login(client, "100000000101", "emp12345"))
@@ -220,7 +229,7 @@ def test_upload_isolates_signature_from_notebook_rings(client):
     img.save(buf, format="PNG")
 
     emp = auth_headers(login(client, "100000000101", "emp12345"))
-    client.delete("/api/me/signature", headers=emp)
+    _clear_signature()
     r = client.post("/api/me/signature", headers=emp,
                     files={"file": ("with_rings.png", buf.getvalue(), "image/png")})
     assert r.status_code == 201, r.text
@@ -248,7 +257,7 @@ def test_upload_processes_photo_removes_background_saves_transparent_png(client)
     """SIG-02: صورة الرفع تُعالج → PNG شفاف الخلفية بحجم متناسب مع الـ ink فقط."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     # P1-#15 — reason إلزامي للاستبدال. clean state أولاً لضمان أول-رفع (بلا reason).
-    client.delete("/api/me/signature", headers=emp)
+    _clear_signature()
     raw_png = _signature_png(width=400, height=300)  # صورة كبيرة بها ink صغير
     r = client.post("/api/me/signature", headers=emp,
                     files={"file": ("sig.png", raw_png, "image/png")})
@@ -275,7 +284,7 @@ def test_upload_rejects_blank_image_no_ink_detected(client):
     """صورة بيضاء تمامًا بدون ink → يرفضها المعالج برسالة واضحة."""
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     # نمسح التوقيع الحالي (لو موجود من اختبار سابق)
-    client.delete("/api/me/signature", headers=emp)
+    _clear_signature()
     blank = _blank_png()
     r = client.post("/api/me/signature", headers=emp,
                     files={"file": ("blank.png", blank, "image/png")})
@@ -306,7 +315,7 @@ def test_generated_pdf_embeds_signature_when_available(client):
     # 1) موظف بدون توقيع — نقيس حجم PDF المرجعي
     emp_tok = login(client, "100000000101", "emp12345")
     # تأكد إن التوقيع محذوف
-    client.delete("/api/me/signature", headers=auth_headers(emp_tok))
+    _clear_signature()
     # نقدم طلب شهادة راتب ونمرره حتى الإكمال
     r = client.post("/api/requests", headers=auth_headers(emp_tok), json={
         "request_type_code": "salary_certificate",

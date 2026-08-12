@@ -909,19 +909,53 @@ def test_supervisor_can_access_attendance_review(client):
     assert r.status_code != 403
 
 
-def test_manager_has_record_attendance_but_hr_does_not(client):
-    """P0-#4 — المدير يبصم لأنه موظف أيًضا.
+def test_manager_and_hr_are_exempt_from_attendance(client):
+    """ATT-02 + ATT-03 — لا شاشة حضور للمدير ولا لـHR.
 
-    HR استُثني لاحًقا بقرار العميل: هو من يصحّح سجلات الحضور ويعتمدها، فبصمه
-    لنفسه يجمع الإثبات والاعتماد في يد واحدة — انظر test_hr_is_exempt_from_attendance.
+    كانت record_attendance تُمنح لهما ليبصما لنفسيهما (P0-#4). قرار العميل
+    نزعها: HR يصحّح سجلات الحضور ويعتمدها، والمدير يعتمد الطلبات ويمنح
+    الصلاحيات — فبصم أيٍّ منهما لنفسه يخلط الرقابة بالخضوع لها.
+    view_attendance تبقى لهما للمتابعة.
     """
-    h = auth_headers(login(client, MGR[0], MGR[1]))
-    me = client.get("/api/auth/me", headers=h).json()
-    assert "record_attendance" in me["permissions"], "company_manager missing record_attendance"
+    from app.permissions import ROLE_DEFAULT_PERMS as R
 
-    hr = auth_headers(login(client, HR[0], HR[1]))
-    me_hr = client.get("/api/auth/me", headers=hr).json()
-    assert "record_attendance" not in me_hr["permissions"], "HR يجب أن يبقى معفًى"
+    for role in ("company_manager", "hr"):
+        assert "record_attendance" not in R[role], f"{role} ما زال يبصم"
+        assert "view_attendance" in R[role], f"{role} فقد متابعة الحضور"
+
+    # ومسؤول الفرع والمحاسب والموظف يبصمون كما كانوا
+    for role in ("branch_supervisor", "accountant", "employee"):
+        assert "record_attendance" in R[role], role
+
+    for civ, pw in [("100000000001", "manager123"), ("100000000002", "hr12345")]:
+        h = auth_headers(login(client, civ, pw))
+        assert client.post("/api/attendance/validate-qr", headers=h,
+                           json={"qr_token": "x"}).status_code == 403
+
+
+def test_signature_delete_endpoint_is_gone(client):
+    """PROF-04 — حذف التوقيع أُزيل من الـAPI لا من الواجهة وحدها.
+
+    التوقيع سند للمستندات المُصدَرة سابًقا؛ حذفه يتركها بلا مرجع يُثبت التوقيع
+    الذي حُقن فيها. التغيير يمر بطلب REQSIG المعتمَد من HR.
+    """
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.delete("/api/me/signature", headers=emp)
+    assert r.status_code in (404, 405), f"الحذف ما زال متاًحا: {r.status_code}"
+
+
+def test_manager_has_no_government_portals(client):
+    """UI-02 — الروابط الحكومية أُزيلت من المدير أيًضا."""
+    import re
+    from pathlib import Path
+
+    app_tsx = Path(__file__).resolve().parents[2] / "frontend" / "src" / "App.tsx"
+    if not app_tsx.exists():
+        return
+    route = re.search(r'path="/gov-portals".*?/>', app_tsx.read_text(encoding="utf-8"), re.S)
+    assert route
+    for role in ('"hr"', '"company_manager"'):
+        assert role not in route.group(0), f"{role} ما زال في حارس /gov-portals"
 
 
 def test_employee_cannot_access_attendance_review(client):
