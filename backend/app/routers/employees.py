@@ -351,6 +351,21 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         "can_edit_actual_salary": can_edit_actual,
         "created_by_name": (db.get(models.User, emp.created_by).full_name
                             if emp.created_by and db.get(models.User, emp.created_by) else None),
+        # رصيد الإجازة السنوية وسجل حركاته — الرقم وحده لا يُفسَّر، والسجل هو
+        # ما يجعله قابًلا لإعادة البناء والاعتراض عليه بمستند
+        "leave_balance": emp.annual_leave_balance,
+        "leave_ledger": [
+            {"id": x.id, "kind": x.kind, "days": x.days,
+             "balance_before": x.balance_before, "balance_after": x.balance_after,
+             "leave_type": x.leave_type, "request_id": x.request_id,
+             "note": x.note, "created_at": x.created_at}
+            for x in db.scalars(
+                select(models.LeaveLedger)
+                .where(models.LeaveLedger.employee_id == emp.id)
+                .order_by(models.LeaveLedger.created_at.desc())
+                .limit(100)
+            ).all()
+        ],
         # مكان الدوام الرسمي/الفعلي — الأعمدة تحفظ المعرّفات، والواجهة تعرض
         # الاسم؛ حلّه هنا يوفّر على كل شاشة جلب قائمة الفروع لتترجم رقًما
         "official_branch_name": (db.get(models.Branch, emp.branch_id).name

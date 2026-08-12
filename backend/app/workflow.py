@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -687,6 +687,80 @@ def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
         enter_stage(db, req, rt)
 
 
+# الإجازة السنوية وحدها تُخصم من الرصيد؛ المرضية والطارئة وبدون راتب لها
+# أحكامها الخاصة ولا تنقص الرصيد السنوي.
+LEAVE_TYPES_DEDUCTING_BALANCE = {"annual"}
+
+
+def _as_date(v):
+    """حمولة الطلب تحمل التواريخ نصًّا (JSON)، وأعمدة Leave من نوع Date."""
+    if not v or isinstance(v, date):
+        return v or None
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def _apply_leave(db: Session, req: models.Request) -> tuple[bool, str]:
+    """يسجّل الإجازة المعتمَدة ويخصم رصيدها.
+
+    طلب الإجازة كان يمرّ بكل مراحل الاعتماد ثم يُغلق بلا أثر: لا صف Leave
+    يُنشأ، ولا annual_leave_balance ينقص. فكان الموظف يستهلك إجازاته والرصيد
+    ثابت على 30 إلى الأبد.
+
+    الخصم يُقيَّد في leave_ledger بالرصيد قبله وبعده، فالرقم قابل للتفسير
+    وإعادة البناء. ورصيد غير كافٍ يُفشل التطبيق (apply_failed) بدل أن يُنشئ
+    رصيدًا سالبًا بصمت — تمامًا كما يفعل تصحيح الحضور عند تعذّر التطبيق.
+    """
+    p = req.payload_json or {}
+    emp = db.get(models.Employee, req.employee_id)
+    if not emp:
+        return False, "الموظف غير موجود"
+
+    leave_type = (p.get("leave_type") or "annual").strip()
+    try:
+        days = float(p.get("days") or 0)
+    except (TypeError, ValueError):
+        return False, f"عدد أيام غير صالح: {p.get('days')!r}"
+    if days <= 0:
+        return False, "عدد أيام الإجازة يجب أن يكون أكبر من صفر"
+
+    # حارس التكرار: إعادة التطبيق على نفس الطلب تخصم مرتين
+    already = db.scalar(select(models.Leave).where(models.Leave.request_id == req.id))
+    if already:
+        return True, f"الإجازة مسجَّلة مسبًقا لهذا الطلب (#{already.id}) — لم يُخصم مرتين"
+
+    deducts = leave_type in LEAVE_TYPES_DEDUCTING_BALANCE
+    before = float(emp.annual_leave_balance or 0)
+    if deducts and days > before:
+        return False, (f"الرصيد لا يكفي: المطلوب {days:g} يوم والمتاح {before:g} يوم")
+
+    leave = models.Leave(
+        company_id=req.company_id, employee_id=emp.id, request_id=req.id,
+        leave_type=leave_type, start_date=_as_date(p.get("start_date")),
+        end_date=_as_date(p.get("end_date")), days=days, status="approved",
+    )
+    db.add(leave)
+    db.flush()  # نحتاج leave.id للقيد
+
+    after = before - days if deducts else before
+    if deducts:
+        emp.annual_leave_balance = after
+    db.add(models.LeaveLedger(
+        company_id=req.company_id, employee_id=emp.id,
+        kind="deduction" if deducts else "record",
+        days=days, balance_before=before, balance_after=after,
+        leave_type=leave_type, request_id=req.id, leave_id=leave.id,
+        note=(f"إجازة معتمَدة من {p.get('start_date') or '—'} "
+              f"إلى {p.get('end_date') or '—'}"),
+    ))
+
+    if deducts:
+        return True, f"خُصم {days:g} يوم — الرصيد {before:g} ← {after:g}"
+    return True, f"سُجّلت إجازة {leave_type} ({days:g} يوم) بلا خصم من الرصيد السنوي"
+
+
 def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool, str]:
     """PILOT-P0-4 — يطبّق تعديل الحضور المعتمَد فعليًا على AttendanceRecord.
 
@@ -775,8 +849,11 @@ def _finalize(db: Session, req: models.Request) -> None:
     chain_len = len(_chain(rt)) if rt else 0
 
     # PILOT-P0-4 — تصحيح الحضور: نطبّق الأثر الفعلي قبل ما نعتبر الطلب Completed
-    if req.request_type_code == "REQATT":
-        applied, note = _apply_attendance_correction(db, req)
+    # وطلب الإجازة مثله: كان يكتمل بلا أثر — لا سجل إجازة ولا خصم رصيد.
+    _effect = {"REQATT": _apply_attendance_correction,
+               "REQLV": _apply_leave, "leave": _apply_leave}.get(req.request_type_code)
+    if _effect:
+        applied, note = _effect(db, req)
         if not applied:
             # roll back current_stage — نجعله يشير للمرحلة الأخيرة اللي اعتُمدت فعلاً
             # (بدل من len(chain) = past-end الحالة التناقضية)
@@ -819,8 +896,9 @@ def _finalize(db: Session, req: models.Request) -> None:
         # نجح التطبيق — نسجّل ملاحظة قبل/بعد كـ approval trail
         db.add(models.RequestApproval(
             request_id=req.id, stage_order=req.current_stage,
-            stage_label="تطبيق تصحيح الحضور", approver_role="system",
-            decision="approved", note=note,
+            stage_label=("تطبيق تصحيح الحضور" if req.request_type_code == "REQATT"
+                         else "تسجيل الإجازة وخصم الرصيد"),
+            approver_role="system", decision="approved", note=note,
         ))
         # P0-#7 — audit apply success
         db.add(models.AuditLog(

@@ -318,6 +318,45 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
 
       {/* ============ إدارة الإجازات ============ */}
       {tab === "leave" && (
+        <>
+        {/* الرصيد الفعلي المخزَّن وسجل حركاته — يختلف عن الحاسبة أدناه:
+            هذا ما تبقّى فعًلا بعد الخصم التلقائي، وتلك تقدير استحقاق. */}
+        <div className="card">
+          <h3>{t("leave_current_balance")}</h3>
+          <div className="grid stats">
+            <div className="stat accent">
+              <div className="num">{p.leave_balance ?? "—"}</div>
+              <div className="lbl">{t("leave_days_available")}</div>
+            </div>
+          </div>
+          <h4 style={{ marginTop: 18 }}>{t("leave_ledger_title")}</h4>
+          <p className="muted" style={{ marginTop: 0 }}>{t("leave_ledger_hint")}</p>
+          <table>
+            <thead><tr>
+              <th>{t("epf_col_type")}</th><th>{t("req_days")}</th>
+              <th>{t("leave_before")}</th><th>{t("leave_after")}</th>
+              <th>{t("col_title")}</th><th>{t("epf_col_date")}</th>
+            </tr></thead>
+            <tbody>
+              {(p.leave_ledger || []).map((x: any) => (
+                <tr key={x.id}>
+                  <td><span className={`pill ${x.kind === "deduction" ? "warning" : "neutral"}`}>
+                    {x.kind === "deduction" ? t("leave_deduction")
+                      : x.kind === "grant" ? t("leave_grant") : t("leave_record")}
+                  </span></td>
+                  <td className="num">{x.kind === "deduction" ? `−${x.days}` : x.days}</td>
+                  <td className="num">{x.balance_before}</td>
+                  <td className="num">{x.balance_after}</td>
+                  <td>{x.note || "—"}</td>
+                  <td>{fmtKuwaitDate(x.created_at, lang)}</td>
+                </tr>
+              ))}
+              {!(p.leave_ledger || []).length && (
+                <tr><td colSpan={6} className="muted">{t("att_no_records")}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         <div className="card">
           <h3>{t("emp_leave_bal")}</h3>
           <p className="muted">{t("epf_leave_hint")}</p>
@@ -336,6 +375,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
           )}
           {leaveBal?.advance_note && <p className="err">⚠ {leaveBal.advance_note}</p>}
         </div>
+        </>
       )}
 
       {/* ============ نهاية الخدمة ============ */}

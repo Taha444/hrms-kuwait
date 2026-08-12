@@ -378,6 +378,19 @@ const dict: Record<string, { ar: string; en: string }> = {
   fld_actual_salary: { ar: "الراتب الفعلي", en: "Actual Salary" },
   // حقول التوظيف والعقد المضافة بمراجعة العميل (الصفحة ٣)
   fld_actual_job: { ar: "الوظيفة الفعلية", en: "Actual Job Title" },
+  // رصيد الإجازات وسجل حركاته
+  leave_current_balance: { ar: "الرصيد المتاح", en: "Available Balance" },
+  leave_days_available: { ar: "يوم متبقٍّ", en: "days remaining" },
+  leave_ledger_title: { ar: "سجل حركات الرصيد", en: "Balance History" },
+  leave_ledger_hint: {
+    ar: "كل حركة بالرصيد قبلها وبعدها — الخصم يتم تلقائيًا عند اعتماد الإجازة السنوية.",
+    en: "Every movement with the balance before and after — annual leave is deducted automatically on approval.",
+  },
+  leave_before: { ar: "الرصيد قبل", en: "Before" },
+  leave_after: { ar: "الرصيد بعد", en: "After" },
+  leave_deduction: { ar: "خصم", en: "Deduction" },
+  leave_grant: { ar: "إضافة رصيد", en: "Grant" },
+  leave_record: { ar: "تسجيل بلا خصم", en: "Recorded" },
   fld_residency_expiry: { ar: "تاريخ انتهاء الإقامة", en: "Residency Expiry" },
   fld_work_place_official: { ar: "مكان الدوام الرسمي", en: "Official Work Location" },
   fld_work_place_actual: { ar: "مكان الدوام الفعلي", en: "Actual Work Location" },

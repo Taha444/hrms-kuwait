@@ -1041,3 +1041,33 @@ class AuditLog(Base):
     before_json: Mapped[dict | None] = mapped_column(JSON)
     after_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class LeaveLedger(Base):
+    """سجل حركات رصيد الإجازة السنوية.
+
+    الرصيد كان عمودًا واحدًا (annual_leave_balance) لا يُخصم منه شيء أصلًا، ولو
+    خُصم لما أمكن تفسير الرقم: كم كان، ومتى تغيّر، وبأي طلب. كل حركة تُسجَّل هنا
+    بالرصيد قبلها وبعدها، فالرقم الحالي قابل لإعادة البناء من السجل والاعتراض
+    عليه يُحسم بمستند.
+
+    الإجازة السنوية وحدها تُخصم: المرضية والطارئة وبدون راتب لها أحكامها ولا
+    تُنقص الرصيد السنوي.
+    """
+    __tablename__ = "leave_ledger"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(Integer, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"),
+                                             index=True)
+    # deduction = استهلاك إجازة، grant = رصيد سنوي جديد، adjustment = تسوية يدوية
+    kind: Mapped[str] = mapped_column(String(20))
+    days: Mapped[float] = mapped_column(Float)          # موجب دائًما؛ الاتجاه من kind
+    balance_before: Mapped[float] = mapped_column(Float)
+    balance_after: Mapped[float] = mapped_column(Float)
+    leave_type: Mapped[str | None] = mapped_column(String(30))
+    request_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    leave_id: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_by: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

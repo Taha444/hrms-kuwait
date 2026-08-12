@@ -2633,3 +2633,131 @@ def test_profile_exposes_work_place_and_residency(client):
     assert "official_branch_name" in body and "actual_branch_name" in body
     assert "permits" in body
     assert all({"kind", "expiry_date"} <= set(x) for x in body["permits"])
+
+
+# ===========================================================================
+# رصيد الإجازات — الخصم التلقائي والسجل (مراجعة العميل — الصفحة ٣)
+# ===========================================================================
+
+def _approve_to_completion(client, req_id: int):
+    """يمرّر الطلب عبر كل مراحله حتى يكتمل."""
+    approvers = [("100000000005", "sup12345"), ("100000000001", "manager123"),
+                 ("100000000002", "hr12345"), ("100000000003", "deleg123")]
+    for _ in range(8):
+        r = client.get(f"/api/requests/{req_id}")
+        for civ, pw in approvers:
+            h = auth_headers(login(client, civ, pw))
+            d = client.post(f"/api/requests/{req_id}/decide", headers=h,
+                            json={"decision": "approved", "note": "ok"})
+            if d.status_code == 200:
+                break
+        else:
+            break
+    return client
+
+
+def test_leave_deducts_balance_and_records_ledger(client):
+    """طلب إجازة سنوية معتمَد يخصم الرصيد ويقيّد الحركة.
+
+    كان الطلب يمرّ بكل المراحل ثم يُغلق بلا أثر: لا صف Leave ولا خصم — فالرصيد
+    يبقى 30 مهما استهلك الموظف.
+    """
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+    from app.workflow import _apply_leave
+
+    db = SessionLocal()
+    try:
+        emp = db.scalars(select(models.Employee).limit(1)).first()
+        before = float(emp.annual_leave_balance or 0)
+        req = models.Request(
+            company_id=emp.company_id, employee_id=emp.id,
+            request_type_code="REQLV", status="pending", current_stage=0,
+            payload_json={"leave_type": "annual", "days": 3,
+                          "start_date": "2027-05-01", "end_date": "2027-05-03"},
+        )
+        db.add(req); db.commit(); db.refresh(req)
+
+        ok, note = _apply_leave(db, req)
+        db.commit()
+        assert ok, note
+
+        db.refresh(emp)
+        assert emp.annual_leave_balance == before - 3, note
+
+        led = db.scalars(select(models.LeaveLedger).where(
+            models.LeaveLedger.request_id == req.id)).all()
+        assert len(led) == 1
+        assert led[0].kind == "deduction"
+        assert led[0].balance_before == before
+        assert led[0].balance_after == before - 3
+
+        # لا خصم مزدوج لو أُعيد التطبيق
+        ok2, note2 = _apply_leave(db, req)
+        db.commit(); db.refresh(emp)
+        assert ok2 and emp.annual_leave_balance == before - 3, note2
+    finally:
+        db.rollback(); db.close()
+
+
+def test_sick_leave_does_not_touch_annual_balance(client):
+    """المرضية والطارئة وبدون راتب تُسجَّل ولا تنقص الرصيد السنوي."""
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+    from app.workflow import _apply_leave
+
+    db = SessionLocal()
+    try:
+        emp = db.scalars(select(models.Employee).limit(1)).first()
+        before = float(emp.annual_leave_balance or 0)
+        req = models.Request(
+            company_id=emp.company_id, employee_id=emp.id,
+            request_type_code="REQLV", status="pending", current_stage=0,
+            payload_json={"leave_type": "sick", "days": 2,
+                          "start_date": "2027-06-01", "end_date": "2027-06-02"},
+        )
+        db.add(req); db.commit(); db.refresh(req)
+        ok, note = _apply_leave(db, req)
+        db.commit(); db.refresh(emp)
+        assert ok, note
+        assert emp.annual_leave_balance == before, "المرضية لا تُخصم من الرصيد السنوي"
+    finally:
+        db.rollback(); db.close()
+
+
+def test_insufficient_balance_fails_instead_of_going_negative(client):
+    """رصيد غير كافٍ يُفشل التطبيق بدل أن يُنشئ رصيًدا سالًبا بصمت."""
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+    from app.workflow import _apply_leave
+
+    db = SessionLocal()
+    try:
+        emp = db.scalars(select(models.Employee).limit(1)).first()
+        before = float(emp.annual_leave_balance or 0)
+        req = models.Request(
+            company_id=emp.company_id, employee_id=emp.id,
+            request_type_code="REQLV", status="pending", current_stage=0,
+            payload_json={"leave_type": "annual", "days": before + 5,
+                          "start_date": "2027-07-01", "end_date": "2027-07-10"},
+        )
+        db.add(req); db.commit(); db.refresh(req)
+        ok, note = _apply_leave(db, req)
+        assert not ok
+        assert "الرصيد لا يكفي" in note
+        db.refresh(emp)
+        assert emp.annual_leave_balance == before
+    finally:
+        db.rollback(); db.close()
+
+
+def test_profile_exposes_leave_balance_and_ledger(client):
+    """الملف يعرض الرصيد والسجل — البندان الأول والثالث في طلب العميل."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+    p = client.get(f"/api/employees/{emp_id}/profile", headers=hr).json()
+    assert "leave_balance" in p
+    assert isinstance(p.get("leave_ledger"), list)
