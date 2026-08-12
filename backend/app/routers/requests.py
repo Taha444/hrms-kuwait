@@ -291,7 +291,15 @@ def submit_request(data: schemas.RequestIn, request: Request,
 
     # V2.2 §4 Form Schema Engine: التحقق من الحقول والقيود الشرطية والحدود
     from .. import form_schemas
-    schema_errors = form_schemas.validate_payload(data.request_type_code, data.payload_json or {})
+    # وجود الكود في REQUIRED_PAYLOAD_FIELDS يعني أن الواجهة تبني نموذجه بأسماء
+    # حقولها هي (مثل salary_certificate ترسل addressed_to بينما schema REQCERT
+    # يسمّيه purpose ويطلب language الذي لا يوجد في ذلك النموذج أصلاً). التحقق
+    # الحقلي الصارم بمفردات الـschema لا ينطبق على هذه الأكواد.
+    ui_defined = data.request_type_code in REQUIRED_PAYLOAD_FIELDS
+    schema_errors = form_schemas.validate_payload(
+        data.request_type_code, data.payload_json or {},
+        strict=False if ui_defined else None,
+    )
     if schema_errors:
         raise HTTPException(status_code=400,
                             detail={"errors": schema_errors, "message": schema_errors[0]})

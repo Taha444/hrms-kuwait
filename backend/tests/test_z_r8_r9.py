@@ -1125,6 +1125,61 @@ def test_required_fields_derived_from_schema(client):
     assert _missing_required_fields("salary_certificate", {}) == ["addressed_to", "purpose"]
 
 
+def test_strict_validation_catches_bad_values(client):
+    """التحقق الحقلي الصارم فعّال: حدود الأرقام، عضوية قيم select، وترتيب
+    التواريخ. كان مقفولًا على كل أنواع V1.3 فتمر أي قيمة."""
+    from app.form_schemas import validate_payload as validate
+
+    # قيمة select خارج الخيارات
+    bad_lang = validate("REQCERTSAL", {"purpose": "بنك", "language": "fr"})
+    assert any("language" in e for e in bad_lang), bad_lang
+    assert validate("REQCERTSAL", {"purpose": "بنك", "language": "ar"}) == []
+
+    # حد أدنى للأرقام
+    neg = validate("REQALLOW", {"allowance_type": "transport", "amount": -5,
+                                "effective_from": "2027-01-01", "reason": "ر"})
+    assert any("amount" in e for e in neg), neg
+
+    # حد أقصى
+    too_long = validate("REQCON", {"current_contract_end": "2027-01-01",
+                                   "decision": "renew", "new_duration_months": 99,
+                                   "reason": "ر"})
+    assert any("new_duration_months" in e for e in too_long), too_long
+
+    # ترتيب التواريخ
+    reversed_dates = validate("REQMIS", {"destination": "د", "from_date": "2027-05-10",
+                                         "to_date": "2027-05-01",
+                                         "mission_type": "government", "reason": "ر"})
+    assert any("to_date" in e for e in reversed_dates), reversed_dates
+
+
+def test_strict_skipped_for_ui_defined_payloads(client):
+    """الأكواد ذات النموذج المبرمج تُعفى من التحقق الحقلي: مفرداتها تخص واجهتها.
+    نموذج شهادة الراتب يجمع addressed_to+purpose ولا حقل لغة فيه أصلاً، بينما
+    schema REQCERT يطلب language — فتطبيقه عليها كان يرفض كل طلب شهادة راتب."""
+    from app.form_schemas import validate_payload as validate
+    from app.routers.requests import REQUIRED_PAYLOAD_FIELDS
+
+    ui_payload = {"addressed_to": "بنك الكويت", "purpose": "قرض"}
+    assert validate("salary_certificate", ui_payload, strict=False) == []
+    # وبدون الإعفاء كان يفشل — ما يثبت أن الإعفاء هو ما يحميه
+    assert validate("salary_certificate", ui_payload) != []
+
+    # كل كود بنموذج مبرمج مسجّل في REQUIRED_PAYLOAD_FIELDS، وهو ما يقرأه
+    # submit_request ليقرر الإعفاء
+    assert "salary_certificate" in REQUIRED_PAYLOAD_FIELDS
+
+
+def test_salary_certificate_still_submittable(client):
+    """اختبار نهاية-لنهاية للحالة التي كسرها التفعيل: الطلب من الواجهة يمر."""
+    emp = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "salary_certificate",
+        "payload_json": {"addressed_to": "بنك الكويت الوطني", "purpose": "قرض سكني"},
+    })
+    assert r.status_code == 201, r.text
+
+
 def test_conditional_required_rules_are_enforced(client):
     """قواعد conditional.require تُفرض على الخادم — حقل يصير إلزاميًا حسب قيمة
     حقل آخر. كانت إرشادًا للواجهة فقط لأن validate_payload يفرضها خلف

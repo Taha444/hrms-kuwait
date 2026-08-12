@@ -454,7 +454,7 @@ SCHEMAS.update({
             {"when": {"late_cause": "medical"}, "require_attachments": ["medical_note"]},
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["late_justification"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["late_justification"], "strict_validation": False},
     },
     "REQSHIFT": {  # تغيير وردية — المسؤول المباشر ثم المدير العام
         "fields": [
@@ -474,7 +474,7 @@ SCHEMAS.update({
         ],
         "validation": {"end_gte_start": ["effective_from", "effective_to"]},
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["shift_change"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["shift_change"], "strict_validation": False},
     },
     "REQWLOC": {  # تكليف مؤقت بموقع/فرع — 3 مراحل اعتماد
         "fields": [
@@ -488,7 +488,7 @@ SCHEMAS.update({
         "validation": {"end_gte_start": ["from_date", "to_date"]},
         "attachments": {"required": [], "optional": []},
         "meta": {"legacy_aliases": ["temp_assignment", "work_location"],
-                 "strict_validation": False, "enforce_required": True},
+                 "strict_validation": False},
     },
     "REQMIS": {  # مهمة عمل خارجية — المسؤول المباشر ثم المدير العام
         "fields": [
@@ -507,7 +507,7 @@ SCHEMAS.update({
         ],
         "validation": {"end_gte_start": ["from_date", "to_date"]},
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["mission", "business_trip"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["mission", "business_trip"], "strict_validation": False},
     },
     # ------------------------- الإقامة والمعاملات الحكومية -------------------------
     "REQWP": {  # تجديد إذن عمل — شؤون الموظفين ثم المدير ثم المندوب
@@ -524,7 +524,7 @@ SCHEMAS.update({
             REASON,
         ],
         "attachments": {"required": [], "optional": ["current_permit", "passport_copy"]},
-        "meta": {"legacy_aliases": ["work_permit_renewal"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["work_permit_renewal"], "strict_validation": False},
     },
     "REQTRFLIC": {  # نقل عامل بين فرع أو ترخيص — 3 مراحل
         "fields": [
@@ -546,7 +546,7 @@ SCHEMAS.update({
             {"when": {"transfer_kind": "both"}, "require": ["to_branch_id", "to_license_id"]},
         ],
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["license_transfer"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["license_transfer"], "strict_validation": False},
     },
     # ------------------------- بيانات الموظف والمستندات -------------------------
     "REQCONTACT": {  # تحديث بيانات الاتصال والطوارئ — شؤون الموظفين فقط
@@ -561,7 +561,7 @@ SCHEMAS.update({
         ],
         "attachments": {"required": [], "optional": []},
         "meta": {"legacy_aliases": ["contact_update", "emergency_contact"],
-                 "strict_validation": False, "enforce_required": True},
+                 "strict_validation": False},
     },
     "REQFILE": {  # نسخة من ملف أو مستند — شؤون الموظفين فقط
         "fields": [
@@ -586,7 +586,7 @@ SCHEMAS.update({
         ],
         "validation": {"end_gte_start": ["period_from", "period_to"]},
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["file_copy"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["file_copy"], "strict_validation": False},
     },
     # ------------------------- الطلبات المالية -------------------------
     "REQALLOW": {  # بدل أو ميزة — المسؤول المباشر ثم المدير العام
@@ -605,7 +605,7 @@ SCHEMAS.update({
             REASON,
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["allowance"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["allowance"], "strict_validation": False},
     },
     # ------------------------- الشكاوى والتظلمات -------------------------
     "REQVIO": {  # اعتراض على مخالفة — شؤون الموظفين ثم المدير العام
@@ -628,7 +628,7 @@ SCHEMAS.update({
              "require_attachments": ["supporting_doc"]},
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["violation_objection"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["violation_objection"], "strict_validation": False},
     },
     "REQWARN": {  # إقرار أو رد على إنذار — شؤون الموظفين فقط
         "fields": [
@@ -643,7 +643,7 @@ SCHEMAS.update({
             _field("response", "ردّي على الإنذار", "textarea", required=True, max_length=1000),
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
-        "meta": {"legacy_aliases": ["warning_response"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["warning_response"], "strict_validation": False},
     },
     # ------------------------- طلبات عامة -------------------------
     "REQGEN": {  # طلب عام أو اقتراح — المسؤول المباشر فقط
@@ -659,7 +659,7 @@ SCHEMAS.update({
         ],
         "attachments": {"required": [], "optional": ["supporting_doc"]},
         "meta": {"legacy_aliases": ["general_request", "suggestion"],
-                 "strict_validation": False, "enforce_required": True},
+                 "strict_validation": False},
     },
     # ------------------------- العقود وإنهاء الخدمة -------------------------
     "REQCON": {  # تجديد عقد أو عدم تجديد — شؤون الموظفين ثم المدير العام
@@ -681,7 +681,7 @@ SCHEMAS.update({
              "require": ["new_duration_months", "proposed_changes"]},
         ],
         "attachments": {"required": [], "optional": []},
-        "meta": {"legacy_aliases": ["contract_renewal"], "strict_validation": False, "enforce_required": True},
+        "meta": {"legacy_aliases": ["contract_renewal"], "strict_validation": False},
     },
 })
 
@@ -755,11 +755,23 @@ _VERIFIED_ENFORCE_REQUIRED = (
     "REQPROM",    # ترقية — نموذج عام
     "REQGOV",     # معاملة حكومية — نموذج عام
     "REQDOC",     # مستندات — نموذج عام
+    # النماذج الـ13 المؤلَّفة حديثًا — حقولها وقيودها صُمِّمت معًا فهي متسقة
+    # بالبناء، وكلها بنموذج عام يُبنى من الـschema.
+    "REQLATE", "REQSHIFT", "REQWLOC", "REQMIS", "REQWP", "REQTRFLIC",
+    "REQCONTACT", "REQFILE", "REQALLOW", "REQVIO", "REQWARN", "REQGEN", "REQCON",
 )
 
 for _code in _VERIFIED_ENFORCE_REQUIRED:
-    SCHEMAS[_code].setdefault("meta", {})["enforce_required"] = True
-del _code
+    _meta = SCHEMAS[_code].setdefault("meta", {})
+    _meta["enforce_required"] = True
+    # التحقق الحقلي الصارم: حدود الأرقام، أطوال النصوص، عضوية قيم select،
+    # وترتيب التواريخ (end_gte_start). يُفعَّل مع نفس المجموعة المراجَعة لأن
+    # النموذج هو مصدر حقول هذه الأنواع، فقيوده تصف ما ترسله الواجهة فعلًا.
+    #
+    # الأكواد ذات النموذج المبرمج (المسجّلة في REQUIRED_PAYLOAD_FIELDS) تمرّر
+    # strict=False من submit_request: مفرداتها تخص واجهتها لا الـschema.
+    _meta["strict_validation"] = True
+del _code, _meta
 
 
 def conditional_requirements(schema: dict, payload: dict) -> tuple[set[str], set[str]]:
@@ -791,7 +803,7 @@ def get_schema(code: str) -> dict | None:
     return None
 
 
-def validate_payload(code: str, payload: dict) -> list[str]:
+def validate_payload(code: str, payload: dict, strict: bool | None = None) -> list[str]:
     """يتحقق من الـpayload وفق الـschema — يعيد قائمة أخطاء (فارغة = نجاح).
     الأخطاء بصيغة "{field}: {message}" للعرض بجانب الحقل الصحيح في الواجهة.
 
@@ -805,7 +817,11 @@ def validate_payload(code: str, payload: dict) -> list[str]:
     s = get_schema(code)
     if not s:
         return []
-    strict = bool((s.get("meta") or {}).get("strict_validation"))
+    # strict=None → القرار للـschema. المُستدعي يمرّر False صراحةً للأكواد التي
+    # يبني نموذجها الواجهة بأسماء حقول خاصة بها (مفردات مختلفة عن الـschema)،
+    # فالتحقق الحقلي بمفردات الـschema لا ينطبق عليها.
+    if strict is None:
+        strict = bool((s.get("meta") or {}).get("strict_validation"))
     errors: list[str] = []
     payload = payload or {}
 
