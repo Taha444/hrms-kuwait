@@ -64,8 +64,6 @@ export default function Reports() {
           CSV
         </button>
       </Card>
-
-      <div className="card muted">{t("rep_payroll_hint")}</div>
     </div>
   );
 }

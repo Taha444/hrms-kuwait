@@ -297,7 +297,6 @@ const dict: Record<string, { ar: string; en: string }> = {
   rep_employees_sub: { ar: "قائمة الموظفين (حسب الفرع المحدّد أو كل الفروع).", en: "Employee list (by branch or all)." },
   rep_attendance: { ar: "سجل الحضور الشهري", en: "Monthly Attendance" },
   rep_attendance_sub: { ar: "سجلات الحضور للشهر المحدد (حسب الفرع أو كل الفروع).", en: "Attendance records for the month." },
-  rep_payroll_hint: { ar: "تصدير الرواتب يتم من صفحة مسيّر الرواتب.", en: "Payroll export is on the Payroll page." },
 
   // المندوب
   pro_eyebrow: { ar: "المعاملات الحكومية", en: "Government Transactions" },
