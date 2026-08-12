@@ -204,6 +204,12 @@ def delete_template(tpl_id: int, request: Request,
     return {"ok": True}
 
 
+# أسماء الأيام كما تُكتب في صدر نموذج الهيئة العامة للقوى العاملة.
+# الترتيب يطابق datetime.weekday(): الاثنين = 0.
+_DAY_AR = ("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد")
+_DAY_EN = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
 def _build_context(db: Session, emp: models.Employee) -> dict:
     company = db.get(models.Company, emp.company_id)
     branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
@@ -246,6 +252,34 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "probation_days": "100",
         "annual_leave_days": "30",
         "special_conditions": "لا يوجد / None",
+
+        # ── حقول نموذج PAM الحرفي (الترحيل v5o6p7q8r9s) ──────────────────────
+        # النموذج الرسمي يذكر اليوم والتاريخ صراحًة في صدر العقد
+        "contract_date": (emp.hire_date.strftime("%d/%m/%Y") if emp.hire_date
+                          else date.today().strftime("%d/%m/%Y")),
+        "day_name_ar": _DAY_AR[(emp.hire_date or date.today()).weekday()],
+        "day_name_en": _DAY_EN[(emp.hire_date or date.today()).weekday()],
+        # ممثل الشركة في التوقيع — يقع على الشركة لا على الموظف. الحقول غير
+        # موجودة في النموذج بعد، فنقرأها بأمان: العقد يُطبع بخانة فارغة تُملأ
+        # يدويًا بدل أن يفشل التوليد كله.
+        "company_rep_name": (getattr(company, "rep_name", None) or company.name) if company else "",
+        "company_rep_name_en": ((getattr(company, "rep_name_en", None)
+                                 or company.name_en or "") if company else ""),
+        "company_rep_civil_id": (getattr(company, "rep_civil_id", "") or "") if company else "",
+        # النموذج يفرّق بين رقم الجواز ورقم الإقامة في بيانات الطرف الثاني
+        "residency_number": getattr(emp, "residency_number", "") or "",
+        "nationality_en": getattr(emp, "nationality_en", None) or emp.nationality or "",
+        "job_title_en": getattr(emp, "job_title_en", None) or emp.job_title or "",
+        # مدة العقد المحدد — نصًّا كما في النموذج
+        "contract_years_ar": "سنة" if not is_indefinite else "",
+        "contract_years_en": "ONE YEARS" if not is_indefinite else "",
+        # البند الثالث عشر: ثلاثة أسطر شروط خاصة، الافتراضي "لا يوجد"
+        "special_condition_1": "لا يوجد",
+        "special_condition_2": "لا يوجد",
+        "special_condition_3": "لا يوجد",
+        # خانتا التوقيع تُملآن عند الطباعة بعد الاعتماد
+        "company_signature": "",
+        "employee_signature": "",
     }
 
 

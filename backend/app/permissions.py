@@ -150,7 +150,10 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
            "approve_request", "calculate_eos", "terminate_employee",
            "manage_templates", "view_tasks",
            "view_attendance", "manage_attendance",  # تصحيح واعتماد سجلات الحضور (FIX-015)
-           "record_attendance",  # P0-#4: HR موظف أيضًا (للـMy Attendance الشخصية)
+           # لا record_attendance: HR معفي من البصم بقرار العميل. كانت تُمنح له
+           # ليبصم لنفسه (P0-#4)، لكنه الجهة التي تصحّح سجلات الحضور وتعتمدها —
+           # فبصمه لنفسه يجمع الإثبات والاعتماد في يد واحدة. يبقى معه
+           # view_attendance وmanage_attendance لأداء دوره الرقابي.
            "submit_request"},
     # PRO / المندوب: كل المعاملات الحكومية فقط (إقامات/أذونات/تراخيص/جهات/تجديدات/ملاحظات/مواعيد).
     # لا رواتب/عقود/EOS/إجازات/خصومات/تقارير HR. submit_request (P0-05): يبدأ معاملات

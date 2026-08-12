@@ -909,17 +909,19 @@ def test_supervisor_can_access_attendance_review(client):
     assert r.status_code != 403
 
 
-def test_hr_manager_supervisor_have_record_attendance(client):
-    """P0-#4 — HR/Manager/Supervisor لازم يقدروا يبصموا (record_attendance).
-    قبل التعديل مكانوش عندهم الصلاحية دي رغم إنهم موظفين."""
-    admin = auth_headers(login(client, *ADMIN))
-    # جيب permission list لكل دور
-    for civ, pw, role in [(MGR[0], MGR[1], "company_manager"),
-                          (HR[0], HR[1], "hr")]:
-        h = auth_headers(login(client, civ, pw))
-        me = client.get("/api/auth/me", headers=h).json()
-        assert "record_attendance" in me["permissions"], \
-            f"{role} missing record_attendance"
+def test_manager_has_record_attendance_but_hr_does_not(client):
+    """P0-#4 — المدير يبصم لأنه موظف أيًضا.
+
+    HR استُثني لاحًقا بقرار العميل: هو من يصحّح سجلات الحضور ويعتمدها، فبصمه
+    لنفسه يجمع الإثبات والاعتماد في يد واحدة — انظر test_hr_is_exempt_from_attendance.
+    """
+    h = auth_headers(login(client, MGR[0], MGR[1]))
+    me = client.get("/api/auth/me", headers=h).json()
+    assert "record_attendance" in me["permissions"], "company_manager missing record_attendance"
+
+    hr = auth_headers(login(client, HR[0], HR[1]))
+    me_hr = client.get("/api/auth/me", headers=hr).json()
+    assert "record_attendance" not in me_hr["permissions"], "HR يجب أن يبقى معفًى"
 
 
 def test_employee_cannot_access_attendance_review(client):
@@ -2545,3 +2547,23 @@ def test_self_document_download_is_unrestricted(client):
             if d:
                 d.is_current = True
         db.commit(); db.close()
+
+
+def test_hr_is_exempt_from_attendance(client):
+    """HR لا يبصم حضوًرا — قرار العميل.
+
+    كانت record_attendance تُمنح له ليبصم لنفسه، وهو نفسه من يصحّح سجلات
+    الحضور ويعتمدها (manage_attendance) — فبصمه لنفسه يجمع الإثبات والاعتماد
+    في يد واحدة. صلاحيتا العرض والتصحيح تبقيان لأداء دوره الرقابي.
+    """
+    from app.permissions import ROLE_DEFAULT_PERMS
+
+    assert "record_attendance" not in ROLE_DEFAULT_PERMS["hr"]
+    assert {"view_attendance", "manage_attendance"} <= ROLE_DEFAULT_PERMS["hr"]
+
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    # نقطتا تسجيل الحضور مرفوضتان
+    assert client.post("/api/attendance/validate-qr", headers=hr,
+                       json={"qr_token": "x"}).status_code == 403
+    # ومراجعة الحضور تبقى متاحة
+    assert client.get("/api/attendance/review", headers=hr).status_code in (200, 404)
