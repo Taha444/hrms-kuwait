@@ -2340,3 +2340,71 @@ def test_expiry_scan_idempotent_no_duplicate_tasks(client):
                 models.Document.id == doc_id))
             db.commit()
         db.close()
+
+
+# ===========================================================================
+# تقديم الطلبات نيابةً عن موظف آخر — مقصور على HR
+# ===========================================================================
+
+def test_on_behalf_restricted_to_hr(client):
+    """التقديم باسم موظف آخر مقصور على HR.
+
+    كان الخادم لا يفحص هذا إطلاقًا: assert_same_company وحدها كانت الحارس، فأي
+    حساب يملك submit_request (وهي مع كل الأدوار تقريبًا) يقدر يفتح طلبًا باسم أي
+    موظف في شركته — بما فيهم من هم أعلى منه. الواجهة كانت تعرض القائمة لمن يملك
+    view_employee فظهرت للمحاسب وفيها المدير العام، لكن الحجب في الواجهة لا يمنع
+    POST مباشرًا: حتى الموظف العادي (الذي يُرفض بـ403 من GET /employees) كان ينجح.
+    """
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    acc = auth_headers(login(client, "100000000007", "account123"))
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+
+    # الهدف: مدير الشركة — وهو بالضبط من كان المحاسب يفتح له طلبات
+    mgr_emp_id = client.get("/api/auth/me", headers=auth_headers(
+        login(client, "100000000001", "manager123"))).json()["employee_id"]
+    assert mgr_emp_id, "مدير الشركة غير مربوط بملف موظف — الاختبار يحتاج هدًفا"
+
+    payload = {"start_date": "2027-04-01", "end_date": "2027-04-02", "days": 2,
+               "leave_type": "annual", "reason": "اختبار النيابة"}
+
+    # الموظف العادي — لا يرى القائمة أصلًا، ولا يقدر يقدّم باسم غيره
+    assert client.get("/api/employees", headers=emp).status_code == 403
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "leave", "employee_id": mgr_emp_id,
+        "payload_json": payload})
+    assert r.status_code == 403, r.text
+
+    # المحاسب — يملك view_employee (يشغّل الرواتب) لكن ذلك ليس تفويًضا بالتصرف
+    r = client.post("/api/requests", headers=acc, json={
+        "request_type_code": "leave", "employee_id": mgr_emp_id,
+        "payload_json": payload})
+    assert r.status_code == 403, r.text
+
+    # ...لكنه يقدّم لنفسه بلا عائق
+    r = client.post("/api/requests", headers=acc, json={
+        "request_type_code": "leave", "payload_json": payload})
+    assert r.status_code == 201, r.text
+
+    # HR وحده يقدّم باسم غيره
+    r = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "leave", "employee_id": mgr_emp_id,
+        "payload_json": payload})
+    assert r.status_code == 201, r.text
+
+
+def test_ui_reads_on_behalf_flag_from_server(client):
+    """الواجهة تقرأ can_submit_on_behalf من /auth/me بدل استنتاجه من view_employee.
+
+    الاستنتاج كان يعطي المحاسب/المندوب/مسؤول الفرع قائمةً بكل الموظفين بينما
+    الخادم يرفض تقديمهم — قاعدة واحدة موصوفة في مكانين فاختلفا.
+    """
+    for civil, pwd, expected in [
+        ("100000000002", "hr12345", True),      # HR
+        ("100000000007", "account123", False),  # محاسب
+        ("100000000001", "manager123", False),  # مدير الشركة
+        ("100000000003", "deleg123", False),    # مندوب
+        ("100000000101", "emp12345", False),    # موظف
+    ]:
+        me = client.get("/api/auth/me", headers=auth_headers(login(client, civil, pwd)))
+        assert me.status_code == 200, me.text
+        assert me.json()["can_submit_on_behalf"] is expected, civil

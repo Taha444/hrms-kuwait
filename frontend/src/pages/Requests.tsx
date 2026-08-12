@@ -30,9 +30,10 @@ export default function Requests() {
   // schema النوع المختار (null = لا schema، undefined = لم يُحمَّل بعد)
   const [activeSchema, setActiveSchema] = useState<Schema | null | undefined>(undefined);
   const [err, setErr] = useState("");
-  // من يملك view_employee (HR/مدير/مشرف/مندوب/محاسب) قد يقدّم طلًبا نيابًة عن موظف آخر —
-  // كان النموذج يقدّم دائًما عن حساب المستخدم نفسه فقط (P1-01)
-  const canActOnBehalf = can("view_employee");
+  // التقديم نيابًة عن موظف آخر — العلم يأتي من الخادم (/auth/me) لا باستنتاج هنا.
+  // كان can("view_employee")، فظهرت القائمة للمحاسب وفيها المدير العام وHR ومندوب
+  // حكومي: صلاحية *رؤية* الموظفين ليست تفويًضا بالتصرف باسمهم.
+  const canActOnBehalf = !!user?.can_submit_on_behalf;
   // V2.2 §3 — المستخدم الإداري بدون employee_id لا يمكنه تقديم "لنفسه"،
   // يجب اختيار موظف صراحة. لو عنده employee_id (مثل موظف/HR مربوط) → يقدر يختار نفسه.
   const hasOwnEmployeeProfile = !!user?.employee_id;

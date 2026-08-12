@@ -239,7 +239,7 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from ..permissions import is_cross_company_user
+    from ..permissions import can_submit_on_behalf, is_cross_company_user
     return {
         "id": user.id, "civil_id": user.civil_id, "full_name": user.full_name,
         "role": user.role, "company_id": user.company_id, "email": user.email,
@@ -252,6 +252,10 @@ def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_
         # يحتاج شاشة /select-company المخصّصة (JWT-based picker) أم لا.
         # True فقط للـflag الفعلي، False لـsuper_admin/owner (اللي عندهم CompanyPicker).
         "needs_company_selection": bool(user.is_cross_company),
+        # هل يظهر له اختيار "تقديم نيابةً عن"؟ يأتي من الخادم لا باستنتاج الواجهة:
+        # كانت تستنتجه من view_employee، فظهر للمحاسب بقائمة تضم المدير العام وHR
+        # بينما الخادم يقصره على HR — قائمتان لقاعدة واحدة.
+        "can_submit_on_behalf": can_submit_on_behalf(user.role),
         # R9 §17 — bool للـavatar (يُستخدم في UI لعرض الصورة بدل الأيقونة)
         "has_avatar": bool(user.avatar_path),
         "avatar_updated_at": (user.avatar_updated_at.isoformat()

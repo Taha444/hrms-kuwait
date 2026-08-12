@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import form_schemas, models, schemas, workflow
+from .. import form_schemas, models, permissions, schemas, workflow
 from ..config import settings
 from ..database import get_db
 from ..deps import (assert_same_company, audit, get_current_user, require_any_perm,
@@ -261,6 +261,17 @@ def submit_request(data: schemas.RequestIn, request: Request,
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id, db=db)
+
+    # التقديم باسم موظف آخر مقصور على HR (permissions.ON_BEHALF_ROLES).
+    # كان الفحص الوحيد هنا assert_same_company، فأي حساب يملك submit_request
+    # يقدر يفتح طلبًا باسم أي موظف في شركته — بما فيهم من هم أعلى منه — عبر POST
+    # مباشر، بلا حاجة حتى لصلاحية رؤية الموظفين.
+    if emp_id != user.employee_id and not permissions.can_submit_on_behalf(user.role):
+        raise HTTPException(
+            status_code=403,
+            detail="لا يمكنك تقديم طلب باسم موظف آخر — التقديم نيابةً عن الموظفين "
+                   "مقصور على الشؤون القانونية/HR. يمكنك تقديم طلباتك الخاصة فقط."
+        )
 
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
