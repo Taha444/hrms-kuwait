@@ -378,6 +378,12 @@ const dict: Record<string, { ar: string; en: string }> = {
   fld_actual_salary: { ar: "الراتب الفعلي", en: "Actual Salary" },
   // حقول التوظيف والعقد المضافة بمراجعة العميل (الصفحة ٣)
   fld_actual_job: { ar: "الوظيفة الفعلية", en: "Actual Job Title" },
+  // نموذج تعديل بيانات الموظف
+  epf_edit_data: { ar: "تعديل البيانات", en: "Edit Data" },
+  epf_saved: { ar: "حُفظت التعديلات", en: "Changes saved" },
+  fld_name_en: { ar: "الاسم بالإنجليزية", en: "Name (English)" },
+  fld_phone: { ar: "الهاتف", en: "Phone" },
+  fld_email: { ar: "البريد الإلكتروني", en: "Email" },
   // رصيد الإجازات وسجل حركاته
   leave_current_balance: { ar: "الرصيد المتاح", en: "Available Balance" },
   leave_days_available: { ar: "يوم متبقٍّ", en: "days remaining" },

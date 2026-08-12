@@ -2761,3 +2761,53 @@ def test_profile_exposes_leave_balance_and_ledger(client):
     p = client.get(f"/api/employees/{emp_id}/profile", headers=hr).json()
     assert "leave_balance" in p
     assert isinstance(p.get("leave_ledger"), list)
+
+
+# ===========================================================================
+# الصفحة ٤ — صلاحية التعديل والروابط الحكومية
+# ===========================================================================
+
+def test_manager_can_grant_edit_employee(client):
+    """المدير يمنح صلاحية تعديل بيانات الموظفين لـHR والمندوب والمحاسب.
+
+    طلب العميل: زر التعديل يُتاح للمدير والمندوب وHR، والمنح من المدير وحده.
+    المندوب والمحاسب لا يملكانها افتراضيًا — تُمنح صراحًة عبر مصفوفة الأذونات.
+    """
+    from app.permissions import ROLE_DEFAULT_PERMS
+
+    # المدير وHR يملكانها افتراضيًا؛ المندوب والمحاسب لا
+    assert "edit_employee" in ROLE_DEFAULT_PERMS["company_manager"]
+    assert "edit_employee" in ROLE_DEFAULT_PERMS["hr"]
+    assert "edit_employee" not in ROLE_DEFAULT_PERMS["delegate"]
+    assert "edit_employee" not in ROLE_DEFAULT_PERMS["accountant"]
+
+    # والمدير يملك manage_users — وهي بوابة المنح
+    assert "manage_users" in ROLE_DEFAULT_PERMS["company_manager"]
+
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    users = client.get("/api/users", headers=mgr)
+    assert users.status_code == 200, users.text
+    rows = users.json() if isinstance(users.json(), list) else users.json().get("items", [])
+    pro = next(u for u in rows if u.get("role") == "delegate")
+
+    r = client.post(f"/api/users/{pro['id']}/permissions", headers=mgr,
+                    json={"perm_codes": ["edit_employee"]})
+    assert r.status_code in (200, 201, 204), r.text
+
+    pro_h = auth_headers(login(client, pro["civil_id"], "deleg123"))
+    me = client.get("/api/auth/me", headers=pro_h).json()
+    assert "edit_employee" in me["permissions"], "المنح لم يصل للمندوب"
+
+
+def test_hr_has_no_government_portals(client):
+    """الروابط الحكومية أُزيلت من HR — المعاملات الحكومية اختصاص المندوب."""
+    import re
+    from pathlib import Path
+
+    app_tsx = Path(__file__).resolve().parents[2] / "frontend" / "src" / "App.tsx"
+    if not app_tsx.exists():
+        return
+    text = app_tsx.read_text(encoding="utf-8")
+    route = re.search(r'path="/gov-portals".*?/>', text, re.S)
+    assert route, "مسار /gov-portals غير موجود"
+    assert '"hr"' not in route.group(0), "hr ما زال في حارس مسار الروابط الحكومية"

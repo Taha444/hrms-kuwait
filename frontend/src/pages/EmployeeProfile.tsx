@@ -18,6 +18,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [docType, setDocType] = useState("passport");
   const [suggested, setSuggested] = useState<any>(null);
   const [msg, setMsg] = useState("");
+  // تعديل بيانات الموظف — لم يكن له نموذج في الواجهة إطلاًقا
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  const [editErr, setEditErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [term, setTerm] = useState({ end_date: "", reason: "termination" });
   const [settlement, setSettlement] = useState<any>(null);
@@ -72,6 +76,45 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const saveActualSalary = async () => {
     await api.post(`/employees/${id}/actual-salary`, null, { params: { amount: +actualVal || 0 } });
     setActualEdit(false); setMsg(t("actual_salary_saved")); load();
+  };
+
+  // تعديل بيانات الموظف. لم يكن له زر أصًلا: صلاحية edit_employee كانت تفتح
+  // تغيير الحالة وتطبيق OCR فقط — ولهذا كانت شاشة "سجل التعديلات" فارغة دائًما،
+  // لا لعطل فيها بل لأن التعديل نفسه غير متاح من الواجهة.
+  // التعديل يمر بـPUT /employees/{id} فيسري عليه تحقق الخادم وتسجيل التغييرات.
+  const openEdit = () => {
+    setEditErr("");
+    setEditForm({
+      name: e.name ?? "", name_en: e.name_en ?? "",
+      civil_id: e.civil_id ?? "", passport_number: e.passport_number ?? "",
+      nationality: e.nationality ?? "", nationality_en: e.nationality_en ?? "",
+      phone: e.phone ?? "", email: e.email ?? "",
+      job_title: e.job_title ?? "", actual_job_title: e.actual_job_title ?? "",
+      job_title_en: e.job_title_en ?? "",
+      basic_salary: e.basic_salary ?? 0,
+      hire_date: e.hire_date ?? "", contract_type: e.contract_type ?? "indefinite",
+      work_hours_type: e.work_hours_type ?? "",
+      official_work_hours: e.official_work_hours ?? "",
+      actual_work_hours: e.actual_work_hours ?? "",
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setEditErr("");
+    try {
+      // PUT يستقبل الكائن كامًلا — ندمج التعديلات فوق الحالي حتى لا نمسح
+      // حقًلا لا يعرضه هذا النموذج
+      const body: any = { ...e, ...editForm };
+      for (const k of ["official_work_hours", "actual_work_hours"]) {
+        body[k] = body[k] === "" || body[k] == null ? null : +body[k];
+      }
+      if (!body.work_hours_type) { body.official_work_hours = null; body.actual_work_hours = null; }
+      await api.put(`/employees/${id}`, body);
+      setEditing(false); setMsg(t("epf_saved")); load(); onChanged?.();
+    } catch (err: any) {
+      setEditErr(errMsg(err, t("error")));
+    }
   };
   const addEvent = async () => {
     if (!evForm.title) return;
@@ -246,6 +289,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             </div>
             <div className="card">
               {can("edit_employee") && (
+                <button style={{ marginBottom: 12 }} onClick={openEdit}>{t("epf_edit_data")}</button>
+              )}
+              {can("edit_employee") && (
                 <div className="field" style={{ margin: 0 }}>
                   <label htmlFor="epf-status">{t("emp_status")}</label>
                   <select id="epf-status" value={e.status} onChange={(ev) => changeStatus(ev.target.value)}>
@@ -276,6 +322,74 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <td>{a.selfie_in ? "✓" : "—"}</td></tr>
               ))}{!p.attendance.length && <tr><td colSpan={4} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
           </div>
+
+          {/* نموذج تعديل بيانات الموظف — يُرسل PUT فيسري عليه تحقق الخادم
+              ويُقيَّد التغيير في سجل التعديلات */}
+          {editing && (
+            <div className="card" style={{ borderTop: "3px solid var(--petrol-600)" }}>
+              <h3>{t("epf_edit_data")}</h3>
+              {editErr && <div className="err">{editErr}</div>}
+              {([
+                ["name", t("fld_name"), "text"],
+                ["name_en", t("fld_name_en"), "text"],
+                ["civil_id", t("fld_civil_id"), "text"],
+                ["passport_number", t("fld_passport"), "text"],
+                ["nationality", t("fld_nationality"), "text"],
+                ["nationality_en", t("fld_nationality") + " (EN)", "text"],
+                ["phone", t("fld_phone"), "text"],
+                ["email", t("fld_email"), "email"],
+                ["job_title", t("epf_job"), "text"],
+                ["actual_job_title", t("fld_actual_job"), "text"],
+                ["job_title_en", t("epf_job") + " (EN)", "text"],
+                ["basic_salary", t("fld_official_salary"), "number"],
+                ["hire_date", t("epf_hire"), "date"],
+              ] as [string, string, string][]).map(([k, label, type]) => (
+                <div className="field" key={k}>
+                  <label htmlFor={`epf-edit-${k}`}>{label}</label>
+                  <input id={`epf-edit-${k}`} type={type} value={editForm[k] ?? ""}
+                    onChange={(ev) => setEditForm({ ...editForm, [k]: ev.target.value })} />
+                </div>
+              ))}
+              <div className="field">
+                <label htmlFor="epf-edit-contract">{t("epf_contract")}</label>
+                <select id="epf-edit-contract" value={editForm.contract_type}
+                  onChange={(ev) => setEditForm({ ...editForm, contract_type: ev.target.value })}>
+                  <option value="indefinite">{contractTypeAr("indefinite")}</option>
+                  <option value="definite">{contractTypeAr("definite")}</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="epf-edit-hours-type">{t("fld_work_hours_type")}</label>
+                <select id="epf-edit-hours-type" value={editForm.work_hours_type}
+                  onChange={(ev) => setEditForm({ ...editForm, work_hours_type: ev.target.value })}>
+                  <option value="">—</option>
+                  <option value="fixed">{t("fld_hours_fixed")}</option>
+                  <option value="unfixed">{t("fld_hours_unfixed")}</option>
+                </select>
+              </div>
+              {/* الرقمان يخصّان "محددة" فقط — نفس الشرط في العرض والإدخال */}
+              {editForm.work_hours_type === "fixed" && (
+                <div className="row">
+                  <div className="field" style={{ flex: 1 }}>
+                    <label htmlFor="epf-edit-h-off">{t("fld_hours_official")}</label>
+                    <input id="epf-edit-h-off" type="number" min={0} max={24} step="0.5"
+                      value={editForm.official_work_hours ?? ""}
+                      onChange={(ev) => setEditForm({ ...editForm, official_work_hours: ev.target.value })} />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label htmlFor="epf-edit-h-act">{t("fld_hours_actual")}</label>
+                    <input id="epf-edit-h-act" type="number" min={0} max={24} step="0.5"
+                      value={editForm.actual_work_hours ?? ""}
+                      onChange={(ev) => setEditForm({ ...editForm, actual_work_hours: ev.target.value })} />
+                  </div>
+                </div>
+              )}
+              <div className="row">
+                <button onClick={saveEdit}>{t("save")}</button>
+                <button className="ghost" onClick={() => setEditing(false)}>{t("cancel")}</button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
