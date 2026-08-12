@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -17,6 +17,7 @@ const HARDCODED_FORM_TYPES: string[] = [];
 export default function Requests() {
   const { t } = useI18n();
   const { can, user } = useAuth();
+  const [params] = useSearchParams();
   const [tab, setTab] = useState<"mine" | "inbox">("mine");
   const [mine, setMine] = useState<any[]>([]);
   const [inbox, setInbox] = useState<any[]>([]);
@@ -30,6 +31,8 @@ export default function Requests() {
   // schema النوع المختار (null = لا schema، undefined = لم يُحمَّل بعد)
   const [activeSchema, setActiveSchema] = useState<Schema | null | undefined>(undefined);
   const [err, setErr] = useState("");
+  // خطأ قادم من رابط عميق (?type=) — لا يُمحى مع تغيير النوع مثل err
+  const [linkErr, setLinkErr] = useState("");
   // التقديم نيابًة عن موظف آخر — العلم يأتي من الخادم (/auth/me) لا باستنتاج هنا.
   // كان can("view_employee")، فظهرت القائمة للمحاسب وفيها المدير العام وHR ومندوب
   // حكومي: صلاحية *رؤية* الموظفين ليست تفويًضا بالتصرف باسمهم.
@@ -49,7 +52,19 @@ export default function Requests() {
     load();
     // FIX — كتالوج الإنشاء: الأنواع التي يقبلها POST فعليًا فقط (بلا legacy aliases)
     api.get("/requests/types", { params: { creatable_only: true } })
-      .then((r) => { setTypes(r.data); setTypeCode(r.data[0]?.code || ""); });
+      .then((r) => {
+        setTypes(r.data);
+        // ?type=&new=1 — يصل من زر "استبدال التوقيع" في الملف الشخصي: يفتح
+        // النموذج على النوع المطلوب مباشرة بدل أن يبحث عنه المستخدم في القائمة.
+        const wanted = params.get("type");
+        const exists = wanted && r.data.some((x: any) => x.code === wanted);
+        setTypeCode(exists ? wanted! : (r.data[0]?.code || ""));
+        if (params.get("new") === "1") setShowNew(true);
+        // حالة منفصلة عن err: تأثير [typeCode] يمسح err عند تغيير النوع، فكانت
+        // هذه الرسالة تُمحى في نفس اللحظة التي تُعرض فيها.
+        if (wanted && !exists)
+          setLinkErr(`نوع الطلب «${wanted}» غير متاح لحسابك — اختر نوًعا من القائمة`);
+      });
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
 
@@ -114,6 +129,7 @@ export default function Requests() {
       {showNew && (
         <div className="card" id="new-request-panel" role="region" aria-labelledby="new-request-title">
           <h3 id="new-request-title">{t("new_request")}</h3>
+          {linkErr && <div className="err">{linkErr}</div>}
           <div className="field">
             <label htmlFor="req-type">{t("req_type")}</label>
             <select id="req-type" value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>

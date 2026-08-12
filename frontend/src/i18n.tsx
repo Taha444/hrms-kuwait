@@ -94,6 +94,12 @@ const dict: Record<string, { ar: string; en: string }> = {
   my_warnings: { ar: "إنذاراتي", en: "My Warnings" },
   my_no_warnings: { ar: "لا توجد إنذارات — أحسنت!", en: "No warnings — well done!" },
   my_download: { ar: "تنزيل", en: "Download" },
+  // التنزيل متاح مرة واحدة لكل نسخة — نُنبّه قبل استهلاكه لا بعده
+  my_download_spent: { ar: "تم التنزيل", en: "Downloaded" },
+  my_download_once_confirm: {
+    ar: "التنزيل متاح مرة واحدة فقط لهذا المستند. هل تريد المتابعة؟",
+    en: "This document can be downloaded only once. Continue?",
+  },
   kpi_expiring_suffix: { ar: "{n} قرب الانتهاء", en: "{n} expiring soon" },
   perf_title: { ar: "مؤشر الأداء", en: "Performance Indicator" },
   perf_attendance: { ar: "نسبة الحضور", en: "Attendance Rate" },

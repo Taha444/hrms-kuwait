@@ -2416,3 +2416,151 @@ def test_ui_reads_on_behalf_flag_from_server(client):
         me = client.get("/api/auth/me", headers=auth_headers(login(client, civil, pwd)))
         assert me.status_code == 200, me.text
         assert me.json()["can_submit_on_behalf"] is expected, civil
+
+
+# ===========================================================================
+# قوالب الإشعارات — كل كود يستدعيه التطبيق موجود ومبذور
+# ===========================================================================
+
+def test_every_referenced_template_code_exists(client):
+    """كل كود قالب يستدعيه الكود لا بد أن يكون في الكتالوج.
+
+    notify_from_template يرجع None حين لا يجد القالب — بلا خطأ ولا سجل قبل هذا
+    الإصلاح — فكود مكتوب خطأ أو قالب حُذف كان يُسقط الإشعار بصمت.
+    """
+    import re
+    from pathlib import Path
+    from app.notification_templates import DEFAULT_NOTIFICATION_TEMPLATES
+
+    catalog = {t["code"] for t in DEFAULT_NOTIFICATION_TEMPLATES}
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    referenced: set[str] = set()
+    for py in app_dir.rglob("*.py"):
+        for m in re.finditer(r'code\s*=\s*"(NTF-\d+|[A-Z][A-Z0-9-]{3,})"', py.read_text(encoding="utf-8")):
+            if m.group(1).startswith("NTF-"):
+                referenced.add(m.group(1))
+    assert referenced, "لم يُعثر على أي استدعاء قالب — تحقق من التعبير النمطي"
+    missing = referenced - catalog
+    assert not missing, f"أكواد قوالب مستدعاة وغير معرّفة في الكتالوج: {sorted(missing)}"
+
+
+def test_all_templates_are_seeded_in_the_database(client):
+    """الكتالوج كله موجود في قاعدة البيانات لا في ملف بايثون فقط.
+
+    الجدول كان يُنشأ فارغًا: الترحيل ينشئ الجدول والصفوف تُدرَج في seed.py
+    التجريبي وحده — وهو محظور في الإنتاج، فبقيت 73 من 74 قالبًا غائبة هناك
+    وكل إشعارات القوالب ميتة.
+    """
+    from sqlalchemy import select, func
+    from app import models
+    from app.database import SessionLocal
+    from app.notification_templates import DEFAULT_NOTIFICATION_TEMPLATES
+
+    db = SessionLocal()
+    try:
+        rows = {c for (c,) in db.execute(select(models.NotificationTemplate.code))}
+        missing = {t["code"] for t in DEFAULT_NOTIFICATION_TEMPLATES} - rows
+        assert not missing, f"قوالب غير مبذورة في قاعدة البيانات: {sorted(missing)}"
+    finally:
+        db.close()
+
+
+def test_completion_notification_reaches_the_employee(client):
+    """اكتمال الطلب يصل صاحبه — البند الذي أبلغ عنه العميل.
+
+    NTF-037 يُستدعى عند الانتقال إلى completed؛ غيابه من قاعدة البيانات كان
+    يعني ألا يصل الموظف شيء رغم أن الكود يستدعي الإشعار فعلًا.
+    """
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        tpl = db.scalar(select(models.NotificationTemplate).where(
+            models.NotificationTemplate.code == "NTF-037"))
+        assert tpl is not None, "NTF-037 غير موجود — إشعار الاكتمال لن يصل"
+        assert tpl.is_active
+        assert "{{request_type}}" in tpl.body_text
+    finally:
+        db.close()
+
+
+# ===========================================================================
+# الخدمة الذاتية — تنزيل المستند مرة واحدة
+# ===========================================================================
+
+def test_self_document_download_is_once_only(client):
+    """الموظف ينزّل نسخة مستنده مرة واحدة فقط (قرار العميل).
+
+    القيد الفريد (user_id, document_id) هو الفارض: المحاولة الثانية تصطدم به
+    ولا تعتمد على فحص سابق يمكن أن تتجاوزه نافذتان متزامنتان.
+    """
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+
+    emp_headers = auth_headers(login(client, "100000000101", "emp12345"))
+    me = client.get("/api/auth/me", headers=emp_headers).json()
+    emp_id = me["employee_id"]
+    assert emp_id
+
+    db = SessionLocal()
+    doc_id = None
+    prior_ids: list[int] = []
+    try:
+        # مستند حقيقي بملف على القرص
+        import tempfile, os
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        os.write(fd, b"%PDF-1.4 test\n")
+        os.close(fd)
+        emp = db.get(models.Employee, emp_id)
+        # الموظف قد يملك جواًزا مبذوًرا بلا ملف على القرص، والـendpoint يأخذ أول
+        # is_current — فنعطّل الموجود مؤقًتا ليقع الاختيار على مستند الاختبار
+        prior = db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == emp_id,
+            models.Document.document_type_code == "passport",
+            models.Document.is_current == True,  # noqa: E712
+        )).all()
+        prior_ids = [d.id for d in prior]
+        for d in prior:
+            d.is_current = False
+        doc = models.Document(
+            company_id=emp.company_id, entity_type="employee", entity_id=emp_id,
+            document_type_code="passport", title="جواز اختبار",
+            file_path=path, mime="application/pdf", version=1, is_current=True,
+        )
+        db.add(doc); db.commit(); db.refresh(doc)
+        doc_id = doc.id
+
+        # الملف الشخصي يعلن أنه لم يُنزَّل بعد
+        prof = client.get("/api/me/profile", headers=emp_headers).json()
+        row = next(d for d in prof["documents"] if d["id"] == doc_id)
+        assert row["downloaded"] is False
+
+        # التنزيل الأول ينجح
+        r1 = client.get("/api/me/document/passport", headers=emp_headers)
+        assert r1.status_code == 200, r1.text
+
+        # والثاني يُرفض
+        r2 = client.get("/api/me/document/passport", headers=emp_headers)
+        assert r2.status_code == 403, r2.text
+        assert "مرة واحدة" in r2.json()["detail"]
+
+        # والملف الشخصي صار يعكس ذلك
+        prof2 = client.get("/api/me/profile", headers=emp_headers).json()
+        row2 = next(d for d in prof2["documents"] if d["id"] == doc_id)
+        assert row2["downloaded"] is True
+    finally:
+        db.execute(models.SelfDocumentDownload.__table__.delete().where(
+            models.SelfDocumentDownload.document_id == doc_id))
+        if doc_id:
+            db.execute(models.Document.__table__.delete().where(
+                models.Document.id == doc_id))
+        # نُعيد المستندات التي عطّلناها إلى حالتها
+        for pid in prior_ids:
+            d = db.get(models.Document, pid)
+            if d:
+                d.is_current = True
+        db.commit(); db.close()

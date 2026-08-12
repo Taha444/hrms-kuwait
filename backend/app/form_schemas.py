@@ -683,6 +683,24 @@ SCHEMAS.update({
         "attachments": {"required": [], "optional": []},
         "meta": {"legacy_aliases": ["contract_renewal"], "strict_validation": False},
     },
+
+    # طلب تغيير التوقيع — يفتحه الموظف من ملفه الشخصي حين يضغط "استبدال التوقيع".
+    # صورة التوقيع الجديدة تُرفع كمرفق على الطلب ويعتمدها HR؛ لا تصبح نافذة قبل
+    # ذلك، فيبقى التوقيع القديم ساريًا على المستندات حتى تُقرّ النسخة الجديدة.
+    "REQSIG": {
+        "fields": [
+            _field("change_reason", "سبب تغيير التوقيع", "select", required=True,
+                   options=[
+                       {"value": "improve", "label": "تحسين وضوح التوقيع"},
+                       {"value": "name_change", "label": "تغيير الاسم"},
+                       {"value": "compromised", "label": "تسرّب أو استخدام غير مصرّح"},
+                       {"value": "other", "label": "سبب آخر"},
+                   ]),
+            REASON,
+        ],
+        "attachments": {"required": ["signature"], "optional": []},
+        "meta": {"enforce_required": True, "strict_validation": True},
+    },
 })
 
 

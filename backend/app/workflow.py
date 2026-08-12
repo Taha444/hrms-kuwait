@@ -384,6 +384,11 @@ DEFAULT_REQUEST_TYPES = [
     _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
            ["company_manager", "hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-040"),
+    # طلب تغيير التوقيع: الموظف يرفع أول توقيع مباشرة من ملفه، أما تغييره بعد ذلك
+    # فيمر من هنا. التوقيع دليل يُحتجّ به على كل مستند وُقِّع سابقًا، فتغييره
+    # قرار يوثَّق بسبب ويعتمده HR لا إجراء ذاتي صامت.
+    _simple("REQSIG", "طلب تغيير التوقيع", CAT_ADMIN,
+           ["hr"], requires_physical_signature=False),
 ]
 
 

@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date, timedelta
 
@@ -18,6 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -44,6 +47,13 @@ def notify_from_template(db: Session, *, code: str, assignee_user_id: int, compa
     tpl = db.scalar(select(models.NotificationTemplate).where(
         models.NotificationTemplate.code == code, models.NotificationTemplate.is_active == True))  # noqa: E712
     if not tpl:
+        # الصمت هنا هو ما أخفى العطل: جدول القوالب كان شبه فارغ في الإنتاج (تُبذر
+        # في seed.py التجريبي المحظور هناك)، فكانت كل الإشعارات المبنية على قوالب
+        # تختفي بلا أثر — لا سجل ولا خطأ. لا نرفع استثناء لأن فشل الإشعار يجب ألا
+        # يُسقط المعاملة التي يتبعها، لكن يجب أن يُرى في السجل.
+        logger.warning(
+            "notification template %r missing or inactive — notification dropped "
+            "for user %s. Check that alembic migrations have run.", code, assignee_user_id)
         return None
     channel = tpl.channel_default
     if not _channel_enabled(db, assignee_user_id, tpl.category, channel):

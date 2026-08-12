@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
-import { statusAr, contractTypeAr } from "../labels";
+import { contractTypeAr } from "../labels";
 import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // الخدمة الذاتية: ملف الموظف الشخصي — بياناته/عقده/مستنداته/إجازاته/إنذاراته + توقيعه الرقمي.
 export default function MyProfile() {
   const { t, lang } = useI18n();
+  const navigate = useNavigate();
   const [p, setP] = useState<any>(null);
   const [err, setErr] = useState("");
   const [dlErr, setDlErr] = useState("");
@@ -16,15 +18,22 @@ export default function MyProfile() {
   const [sigMsg, setSigMsg] = useState("");
   const [sigPreview, setSigPreview] = useState<string | null>(null);
 
-  const loadSig = () => api.get("/me/signature").then((r) => {
+  // المعاينة تُجلب كـblob عبر axios ثم تُحوَّل لـobject URL. وضع المسار مباشرة
+  // في <img src> لا يعمل: المتصفح لا يرفق ترويسة Authorization مع طلب الصورة،
+  // فيرجع 401 وتظهر صورة مكسورة — نفس سبب عطل الصورة الشخصية.
+  const loadSig = () => api.get("/me/signature").then(async (r) => {
     setSig(r.data);
+    setSigPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     if (r.data.has_signature) {
-      // نضيف timestamp cache-bust حتى يتحدث المعاينة بعد الرفع
-      setSigPreview(`/api/me/signature/image?t=${Date.now()}`);
-    } else {
-      setSigPreview(null);
+      try {
+        const img = await api.get("/me/signature/image", { responseType: "blob" });
+        setSigPreview(URL.createObjectURL(img.data as Blob));
+      } catch { setSigPreview(null); }
     }
   }).catch(() => setSig({ has_signature: false, updated_at: null }));
+
+  // نحرّر آخر object URL عند مغادرة الصفحة حتى لا تتسرّب الذاكرة
+  useEffect(() => () => { if (sigPreview) URL.revokeObjectURL(sigPreview); }, [sigPreview]);
 
   useEffect(() => {
     api.get("/me/profile").then((r) => setP(r.data))
@@ -51,23 +60,22 @@ export default function MyProfile() {
     e.target.value = "";
   };
 
-  const deleteSig = async () => {
-    if (!confirm(t("sig_confirm_delete"))) return;
-    setSigErr(""); setSigMsg("");
-    try {
-      await api.delete("/me/signature");
-      setSigMsg(t("sig_deleted"));
-      loadSig();
-    } catch (err: any) { setSigErr(errMsg(err, t("error"))); }
-  };
-
-  const download = async (type: string) => {
+  const download = async (type: string, docId: number) => {
+    if (!confirm(t("my_download_once_confirm"))) return;
+    setDlErr("");
     // window.open المباشر لا يرفق رمز الدخول، فيرجع 401 (QA-P1-DOC-01)
     try {
       const res = await api.get(`/me/document/${encodeURIComponent(type)}`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data as Blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // نُعلّم الصف محلًيا: الخادم استهلك النصيب بالفعل، وإعادة تحميل الملف
+      // الشخصي كاملًا لأجل علم واحد إسراف
+      setP((prev: any) => ({
+        ...prev,
+        documents: prev.documents.map((d: any) =>
+          d.id === docId ? { ...d, downloaded: true } : d),
+      }));
     } catch (e: any) {
       setDlErr(errMsg(e, t("error")));
     }
@@ -123,28 +131,27 @@ export default function MyProfile() {
         <table>
           <thead><tr><th>{t("epf_col_type")}</th><th>{t("col_title")}</th><th>{t("epf_col_version")}</th><th>{t("pro_col_expiry")}</th><th></th></tr></thead>
           <tbody>
+            {/* التنزيل متاح مرة واحدة لكل نسخة. الحالة تأتي من الخادم مع الملف
+                الشخصي، فيرى الموظف أن نصيبه استُهلك قبل الضغط لا بعده. */}
             {p.documents.map((d: any) => (
               <tr key={d.id}><td>{d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date || "—"}</td>
-                <td><button className="ghost sm" onClick={() => download(d.type)}>{t("my_download")}</button></td></tr>
+                <td>
+                  {d.downloaded ? (
+                    <span className="muted" style={{ fontSize: 12 }}>{t("my_download_spent")}</span>
+                  ) : (
+                    <button className="ghost sm" onClick={() => download(d.type, d.id)}>
+                      {t("my_download")}
+                    </button>
+                  )}
+                </td></tr>
             ))}
             {!p.documents.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}
           </tbody>
         </table>
       </div>
 
-      <div className="card">
-        <h3>{t("my_leaves")}</h3>
-        <table>
-          <thead><tr><th>{t("req_type")}</th><th>{t("req_from")}</th><th>{t("req_to")}</th><th>{t("req_days")}</th><th>{t("status")}</th></tr></thead>
-          <tbody>
-            {p.leaves.map((l: any) => (
-              <tr key={l.id}><td>{l.type}</td><td>{l.start_date}</td><td>{l.end_date}</td><td>{l.days}</td>
-                <td><span className="pill info">{statusAr(l.status)}</span></td></tr>
-            ))}
-            {!p.leaves.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      {/* قائمة "إجازاتي" أُزيلت من الخدمة الذاتية بطلب العميل: الموظف يتابع
+          إجازاته من صفحة الطلبات نفسها، وعرضها هنا كان يكرر المعلومة في مكانين. */}
 
       {/* SIG-01: التوقيع الرقمي — الموظف يرفع صورة توقيعه فتُحقن في كل مستند رسمي مطبوع منسوب إليه */}
       <div className="card" style={{ borderTop: "3px solid var(--petrol-600)" }}>
@@ -163,16 +170,23 @@ export default function MyProfile() {
             <div className="muted" style={{ padding: 12 }}>{t("sig_none")}</div>
           )}
           <div>
-            <label className="btn" style={{ cursor: "pointer" }}>
-              {sig?.has_signature ? t("sig_replace") : t("sig_upload")}
-              <input type="file" accept="image/png,image/jpeg" style={{ display: "none" }}
-                     onChange={uploadSig} />
-            </label>
-            {sig?.has_signature && (
-              <button className="ghost" style={{ marginInlineStart: 8 }} onClick={deleteSig}>
-                {t("sig_delete")}
+            {/* أول رفع يتم هنا مباشرة. أما الاستبدال فيمر بطلب رسمي: التوقيع
+                دليل يُحتجّ به على المستندات، فتغييره يحتاج سببًا مسجَّلًا
+                واعتماد HR. كان زر الاستبدال يرفع الملف مباشرة بلا سبب فيرفضه
+                الخادم بـ400 «سبب استبدال التوقيع إلزامي» — وهو الخطأ المُبلَّغ. */}
+            {sig?.has_signature ? (
+              <button onClick={() => navigate("/requests?type=REQSIG&new=1")}>
+                {t("sig_replace")}
               </button>
+            ) : (
+              <label className="btn" style={{ cursor: "pointer" }}>
+                {t("sig_upload")}
+                <input type="file" accept="image/png,image/jpeg" style={{ display: "none" }}
+                       onChange={uploadSig} />
+              </label>
             )}
+            {/* زر حذف التوقيع أُزيل: التوقيع مرجع للمستندات الموقَّعة سابًقا،
+                وحذفه من الموظف مباشرة يترك تلك المستندات بلا سند. */}
             {sig?.updated_at && (
               <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                 {t("sig_updated_at")}: {fmtKuwaitDateTime(sig.updated_at, lang)}
