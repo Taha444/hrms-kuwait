@@ -2347,7 +2347,7 @@ def test_expiry_scan_idempotent_no_duplicate_tasks(client):
 # ===========================================================================
 
 def test_on_behalf_restricted_to_hr(client):
-    """التقديم باسم موظف آخر مقصور على HR.
+    """التقديم باسم موظف آخر مقصور على HR والمندوب.
 
     كان الخادم لا يفحص هذا إطلاقًا: assert_same_company وحدها كانت الحارس، فأي
     حساب يملك submit_request (وهي مع كل الأدوار تقريبًا) يقدر يفتح طلبًا باسم أي
@@ -2385,8 +2385,16 @@ def test_on_behalf_restricted_to_hr(client):
         "request_type_code": "leave", "payload_json": payload})
     assert r.status_code == 201, r.text
 
-    # HR وحده يقدّم باسم غيره
+    # HR يقدّم باسم غيره — الإجراءات الداخلية
     r = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "leave", "employee_id": mgr_emp_id,
+        "payload_json": payload})
+    assert r.status_code == 201, r.text
+
+    # والمندوب كذلك — المعاملات الحكومية (تجديد إقامة/إذن عمل) يفتحها باسم
+    # الموظف بحكم عمله، ولا يملك الموظف نفسه بدءها
+    pro = auth_headers(login(client, "100000000003", "deleg123"))
+    r = client.post("/api/requests", headers=pro, json={
         "request_type_code": "leave", "employee_id": mgr_emp_id,
         "payload_json": payload})
     assert r.status_code == 201, r.text
@@ -2399,10 +2407,10 @@ def test_ui_reads_on_behalf_flag_from_server(client):
     الخادم يرفض تقديمهم — قاعدة واحدة موصوفة في مكانين فاختلفا.
     """
     for civil, pwd, expected in [
-        ("100000000002", "hr12345", True),      # HR
+        ("100000000002", "hr12345", True),      # HR — الإجراءات الداخلية
+        ("100000000003", "deleg123", True),     # مندوب — المعاملات الحكومية
         ("100000000007", "account123", False),  # محاسب
         ("100000000001", "manager123", False),  # مدير الشركة
-        ("100000000003", "deleg123", False),    # مندوب
         ("100000000101", "emp12345", False),    # موظف
     ]:
         me = client.get("/api/auth/me", headers=auth_headers(login(client, civil, pwd)))

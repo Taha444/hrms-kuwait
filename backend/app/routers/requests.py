@@ -262,7 +262,7 @@ def submit_request(data: schemas.RequestIn, request: Request,
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id, db=db)
 
-    # التقديم باسم موظف آخر مقصور على HR (permissions.ON_BEHALF_ROLES).
+    # التقديم باسم موظف آخر مقصور على HR والمندوب (permissions.ON_BEHALF_ROLES).
     # كان الفحص الوحيد هنا assert_same_company، فأي حساب يملك submit_request
     # يقدر يفتح طلبًا باسم أي موظف في شركته — بما فيهم من هم أعلى منه — عبر POST
     # مباشر، بلا حاجة حتى لصلاحية رؤية الموظفين.
@@ -270,7 +270,8 @@ def submit_request(data: schemas.RequestIn, request: Request,
         raise HTTPException(
             status_code=403,
             detail="لا يمكنك تقديم طلب باسم موظف آخر — التقديم نيابةً عن الموظفين "
-                   "مقصور على الشؤون القانونية/HR. يمكنك تقديم طلباتك الخاصة فقط."
+                   "مقصور على الشؤون القانونية/HR والمندوب. يمكنك تقديم طلباتك "
+                   "الخاصة فقط."
         )
 
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
