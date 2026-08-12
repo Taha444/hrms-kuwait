@@ -2811,3 +2811,104 @@ def test_hr_has_no_government_portals(client):
     route = re.search(r'path="/gov-portals".*?/>', text, re.S)
     assert route, "مسار /gov-portals غير موجود"
     assert '"hr"' not in route.group(0), "hr ما زال في حارس مسار الروابط الحكومية"
+
+
+# ===========================================================================
+# المجموعة G — الأمان (2FA + الخمول)
+# ===========================================================================
+
+def test_sec01_twofa_full_cycle_works(client):
+    """SEC-01 — دورة التفعيل والدخول كاملة لحساب صاحب الشركة.
+
+    التسجيل ← التأكيد برمز صحيح ← الدخول يُرفض بلا رمز ← يُرفض برمز خاطئ ←
+    ينجح بالرمز الصحيح.
+    """
+    import pyotp
+    from sqlalchemy import select
+    from app import models
+    from app.database import SessionLocal
+
+    owner = auth_headers(login(client, "111111111111", "owner123"))
+    r = client.post("/api/2fa/enroll", headers=owner)
+    assert r.status_code == 200, r.text
+    secret = r.json()["secret"]
+
+    ok = client.post("/api/2fa/confirm", headers=owner,
+                     json={"code": pyotp.TOTP(secret).now()})
+    assert ok.status_code == 200, ok.text
+
+    db = SessionLocal()
+    try:
+        try:
+            # بلا رمز → 401 مع requires_2fa
+            bad = client.post("/api/auth/login",
+                              json={"civil_id": "111111111111", "password": "owner123"})
+            assert bad.status_code == 401
+            assert bad.json()["detail"].get("requires_2fa") is True
+
+            # رمز خاطئ → 401
+            wrong = client.post("/api/auth/login", json={
+                "civil_id": "111111111111", "password": "owner123", "totp_code": "000000"})
+            assert wrong.status_code == 401
+
+            # الرمز الصحيح → نجاح
+            good = client.post("/api/auth/login", json={
+                "civil_id": "111111111111", "password": "owner123",
+                "totp_code": pyotp.TOTP(secret).now()})
+            assert good.status_code == 200, good.text
+            assert good.json()["must_enroll_2fa"] is False
+        finally:
+            # نُعيد الحساب لحالته حتى لا نكسر بقية الاختبارات
+            u = db.scalar(select(models.User).where(
+                models.User.civil_id == "111111111111"))
+            u.totp_secret = None
+            u.totp_confirmed = False
+            db.commit()
+    finally:
+        db.close()
+
+
+def test_sec02_twofa_required_for_sensitive_roles(client):
+    """SEC-02 — الأدوار التي تملك بيانات غيرها يُلزَم أصحابها بالتفعيل."""
+    from app.permissions import TWOFA_REQUIRED_ROLES
+
+    assert {"company_owner", "company_manager", "hr", "delegate"} <= TWOFA_REQUIRED_ROLES
+    # الموظف والمحاسب ومسؤول الفرع: اختياري
+    assert "employee" not in TWOFA_REQUIRED_ROLES
+    assert "accountant" not in TWOFA_REQUIRED_ROLES
+
+    for civ, pw, expected in [("100000000002", "hr12345", True),
+                              ("100000000003", "deleg123", True),
+                              ("100000000001", "manager123", True),
+                              ("100000000101", "emp12345", False)]:
+        r = client.post("/api/auth/login", json={"civil_id": civ, "password": pw})
+        assert r.status_code == 200, r.text
+        assert r.json()["must_enroll_2fa"] is expected, civ
+        me = client.get("/api/auth/me",
+                        headers={"Authorization": f"Bearer {r.json()['access_token']}"}).json()
+        assert me["twofa_required"] is expected
+
+
+def test_sec03_no_remember_device_bypass(client):
+    """SEC-03 — لا تخطي ولا "تذكّر الجهاز": الرمز مطلوب في كل دخول.
+
+    الحارس يفحص totp_confirmed في كل نداء دخول بلا أي حالة محفوظة عن الجهاز،
+    فلا يوجد مسار يتجاوزه.
+    """
+    import inspect
+    from app.routers import auth as auth_router
+
+    src = inspect.getsource(auth_router.login)
+    assert "totp_confirmed" in src
+    for bypass in ("remember_device", "trusted_device", "skip_2fa"):
+        assert bypass not in src, f"مسار تخطٍّ محتمل: {bypass}"
+
+
+def test_sec04_idle_logout_is_configurable(client):
+    """SEC-04 — مهلة الخمول تأتي من الخادم لا مكتوبة في الواجهة."""
+    from app.config import settings
+
+    assert settings.idle_logout_minutes == 10
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    me = client.get("/api/auth/me", headers=hr).json()
+    assert me["idle_logout_minutes"] == settings.idle_logout_minutes

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
+    # SEC-04 — تسجيل خروج تلقائي عند الخمول، بالدقائق. صفر يعطّل الميزة.
+    # الواجهة تقرأ القيمة من /auth/me فلا يبقى الرقم مكتوًبا في مكانين.
+    idle_logout_minutes: int = 10
 
     # قاعدة البيانات
     database_url: str = "sqlite:///./hrms.db"

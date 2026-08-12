@@ -44,6 +44,9 @@ class TokenOut(BaseModel):
     # R9 §16 — لو المستخدم is_cross_company، الحقل ده يحتوي قائمة شركاته
     # لعرضها في picker. لغير المتعدد الشركات: None (يشتغل مباشرة).
     is_cross_company: bool = False
+    # SEC-02 — دور يُلزَم بالتحقق الثنائي ولم يفعّله بعد: الواجهة توجّهه
+    # لصفحة التفعيل قبل أي عمل آخر
+    must_enroll_2fa: bool = False
     companies: list[dict] | None = None
     active_company_id: int | None = None
 

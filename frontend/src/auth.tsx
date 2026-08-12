@@ -13,6 +13,10 @@ export type User = {
   is_cross_company: boolean;         // موسّع: super_admin/owner/متعدد الشركات
   needs_company_selection?: boolean; // ضيّق: فقط المستخدمين الفعليين متعددي الشركات
   can_submit_on_behalf?: boolean;    // تقديم طلب باسم موظف آخر (HR فقط) — يقرره الخادم
+  // SEC-02/04 — حالة التحقق الثنائي ومهلة الخمول، يقررهما الخادم
+  twofa_required?: boolean;
+  twofa_enabled?: boolean;
+  idle_logout_minutes?: number;
   // R9 §17 — صورة البروفايل
   has_avatar?: boolean;
   avatar_updated_at?: string | null;
@@ -99,12 +103,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me.data as User;
   };
 
-  const logout = () => {
+  // يبقى () => void حتى يُمرَّر مباشرة لـonClick بلا أن يصل حدث الفأرة كوسيط
+  const logout = () => endSession("/login");
+
+  const endSession = (to: string) => {
     setTokens(null, null);
     localStorage.removeItem("active_company_id");
     setUser(null);
-    window.location.href = "/login";
+    window.location.href = to;
   };
+
+  // SEC-04 — تسجيل خروج تلقائي عند الخمول. المهلة تأتي من الخادم
+  // (idle_logout_minutes) فلا يُكتب الرقم في مكانين، وصفر يعطّل الميزة.
+  // نراقب أحداث تفاعل حقيقية فقط؛ المؤقّت يُصفَّر مع كل واحدة.
+  useEffect(() => {
+    const minutes = user?.idle_logout_minutes ?? 0;
+    if (!user || minutes <= 0) return;
+    const ms = minutes * 60_000;
+    let timer: number;
+    const reset = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => endSession("/login?idle=1"), ms);
+    };
+    const events = ["mousedown", "keydown", "touchstart", "scroll", "visibilitychange"];
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [user?.id, user?.idle_logout_minutes]);
 
   const can = (perm: string) =>
     !!user && (user.role === "super_admin" || user.permissions.includes(perm));

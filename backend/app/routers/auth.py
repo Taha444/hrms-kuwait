@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import audit, get_current_user, get_user_perms, require_perm
+from .. import permissions
 from ..permissions import effective_permissions
 from ..security import (
     create_access_token,
@@ -84,6 +85,11 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
             db.commit()
             raise HTTPException(status_code=401, detail="رمز التحقق الثنائي غير صحيح")
         user.totp_last_used_at = now
+    # SEC-02 — أدوار يُلزَم أصحابها بالتفعيل. لا نمنعهم من الدخول (وإلا تعذّر
+    # التفعيل نفسه)، بل نُعلم الواجهة لتوجّههم لصفحة التفعيل قبل أي عمل آخر.
+    # ولا يوجد "تذكّر الجهاز": بعد التفعيل يُطلب الرمز في كل دخول (SEC-03) لأن
+    # الشرط أعلاه يفحص totp_confirmed في كل مرة بلا استثناء.
+    must_enroll_2fa = permissions.requires_2fa(user.role) and not user.totp_confirmed
 
     user.failed_attempts = 0
     user.locked_until = None
@@ -113,6 +119,7 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
         permissions=_perm_list(user, db),
         is_cross_company=user.is_cross_company,
         companies=companies_list,
+        must_enroll_2fa=must_enroll_2fa,
     )
 
 
@@ -239,7 +246,7 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from ..permissions import can_submit_on_behalf, is_cross_company_user
+    from ..permissions import can_submit_on_behalf, is_cross_company_user, requires_2fa
     return {
         "id": user.id, "civil_id": user.civil_id, "full_name": user.full_name,
         "role": user.role, "company_id": user.company_id, "email": user.email,
@@ -256,6 +263,11 @@ def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_
         # كانت تستنتجه من view_employee، فظهر للمحاسب بقائمة تضم المدير العام وHR
         # بينما الخادم يقصره على HR — قائمتان لقاعدة واحدة.
         "can_submit_on_behalf": can_submit_on_behalf(user.role),
+        # SEC-02/04 — حالة التحقق الثنائي ومهلة الخمول: تأتيان من الخادم فلا
+        # تُكرَّر القاعدة ولا الرقم في الواجهة
+        "twofa_required": requires_2fa(user.role),
+        "twofa_enabled": bool(user.totp_confirmed),
+        "idle_logout_minutes": settings.idle_logout_minutes,
         # R9 §17 — bool للـavatar (يُستخدم في UI لعرض الصورة بدل الأيقونة)
         "has_avatar": bool(user.avatar_path),
         "avatar_updated_at": (user.avatar_updated_at.isoformat()
