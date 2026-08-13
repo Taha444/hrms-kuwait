@@ -3364,3 +3364,107 @@ def test_qa10_a_leave_without_travel_completes_without_delegate(client):
         assert "delegate" not in roles, f"المندوب ما زال في المسار: {roles}"
     assert detail["total_stages"] == 3, \
         f"عدد المراحل يجب أن يكون 3 بلا مرحلة المندوب: {detail['total_stages']}"
+
+
+# ===========================================================================
+# C4 — QA-06 (+ QA-19): تاريخ الانتهاء من الرفع إلى العدّاد
+# ROOT CAUSE: مخزنان منفصلان — المستند والتصريح — والـOCR لا يكتب على أيٍّ
+# منهما تلقائًيا. فتُرفع الإقامات ويبقى العدّاد صفًرا.
+# ===========================================================================
+
+def test_qa06_document_expiry_syncs_the_permit(client):
+    """QA-06/QA-19 — رفع مستند إقامة بتاريخ يُحدِّث سجل التصريح الذي تقرأه العدادات."""
+    from datetime import date, timedelta
+    from app.database import SessionLocal
+    from app import models
+    from app.routers.documents import _sync_permit_from_document
+
+    db = SessionLocal()
+    doc_id = None
+    try:
+        emp = db.scalars(select(models.Employee).limit(1)).first()
+        future = date.today() + timedelta(days=200)
+        doc = models.Document(
+            company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+            document_type_code="residency", title="إقامة",
+            file_path="/tmp/x.pdf", expiry_date=future, version=1, is_current=True)
+        db.add(doc); db.commit(); db.refresh(doc)
+        doc_id = doc.id
+
+        _sync_permit_from_document(db, doc)
+        db.commit()
+
+        permit = db.scalar(select(models.Permit).where(
+            models.Permit.employee_id == emp.id,
+            models.Permit.kind == "residency").order_by(
+                models.Permit.expiry_date.desc()))
+        assert permit is not None, "لم يُنشأ/يُحدَّث سجل التصريح"
+        assert permit.expiry_date == future
+        assert permit.status == "active", "الإقامة السارية لا تُحسب سارية"
+    finally:
+        if doc_id:
+            db.execute(models.Document.__table__.delete().where(
+                models.Document.id == doc_id))
+            db.commit()
+        db.close()
+
+
+def test_qa06_older_document_does_not_expire_a_valid_permit(client):
+    """رفع نسخة أقدم للأرشفة يجب ألا يُبطل تصرًيحا ساري المفعول."""
+    from datetime import date, timedelta
+    from app.database import SessionLocal
+    from app import models
+    from app.routers.documents import _sync_permit_from_document
+
+    db = SessionLocal()
+    ids = []
+    try:
+        emp = db.scalars(select(models.Employee).limit(1)).first()
+        far = date.today() + timedelta(days=300)
+        old = date.today() - timedelta(days=10)
+
+        d_new = models.Document(
+            company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+            document_type_code="residency", title="إقامة", file_path="/tmp/a.pdf",
+            expiry_date=far, version=1, is_current=True)
+        db.add(d_new); db.commit(); db.refresh(d_new); ids.append(d_new.id)
+        _sync_permit_from_document(db, d_new); db.commit()
+
+        d_old = models.Document(
+            company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+            document_type_code="residency", title="إقامة قديمة",
+            file_path="/tmp/b.pdf", expiry_date=old, version=2, is_current=False)
+        db.add(d_old); db.commit(); db.refresh(d_old); ids.append(d_old.id)
+        _sync_permit_from_document(db, d_old); db.commit()
+
+        permit = db.scalar(select(models.Permit).where(
+            models.Permit.employee_id == emp.id,
+            models.Permit.kind == "residency").order_by(
+                models.Permit.expiry_date.desc()))
+        assert permit.expiry_date == far, "النسخة الأقدم أبطلت السارية"
+        assert permit.status == "active"
+    finally:
+        for i in ids:
+            db.execute(models.Document.__table__.delete().where(
+                models.Document.id == i))
+        db.commit(); db.close()
+
+
+def test_qa06_manual_date_wins_over_ocr(client):
+    """SKILL-6 — ما أدخله الرافع يفوز: لا نصحّح إنساًنا بآلة."""
+    import inspect
+    from app.routers import documents as docs_router
+
+    src = inspect.getsource(docs_router.upload_document)
+    # القراءة الآلية مشروطة بغياب الإدخال اليدوي
+    assert "if not expiry_date:" in src
+    assert "ocr.extract(document_type_code, fpath)" in src
+
+
+def test_qa06_backfill_script_is_dry_run_by_default(client):
+    """SKILL-6 — backfill موجود، تقريري افتراضًا، ولا يلمس ما له تاريخ."""
+    from scripts.backfill_document_expiry import run
+
+    stats = run(apply=False)
+    for k in ("scanned", "filled", "no_date_found", "file_missing", "failed"):
+        assert k in stats, f"التقرير ينقصه {k}"

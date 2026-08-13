@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """خزنة المستندات: رفع بنُسخ (versioning) + اقتراح OCR + تنزيل الأحدث + مهام متسلسلة."""
+import logging
 import os
 from datetime import date, datetime
 
@@ -15,6 +16,60 @@ from ..deps import assert_same_company, audit, require_perm
 from .. import ocr
 from ..notifications import create_task, notify_roles
 from ..safe_files import read_limited, unique_path
+
+logger = logging.getLogger(__name__)
+
+
+def _as_date(v):
+    """قراءة OCR تعود نًصا (ISO غالًبا) وعمود expiry_date من نوع Date."""
+    from datetime import date as _date
+    if not v or isinstance(v, _date):
+        return v or None
+    try:
+        return _date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+# أنواع المستندات التي تُمثَّل أيًضا كتصاريح (permits) — العدادات وشاشات
+# التجديد تقرأ من permits لا من documents.
+DOC_TYPE_TO_PERMIT_KIND = {
+    "residency": "residency",
+    "work_permit": "work_permit",
+}
+
+
+def _sync_permit_from_document(db: Session, doc: models.Document) -> None:
+    """QA-06/QA-19 — يُبقي سجل التصريح متوافًقا مع أحدث مستند.
+
+    ROOT CAUSE للعدادات الصفرية: المستند والتصريح مخزنان منفصلان. رفع صورة
+    الإقامة يكتب صف Document ولا يمسّ Permit، بينما لوحة التحكم ومركز العمليات
+    وشاشة التجديدات كلها تقرأ Permit. فتُرفع الإقامات ويبقى العدّاد صفًرا.
+
+    المستند هو المصدر (فيه الصورة والتاريخ المقروء)، والتصريح انعكاس له.
+    """
+    kind = DOC_TYPE_TO_PERMIT_KIND.get(doc.document_type_code)
+    if not kind or doc.entity_type != "employee" or not doc.expiry_date:
+        return
+    permit = db.scalar(select(models.Permit).where(
+        models.Permit.employee_id == doc.entity_id,
+        models.Permit.kind == kind,
+    ).order_by(models.Permit.expiry_date.desc()))
+    today = date.today()
+    status = "active" if doc.expiry_date >= today else "expired"
+    if permit:
+        # لا نتراجع بتاريخ أقدم: رفع نسخة قديمة للأرشفة يجب ألا يُبطل السارية
+        if permit.expiry_date and permit.expiry_date > doc.expiry_date:
+            return
+        permit.expiry_date = doc.expiry_date
+        permit.start_date = doc.issue_date or permit.start_date
+        permit.status = status
+    else:
+        db.add(models.Permit(
+            company_id=doc.company_id, employee_id=doc.entity_id, kind=kind,
+            start_date=doc.issue_date, expiry_date=doc.expiry_date, status=status,
+        ))
+
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -153,6 +208,28 @@ async def upload_document(
         # بناءً على expiry_date الجديد.
         _close_expiry_tasks_for(db, d.id)
 
+    # QA-06 — تاريخ الانتهاء يُقرأ من المستند نفسه حين لا يُدخله الرافع.
+    #
+    # ROOT CAUSE: كان expiry_date حقل نموذج يدوي بحت. الـOCR موجود لكنه في
+    # endpoint منفصل (ocr-preview) يقترح على **الموظف** لا على المستند، فلا
+    # شيء يكتب التاريخ على سجل المستند تلقائيًا. ومن يرفع بلا إدخاله يترك
+    # الحقل فارغًا، فمحرك الانتهاء والعدادات تقرأ فراًغا — ومن هنا "الإقامات
+    # السارية = 0" رغم وجود المستندات.
+    #
+    # SKILL-6: القراءة هي القاعدة والإدخال اليدوي تصحيح. ما أدخله الرافع
+    # يفوز دائًما — لا نصحّح إنسانًا بآلة.
+    expiry_source = "manual" if expiry_date else None
+    if not expiry_date:
+        try:
+            read = ocr.extract(document_type_code, fpath) or {}
+            guess = read.get("expiry_date")
+            if guess:
+                expiry_date = _as_date(guess)
+                expiry_source = "ocr" if expiry_date else None
+        except Exception as exc:  # noqa: BLE001 — القراءة مساعدة لا شرط للرفع
+            logger.warning("OCR expiry extraction failed for %s: %s",
+                           document_type_code, exc)
+
     doc = models.Document(
         company_id=company_id, entity_type=entity_type, entity_id=entity_id,
         document_type_code=document_type_code, title=title or document_type_code,
@@ -162,6 +239,7 @@ async def upload_document(
     )
     db.add(doc)
     db.flush()
+    _sync_permit_from_document(db, doc)
 
     # مهمة متسلسلة: رفع جواز جديد → إغلاق إشعار "الجواز قارب على الانتهاء" + مهمة نقل معلومات
     if document_type_code == "passport" and entity_type == "employee":

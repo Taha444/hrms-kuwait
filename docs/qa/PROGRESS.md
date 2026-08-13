@@ -10,7 +10,7 @@
 | QA-03 | BLOCKER | VERIFIED | C2 — `payroll.py` كان يعدّ كل يوم بلا سجل غياًبا | (C2) | `test_qa03_unrecorded_days_are_not_deducted` + `test_qa03_recorded_absence_is_still_deducted` — أُثبت الفشل قبل: `assert 10 == 0` | ✅ / ✅ / n-a / ✅ |
 | QA-04 | BLOCKER | VERIFIED | C2 — الفترة بلا قصّ على مدة التوظيف | (C2) | `test_qa04_no_absence_before_hire_date` + `test_qa04_attendance_exempt_employee_is_never_charged` — أُثبت الفشل قبل: `assert 0 < 0` | ✅ / ✅ / n-a / ✅ |
 | QA-05 | BLOCKER | VERIFIED | C3 — رقمان بمعنيين مختلفين باسم واحد | (C3) | `test_qa05_leave_numbers_come_from_one_source` (cross-consistency) + `test_qa05_the_two_numbers_are_named_apart` | ✅ / ✅ / n-a / ✅ |
-| QA-06 | BLOCKER | NOT_STARTED | C4 — تاريخ الانتهاء لا يُخزَّن | — | — | — |
+| QA-06 | BLOCKER | FIXED | C4 — مخزنان منفصلان (Document/Permit) والـOCR لا يكتب على أيٍّ منهما | (C4) | `test_qa06_document_expiry_syncs_the_permit` + `..._older_document_does_not_expire_a_valid_permit` + `..._manual_date_wins_over_ocr` + `..._backfill_script_is_dry_run_by_default` | ✅ / ✅ / n-a / ⏳ العدادات |
 | QA-07 | مهم | NOT_STARTED | C8 | — | — | — |
 | QA-08 | مهم | IN_PROGRESS | C9 — نوع REQSIG غير متاح للموظف | `7adca3a` | النوع أُنشئ؛ يلزم تحقق أن الموظف يراه في كتالوج التقديم | — |
 | QA-09 | مهم | NOT_STARTED | C9 — أنواع مكررة | — | — | — |
