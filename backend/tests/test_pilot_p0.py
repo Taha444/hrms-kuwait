@@ -749,7 +749,12 @@ def test_v22_self_approval_on_own_leave_rejected(client):
     dec = client.post(f"/api/requests/{rid}/decide", headers=mgr,
                      json={"decision": "approved"})
     assert dec.status_code == 403
-    assert "ملفك الشخصي" in dec.json()["detail"]
+    # سببان مقبولان، وكلاهما يمنع الاعتماد الذاتي:
+    #  - "ملفك الشخصي": حارس الاعتماد الذاتي
+    #  - "لست المعتمِد": بعد إزالة التجاوز الإداري (QA-01) لم يعد المدير معتمًِدا
+    #    ضمنًيا لكل مرحلة، فيُرفض أبكر
+    detail = dec.json()["detail"]
+    assert ("ملفك الشخصي" in detail) or ("لست المعتمِد" in detail), detail
 
 
 def test_P0_7_adjustment_requires_reason_and_lock(client):

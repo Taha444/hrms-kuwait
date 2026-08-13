@@ -486,18 +486,43 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
     return expand_approvers_with_delegates(db, base, req.company_id)
 
 
+def is_stage_approver(db: Session, req: models.Request, user: models.User,
+                      stage: dict) -> bool:
+    """هل هذا المستخدم من معتمِدي هذه المرحلة فعلًا؟ — بلا أي تجاوز إداري."""
+    if user.company_id != req.company_id:
+        return False
+    return any(u.id == user.id for u in resolve_stage_approvers(db, req, stage))
+
+
+def may_override(db: Session, user: models.User,
+                 rt: models.RequestType | None = None) -> bool:
+    """هل يملك صلاحية التجاوز الإداري؟ — الطلبات السرّية لا تُتجاوَز إطلاقًا."""
+    if rt is not None and rt.is_confidential:
+        return False
+    from .deps import get_user_perms
+    from .permissions import has_permission
+    return has_permission(user.role, get_user_perms(user, db), "override_approval")
+
+
 def can_decide(db: Session, req: models.Request, user: models.User, stage: dict,
               rt: models.RequestType | None = None) -> bool:
-    if user.role == "super_admin":
+    """QA-01/QA-02 — من يعتمد هذه المرحلة.
+
+    ROOT CAUSE: كان هنا تجاوز ضمني يعيد True لكل company_manager وcompany_owner
+    في أي مرحلة (وسطر مماثل لـsuper_admin). النتيجة وجهان لعملة واحدة:
+      - QA-01: المدير يعتمد مراحل ليست له، ويعتمد متسلسًلا بحسابه وحده.
+      - QA-02: صندوق "بانتظار موافقتي" مبني على هذه الدالة نفسها، فامتلأ صندوق
+        المدير بكل الطلبات بينما لا يُختبر مسار مسؤول الفرع أصلًا.
+
+    القاعدة الآن: معتمِد المرحلة الفعلي فقط. والتجاوز الإداري — إن لزم — صلاحية
+    مسمّاة (override_approval) لا تُمنح افتراضًا لأي دور، ويسجّلها مسار القرار
+    في التدقيق. الطلبات السرّية لا تقبل تجاوًزا بحال.
+    """
+    if is_stage_approver(db, req, user, stage):
         return True
     if user.company_id != req.company_id:
         return False
-    # المدير العام يستطيع التدخّل في أي مرحلة — إلا في الطلبات السرّية (شكاوى/تظلمات، FIX-014):
-    # يقتصر القرار فيها على معتمدي المرحلة الفعليين دون تجاوز إداري، حفاظًا على السرّية.
-    if not (rt and rt.is_confidential) and user.role in ("company_manager", "company_owner"):
-        return True
-    approvers = resolve_stage_approvers(db, req, stage)
-    return any(u.id == user.id for u in approvers)
+    return may_override(db, user, rt)
 
 
 def _employee_name(db: Session, req: models.Request) -> str:

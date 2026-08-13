@@ -3007,3 +3007,87 @@ def test_perm03_attendance_changes_reach_the_change_log(client):
     row = next(h for h in hist if h["field_name"] == "attendance_mode")
     assert row.get("changed_by") or row.get("changed_by_name"), "السجل بلا فاعل"
     assert row.get("changed_at"), "السجل بلا توقيت"
+
+
+# ===========================================================================
+# C1 — QA-01 + QA-02: تحديد المُعتمِد الحالي
+# ROOT CAUSE: تجاوز ضمني في can_decide كان يعيد True لكل company_manager
+# وcompany_owner في أي مرحلة. وصندوق "بانتظار موافقتي" مبني على نفس الدالة.
+# ===========================================================================
+
+def _leave_payload():
+    return {"start_date": "2027-09-01", "end_date": "2027-09-03", "days": 3,
+            "leave_type": "annual", "reason": "اختبار المسار"}
+
+
+def test_qa01_manager_cannot_approve_a_stage_that_is_not_his(client):
+    """QA-01 — المدير لا يعتمد مرحلة مسؤول الفرع، ويُرفض بـ403 عند النداء المباشر."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/auth/me", headers=auth_headers(
+        login(client, "100000000101", "emp12345"))).json()["employee_id"]
+
+    r = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "leave", "employee_id": emp_id,
+        "payload_json": _leave_payload()})
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    dec = client.post(f"/api/requests/{rid}/decide", headers=mgr,
+                      json={"decision": "approved", "note": "تجاوز"})
+    assert dec.status_code == 403, f"المدير اعتمد مرحلة ليست له: {dec.text}"
+    assert "لست المعتمِد" in dec.json()["detail"]
+
+
+def test_qa01_no_implicit_override_for_any_role(client):
+    """QA-01 — لا تجاوز ضمني: override_approval صلاحية مسمّاة غير ممنوحة افتراضًا."""
+    from app.permissions import ROLE_DEFAULT_PERMS as R, PERMISSIONS
+
+    assert "override_approval" in PERMISSIONS
+    for role in ("company_manager", "company_owner", "hr", "delegate",
+                 "accountant", "branch_supervisor", "employee"):
+        assert "override_approval" not in R[role], f"{role} يملك تجاوًزا ضمنًيا"
+
+
+def test_qa02_branch_supervisor_receives_the_request(client):
+    """QA-02 — الطلب يصل صندوق مسؤول فرع الموظف، ولا يصل فرًعا آخر.
+
+    الصندوق مبني على can_decide نفسها، فالتجاوز الضمني كان يملأ صندوق المدير
+    بكل الطلبات ويترك مسار مسؤول الفرع بلا اختبار حقيقي.
+    """
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/auth/me", headers=auth_headers(
+        login(client, "100000000101", "emp12345"))).json()["employee_id"]
+
+    r = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "leave", "employee_id": emp_id,
+        "payload_json": _leave_payload()})
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+
+    sup1 = auth_headers(login(client, "100000000005", "sup12345"))
+    inbox1 = {x["id"] for x in client.get("/api/requests/inbox", headers=sup1).json()}
+
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    inbox_mgr = {x["id"] for x in client.get("/api/requests/inbox", headers=mgr).json()}
+
+    # الطلب واقف على مرحلة الفرع: يظهر لمسؤول الفرع لا للمدير
+    assert rid in inbox1, "الطلب لم يصل مسؤول الفرع"
+    assert rid not in inbox_mgr, "الطلب ما زال يظهر للمدير رغم أنها ليست مرحلته"
+
+    # ومسؤول الفرع يقدر يعتمد فعلًا
+    dec = client.post(f"/api/requests/{rid}/decide", headers=sup1,
+                      json={"decision": "approved", "note": "موافق"})
+    assert dec.status_code == 200, dec.text
+
+
+def test_qa01_no_sequential_approval_by_same_account(client):
+    """QA-01 — من اعتمد مرحلة لا يعتمد التي تليها بنفس الحساب.
+
+    وإلا صارت سلسلة الاعتماد توقيًعا واحًدا بأسماء متعددة.
+    """
+    import inspect
+    from app.routers import requests as req_router
+
+    src = inspect.getsource(req_router.decide)
+    assert "اعتمدت المرحلة السابقة بنفسك" in src, "حارس الاعتماد المتسلسل غير موجود"

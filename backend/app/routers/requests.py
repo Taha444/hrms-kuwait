@@ -424,8 +424,34 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     if already_decided:
         raise HTTPException(status_code=409,
                           detail="اتخذت قرارًا في هذه المرحلة مسبقًا — لا يمكن التكرار")
-    if not workflow.can_decide(db, req, user, stage, rt=rt):
-        raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
+    # QA-01 — نفرّق بين المعتمِد الفعلي والمتجاوِز إداريًا: الأول مسار عادي،
+    # والثاني استثناء يُسجَّل باسمه في التدقيق لا يمر بصمت.
+    is_real_approver = workflow.is_stage_approver(db, req, user, stage)
+    if not is_real_approver:
+        if not workflow.may_override(db, user, rt):
+            raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
+        audit(db, user, "approval_override", "request", req.id,
+              detail=(f"stage={req.current_stage} ({stage.get('label') or stage.get('role')}) "
+                      f"decision={data.decision}"),
+              request=request, correlation_id=f"req:{req.id}",
+              before={"stage_role": stage.get("role")},
+              after={"decided_by_override": True, "decision": data.decision})
+
+    # QA-01 — منع الاعتماد المتسلسل بنفس الحساب: من اعتمد المرحلة السابقة لا
+    # يعتمد التالية، وإلا صارت سلسلة الاعتماد توقيًعا واحًدا بأسماء متعددة.
+    if data.decision == "approved" and req.current_stage > 0:
+        prev = db.scalar(
+            select(models.RequestApproval)
+            .where(models.RequestApproval.request_id == req.id,
+                   models.RequestApproval.stage_order == req.current_stage - 1,
+                   models.RequestApproval.decision == "approved")
+            .order_by(models.RequestApproval.id.desc())
+        )
+        if prev and prev.approver_user_id == user.id:
+            raise HTTPException(
+                status_code=409,
+                detail="اعتمدت المرحلة السابقة بنفسك — لا يجوز اعتماد مرحلتين متتاليتين "
+                       "بنفس الحساب")
     # V2.2 §5 — منع الاعتماد الذاتي فقط للطلبات التي تخصّ الموظف نفسه (ملفه الشخصي).
     # HR/الإدارة الذين يبدأون طلبات نيابة عن موظف آخر يبقون قادرين على اعتماد مرحلتهم
     # في السلسلة (لأنها ليست عن ملفهم). super_admin يمرّ للطوارئ.
