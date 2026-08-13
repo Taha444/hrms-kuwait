@@ -7,8 +7,8 @@
 |----|---------|--------|--------------|--------|--------|----------------------------------|
 | QA-01 | BLOCKER | VERIFIED | C1 — تجاوز ضمني في `can_decide` يعيد True لكل مدير/مالك في أي مرحلة | (هذا الـcommit) | `test_qa01_manager_cannot_approve_a_stage_that_is_not_his` + `test_qa01_no_implicit_override_for_any_role` + `test_qa01_no_sequential_approval_by_same_account` | ✅ / ✅ / n-a / ✅ |
 | QA-02 | BLOCKER | VERIFIED | C1 — نفس الدالة: الصندوق مبني عليها | (هذا الـcommit) | `test_qa02_branch_supervisor_receives_the_request` — أُثبت فشله قبل الإصلاح (الطلب في صندوق المدير `{1,2}`) | ✅ / ✅ / n-a / ✅ |
-| QA-03 | BLOCKER | NOT_STARTED | C2 — `payroll.py:48-67` بلا حالة `UNRECORDED` | — | — | — |
-| QA-04 | BLOCKER | NOT_STARTED | C2 — بلا قصّ على `hire_date` | — | — | — |
+| QA-03 | BLOCKER | VERIFIED | C2 — `payroll.py` كان يعدّ كل يوم بلا سجل غياًبا | (C2) | `test_qa03_unrecorded_days_are_not_deducted` + `test_qa03_recorded_absence_is_still_deducted` — أُثبت الفشل قبل: `assert 10 == 0` | ✅ / ✅ / n-a / ✅ |
+| QA-04 | BLOCKER | VERIFIED | C2 — الفترة بلا قصّ على مدة التوظيف | (C2) | `test_qa04_no_absence_before_hire_date` + `test_qa04_attendance_exempt_employee_is_never_charged` — أُثبت الفشل قبل: `assert 0 < 0` | ✅ / ✅ / n-a / ✅ |
 | QA-05 | BLOCKER | NOT_STARTED | C3 — مصدران للرصيد | — | مُهّد له: `leave_ledger` في `0bc4736` | — |
 | QA-06 | BLOCKER | NOT_STARTED | C4 — تاريخ الانتهاء لا يُخزَّن | — | — | — |
 | QA-07 | مهم | NOT_STARTED | C8 | — | — | — |
@@ -46,3 +46,11 @@
 | شركة أخرى (MUF)؟ | مغطّاة — الدالة تُرشّح بـ`req.company_id` بلا أي تفرّع خاص بشركة |
 | لغة أخرى (EN)؟ | لا نص متأثر عدا رسالة 403 وهي في موضع واحد |
 | مسار آخر (API/تصدير/طباعة)؟ | ثلاثة مستهلكين فقط: الصندوق (`requests.py:372`)، مسار القرار، وعلَم الواجهة (`:800`) — كلهم على القاعدة نفسها |
+
+### C2 — QA-03 + QA-04
+| السؤال | الإجابة |
+|---|---|
+| نوع/دور آخر بنفس المشكلة؟ | لا — حساب واحد في `compute_payroll`؛ الكنس أثبت عدم وجود حساب غياب ثانٍ |
+| شركة أخرى (MUF)؟ | مغطّاة — الدالة تأخذ `company_id` بلا تفرّع خاص |
+| لغة أخرى؟ | لا نص متأثر |
+| مسار آخر (تقارير/تصدير)؟ | `reports.py:102` يستهلك ناتج `compute_payroll` نفسه فيرث الإصلاح |

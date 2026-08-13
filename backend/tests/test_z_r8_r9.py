@@ -3091,3 +3091,144 @@ def test_qa01_no_sequential_approval_by_same_account(client):
 
     src = inspect.getsource(req_router.decide)
     assert "اعتمدت المرحلة السابقة بنفسك" in src, "حارس الاعتماد المتسلسل غير موجود"
+
+
+# ===========================================================================
+# C2 — QA-03 + QA-04: حساب الغياب
+# ROOT CAUSE: payroll.py كان يعدّ كل يوم عمل بلا سجل غياًبا ويخصمه، بلا قصّ
+# على مدة التوظيف وبلا تمييز "لا سجل" عن "غائب".
+# ===========================================================================
+
+def _fresh_employee(db, company_id, **kw):
+    from datetime import date  # noqa: F401 — يستعمله المتصل
+    from app import models
+    emp = models.Employee(
+        company_id=company_id, name="موظف اختبار الرواتب",
+        basic_salary=2500, status="active", attendance_mode="qr", **kw)
+    db.add(emp); db.commit(); db.refresh(emp)
+    return emp
+
+
+def test_qa03_unrecorded_days_are_not_deducted(client):
+    """QA-03 — غياب السجل ليس غياًبا: يُعرَض لـHR ولا يُخصم.
+
+    Golden test: راتب 2500 وشهر كامل بلا أي سجل حضور → الخصم صفر والصافي
+    كامل الراتب، مع بيان أيام غير مسجَّلة.
+    """
+    from datetime import date
+    from app.database import SessionLocal
+    from app.payroll import compute_payroll
+    from app import models
+
+    db = SessionLocal()
+    emp_id = None
+    try:
+        emp = _fresh_employee(db, 1, hire_date=date(2026, 1, 1))
+        emp_id = emp.id
+        out = compute_payroll(db, 1, 2026, 8)
+        slip = next(s for s in out["payslips"] if s["employee_id"] == emp_id)
+
+        assert slip["absent_days"] == 0, "يوم بلا سجل حُسب غياًبا"
+        assert slip["absence_deduction"] == 0, f"خُصم بلا واقعة: {slip}"
+        assert slip["net"] == 2500, f"الصافي ليس كامل الراتب: {slip['net']}"
+        assert slip["unrecorded_days"] > 0, "الأيام غير المسجَّلة لا تُعرَض لـHR"
+    finally:
+        if emp_id:
+            db.execute(models.Employee.__table__.delete().where(
+                models.Employee.id == emp_id))
+            db.commit()
+        db.close()
+
+
+def test_qa04_no_absence_before_hire_date(client):
+    """QA-04 — الفترة مقصوصة على تاريخ التعيين.
+
+    موظف عُيّن 05/08/2026: أيام 01–04/08 لا تُحسب ولا تُخصم.
+    """
+    from datetime import date
+    from app.database import SessionLocal
+    from app.payroll import compute_payroll
+    from app import models
+
+    db = SessionLocal()
+    early_id = late_id = None
+    try:
+        early = _fresh_employee(db, 1, hire_date=date(2026, 1, 1))
+        late = _fresh_employee(db, 1, hire_date=date(2026, 8, 5))
+        early_id, late_id = early.id, late.id
+
+        out = compute_payroll(db, 1, 2026, 8)
+        s_early = next(s for s in out["payslips"] if s["employee_id"] == early_id)
+        s_late = next(s for s in out["payslips"] if s["employee_id"] == late_id)
+
+        # المعيَّن متأخًرا يجب أن تكون أيامه غير المسجَّلة أقل — الفرق هو الأيام
+        # التي سبقت تعيينه ولم تعد تُحسب عليه
+        assert s_late["unrecorded_days"] < s_early["unrecorded_days"], \
+            f"لم تُقَص الفترة على تاريخ التعيين: {s_late} vs {s_early}"
+        assert s_late["absence_deduction"] == 0
+        assert s_late["net"] == 2500
+    finally:
+        for i in (early_id, late_id):
+            if i:
+                db.execute(models.Employee.__table__.delete().where(
+                    models.Employee.id == i))
+        db.commit(); db.close()
+
+
+def test_qa03_recorded_absence_is_still_deducted(client):
+    """الغياب المُثبَت في السجل يُخصم — الإصلاح لا يُلغي الخصم، يشترط الواقعة."""
+    from datetime import datetime
+    from datetime import date
+    from app.database import SessionLocal
+    from app.payroll import compute_payroll
+    from app import models
+
+    db = SessionLocal()
+    emp_id = None
+    try:
+        emp = _fresh_employee(db, 1, hire_date=date(2026, 1, 1))
+        emp_id = emp.id
+        # يوم أحد (يوم عمل) مُسجَّل صراحة كغياب
+        db.add(models.AttendanceRecord(
+            company_id=1, employee_id=emp_id,
+            check_in_at=datetime(2026, 8, 2, 8, 0), status="absent"))
+        db.commit()
+
+        out = compute_payroll(db, 1, 2026, 8)
+        slip = next(s for s in out["payslips"] if s["employee_id"] == emp_id)
+        assert slip["absent_days"] == 1, f"الغياب المُثبَت لم يُخصم: {slip}"
+        assert slip["absence_deduction"] > 0
+    finally:
+        if emp_id:
+            db.execute(models.AttendanceRecord.__table__.delete().where(
+                models.AttendanceRecord.employee_id == emp_id))
+            db.execute(models.Employee.__table__.delete().where(
+                models.Employee.id == emp_id))
+            db.commit()
+        db.close()
+
+
+def test_qa04_attendance_exempt_employee_is_never_charged(client):
+    """المُعفى من الحضور لا يُحسب عليه غياب ولا أيام غير مسجَّلة."""
+    from datetime import date
+    from app.database import SessionLocal
+    from app.payroll import compute_payroll
+    from app import models
+
+    db = SessionLocal()
+    emp_id = None
+    try:
+        emp = _fresh_employee(db, 1, hire_date=date(2026, 1, 1),
+                              attendance_exempt=True,
+                              attendance_exempt_reason="مندوب ميداني")
+        emp_id = emp.id
+        out = compute_payroll(db, 1, 2026, 8)
+        slip = next(s for s in out["payslips"] if s["employee_id"] == emp_id)
+        assert slip["absent_days"] == 0 and slip["unrecorded_days"] == 0
+        assert slip["net"] == 2500
+    finally:
+        if emp_id:
+            db.execute(models.Employee.__table__.delete().where(
+                models.Employee.id == emp_id))
+            db.commit()
+        db.close()

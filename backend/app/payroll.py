@@ -45,26 +45,53 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
         present_days = len(recs)
         overtime_minutes = sum(r.overtime_minutes or 0 for r in recs)
 
-        # أيام الغياب: أيام العمل الماضية بلا حضور ولا إجازة (تقدير مبسّط للموظفين المتتبَّعين)
+        # QA-03/QA-04 — أيام العمل بلا سجل حضور.
+        #
+        # ROOT CAUSE: كانت الحلقة تعدّ كل يوم عمل بلا سجل "غيابًا" وتخصمه. أمران
+        # غلط في ذلك:
+        #  1) غياب السجل ليس غيابًا (QA-03). قد يكون الجهاز معطًلا أو الموظف في
+        #     مهمة أو النظام لم يكن مُفعًَّلا بعد. الخصم على شيء لم يُثبَت عقوبة
+        #     بلا واقعة. صارت حالة ثالثة: unrecorded_days تُعرَض لـHR ولا تُخصم.
+        #  2) الفترة لم تكن مقصوصة على مدة التوظيف (QA-04)، فأيام ما قبل التعيين
+        #     تُحسب غيابًا — موظف عُيّن في 05/08 يُخصم منه أول أربعة أيام الشهر.
+        #
+        # الغياب المخصوم = ما سُجّل صراحة كغياب في سجل الحضور. أي يوم بلا سجل
+        # يبقى "غير مسجَّل" حتى يقرر HR فيه.
+        unrecorded_days = 0
         absent_days = 0
-        if e.attendance_mode != "none":
+        # الموظف المُعفى من الحضور لا يُحسب عليه شيء أصًلا
+        if e.attendance_mode != "none" and not e.attendance_exempt:
             shift = db.get(models.Shift, e.shift_id) if e.shift_id else None
             workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
             leaves = db.scalars(select(models.Leave).where(
                 models.Leave.employee_id == e.id, models.Leave.status == "approved")).all()
-            present_dates = {r.check_in_at.date() for r in recs}
+            # غياب مُثبَت في سجل الحضور (status='absent') — هذا وحده يُخصم
+            absent_dates = {r.check_in_at.date() for r in recs
+                            if (r.status or "").lower() == "absent"}
+            # سجل الغياب يحمل check_in_at أيًضا، فلولا استثناؤه هنا لعُدّ اليوم
+            # حضوًرا وسقط قبل أن يُفحص
+            present_dates = {r.check_in_at.date() for r in recs
+                             if (r.status or "").lower() != "absent"}
             today = date.today()
-            for i in range(days_in_month):
-                day = date(year, month, i + 1)
-                if day > today:
-                    continue
-                if str((day.weekday() + 1) % 7) not in workset:
-                    continue
-                if day in present_dates:
-                    continue
-                if any(lv.start_date <= day <= lv.end_date for lv in leaves):
-                    continue
-                absent_days += 1
+            # QA-04 — قصّ الفترة على مدة التوظيف الفعلية:
+            #   [hire_date, termination_date ?? اليوم]
+            period_start = date(year, month, 1)
+            period_end = min(date(year, month, days_in_month), today)
+            if e.hire_date:
+                period_start = max(period_start, e.hire_date)
+            if e.termination_date:
+                period_end = min(period_end, e.termination_date)
+
+            day = period_start
+            while day <= period_end:
+                if str((day.weekday() + 1) % 7) in workset \
+                        and day not in present_dates \
+                        and not any(lv.start_date <= day <= lv.end_date for lv in leaves):
+                    if day in absent_dates:
+                        absent_days += 1
+                    else:
+                        unrecorded_days += 1
+                day += timedelta(days=1)
 
         deductions = db.scalars(select(models.Deduction).where(
             models.Deduction.employee_id == e.id,
@@ -82,6 +109,9 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             "employee_id": e.id, "name": e.name, "job_title": e.job_title,
             "basic_salary": round(basic, 3), "present_days": present_days,
             "absent_days": absent_days, "overtime_minutes": overtime_minutes,
+            # QA-03 — أيام عمل بلا سجل حضور: تُعرَض لـHR ولا تُخصم. وجودها بعدد
+            # كبير يعني خلًلا في التسجيل يستحق مراجعة، لا خصًما من الراتب.
+            "unrecorded_days": unrecorded_days,
             "overtime_pay": overtime_pay, "absence_deduction": absence_deduction,
             "other_deductions": round(other_deductions, 3), "gross": gross,
             "total_deductions": total_ded, "net": net,
