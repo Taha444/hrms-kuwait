@@ -36,6 +36,15 @@ export const attAr = M({
   leave: { ar: "إجازة", en: "Leave" }, off: { ar: "عطلة", en: "Off" }, future: { ar: "—", en: "—" },
 });
 
+// QA-22 — أنماط الحضور (qr/gps/both/none) كانت تظهر خامًا: attAr أعلاه يغطي
+// حالات الحضور (حاضر/متأخر) لا أنماطه، فكل استدعاء بنمط كان يُرجع الكود نفسه.
+export const attModeAr = M({
+  qr: { ar: "رمز QR", en: "QR code" },
+  gps: { ar: "الموقع الجغرافي", en: "GPS" },
+  both: { ar: "رمز QR والموقع", en: "QR + GPS" },
+  none: { ar: "بدون حضور", en: "No attendance" },
+});
+
 export const taskAr = M({
   renew_residency: { ar: "تجديد إقامة", en: "Renew Residency" }, renew_work_permit: { ar: "تجديد إذن عمل", en: "Renew Work Permit" },
   renew_passport: { ar: "تجديد جواز", en: "Renew Passport" }, transfer_info: { ar: "نقل معلومات", en: "Transfer Info" },

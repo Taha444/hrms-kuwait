@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { attAr, statusAr, contractTypeAr } from "../labels";
+import { attAr, attModeAr, statusAr, contractTypeAr } from "../labels";
 import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
@@ -287,7 +287,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <b>{t("fld_hours_actual")}:</b> {e.actual_work_hours ?? "—"}<br />
                 </>
               )}
-              <b>{t("epf_att_mode")}:</b> {e.attendance_mode}
+              <b>{t("epf_att_mode")}:</b> {attModeAr(e.attendance_mode)}
               {p.created_by_name && <><br /><span className="muted" style={{ fontSize: 12 }}>{t("emp_created_by")}: {p.created_by_name}</span></>}
             </div>
             <div className="card">
@@ -396,10 +396,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                     <label htmlFor="epf-edit-att-mode">{t("epf_att_mode")}</label>
                     <select id="epf-edit-att-mode" value={editForm.attendance_mode}
                       onChange={(ev) => setEditForm({ ...editForm, attendance_mode: ev.target.value })}>
-                      <option value="qr">{attAr("qr")}</option>
-                      <option value="gps">{attAr("gps")}</option>
-                      <option value="both">{attAr("both")}</option>
-                      <option value="none">{attAr("none")}</option>
+                      <option value="qr">{attModeAr("qr")}</option>
+                      <option value="gps">{attModeAr("gps")}</option>
+                      <option value="both">{attModeAr("both")}</option>
+                      <option value="none">{attModeAr("none")}</option>
                     </select>
                   </div>
                   {/* "بدون حضور" يشترط إعفاًء بسبب موثّق — الخادم يرفض غير ذلك */}

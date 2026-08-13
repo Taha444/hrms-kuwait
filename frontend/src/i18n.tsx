@@ -93,6 +93,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   my_warnings: { ar: "إنذاراتي", en: "My Warnings" },
   my_no_warnings: { ar: "لا توجد إنذارات — أحسنت!", en: "No warnings — well done!" },
   my_download: { ar: "تنزيل", en: "Download" },
+  // QA-17 — كان المفتاح غير معرَّف، وt() تُرجع اسمه فيظهر switch_company خاًما
+  // (البديل بعد || لا يعمل لأن اسم المفتاح قيمة صادقة)
+  switch_company: { ar: "تغيير الشركة", en: "Switch Company" },
   kpi_expiring_suffix: { ar: "{n} قرب الانتهاء", en: "{n} expiring soon" },
   perf_title: { ar: "مؤشر الأداء", en: "Performance Indicator" },
   perf_attendance: { ar: "نسبة الحضور", en: "Attendance Rate" },

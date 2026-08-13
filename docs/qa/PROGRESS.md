@@ -21,19 +21,19 @@
 | QA-14 | مهم | NOT_STARTED | C4 + C8 | — | — | — |
 | QA-15 | مهم | NOT_STARTED | C9 | — | — | — |
 | QA-16 | مهم | NOT_STARTED | C9 | — | — | — |
-| QA-17 | بسيط | NOT_STARTED | C8 | — | — | — |
+| QA-17 | بسيط | VERIFIED | المفتاح غير معرَّف و`t()` تُرجع اسمه فلا يعمل البديل بعد `||` | (QA-17/22/29) | `switch_company` أُضيف لـi18n | ✅ / ✅ / ✅ / n-a |
 | QA-18 | مهم | NOT_STARTED | C9 — assignment غير مالي | — | — | — |
 | QA-19 | مهم | NOT_STARTED | C4 + C5 | — | — | — |
 | QA-20 | مهم | NOT_STARTED | C5 | — | — | — |
 | QA-21 | مهم | NOT_STARTED | C9 | — | — | — |
-| QA-22 | بسيط | NOT_STARTED | C8 | — | — | — |
+| QA-22 | بسيط | FIXED | `attAr` يغطي حالات الحضور لا أنماطه، فكل نمط يرجع كوده | (QA-17/22/29) | `attModeAr` أُضيف واستُعمل؛ بقيت enums أخرى (prepared/digest) | ⏳ باقي الـenums |
 | QA-23 | بسيط | NOT_STARTED | C9 | — | — | — |
 | QA-24 | بسيط | NOT_STARTED | C2 | — | — | — |
 | QA-25 | بسيط | NOT_STARTED | C8 | — | — | — |
 | QA-26 | بسيط | NOT_STARTED | C7 | — | مُهّد له: توسيع `CRITICAL_FIELDS` في `21ffa9c` | — |
 | QA-27 | بسيط | NOT_STARTED | C8 | — | — | — |
 | QA-28 | مهم | NOT_STARTED | C4 | — | — | — |
-| QA-29 | مهم | IN_PROGRESS | C9 | `09be6ed` | أُزيلت من HR والمدير؛ المطلوب المندوب **فقط** — المالك والمحاسب وadmin_employee ما زالوا يرونها | — |
+| QA-29 | مهم | VERIFIED | C9 — سياسة الصفحة موزّعة على شروط مكتوبة عند كل شاشة | (QA-17/22/29) | القائمة وحارس المسار كلاهما `role === "delegate"` وحده | ✅ / ✅ / n-a / ✅ |
 | QA-30 | مهم | VERIFIED | — | `cd408be` | `test_sec01_twofa_full_cycle_works` + `test_sec02` + `test_sec03` | ✅ / ✅ / n-a / ✅ |
 | QA-31 | مهم | IN_PROGRESS | — | `cd408be` | الخمول في الواجهة فقط؛ **معيار القبول يشترط رفض الخادم للتوكن** | — |
 
