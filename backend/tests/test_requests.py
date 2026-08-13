@@ -188,8 +188,12 @@ def test_full_leave_workflow(client):
     # 1) العامل يقدّم طلب إجازة
     r = client.post("/api/requests", headers=auth_headers(emp_token), json={
         "request_type_code": "leave",
+        # QA-10 — مرحلة المندوب صارت مشروطة بالسفر خارج البلاد. هذا الاختبار
+        # يغطّي المسار الكامل بما فيه المندوب، فيلزمه سفر صريح؛ الإجازة بلا سفر
+        # تُغلَق عند HR ولها اختبارها الخاص.
         "payload_json": {"start_date": "2026-08-01", "end_date": "2026-08-10",
-                         "days": 10, "reason": "سفر", "leave_type": "annual"},
+                         "days": 10, "reason": "سفر", "leave_type": "annual",
+                         "travel_required": True, "destination": "مصر"},
     })
     assert r.status_code == 201, r.text
     req_id = r.json()["id"]

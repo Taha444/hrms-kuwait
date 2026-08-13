@@ -365,7 +365,7 @@ def approval_inbox(company_id: int | None = None,
         rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
         if not rt:
             continue
-        chain = workflow._chain(rt)
+        chain = workflow._chain(rt, req)
         if req.current_stage >= len(chain):
             continue
         stage = chain[req.current_stage]
@@ -392,7 +392,7 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     if req.status not in ("pending",):
         raise HTTPException(status_code=409, detail="لا يمكن اتخاذ قرار في هذه الحالة")
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
-    chain = workflow._chain(rt)
+    chain = workflow._chain(rt, req)
     # P0-#6 — منع stale action: current_stage غير صالح (بره النطاق) في حالة pending
     if req.current_stage < 0 or req.current_stage >= len(chain):
         raise HTTPException(status_code=409, detail=(
@@ -725,7 +725,7 @@ def _get_req(db: Session, user: models.User, req_id: int) -> models.Request:
     if rt and rt.is_confidential:
         if user.role == "super_admin" or is_self:
             return req
-        for stage in workflow._chain(rt):
+        for stage in workflow._chain(rt, req):
             if any(u.id == user.id for u in workflow.resolve_stage_approvers(db, req, stage)):
                 return req
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
@@ -777,7 +777,7 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
                viewer: "models.User | None" = None) -> dict:
     emp = db.get(models.Employee, req.employee_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
-    chain = workflow._chain(rt) if rt else []
+    chain = workflow._chain(rt, req) if rt else []
     st = workflow.status_info(req.status)
     # V1.5 canonical resolver: يعرض الكود الجديد للطلب بجانب الكود القديم في seed
     from .. import v15_registry

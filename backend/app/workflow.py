@@ -172,8 +172,11 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 1, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
             {"order": 2, "label": "مراجعة شؤون الموظفين وتحديد موعد التوقيع", "role": "hr",
              "kind": "hr_review", "produces_document": True},
+            # QA-10 — تظهر فقط مع سفر خارج البلاد؛ إجازة داخل الكويت لا تمر
+            # بالمندوب أصًلا
             {"order": 3, "label": "إجراءات إذن مغادرة البلاد (المندوب)", "role": "delegate",
-             "kind": "delegate_exit"},
+             "kind": "delegate_exit",
+             "when": {"field": "travel_required", "truthy": True}},
         ],
         "template_html": None,
         "visible_to_employee": True, "default_template_code": "HRMS-PR-015",
@@ -431,8 +434,40 @@ def get_request_type(db: Session, company_id: int, code: str) -> models.RequestT
     return None
 
 
-def _chain(rt: models.RequestType) -> list[dict]:
-    return sorted(rt.approval_chain_json or [], key=lambda s: s.get("order", 0))
+def _stage_applies(stage: dict, payload: dict | None) -> bool:
+    """هل تنطبق هذه المرحلة على هذا الطلب؟ (QA-10)
+
+    المرحلة قد تحمل شرطًا: {"when": {"field": "travel_required", "truthy": true}}
+    أو {"when": {"field": "leave_type", "equals": "annual"}}. بلا شرط ⇒ تنطبق
+    دائمًا، وهو سلوك كل المراحل القائمة.
+    """
+    cond = stage.get("when")
+    if not cond:
+        return True
+    if payload is None:
+        # وصف النوع مجرًدا (بلا طلب): نعرض المراحل المشروطة لأنها جزء من التعريف
+        return True
+    value = (payload or {}).get(cond.get("field"))
+    if "equals" in cond:
+        return value == cond["equals"]
+    if "in" in cond:
+        return value in (cond["in"] or [])
+    if cond.get("truthy"):
+        # "لا"/"false"/"0" تصل نًصا من نماذج الواجهة، فلا نعتمد صدق بايثون وحده
+        return bool(value) and str(value).strip().lower() not in ("false", "0", "no", "لا")
+    return True
+
+
+def _chain(rt: models.RequestType, req: models.Request | None = None) -> list[dict]:
+    """مراحل الطلب — مُرشَّحة بمحتواه لا قالًبا ثابًتا (QA-10).
+
+    ROOT CAUSE: كانت تُعيد approval_chain_json كما هو، فمرحلة "إذن مغادرة
+    البلاد (المندوب)" تظهر في كل طلب إجازة ولو كانت إجازة داخل الكويت — يقف
+    الطلب عند المندوب بلا سبب.
+    """
+    stages = sorted(rt.approval_chain_json or [], key=lambda s: s.get("order", 0))
+    payload = (req.payload_json if req is not None else None)
+    return [s for s in stages if _stage_applies(s, payload)]
 
 
 def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> list[models.User]:
@@ -547,7 +582,7 @@ def create_request(db: Session, employee: models.Employee, requester: models.Use
 
 def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> None:
     """يهيّئ المرحلة الحالية: ضبط الحالة وإنشاء المهام للمستلِمين."""
-    chain = _chain(rt)
+    chain = _chain(rt, req)
     if req.current_stage >= len(chain):
         return _finalize(db, req)
     stage = chain[req.current_stage]
@@ -626,7 +661,7 @@ def _close_open_tasks(db: Session, req: models.Request) -> None:
 
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
            note: str | None, rt: models.RequestType) -> models.Request:
-    chain = _chain(rt)
+    chain = _chain(rt, req)
     stage = chain[req.current_stage]
     approval = models.RequestApproval(
         request_id=req.id, stage_order=req.current_stage,
@@ -706,7 +741,7 @@ def mark_pickup_received(db: Session, req: models.Request, rt: models.RequestTyp
 
 def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
     req.current_stage += 1
-    if req.current_stage >= len(_chain(rt)):
+    if req.current_stage >= len(_chain(rt, req)):
         _finalize(db, req)
     else:
         enter_stage(db, req, rt)
@@ -871,7 +906,7 @@ def _finalize(db: Session, req: models.Request) -> None:
     #   "current_stage=2/2 + status=returned + all approvals done".
     #   الحالة الجديدة "apply_failed" واضحة للـUI والـaudit — مش returned (اللي بيرجع
     #   للـsubmitter لتعديل بيانات) ولا rejected (اللي بيقفل الطلب).
-    chain_len = len(_chain(rt)) if rt else 0
+    chain_len = len(_chain(rt, req)) if rt else 0
 
     # PILOT-P0-4 — تصحيح الحضور: نطبّق الأثر الفعلي قبل ما نعتبر الطلب Completed
     # وطلب الإجازة مثله: كان يكتمل بلا أثر — لا سجل إجازة ولا خصم رصيد.
@@ -1024,7 +1059,7 @@ def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
         ).all() if a.approver_user_id
     }
     # ومن كان سيعتمد في المراحل المتبقية
-    chain = _chain(rt)
+    chain = _chain(rt, req)
     future_users: set[int] = set()
     for stage in chain[req.current_stage:]:
         for u in resolve_stage_approvers(db, req, stage):

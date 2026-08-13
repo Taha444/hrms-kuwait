@@ -3294,3 +3294,73 @@ def test_qa05_the_two_numbers_are_named_apart(client):
     assert d["usable_days"] == p["leave_balance"]
     # والقابل للصرف لا يكون سالًبا مهما زاد الاستهلاك
     assert d["payable_days"] >= 0
+
+
+# ===========================================================================
+# C6 — QA-10: مراحل المسار مشتقة من محتوى الطلب
+# ROOT CAUSE: _chain كانت تُعيد approval_chain_json كما هو، فمرحلة "إذن مغادرة
+# البلاد (المندوب)" تظهر في كل طلب إجازة ولو داخل الكويت.
+# ===========================================================================
+
+def test_qa10_delegate_stage_only_with_travel(client):
+    """QA-10 — مقارنة مراحل طلبين: بسفر وبدونه."""
+    from app.database import SessionLocal
+    from app import models, workflow
+
+    db = SessionLocal()
+    try:
+        rt = workflow.get_request_type(db, 1, "leave")
+        assert rt, "نوع الإجازة غير معرَّف"
+
+        def stages(payload):
+            req = models.Request(company_id=1, employee_id=1,
+                                 request_type_code="leave", status="pending",
+                                 current_stage=0, payload_json=payload)
+            return [s.get("role") for s in workflow._chain(rt, req)]
+
+        without = stages({"leave_type": "annual", "days": 3})
+        with_travel = stages({"leave_type": "annual", "days": 3,
+                              "travel_required": True, "destination": "مصر"})
+
+        assert "delegate" not in without, \
+            f"مرحلة المندوب ظهرت في إجازة بلا سفر: {without}"
+        assert "delegate" in with_travel, \
+            f"مرحلة المندوب غابت مع السفر: {with_travel}"
+        # وباقي المراحل واحدة في الحالتين
+        assert without == [r for r in with_travel if r != "delegate"]
+    finally:
+        db.close()
+
+
+def test_qa10_condition_forms_from_the_ui_are_handled(client):
+    """نماذج الواجهة ترسل "false"/"لا" نًصا — لا يصح الاعتماد على صدق بايثون."""
+    from app.workflow import _stage_applies
+
+    stage = {"role": "delegate", "when": {"field": "travel_required", "truthy": True}}
+    for falsy in (None, "", False, 0, "false", "False", "0", "no", "لا"):
+        assert not _stage_applies(stage, {"travel_required": falsy}), falsy
+    for truthy in (True, 1, "true", "نعم", "yes"):
+        assert _stage_applies(stage, {"travel_required": truthy}), truthy
+    # بلا شرط ⇒ تنطبق دائمًا
+    assert _stage_applies({"role": "hr"}, {})
+
+
+def test_qa10_a_leave_without_travel_completes_without_delegate(client):
+    """المسار كامًلا: إجازة بلا سفر تُغلَق بلا مرور بالمندوب."""
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/auth/me", headers=auth_headers(
+        login(client, "100000000101", "emp12345"))).json()["employee_id"]
+
+    r = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "leave", "employee_id": emp_id,
+        "payload_json": {"start_date": "2027-10-01", "end_date": "2027-10-02",
+                         "days": 2, "leave_type": "annual", "reason": "بلا سفر"}})
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+
+    detail = client.get(f"/api/requests/{rid}", headers=hr).json()
+    roles = [s.get("role") for s in (detail.get("chain") or detail.get("stages") or [])]
+    if roles:  # لو الاستجابة تعرض المراحل
+        assert "delegate" not in roles, f"المندوب ما زال في المسار: {roles}"
+    assert detail["total_stages"] == 3, \
+        f"عدد المراحل يجب أن يكون 3 بلا مرحلة المندوب: {detail['total_stages']}"
