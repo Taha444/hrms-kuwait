@@ -3232,3 +3232,65 @@ def test_qa04_attendance_exempt_employee_is_never_charged(client):
                 models.Employee.id == emp_id))
             db.commit()
         db.close()
+
+
+# ===========================================================================
+# C3 — QA-05: توحيد أرصدة الإجازة
+# ROOT CAUSE: رقمان بمعنيين مختلفين يُعرضان باسم واحد — العمود المخزَّن (30)
+# مقابل المستحق التراكمي في EOS (30 × سنوات الخدمة = 92.16).
+# ===========================================================================
+
+def test_qa05_leave_numbers_come_from_one_source(client):
+    """QA-05 — الملف ونهاية الخدمة يستخدمان نفس الصيغة.
+
+    Cross-consistency: المستحق التراكمي المحسوب في خدمة الرصيد يطابق ما تحسبه
+    نهاية الخدمة لنفس الموظف بنفس المعطيات.
+    """
+    from datetime import date
+    from app.database import SessionLocal
+    from app import models, eos as eos_engine
+    from app.leave_balance import leave_balance, accrued_from_service
+
+    db = SessionLocal()
+    try:
+        emp = db.scalars(select(models.Employee).where(
+            models.Employee.hire_date.isnot(None)).limit(1)).first()
+        assert emp, "لا يوجد موظف بتاريخ تعيين"
+        company = db.get(models.Company, emp.company_id)
+
+        detail = leave_balance(db, emp, company)
+        settle = eos_engine.calculate_eos(
+            basic_salary=float(emp.basic_salary or 0),
+            hire_date=emp.hire_date, end_date=date.today(),
+            reason="resignation", used_leave_days=detail["used_days"],
+            annual_leave_days=detail["annual_entitlement"],
+        )
+        # نفس الصيغة ⇒ نفس المستحق التراكمي
+        yrs = settle["service"]["decimal_years"]
+        expected = accrued_from_service(detail["annual_entitlement"], yrs)
+        assert abs(detail["accrued_days"] - expected) < 0.05, \
+            f"الصيغتان تفرّقتا: {detail['accrued_days']} vs {expected}"
+    finally:
+        db.close()
+
+
+def test_qa05_the_two_numbers_are_named_apart(client):
+    """QA-05 — الفرق مقصود ومُسمّى صراحة، لا رقمان باسم واحد.
+
+    «المتاح للاستخدام» ≠ «المستحق التراكمي»: الأول ما يقدر الموظف يأخذه اليوم،
+    والثاني أساس بدل الإجازات عند نهاية الخدمة. دمجهما في رقم واحد يخلط حًقا
+    تشغيلًيا باستحقاق مالي.
+    """
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    emp_id = client.get("/api/employees", headers=hr).json()[0]["id"]
+    p = client.get(f"/api/employees/{emp_id}/profile", headers=hr).json()
+
+    d = p.get("leave_balance_detail")
+    assert d, "الملف لا يعرض تفصيل الرصيد"
+    for k in ("usable_days", "accrued_days", "used_days", "payable_days",
+              "service_years", "annual_entitlement"):
+        assert k in d, f"مفقود: {k}"
+    # المتاح للاستخدام هو نفسه العمود المخزَّن — لا حساب ثانٍ له
+    assert d["usable_days"] == p["leave_balance"]
+    # والقابل للصرف لا يكون سالًبا مهما زاد الاستهلاك
+    assert d["payable_days"] >= 0

@@ -159,8 +159,11 @@ def calculate_eos(
 
     indemnity = full_indemnity * factor
 
-    # رصيد الإجازات يُحسب آليًا من مدة الخدمة — لا يُدخله المستخدم يدويًا
-    accrued_leave = annual_leave_days * decimal_years
+    # QA-05 — الصيغة من مصدر واحد (leave_balance.py) لا مكتوبة هنا ثانيةً.
+    # الرقم الناتج هو «المستحق التراكمي» ويختلف عمًدا عن «المتاح للاستخدام»
+    # المعروض في ملف الموظف؛ اختلاف الاسمين هو ما يمنع التباس 30 مقابل 92.16.
+    from .leave_balance import accrued_from_service
+    accrued_leave = accrued_from_service(annual_leave_days, decimal_years)
     remaining_leave = accrued_leave - used_leave_days
     # لا يُدفع عن رصيد سالب (استهلاك زائد)؛ يُعرض المتبقّي الحقيقي للشفافية
     leave_payout = daily_wage * max(remaining_leave, 0.0)

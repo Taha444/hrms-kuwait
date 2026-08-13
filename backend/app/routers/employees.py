@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import eos as eos_engine
+from .. import leave_balance as leave_balance_service
 from .. import models, schemas
 from ..database import get_db
 from ..deps import (
@@ -387,8 +388,12 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         "can_edit_actual_salary": can_edit_actual,
         "created_by_name": (db.get(models.User, emp.created_by).full_name
                             if emp.created_by and db.get(models.User, emp.created_by) else None),
-        # رصيد الإجازة السنوية وسجل حركاته — الرقم وحده لا يُفسَّر، والسجل هو
-        # ما يجعله قابًلا لإعادة البناء والاعتراض عليه بمستند
+        # QA-05 — كل أرقام الرصيد من مصدر واحد بأسماء صريحة. كان الملف يعرض
+        # العمود المخزَّن ونهاية الخدمة تحسب المستحق التراكمي، وكلاهما يُسمّى
+        # "رصيد الإجازات" — فظهر 30 هنا و92.16 هناك.
+        "leave_balance_detail": leave_balance_service.leave_balance(
+            db, emp, db.get(models.Company, emp.company_id)),
+        # يبقى للتوافق مع أي مستهلك قديم — وهو نفسه usable_days
         "leave_balance": emp.annual_leave_balance,
         "leave_ledger": [
             {"id": x.id, "kind": x.kind, "days": x.days,

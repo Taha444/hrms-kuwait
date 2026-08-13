@@ -9,7 +9,7 @@
 | QA-02 | BLOCKER | VERIFIED | C1 — نفس الدالة: الصندوق مبني عليها | (هذا الـcommit) | `test_qa02_branch_supervisor_receives_the_request` — أُثبت فشله قبل الإصلاح (الطلب في صندوق المدير `{1,2}`) | ✅ / ✅ / n-a / ✅ |
 | QA-03 | BLOCKER | VERIFIED | C2 — `payroll.py` كان يعدّ كل يوم بلا سجل غياًبا | (C2) | `test_qa03_unrecorded_days_are_not_deducted` + `test_qa03_recorded_absence_is_still_deducted` — أُثبت الفشل قبل: `assert 10 == 0` | ✅ / ✅ / n-a / ✅ |
 | QA-04 | BLOCKER | VERIFIED | C2 — الفترة بلا قصّ على مدة التوظيف | (C2) | `test_qa04_no_absence_before_hire_date` + `test_qa04_attendance_exempt_employee_is_never_charged` — أُثبت الفشل قبل: `assert 0 < 0` | ✅ / ✅ / n-a / ✅ |
-| QA-05 | BLOCKER | NOT_STARTED | C3 — مصدران للرصيد | — | مُهّد له: `leave_ledger` في `0bc4736` | — |
+| QA-05 | BLOCKER | VERIFIED | C3 — رقمان بمعنيين مختلفين باسم واحد | (C3) | `test_qa05_leave_numbers_come_from_one_source` (cross-consistency) + `test_qa05_the_two_numbers_are_named_apart` | ✅ / ✅ / n-a / ✅ |
 | QA-06 | BLOCKER | NOT_STARTED | C4 — تاريخ الانتهاء لا يُخزَّن | — | — | — |
 | QA-07 | مهم | NOT_STARTED | C8 | — | — | — |
 | QA-08 | مهم | IN_PROGRESS | C9 — نوع REQSIG غير متاح للموظف | `7adca3a` | النوع أُنشئ؛ يلزم تحقق أن الموظف يراه في كتالوج التقديم | — |
@@ -54,3 +54,11 @@
 | شركة أخرى (MUF)؟ | مغطّاة — الدالة تأخذ `company_id` بلا تفرّع خاص |
 | لغة أخرى؟ | لا نص متأثر |
 | مسار آخر (تقارير/تصدير)؟ | `reports.py:102` يستهلك ناتج `compute_payroll` نفسه فيرث الإصلاح |
+
+### C3 — QA-05
+| السؤال | الإجابة |
+|---|---|
+| نوع/دور آخر؟ | لا — الصيغة صارت في  وحده، وEOS يستدعيها |
+| شركة أخرى؟ | مغطّاة —  يُقرأ من الشركة نفسها |
+| لغة أخرى؟ | لا نص متأثر |
+| مسار آخر؟ | الملف الشخصي وEOS يستدعيان نفس الدالة؛ سنوات الخدمة نفسها صارت من  |
