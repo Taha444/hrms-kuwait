@@ -383,7 +383,13 @@ const dict: Record<string, { ar: string; en: string }> = {
   fld_phone: { ar: "الهاتف", en: "Phone" },
   fld_email: { ar: "البريد الإلكتروني", en: "Email" },
   // رصيد الإجازات وسجل حركاته
-  leave_current_balance: { ar: "الرصيد المتاح", en: "Available Balance" },
+  leave_current_balance: { ar: "أرصدة الإجازة", en: "Leave Balances" },
+  leave_accrued_label: { ar: "المستحق التراكمي", en: "Accrued to date" },
+  leave_payable_label: { ar: "القابل للصرف", en: "Payable on EOS" },
+  leave_numbers_hint: {
+    ar: "«المتاح» ما يمكن أخذه اليوم، و«المستحق التراكمي» أساس بدل الإجازات عند نهاية الخدمة — رقمان مختلفان عمًدا.",
+    en: "'Available' is what can be taken today; 'Accrued' is the basis for the end-of-service leave allowance — deliberately different numbers.",
+  },
   leave_days_available: { ar: "يوم متبقٍّ", en: "days remaining" },
   leave_ledger_title: { ar: "سجل حركات الرصيد", en: "Balance History" },
   leave_ledger_hint: {

@@ -338,20 +338,32 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
         shift = db.get(models.Shift, e.shift_id) if e.shift_id else None
         workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
 
-        cells, summary = {}, {"present": 0, "late": 0, "absent": 0, "leave": 0, "off": 0}
+        # QA-03/QA-04 — نفس قاعدة الرواتب بالضبط، وكانت هذه الشاشة تحمل نسختها
+        # الخاصة من الحساب فبقيت على العطل بعد إصلاح compute_payroll:
+        #  - يوم بلا سجل ليس غياًبا بل "غير مسجَّل" (unrecorded)
+        #  - ولا يُحسب شيء خارج مدة التوظيف
+        cells, summary = {}, {"present": 0, "late": 0, "absent": 0, "leave": 0,
+                              "off": 0, "unrecorded": 0, "not_employed": 0}
         for d in days:
             ds = d.isoformat()
             our_idx = str((d.weekday() + 1) % 7)  # 0=الأحد
             is_workday = our_idx in workset
+            # خارج مدة التوظيف: قبل التعيين أو بعد انتهاء الخدمة
+            if (e.hire_date and d < e.hire_date) or \
+               (e.termination_date and d > e.termination_date):
+                cells[ds] = "not_employed"; summary["not_employed"] += 1
+                continue
             r = rec_by_day.get(d)
             if r:
-                st = "late" if r.status == "late" else "present"
+                st = ("absent" if (r.status or "").lower() == "absent"
+                      else "late" if r.status == "late" else "present")
                 cells[ds] = st
                 summary[st] += 1
             elif any(lv.start_date <= d <= lv.end_date for lv in leaves):
                 cells[ds] = "leave"; summary["leave"] += 1
             elif is_workday and d <= today:
-                cells[ds] = "absent"; summary["absent"] += 1
+                # لا سجل ≠ غياب: يُعرَض لـHR ولا يُحسب غياًبا
+                cells[ds] = "unrecorded"; summary["unrecorded"] += 1
             elif is_workday:
                 cells[ds] = "future"
             else:

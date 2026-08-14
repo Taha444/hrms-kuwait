@@ -45,13 +45,48 @@ def _new_secret() -> str:
     return base64.b32encode(os.urandom(20)).decode("ascii").rstrip("=")
 
 
-def _verify_code(secret: str, code: str, valid_window: int = 1) -> bool:
-    """يتحقق من رمز TOTP مع نافذة ±valid_window * 30s."""
+def _verify_code(secret: str, code: str, valid_window: int | None = None) -> bool:
+    """يتحقق من رمز TOTP مع نافذة ±valid_window * 30s.
+
+    QA-22 — النافذة صارت قابلة للضبط من البيئة (TOTP_VALID_WINDOW).
+    السبب: ساعة الخادم وُجدت متأخرة ~111 ثانية، فرُفضت رموز صحيحة تماًما —
+    TOTP يقارن بالوقت لا بالسر، فانحراف الساعة يُبطل النظام كله بلا أي خطأ
+    ظاهر في الكود، وهو ما جعل التشخيص عسًيرا.
+
+    الحل الصحيح ضبط ساعة الخادم (NTP)؛ وهذا المتغيّر مخرج طوارئ حين لا تملك
+    التحكم فيها. توسيعه يوسّع نافذة إعادة استخدام الرمز، فلا تزده فوق اللازم:
+    4 ≈ ±2 دقيقة.
+    """
+    import os
+
     import pyotp
+    if valid_window is None:
+        try:
+            valid_window = int(os.environ.get("TOTP_VALID_WINDOW", "1"))
+        except ValueError:
+            valid_window = 1
     if not (code and code.strip().isdigit() and len(code.strip()) == 6):
         return False
     totp = pyotp.TOTP(secret)
     return totp.verify(code.strip(), valid_window=valid_window)
+
+
+def clock_skew_seconds() -> float | None:
+    """انحراف ساعة الخادم عن مصدر خارجي — تشخيص لا تصحيح.
+
+    يُعرَض في /2fa/status ليظهر السبب مباشرة بدل اكتشافه بالتجربة والخطأ.
+    """
+    import email.utils
+    import time
+    import urllib.request
+    try:
+        with urllib.request.urlopen("https://www.google.com", timeout=3) as r:
+            served = r.headers.get("Date")
+        if not served:
+            return None
+        return round(time.time() - email.utils.parsedate_to_datetime(served).timestamp(), 1)
+    except Exception:  # noqa: BLE001 — التشخيص لا يجب أن يُسقط شيًئا
+        return None
 
 
 @router.post("/enroll")

@@ -34,6 +34,9 @@ export const attAr = M({
   present: { ar: "حاضر", en: "Present" }, late: { ar: "متأخر", en: "Late" },
   early_leave: { ar: "خروج مبكر", en: "Early Leave" }, absent: { ar: "غائب", en: "Absent" },
   leave: { ar: "إجازة", en: "Leave" }, off: { ar: "عطلة", en: "Off" }, future: { ar: "—", en: "—" },
+  // QA-03 — "غير مسجَّل" حالة ثالثة مستقلة عن الغياب: لا سجل ≠ غياب
+  unrecorded: { ar: "غير مسجَّل", en: "Unrecorded" },
+  not_employed: { ar: "خارج مدة التوظيف", en: "Not employed" },
 });
 
 // QA-22 — أنماط الحضور (qr/gps/both/none) كانت تظهر خامًا: attAr أعلاه يغطي

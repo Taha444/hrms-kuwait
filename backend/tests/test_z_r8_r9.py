@@ -3468,3 +3468,111 @@ def test_qa06_backfill_script_is_dry_run_by_default(client):
     stats = run(apply=False)
     for k in ("scanned", "filled", "no_date_found", "file_missing", "failed"):
         assert k in stats, f"التقرير ينقصه {k}"
+
+
+# ===========================================================================
+# إعادة اختبار الإنتاج — على بيانات ناقصة لا على بذر مثالي
+#
+# الدرس: اختبارات C1/C2 مرّت على بذر فيه صفوف BranchSupervisor، والإنتاج بلا
+# صفوف — فمرّت خضراء بينما العطل حيّ. هذه الاختبارات تُزيل الربط عمًدا.
+# ===========================================================================
+
+def test_retest_no_silent_fallback_to_manager(client):
+    """QA-01/02 الجذر الحقيقي: فرع بلا مسؤول مربوط لا يجعل المرحلة للمدير.
+
+    كان `resolve_stage_approvers` يسقط لـcompany_manager عند غياب الربط، فيصير
+    المدير معتمِد مرحلة الفرع **شرًعا** — ولذلك بقي البند حًيا رغم إزالة
+    التجاوز الصريح من can_decide.
+    """
+    from app.database import SessionLocal
+    from app import models, workflow
+
+    db = SessionLocal()
+    removed = []
+    try:
+        emp = db.scalars(select(models.Employee).where(
+            models.Employee.branch_id.isnot(None)).limit(1)).first()
+        assert emp
+
+        # نُحاكي الإنتاج: نُزيل ربط مسؤولي الفرع مؤقًتا
+        rows = db.scalars(select(models.BranchSupervisor).where(
+            models.BranchSupervisor.branch_id == emp.branch_id)).all()
+        removed = [(r.company_id, r.branch_id, r.user_id) for r in rows]
+        for r in rows:
+            db.delete(r)
+        db.commit()
+
+        req = models.Request(company_id=emp.company_id, employee_id=emp.id,
+                             request_type_code="leave", status="pending",
+                             current_stage=0, payload_json={"leave_type": "annual",
+                                                            "days": 1})
+        db.add(req); db.commit(); db.refresh(req)
+
+        stage = {"order": 0, "role": "branch_supervisor", "label": "اعتماد مسؤول الفرع"}
+        approvers = workflow.resolve_stage_approvers(db, req, stage)
+        roles = {u.role for u in approvers}
+        assert "company_manager" not in roles, \
+            f"سقوط صامت للمدير ما زال قائًما: {roles}"
+        assert approvers == [], f"مرحلة بلا معتمِد مؤهَّل يجب أن تبقى فارغة: {roles}"
+
+        # والمدير لا يقدر يقرر فيها
+        mgr = db.scalar(select(models.User).where(
+            models.User.company_id == emp.company_id,
+            models.User.role == "company_manager"))
+        assert not workflow.is_stage_approver(db, req, mgr, stage)
+
+        db.execute(models.Request.__table__.delete().where(
+            models.Request.id == req.id))
+        db.commit()
+    finally:
+        for cid, bid, uid in removed:
+            db.add(models.BranchSupervisor(company_id=cid, branch_id=bid, user_id=uid))
+        db.commit(); db.close()
+
+
+def test_retest_attendance_review_matches_payroll_rules(client):
+    """QA-03/04 — شاشة مراجعة الحضور كان لها حساب مستقل بقي على العطل.
+
+    الكنس السابق قال إن `reports.py` يرث الإصلاح، ولم يفحص هذه الشاشة.
+    """
+    import inspect
+    from app.routers import attendance as att
+
+    src = inspect.getsource(att)
+    assert '"unrecorded"' in src, "لا حالة ثالثة: يوم بلا سجل ما زال غياًبا"
+    assert "not_employed" in src, "لا قصّ على مدة التوظيف"
+    assert "e.hire_date and d < e.hire_date" in src
+
+
+def test_retest_profile_exposes_named_leave_numbers(client):
+    """QA-05 — الواجهة كانت تعرض العمود الخام رغم أن الخادم يرجع التفصيل."""
+    import re
+    from pathlib import Path
+
+    prof = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "EmployeeProfile.tsx"
+    if not prof.exists():
+        return
+    text = prof.read_text(encoding="utf-8")
+    for key in ("usable_days", "accrued_days", "used_days", "payable_days"):
+        assert f"leave_balance_detail?.{key}" in text, f"الواجهة لا تعرض {key}"
+
+
+def test_retest_totp_window_is_configurable(client):
+    """QA-22 — انحراف ساعة الخادم يُبطل رموًزا صحيحة؛ النافذة صارت قابلة للضبط."""
+    import os
+    import pyotp
+    from app.routers.twofa import _verify_code
+
+    secret = pyotp.random_base32()
+    # رمز من نافذة زمنية سابقة (يحاكي تأخر ساعة الخادم)
+    old_code = pyotp.TOTP(secret).at(__import__("time").time() - 90)
+
+    assert not _verify_code(secret, old_code, valid_window=1), "النافذة الضيقة يجب أن ترفضه"
+    assert _verify_code(secret, old_code, valid_window=4), "النافذة الموسّعة يجب أن تقبله"
+
+    # وتُقرأ من البيئة حين لا تُمرَّر
+    os.environ["TOTP_VALID_WINDOW"] = "4"
+    try:
+        assert _verify_code(secret, old_code), "لم تُقرأ النافذة من البيئة"
+    finally:
+        os.environ.pop("TOTP_VALID_WINDOW", None)

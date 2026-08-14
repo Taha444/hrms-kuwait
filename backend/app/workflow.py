@@ -470,6 +470,27 @@ def _chain(rt: models.RequestType, req: models.Request | None = None) -> list[di
     return [s for s in stages if _stage_applies(s, payload)]
 
 
+def _warn_unassigned_stage(db: Session, req: models.Request,
+                           emp: models.Employee | None) -> None:
+    """QA-02 — مرحلة بلا معتمِد مؤهَّل: نُنبّه الإدارة بدل تمريرها للمدير بصمت.
+
+    السبب دائًما بيانات لا منطق: الموظف بلا فرع، أو الفرع بلا مسؤول مربوط في
+    BranchSupervisor. المهمة تحمل ما يكفي لإصلاحه.
+    """
+    why = ("الموظف غير مرتبط بفرع" if not (emp and emp.branch_id)
+           else "لا يوجد مسؤول مرتبط بفرع الموظف")
+    for u in users_by_role(db, req.company_id, ["hr", "company_manager"]):
+        create_task(
+            db, company_id=req.company_id, type="config_gap",
+            assignee_user_id=u.id,
+            title="طلب متوقف: لا مسؤول فرع لهذه المرحلة",
+            detail=(f"طلب #{req.id} — {why}. اربط مسؤول الفرع بفرع الموظف "
+                    f"ليصله الطلب."),
+            related_entity_type="request", related_entity_id=req.id,
+            dedup_key=f"stage_unassigned:{req.id}", severity="critical",
+        )
+
+
 def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> list[models.User]:
     """يحدد المستخدمين المعنيين بمرحلة معيّنة حسب الدور (وفرع العامل).
 
@@ -510,10 +531,20 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
                 # V1.5 Phase 3: يوسّع القائمة لتشمل أي مفوَّض إليهم نشطين
                 from .delegation import expand_approvers_with_delegates
                 return expand_approvers_with_delegates(db, users, req.company_id)
-        # لا يوجد مسؤول فرع → يتجاوز للمدير العام
-        base = users_by_role(db, req.company_id, ["company_manager"])
-        from .delegation import expand_approvers_with_delegates
-        return expand_approvers_with_delegates(db, base, req.company_id)
+        # QA-01/QA-02 — لا سقوط صامت للمدير.
+        #
+        # ROOT CAUSE الحقيقي للبندين: كان غياب صف BranchSupervisor للفرع (أو
+        # غياب branch_id عن الموظف) يجعل مرحلة "مسؤول الفرع" مرحلةَ المدير
+        # **شرًعا**. فالمدير يعتمدها لأنه صار معتمِدها فعًلا، ومسؤول الفرع لا
+        # يراها لأنه غير مربوط. إزالة التجاوز الصريح من can_decide لم تمسّ هذا
+        # المسار، ولم تكشفه الاختبارات لأن بيانات البذر فيها صفوف الربط
+        # والإنتاج بلا صفوف.
+        #
+        # القاعدة الآن: مرحلة بلا معتمِد مؤهَّل تبقى بلا معتمِد، وتُنبَّه الإدارة
+        # لإصلاح الربط. طلب عالق ظاهر أفضل من طلب يعتمده من ليس صاحبه.
+        emp = db.get(models.Employee, req.employee_id)
+        _warn_unassigned_stage(db, req, emp)
+        return []
     if not role:
         return []
     base = users_by_role(db, req.company_id, [role])

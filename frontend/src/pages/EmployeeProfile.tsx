@@ -468,12 +468,30 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             هذا ما تبقّى فعًلا بعد الخصم التلقائي، وتلك تقدير استحقاق. */}
         <div className="card">
           <h3>{t("leave_current_balance")}</h3>
+          {/* QA-05 — الأرقام الثلاثة مًعا بأسمائها. عرض "المتاح" وحده كان سبب
+              التناقض الظاهر: ملف الموظف يقول 30 ونهاية الخدمة تقول 1.72،
+              والرقمان صحيحان لكنهما مفهومان مختلفان. */}
           <div className="grid stats">
             <div className="stat accent">
-              <div className="num">{p.leave_balance ?? "—"}</div>
+              <div className="num">{p.leave_balance_detail?.usable_days ?? p.leave_balance ?? "—"}</div>
               <div className="lbl">{t("leave_days_available")}</div>
             </div>
+            <div className="stat">
+              <div className="num">{p.leave_balance_detail?.accrued_days ?? "—"}</div>
+              <div className="lbl">{t("leave_accrued_label")}</div>
+            </div>
+            <div className="stat">
+              <div className="num">{p.leave_balance_detail?.used_days ?? "—"}</div>
+              <div className="lbl">{t("epf_used")}</div>
+            </div>
+            <div className="stat">
+              <div className="num">{p.leave_balance_detail?.payable_days ?? "—"}</div>
+              <div className="lbl">{t("leave_payable_label")}</div>
+            </div>
           </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            {t("leave_numbers_hint")}
+          </p>
           <h4 style={{ marginTop: 18 }}>{t("leave_ledger_title")}</h4>
           <p className="muted" style={{ marginTop: 0 }}>{t("leave_ledger_hint")}</p>
           <table>
