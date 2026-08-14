@@ -382,6 +382,7 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     from ..deps import get_user_perms
     from ..permissions import has_permission
 
+    _doc_type_names = {r.code: r.name for r in db.scalars(select(models.DocumentType)).all()}
     _assigned = get_user_perms(user, db)
     _can_eos = (has_permission(user.role, _assigned, "calculate_eos")
                 or has_permission(user.role, _assigned, "terminate_employee"))
@@ -441,9 +442,14 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
             {"id": p.id, "kind": p.kind, "number": p.number,
              "expiry_date": p.expiry_date, "status": p.status} for p in permits
         ],
+        # QA-14 — الاسم البشري من جدول أنواع المستندات لا الكود الخام. الاسم
+        # مسجَّل في document_types أصًلا، وكانت الواجهة تطبع الكود لأنه ما وصلها.
+        # ونضيف تاريخ الرفع ليفرّق المستخدم بين مستندين بنفس الاسم والإصدار.
         "documents": [
-            {"id": d.id, "type": d.document_type_code, "title": d.title,
-             "expiry_date": d.expiry_date, "version": d.version} for d in docs
+            {"id": d.id, "type": d.document_type_code,
+             "type_label": _doc_type_names.get(d.document_type_code, d.document_type_code),
+             "title": d.title, "expiry_date": d.expiry_date, "version": d.version,
+             "uploaded_at": getattr(d, "created_at", None)} for d in docs
         ],
         # الخصومات: المبلغ حقل مالي حساس — يُخفى عمّن لا يملك view_actual_salary (FIX-013)
         # المسؤول المباشر يرى السبب والتاريخ فقط دون المبلغ؛ المحاسب/الإدارة العليا يريان التفصيل الكامل.

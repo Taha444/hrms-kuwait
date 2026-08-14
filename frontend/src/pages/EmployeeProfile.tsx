@@ -31,6 +31,11 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [events, setEvents] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);  // R3-C — سجل التعديلات الحرجة
   const [evForm, setEvForm] = useState({ kind: "warning", title: "", amount: "" });
+  // QA-28 — النسخ السابقة: الخادم يحفظها ويعرضها عبر /documents/history،
+  // لكن لا واجهة كانت تستدعيها ولا نقطة تنزيل تقبل معرّف إصدار — فكانت
+  // "محفوظة" بلا سبيل إلى فتحها.
+  const [versions, setVersions] = useState<any[] | null>(null);
+  const [versionsFor, setVersionsFor] = useState<string>("");
   const [actualEdit, setActualEdit] = useState(false);
   const [actualVal, setActualVal] = useState("");
 
@@ -182,6 +187,23 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     } catch (e: any) {
       setMsg(errMsg(e, t("error")));
     }
+  };
+
+  const openVersions = async (type: string, label: string) => {
+    try {
+      const r = await api.get("/documents/history", {
+        params: { entity_type: "employee", entity_id: id, document_type_code: type },
+      });
+      setVersionsFor(label); setVersions(r.data);
+    } catch (err: any) { setMsg(errMsg(err, t("error"))); }
+  };
+  const downloadVersion = async (docId: number) => {
+    try {
+      const res = await api.get(`/documents/${docId}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) { setMsg(errMsg(err, t("error"))); }
   };
 
   if (!id) return <div className="md-empty">{t("emp_select_prompt")}</div>;
@@ -433,10 +455,40 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
         <div className="card">
           <h3>{t("emp_documents")}</h3>
           <table><thead><tr><th>{t("epf_col_type")}</th><th>{t("col_title")}</th><th>{t("epf_col_version")}</th><th>{t("pro_col_expiry")}</th><th></th></tr></thead>
+            {/* QA-14 — الاسم البشري من الخادم؛ الكود يبقى احتياًطا لنوع غير مسجَّل */}
             <tbody>{p.documents.map((d: any) => (
-              <tr key={d.id}><td>{d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date}</td>
-                <td><button className="ghost" onClick={() => downloadLatest(d.type)}>{t("epf_download_latest")}</button></td></tr>
+              <tr key={d.id}><td>{d.type_label || d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date}</td>
+                <td className="row">
+                  <button className="ghost" onClick={() => downloadLatest(d.type)}>{t("epf_download_latest")}</button>
+                  <button className="ghost sm" onClick={() => openVersions(d.type, d.type_label || d.type)}>{t("doc_prev_versions")}</button>
+                </td></tr>
             ))}{!p.documents.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
+
+          {/* QA-28 — كل إصدار قابل للعرض والتحميل بتاريخه؛ الإصدار الجديد لا يمحو القديم */}
+          {versions && (
+            <div className="card" style={{ marginTop: 12, borderTop: "3px solid var(--petrol-600)" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h4 style={{ margin: 0 }}>{t("doc_prev_versions")} — {versionsFor}</h4>
+                <button className="ghost sm" onClick={() => setVersions(null)}>{t("close")}</button>
+              </div>
+              {!versions.length ? <p className="muted">{t("att_no_records")}</p> : (
+                <table><thead><tr>
+                  <th>{t("epf_col_version")}</th><th>{t("col_title")}</th>
+                  <th>{t("doc_uploaded_at")}</th><th>{t("pro_col_expiry")}</th><th></th>
+                </tr></thead><tbody>
+                  {versions.map((v: any) => (
+                    <tr key={v.id}>
+                      <td>v{v.version}{v.is_current && <span className="pill success" style={{ marginInlineStart: 6 }}>{t("doc_current")}</span>}</td>
+                      <td>{v.title}</td>
+                      <td>{v.created_at ? fmtKuwaitDate(v.created_at, lang) : "—"}</td>
+                      <td>{v.expiry_date || "—"}</td>
+                      <td><button className="ghost sm" onClick={() => downloadVersion(v.id)}>{t("download")}</button></td>
+                    </tr>
+                  ))}
+                </tbody></table>
+              )}
+            </div>
+          )}
 
           {can("upload_documents") && (
             <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
