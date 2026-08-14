@@ -3846,3 +3846,24 @@ def test_retest_secondary_assignment_excluded_from_payroll(client):
             db.commit()
         finally:
             db.close()
+
+
+def test_retest_request_details_not_raw_json():
+    """QA-07 — تفاصيل الطلب تُعرض من الـschema، لا JSON.stringify.
+
+    التسميات تأتي من الخادم (نفس الـschema الذي يبني النموذج) لا من خريطة
+    ثانية في الواجهة تنحرف عنه مع أول حقل يُضاف.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "frontend" / "src"
+    detail = root / "pages" / "RequestDetail.tsx"
+    view = root / "components" / "PayloadView.tsx"
+    if not detail.exists():
+        return
+    text = detail.read_text(encoding="utf-8")
+    assert "JSON.stringify(req.payload)" not in text, "ما زال يطبع الحمولة خاًما"
+    assert "PayloadView" in text, "لا يستخدم عارض التفاصيل"
+    assert view.exists(), "PayloadView غير موجود"
+    vtext = view.read_text(encoding="utf-8")
+    assert "/schema" in vtext, "العارض لا يقرأ التسميات من الـschema"

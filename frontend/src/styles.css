@@ -447,3 +447,7 @@ video, canvas.cam, .cam { width: 100%; max-width: 340px; border-radius: 14px; ba
   .grid.cards { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* QA-07 — جدول "تسمية: قيمة" لتفاصيل الطلب (بدل JSON خام) */
+table.kv { border-collapse: collapse; }
+table.kv td { padding: 3px 0; vertical-align: top; font-size: 13px; }

@@ -4,6 +4,7 @@ import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import RequestSteps, { ProgressMini } from "../components/RequestSteps";
+import PayloadView from "../components/PayloadView";
 import { statusAr } from "../labels";
 
 export default function RequestDetail() {
@@ -85,7 +86,8 @@ export default function RequestDetail() {
                 </span>
               </p>
             )}
-            <p className="muted">{t("rd_data")}: {JSON.stringify(req.payload)}</p>
+            {/* QA-07 — تفاصيل مقروءة من الـschema بدل JSON خام */}
+            <PayloadView typeCode={req.type} payload={req.payload} />
           </div>
           {genDoc && (
             <div className="row" style={{ flexWrap: "wrap" }}>
