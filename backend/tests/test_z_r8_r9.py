@@ -3576,3 +3576,36 @@ def test_retest_totp_window_is_configurable(client):
         assert _verify_code(secret, old_code), "لم تُقرأ النافذة من البيئة"
     finally:
         os.environ.pop("TOTP_VALID_WINDOW", None)
+
+
+def test_retest_show_rule_gates_dependent_fields():
+    """QA-09 — الحقل المذكور في show مخفي حتى يتحقق شرطه.
+
+    كانت show موثّقة ومستخدمة في REQLV بلا مُقيِّم في الطرفين، فظهرت "الوجهة"
+    دائمًا؛ فيملؤها المستخدم بدل تأشير travel_required — ولهذا وصل الحقل NULL
+    في كل طلبات الإجازة في الإنتاج.
+    """
+    from app.form_schemas import conditional_requirements, get_schema
+
+    s = get_schema("REQLV")
+    assert s, "REQLV غير موجود"
+
+    _, hidden = conditional_requirements(s, {"leave_type": "annual"})
+    assert "destination" in hidden, "الوجهة يجب أن تختفي بلا تأشير السفر"
+    assert "return_date" in hidden
+
+    add, hidden = conditional_requirements(s, {"travel_required": True})
+    assert "destination" not in hidden, "الوجهة يجب أن تظهر مع تأشير السفر"
+    assert "return_date" not in hidden
+    assert "destination" in add, "الوجهة تصير إلزامية مع السفر"
+
+
+def test_retest_frontend_implements_show_rule():
+    """QA-09 — نفس الدلالة في الواجهة، وإلا اختلف ما يراه المستخدم عمّا يفرضه الخادم."""
+    from pathlib import Path
+
+    f = Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "SchemaForm.tsx"
+    if not f.exists():
+        return
+    text = f.read_text(encoding="utf-8")
+    assert "cond.show" in text, "evalConditionals لا يقيّم قاعدة show"

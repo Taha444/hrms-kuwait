@@ -31,7 +31,12 @@ export type SchemaField = {
 
 export type Schema = {
   fields: SchemaField[];
-  conditional?: { when: Record<string, any>; require?: string[]; hide?: string[] }[];
+  conditional?: {
+    when: Record<string, any>;
+    require?: string[];
+    hide?: string[];
+    show?: string[];
+  }[];
   attachments?: { required?: string[]; optional?: string[] };
   validation?: { end_gte_start?: [string, string] };
 };
@@ -40,15 +45,22 @@ export type Schema = {
 export function evalConditionals(schema: Schema, payload: Record<string, any>) {
   const required = new Set<string>();
   const hidden = new Set<string>();
+  const gated = new Set<string>(); // كل حقل تحكمه show
+  const shown = new Set<string>(); // ومنها ما تحقق شرطه
   for (const cond of schema.conditional || []) {
+    (cond.show || []).forEach((f) => gated.add(f));
     const matches = Object.entries(cond.when || {}).every(
       ([k, v]) => payload[k] === v
     );
     if (matches) {
       (cond.require || []).forEach((f) => required.add(f));
       (cond.hide || []).forEach((f) => hidden.add(f));
+      (cond.show || []).forEach((f) => shown.add(f));
     }
   }
+  gated.forEach((f) => {
+    if (!shown.has(f)) hidden.add(f);
+  });
   return { required, hidden };
 }
 

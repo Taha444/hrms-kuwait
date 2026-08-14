@@ -801,14 +801,24 @@ def conditional_requirements(schema: dict, payload: dict) -> tuple[set[str], set
 
     مصدر واحد لمطابقة الشروط يستخدمه validate_payload و_missing_required_fields
     معًا — الاستنساخ في موضعين هو ما جعل كتالوج الإنشاء يختلف عمّا يقبله POST.
+
+    QA-09 — دلالة show: الحقل المذكور في أي قاعدة show مخفيٌّ افتراضًا ولا يظهر
+    إلا حين يتحقق شرط قاعدته. كانت show موثّقة أعلى الملف ومستخدمة في REQLV لكن
+    بلا مُقيِّم في الطرفين، فظهرت "الوجهة" دائمًا؛ فيملؤها المستخدم ظانًّا أنها
+    تعني السفر ولا يؤشّر travel_required أبدًا — ولهذا وصل الحقل NULL في كل طلب.
     """
     add: set[str] = set()
     hidden: set[str] = set()
+    gated: set[str] = set()   # كل حقل تحكمه show
+    shown: set[str] = set()   # ومنها ما تحقق شرطه
     for cond in schema.get("conditional") or []:
+        gated.update(cond.get("show") or [])
         when = cond.get("when") or {}
         if all((payload or {}).get(k) == v for k, v in when.items()):
             add.update(cond.get("require") or [])
             hidden.update(cond.get("hide") or [])
+            shown.update(cond.get("show") or [])
+    hidden |= gated - shown
     return add, hidden
 
 
