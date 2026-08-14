@@ -3684,3 +3684,48 @@ def test_retest_creatable_catalog_dedupes_by_identity(client):
                 db.commit()
         finally:
             db.close()
+
+
+def test_retest_idle_logout_enforced_by_server(client):
+    """QA-23 — الخمول يُنهي الجلسة من الخادم لا من مؤقّت المتصفح.
+
+    الاختبار يستدعي الـAPI مباشرة بتوكن سليم — أي يتجاوز الواجهة تماًما، وهو
+    بالضبط ما كان يُبطل المهلة القديمة.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app import models
+    from app.config import settings
+    from app.database import SessionLocal
+    from tests.conftest import auth_headers, login
+
+    lr = client.post("/api/auth/login",
+                     json={"civil_id": "100000000101", "password": "emp12345"})
+    assert lr.status_code == 200, lr.text
+    hdr = auth_headers(lr.json()["access_token"])
+    refresh_token = lr.json()["refresh_token"]
+    assert client.get("/api/auth/me", headers=hdr).status_code == 200
+
+    minutes = int(getattr(settings, "idle_logout_minutes", 0) or 0)
+    assert minutes > 0, "المهلة معطّلة في الإعدادات"
+
+    db = SessionLocal()
+    try:
+        user = db.scalar(select(models.User).where(models.User.civil_id == "100000000101"))
+        user.last_activity_at = (
+            datetime.now(timezone.utc) - timedelta(minutes=minutes + 5)
+        ).replace(tzinfo=None)
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/auth/me", headers=hdr)
+    assert r.status_code == 401, f"الجلسة الخاملة قُبلت: {r.status_code}"
+
+    # والتجديد لا يُحيي الخمول — وإلا لم تنتهِ جلسة أبًدا
+    rr = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert rr.status_code == 401, "التجديد أحيا جلسة خاملة"
+
+    # وتسجيل دخول جديد يعيد الجلسة
+    hdr2 = auth_headers(login(client, "100000000101", "emp12345"))
+    assert client.get("/api/auth/me", headers=hdr2).status_code == 200

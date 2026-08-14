@@ -94,6 +94,9 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
     user.failed_attempts = 0
     user.locked_until = None
     user.last_login = now
+    # QA-23 — بداية عدّاد الخمول. بلا ضبطه هنا تبقى جلسة قديمة خاملة مرفوضة
+    # حتى بعد تسجيل دخول جديد.
+    user.last_activity_at = now.replace(tzinfo=None)  # naive-UTC كما يكتبه deps
     audit(db, user, "login", "user", user.id, request=request)
     db.commit()
 
@@ -232,6 +235,10 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
+    # QA-23 — التجديد نشاط أيًضا: بلا هذا الفحص يُحيي الخمولُ نفسه بصمت، إذ
+    # تُجدِّد الواجهة التوكن دورًيا فلا تنتهي جلسة أبًدا مهما طال ترك الجهاز.
+    from ..deps import enforce_idle_timeout
+    enforce_idle_timeout(db, user)
     # R9 §16 — refresh لا يعيد active_company_id — على cross-company user يعيد الاختيار
     # (نتوقع أن التوكن يُستهلك عبر واجهة تسجل تلقائيًا اختيار الشركة الأخير من localStorage).
     return schemas.TokenOut(

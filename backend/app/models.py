@@ -74,6 +74,10 @@ class User(Base):
     # V2.2 §9 — إبطال الجلسات القديمة: كل token صادر قبل هذا الوقت يُرفض تلقائيًا.
     # يُبدَّل عند: تغيير كلمة المرور، تعطيل الحساب، اكتشاف اختراق.
     tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime)
+    # QA-23 — آخر نشاط فعلي للجلسة (UTC). الخروج التلقائي كان مؤقًتا في المتصفح
+    # وحده: يُتجاوَز بإغلاق التبويب أو باستدعاء الـAPI مباشرة، فالتوكن يظل صالًحا
+    # ساعات. الخادم هو من يفرض المهلة الآن، والمؤقّت في الواجهة تحسين تجربة فقط.
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime)
     # V2.2 §9 — 2FA (TOTP RFC 6238): سرّي base32 يُنشأ في الـenroll، ويُستخدم للتحقق كل دخول.
     #   totp_confirmed=True بعد أول تحقق ناجح؛ قبلها لا يُعتبر 2FA مفعّلًا للحساب.
     totp_secret: Mapped[str | None] = mapped_column(String(64))

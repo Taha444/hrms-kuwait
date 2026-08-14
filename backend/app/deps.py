@@ -19,6 +19,46 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 # مسارات مسموح بها حتى قبل تغيير كلمة المرور الإلزامي
 _PRE_CHANGE_ALLOWED = ("/auth/me", "/auth/change-password", "/auth/logout")
 
+# QA-23 — لا نكتب last_activity_at في كل طلب: تحديث كل دقيقة يكفي لقياس الخمول
+# بمهلة دقائق، ويجنّب كتابة على كل نداء (الواجهة تستدعي عدة نقاط لكل شاشة).
+_ACTIVITY_WRITE_THROTTLE_SECONDS = 60
+
+
+def enforce_idle_timeout(db: Session, user: models.User) -> None:
+    """يُنهي الجلسة إن تجاوز الخمول settings.idle_logout_minutes — من الخادم.
+
+    ROOT CAUSE (QA-23): المهلة كانت مؤقًتا في المتصفح فقط
+    (``auth.tsx`` → ``idle_logout_minutes``). إغلاق التبويب أو استدعاء الـAPI
+    مباشرة يتجاوزها تماًما، فيظل التوكن صالًحا حتى انتهاء صلاحيته. أي ضبط أمني
+    تفرضه الواجهة وحدها ليس ضبًطا.
+
+    idle_logout_minutes = 0 ⇒ معطّل (خيار صريح لا سلوك افتراضي).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from .config import settings
+
+    minutes = int(getattr(settings, "idle_logout_minutes", 0) or 0)
+    now = datetime.now(timezone.utc)
+    last = user.last_activity_at
+    if minutes > 0 and last is not None:
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if now - last > timedelta(minutes=minutes):
+            # لا نلمس tokens_valid_after: ذلك يُسقط جلسات كل أجهزة المستخدم.
+            # يكفي ألّا نحدّث last_activity_at هنا، فيظل كل طلب لاحق مرفوًضا
+            # حتى تسجيل دخول جديد — وهو ما يضبط الطابع من جديد.
+            raise HTTPException(
+                status_code=401,
+                detail=f"انتهت الجلسة لعدم النشاط لأكثر من {minutes} دقيقة — سجّل الدخول من جديد",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    naive_now = now.replace(tzinfo=None)
+    if last is None or (now - last).total_seconds() >= _ACTIVITY_WRITE_THROTTLE_SECONDS:
+        user.last_activity_at = naive_now
+        db.commit()
+
 
 def get_current_user(
     request: Request,
@@ -66,6 +106,9 @@ def get_current_user(
                 raise
             except Exception:
                 pass  # iat غير صالح؟ لا نمنع الوصول لأسباب موازية
+
+    # QA-23 — الخمول يُنهي الجلسة من الخادم، لا من مؤقّت المتصفح.
+    enforce_idle_timeout(db, user)
 
     # فرض تغيير كلمة المرور الإلزامي على مستوى الخادم (لا الواجهة فقط)
     if user.must_change_password and not request.url.path.endswith(_PRE_CHANGE_ALLOWED):
