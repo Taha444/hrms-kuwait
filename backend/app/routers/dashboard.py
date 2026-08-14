@@ -57,12 +57,14 @@ def dashboard(company_id: int | None = None,
             pq = pq.where(models.AttendanceRecord.company_id == cid)
         present_today = db.scalar(pq) or 0
 
-        total_licenses = count(models.License)
-        valid_licenses = count(models.License, models.License.status == "active",
-                               or_(models.License.expiry_date.is_(None),
-                                   models.License.expiry_date >= today))
-        expired_licenses = count(models.License, models.License.expiry_date.isnot(None),
-                                 models.License.expiry_date < today)
+        # QA-19 — الحساب من مصدر واحد يشترك فيه مركز العمليات. كان "المنتهية"
+        # يُحسب بلا شرط status، فتدخل المؤرشفة والمستبدَلة ويصير المقام كل
+        # التراخيص في التاريخ — فظهرت نسبة منتهية بلا مقابل في صفحة التصرّف.
+        from ..compliance import license_compliance
+        _lic = license_compliance(db, user.company_id, today)
+        total_licenses = _lic["total"]
+        valid_licenses = _lic["valid"]
+        expired_licenses = _lic["expired"]
         pct = lambda n, d: round(n / d * 100) if d else 0  # noqa: E731
 
         data.update({
@@ -78,6 +80,8 @@ def dashboard(company_id: int | None = None,
             "licenses_expiring": count(models.License, models.License.status == "active",
                                        models.License.expiry_date.isnot(None),
                                        models.License.expiry_date <= soon),
+            # يُعرض ويُختبَر مقابل مركز العمليات
+            "licenses_expired": expired_licenses,
             "performance": {
                 "attendance_rate": pct(present_today, active_emps),
                 "valid_licenses_pct": pct(valid_licenses, total_licenses),

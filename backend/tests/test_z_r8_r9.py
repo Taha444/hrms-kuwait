@@ -3910,3 +3910,99 @@ def test_retest_notifications_have_no_action_buttons(client):
     if ui.exists():
         assert 'x.kind !== "notification"' in ui.read_text(encoding="utf-8"), \
             "الواجهة ما زالت تعرض أزرار الإجراء على الإشعارات"
+
+
+def test_retest_license_compliance_ignores_archived(client):
+    """QA-19 — الترخيص المؤرشف ليس مشكلة امتثال.
+
+    كانت اللوحة تعدّ "المنتهية" بشرط expiry_date < today وحده، بلا status،
+    فتدخل المؤرشفة والمستبدَلة ويصير المقام كل التراخيص في التاريخ — فظهرت
+    نسبة منتهية بينما مركز العمليات (يفلتر النشطة) لا يعرض ولا ترخيًصا.
+    """
+    from datetime import date, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from tests.conftest import auth_headers, login
+
+    owner = auth_headers(login(client, "111111111111", "owner123"))
+    base = client.get("/api/dashboard", headers=owner)
+    if base.status_code != 200 or "licenses_expired" not in base.json():
+        import pytest
+        pytest.skip("لوحة المالك غير متاحة")
+    before = base.json()["licenses_expired"]
+
+    db = SessionLocal()
+    created = []
+    try:
+        cid = db.scalar(select(models.Company.id))
+        archived = models.License(company_id=cid, name="ترخيص ملغى", license_no="X-OLD",
+                                  status="archived",
+                                  expiry_date=date.today() - timedelta(days=400))
+        db.add(archived)
+        db.commit()
+        created.append(archived.id)
+
+        mid = client.get("/api/dashboard", headers=owner).json()["licenses_expired"]
+        assert mid == before, "الترخيص المؤرشف حُسب مشكلة امتثال"
+
+        live = models.License(company_id=cid, name="ترخيص منتهٍ", license_no="X-LIVE",
+                              status="active",
+                              expiry_date=date.today() - timedelta(days=10))
+        db.add(live)
+        db.commit()
+        created.append(live.id)
+
+        after = client.get("/api/dashboard", headers=owner).json()["licenses_expired"]
+        assert after == before + 1, "الترخيص النشط المنتهي لم يُحتسب"
+    finally:
+        for lid in created:
+            row = db.get(models.License, lid)
+            if row:
+                db.delete(row)
+        db.commit()
+        db.close()
+
+
+def test_retest_printed_docs_no_duplicate_unit_or_company(client):
+    """QA-13 — لا "د.ك د.ك" ولا "شركة شركة" ولا حقول مالية من إدخال العميل.
+
+    هذه أوراق رسمية يوقّعها الموظف ويقدّمها لجهة خارجية، فالخطأ فيها ليس
+    تجميًلا.
+    """
+    import re
+
+    from app import models
+    from app.database import SessionLocal
+    from app.routers.templates import _build_context, _resolve_authoritative_data
+
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(models.Employee).where(models.Employee.basic_salary.isnot(None)))
+        assert emp, "لا موظف براتب في البذرة"
+        ctx = _build_context(db, emp)
+
+        # القيمة رقم مجرّد — الوحدة تخصّ الجملة
+        assert "د.ك" not in ctx["basic_salary"], "قيمة الراتب ما زالت تحمل الوحدة"
+        assert "د.ك" in ctx["basic_salary_kwd"], "المفتاح ذو الوحدة مفقود"
+        # الحقول المالية من القاعدة لا من الفورم
+        assert "gross_salary" in ctx and "allowances_total" in ctx
+        forged = _resolve_authoritative_data(db, emp, {
+            "gross_salary": "999999", "allowances_total": "999999",
+        })
+        assert forged["gross_salary"] != "999999", "الإجمالي قابل للتزوير من الفورم"
+        assert forged["allowances_total"] != "999999", "البدلات قابلة للتزوير من الفورم"
+
+        # ولا تكرار في القوالب العامة
+        dup_company = re.compile(r"شركة\s+\{\{\s*company_name")
+        dup_unit = re.compile(r"\{\{\s*basic_salary\s*\}\}\s*(?:</strong>)?\s*(?:د\.ك|دينار)"
+                              r"|(?:د\.ك)\s*\{\{\s*basic_salary\s*\}\}")
+        for tpl in db.scalars(select(models.DocumentTemplate).where(
+                models.DocumentTemplate.company_id.is_(None))).all():
+            body = tpl.body_html or ""
+            assert not dup_company.search(body), f"«شركة شركة» في القالب {tpl.code}"
+            rendered = body.replace("{{basic_salary}}", ctx["basic_salary"]) \
+                           .replace("{{basic_salary_kwd}}", ctx["basic_salary_kwd"])
+            assert "د.ك د.ك" not in rendered, f"«د.ك د.ك» في القالب {tpl.code}"
+    finally:
+        db.close()
