@@ -198,6 +198,13 @@ def initiate_case(request: Request, employee_id: int,
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id, db=db)
+    # QA-18 — سجل وصول/صلاحية لا وظيفة: لا مستحق نهاية خدمة عليه، فحسابه
+    # يخلق التزاًما ماليا لا وجود له.
+    if getattr(emp, "non_payroll", False):
+        raise HTTPException(status_code=409, detail=(
+            "هذا السجل للوصول/الصلاحية فقط وليس وظيفة على كشف الرواتب — "
+            "لا تُفتح له حالة نهاية خدمة"
+        ))
     if reason not in eos_engine.TERMINATION_REASONS:
         raise HTTPException(status_code=400, detail=(
             f"سبب غير معروف — المسموح: {list(eos_engine.TERMINATION_REASONS.keys())}"

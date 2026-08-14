@@ -3816,3 +3816,33 @@ def test_retest_gov_task_counter_matches_operations(client):
     assert dash.json().get("gov_tasks") == ops.json().get("open_gov_tasks"), (
         "عدّاد اللوحة يخالف مركز العمليات"
     )
+
+
+def test_retest_secondary_assignment_excluded_from_payroll(client):
+    """QA-18 — الإسناد الثانوي لا يدخل كشف الرواتب ولا تُفتح له نهاية خدمة."""
+    from app import models
+    from app.database import SessionLocal
+    from app.payroll import compute_payroll
+
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(models.Employee).where(models.Employee.status == "active"))
+        assert emp, "لا موظف نشط في البذرة"
+        cid, eid = emp.company_id, emp.id
+        before = compute_payroll(db, cid, 2026, 1)
+        assert any(p["employee_id"] == eid for p in before["payslips"]), "الموظف غير موجود أصًلا"
+
+        emp.non_payroll = True
+        emp.non_payroll_reason = "اختبار"
+        db.commit()
+        after = compute_payroll(db, cid, 2026, 1)
+        assert not any(p["employee_id"] == eid for p in after["payslips"]), \
+            "سجل الوصول/الصلاحية ما زال في كشف الرواتب"
+    finally:
+        try:
+            emp = db.get(models.Employee, eid)
+            emp.non_payroll = False
+            emp.non_payroll_reason = None
+            db.commit()
+        finally:
+            db.close()

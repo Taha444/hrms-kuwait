@@ -273,6 +273,7 @@ def enable_cross_company(user_id: int, request: Request,
 def add_company_link(user_id: int, request: Request,
                     company_id: int, employee_id: int,
                     role: str = "delegate",
+                    non_payroll: bool | None = None,
                     user: models.User = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
     """R9 §16 — يضيف عضوية شركة لمستخدم متعدد الشركات.
@@ -330,6 +331,18 @@ def add_company_link(user_id: int, request: Request,
                   detail=f"company#{company_id} → emp#{employee_id}", request=request)
             db.commit()
         return {"ok": True, "link_id": existing.id, "updated": True}
+
+    # QA-18 — الإسناد الثانوي ليس وظيفة ثانية: من له وظيفة أصلية في شركة
+    # يحتاج سجل موظف في الشركة الأخرى ليعمل فيها، لا راتًبا ثانًيا. بلا هذا
+    # التمييز دخل المندوب كشف الشركة الثانية براتب صفر واحتُسب له مستحق
+    # نهاية خدمة لا وجود له. الافتراض مشتقّ لا مفروض: يُعتبر ثانوًيا إن كانت
+    # للمستخدم وظيفة أصلية أو عضوية سابقة — ويبقى للمشرف تجاوزه صراحًة.
+    is_secondary = bool(target.employee_id) or bool(db.scalar(
+        select(models.UserCompanyLink).where(models.UserCompanyLink.user_id == user_id)))
+    mark_non_payroll = is_secondary if non_payroll is None else non_payroll
+    if mark_non_payroll and not emp.non_payroll:
+        emp.non_payroll = True
+        emp.non_payroll_reason = f"إسناد ثانوي لحساب #{user_id} — وصول/صلاحية فقط"
 
     link = models.UserCompanyLink(
         user_id=user_id, company_id=company_id, employee_id=employee_id,

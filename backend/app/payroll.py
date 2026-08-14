@@ -12,7 +12,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from . import models
@@ -27,9 +27,13 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
     first = datetime(year, month, 1)
     nxt = datetime(year, month, days_in_month) + timedelta(days=1)
 
+    # QA-18 — سجلات الوصول/الصلاحية ليست وظائف على الكشف: المندوب الذي يخدم
+    # شركتين له سجل في كل منهما وراتب في واحدة، فكان يدخل كشف الثانية براتب صفر.
     employees = db.scalars(select(models.Employee).where(
         models.Employee.company_id == company_id,
-        models.Employee.status == "active")).all()
+        models.Employee.status == "active",
+        or_(models.Employee.non_payroll.is_(False),
+            models.Employee.non_payroll.is_(None)))).all()
 
     payslips = []
     totals = {"gross": 0.0, "deductions": 0.0, "net": 0.0, "overtime": 0.0}

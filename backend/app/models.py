@@ -384,6 +384,12 @@ class Employee(Base):
     attendance_exempt_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     attendance_exempt_approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     annual_leave_balance: Mapped[float] = mapped_column(Float, default=30)
+    # QA-18 — سجل وصول/صلاحية فقط، لا وظيفة على كشف الرواتب.
+    # المندوب الذي يخدم شركتين يحتاج سجل موظف في كل منهما ليعمل فيهما، لكن
+    # راتبه في واحدة فقط. بلا هذا التمييز يدخل كشف الشركة الثانية براتب صفر
+    # ويُحتسب له مستحق نهاية خدمة لا وجود له.
+    non_payroll: Mapped[bool] = mapped_column(Boolean, default=False)
+    non_payroll_reason: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(30))
     photo: Mapped[str | None] = mapped_column(String(300))
     # نهاية الخدمة: تُحفظ نتيجة الحسبة في ملف الموظف عند الإنهاء
