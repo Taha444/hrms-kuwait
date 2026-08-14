@@ -17,6 +17,11 @@ export default function MyProfile() {
   const [sigErr, setSigErr] = useState("");
   const [sigMsg, setSigMsg] = useState("");
   const [sigPreview, setSigPreview] = useState<string | null>(null);
+  // QA-25 — حالة الصورة منفصلة عن حقيقة "هل يوجد توقيع؟". كان الصندوق يقرأ
+  // الصورة بينما "آخر تحديث" وزر الاستبدال يقرآن has_signature، فإذا فشل
+  // تحميل الصورة ظهر "لم يتم رفع توقيع بعد" فوق تاريخ آخر تحديث — تناقض
+  // مصدره مصدران لحقيقة واحدة لا خطأ في أيهما.
+  const [sigImg, setSigImg] = useState<"idle" | "loading" | "error">("idle");
 
   // المعاينة تُجلب كـblob عبر axios ثم تُحوَّل لـobject URL. وضع المسار مباشرة
   // في <img src> لا يعمل: المتصفح لا يرفق ترويسة Authorization مع طلب الصورة،
@@ -25,12 +30,16 @@ export default function MyProfile() {
     setSig(r.data);
     setSigPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     if (r.data.has_signature) {
+      setSigImg("loading");
       try {
         const img = await api.get("/me/signature/image", { responseType: "blob" });
         setSigPreview(URL.createObjectURL(img.data as Blob));
-      } catch { setSigPreview(null); }
+        setSigImg("idle");
+      } catch { setSigPreview(null); setSigImg("error"); }
+    } else {
+      setSigImg("idle");
     }
-  }).catch(() => setSig({ has_signature: false, updated_at: null }));
+  }).catch(() => { setSig({ has_signature: false, updated_at: null }); setSigImg("idle"); });
 
   // نحرّر آخر object URL عند مغادرة الصفحة حتى لا تتسرّب الذاكرة
   useEffect(() => () => { if (sigPreview) URL.revokeObjectURL(sigPreview); }, [sigPreview]);
@@ -155,6 +164,11 @@ export default function MyProfile() {
                           minHeight: 80, minWidth: 200, borderRadius: 6 }}>
               <img src={sigPreview} alt={t("sig_preview")}
                    style={{ maxHeight: 80, maxWidth: 260, display: "block" }} />
+            </div>
+          ) : sig?.has_signature ? (
+            /* QA-25 — يوجد توقيع لكن صورته لم تُحمَّل: حالة ثالثة صريحة، لا "لا يوجد توقيع" */
+            <div className="muted" style={{ padding: 12 }}>
+              {sigImg === "error" ? t("sig_preview_failed") : t("loading")}
             </div>
           ) : (
             <div className="muted" style={{ padding: 12 }}>{t("sig_none")}</div>

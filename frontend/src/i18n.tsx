@@ -212,6 +212,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   sig_uploaded: { ar: "تم رفع التوقيع بنجاح", en: "Signature uploaded successfully" },
   sig_none: { ar: "لم يتم رفع توقيع بعد", en: "No signature uploaded yet" },
   sig_preview: { ar: "معاينة التوقيع", en: "Signature preview" },
+  // QA-25 — يوجد توقيع مسجَّل لكن صورته تعذّر تحميلها: حالة مختلفة عن غيابه
+  sig_preview_failed: { ar: "تعذّر عرض صورة التوقيع — حدّث الصفحة",
+                        en: "Signature image could not be loaded — refresh the page" },
   sig_updated_at: { ar: "آخر تحديث", en: "Last updated" },
   sig_too_large: { ar: "حجم الصورة يتجاوز 500KB — استخدم صورة أصغر", en: "File exceeds 500KB — use a smaller image" },
   // مركز العمليات
