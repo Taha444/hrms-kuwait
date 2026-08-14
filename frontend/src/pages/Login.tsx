@@ -61,13 +61,17 @@ export default function Login() {
         {requires2fa && (
           <div className="field">
             <label htmlFor="login-totp">رمز التحقق الثنائي (2FA)</label>
-            <input id="login-totp" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
+            {/* QA-30 — الحقل كان يحذف كل ما ليس رقًما ويقصّ عند 6، فرمز
+                الاسترداد (A1B2-C3D4) يستحيل إدخاله — ويبقى فاقد الهاتف محبوًسا
+                رغم وجود المخرج في الخادم. */}
+            <input id="login-totp" value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.slice(0, 20))}
+              maxLength={20}
               placeholder="123456" autoFocus dir="ltr"
-              style={{ textAlign: "center", letterSpacing: 6, fontSize: 20 }}
+              style={{ textAlign: "center", letterSpacing: 4, fontSize: 20 }}
               autoComplete="one-time-code" required aria-required="true" />
             <span className="muted" style={{ fontSize: 12 }}>
-              افتح تطبيق Authenticator وأدخل الرمز الظاهر (6 خانات)
+              افتح تطبيق Authenticator وأدخل الرمز الظاهر (6 خانات)، أو استخدم أحد رموز الاسترداد إن فقدت الجهاز
             </span>
           </div>
         )}

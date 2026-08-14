@@ -79,8 +79,15 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
                 status_code=401,
                 detail={"requires_2fa": True, "message": "أدخل رمز التحقق الثنائي"},
             )
-        from .twofa import _verify_code
-        if not _verify_code(user.totp_secret, data.totp_code):
+        from .twofa import _verify_code, consume_recovery_code
+        if _verify_code(user.totp_secret, data.totp_code):
+            pass
+        # QA-30 — رمز الاسترداد بديل مقبول: بدونه يكون فقدان الهاتف قفًلا تاًما
+        # (الدخول يستلزم رمًزا، وتعطيل 2FA يستلزم جلسة تستلزم الدخول).
+        elif consume_recovery_code(user, data.totp_code):
+            audit(db, user, "totp_recovery_used", "user", user.id, request=request,
+                  detail=f"remaining={len(user.totp_recovery_hashes or [])}")
+        else:
             audit(db, user, "totp_login_fail", "user", user.id, request=request)
             db.commit()
             raise HTTPException(status_code=401, detail="رمز التحقق الثنائي غير صحيح")

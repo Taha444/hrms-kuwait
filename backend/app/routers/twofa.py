@@ -71,6 +71,46 @@ def _verify_code(secret: str, code: str, valid_window: int | None = None) -> boo
     return totp.verify(code.strip(), valid_window=valid_window)
 
 
+RECOVERY_CODE_COUNT = 10
+
+
+def generate_recovery_codes(user: models.User) -> list[str]:
+    """QA-30 — يولّد رموز استرداد لمرة واحدة ويخزّن تجزئتها فقط.
+
+    ROOT CAUSE: 2FA كان مفروًضا عند كل دخول بلا أي مخرج: من يفقد هاتفه لا
+    يستطيع الدخول، و/2fa/disable نفسها تحتاج جلسة تحتاج رمًزا — حلقة مغلقة
+    لا مخرج منها إلا تعديل يدوي في قاعدة البيانات.
+
+    تُعاد نًصا **مرة واحدة فقط** للمستخدم؛ ولا تُخزَّن ولا تُسجَّل ولا تُرسَل
+    في أي تقرير — كما لا تُخزَّن كلمة المرور.
+    """
+    import secrets
+
+    from ..security import hash_password
+
+    codes = ["-".join((secrets.token_hex(2), secrets.token_hex(2))).upper()
+             for _ in range(RECOVERY_CODE_COUNT)]
+    user.totp_recovery_hashes = [hash_password(c) for c in codes]
+    return codes
+
+
+def consume_recovery_code(user: models.User, code: str) -> bool:
+    """يتحقق من رمز استرداد ويستهلكه (لا يصلح مرتين)."""
+    from ..security import verify_password
+
+    if not code or not user.totp_recovery_hashes:
+        return False
+    normalized = code.strip().upper()
+    remaining = list(user.totp_recovery_hashes)
+    for h in remaining:
+        if verify_password(normalized, h):
+            remaining.remove(h)
+            # إعادة الإسناد ضرورية: تعديل القائمة في مكانها لا يُعلِم SQLAlchemy
+            user.totp_recovery_hashes = remaining
+            return True
+    return False
+
+
 def clock_skew_seconds() -> float | None:
     """انحراف ساعة الخادم عن مصدر خارجي — تشخيص لا تصحيح.
 
@@ -124,9 +164,12 @@ def confirm(data: VerifyIn, request: Request,
         raise HTTPException(status_code=400, detail="الرمز غير صالح أو انتهت صلاحيته")
     user.totp_confirmed = True
     user.totp_last_used_at = datetime.now(timezone.utc)
-    audit(db, user, "totp_enable", "user", user.id, request=request)
+    codes = generate_recovery_codes(user)
+    audit(db, user, "totp_enable", "user", user.id, request=request,
+          detail=f"recovery_codes={len(codes)}")
     db.commit()
-    return {"ok": True, "confirmed": True}
+    # تُعرض مرة واحدة ولا سبيل لاستعادتها بعدها — إعادة التوليد وحدها
+    return {"ok": True, "confirmed": True, "recovery_codes": codes}
 
 
 @router.post("/verify")
@@ -155,6 +198,7 @@ def disable(data: DisableIn, request: Request,
         return {"ok": True, "already_disabled": True}
     user.totp_secret = None
     user.totp_confirmed = False
+    user.totp_recovery_hashes = None  # لا رموز بلا 2FA
     audit(db, user, "totp_disable", "user", user.id, request=request)
     db.commit()
     return {"ok": True, "disabled": True}
@@ -171,4 +215,21 @@ def status(user: models.User = Depends(get_current_user)):
         # R6-D §4 — تسمية دور المستخدم عشان الواجهة تعرض نصًا مخصّصًا بدل عام
         "role": user.role,
         "role_label_ar": ROLE_LABEL_AR.get(user.role, user.role),
+        # QA-30 — العدد المتبقّي فقط؛ الرموز نفسها لا تُستعاد بعد عرضها
+        "recovery_codes_remaining": len(user.totp_recovery_hashes or []),
     }
+
+
+@router.post("/recovery/regenerate")
+def regenerate_recovery(data: DisableIn, request: Request,
+                        user: models.User = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    """QA-30 — يولّد رموز استرداد جديدة (يبطل القديمة) بعد تأكيد كلمة المرور."""
+    if not verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="كلمة المرور غير صحيحة")
+    if not (user.totp_secret and user.totp_confirmed):
+        raise HTTPException(status_code=400, detail="2FA غير مفعّل لحسابك")
+    codes = generate_recovery_codes(user)
+    audit(db, user, "totp_recovery_regenerate", "user", user.id, request=request)
+    db.commit()
+    return {"ok": True, "recovery_codes": codes}

@@ -83,6 +83,11 @@ class User(Base):
     #   totp_confirmed=True بعد أول تحقق ناجح؛ قبلها لا يُعتبر 2FA مفعّلًا للحساب.
     totp_secret: Mapped[str | None] = mapped_column(String(64))
     totp_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # QA-30 — رموز الاسترداد: مخزَّنة مُجزَّأة (hash) لا نًصا، وتُستهلك مرة واحدة.
+    # بدونها يكون فقدان الهاتف قفًلا تاًما: الدخول يستلزم رمز TOTP، وتعطيل
+    # 2FA يستلزم جلسة تستلزم الدخول — حلقة مغلقة لا مخرج منها إلا تدخّل يدوي
+    # في قاعدة البيانات.
+    totp_recovery_hashes: Mapped[list | None] = mapped_column(JSON)
     totp_last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     # SIG-01 — التوقيع الشخصي: مسار صورة PNG/JPG يرفعها المستخدم مرة واحدة، ويحقنها

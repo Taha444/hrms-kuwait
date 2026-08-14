@@ -40,6 +40,14 @@ const L = {
     confirm_disable: "هل أنت متأكد من تعطيل 2FA؟ سيقلّل ذلك من حماية حسابك.",
     disabled: "تم تعطيل 2FA",
     err_disable: "فشل التعطيل",
+    rec_title: "رموز الاسترداد",
+    rec_hint: "احفظها في مكان آمن الآن — لن تُعرض مرة أخرى. كل رمز يُستخدم مرة واحدة، ويُغنيك عن التطبيق إن فقدت هاتفك.",
+    rec_copy: "نسخ الرموز",
+    rec_copied: "تم النسخ",
+    rec_done: "حفظتها",
+    rec_remaining: "المتبقّي من رموز الاسترداد",
+    rec_regen: "توليد رموز جديدة",
+    rec_regen_confirm: "سيتم إبطال كل الرموز القديمة. هل تتابع؟",
   },
   en: {
     security: "Security",
@@ -76,6 +84,14 @@ const L = {
     confirm_disable: "Are you sure you want to disable 2FA? This will reduce your account protection.",
     disabled: "2FA disabled",
     err_disable: "Failed to disable",
+    rec_title: "Recovery codes",
+    rec_hint: "Save these now — they will not be shown again. Each code works once and replaces the app if you lose your phone.",
+    rec_copy: "Copy codes",
+    rec_copied: "Copied",
+    rec_done: "I saved them",
+    rec_remaining: "Recovery codes remaining",
+    rec_regen: "Generate new codes",
+    rec_regen_confirm: "All old codes will be invalidated. Continue?",
   },
 };
 
@@ -91,6 +107,7 @@ type Status = {
   last_used_at: string | null;
   role?: string;
   role_label_ar?: string;
+  recovery_codes_remaining?: number;
 };
 
 type Enrollment = {
@@ -110,6 +127,8 @@ export default function TwoFactor() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // QA-30 — تُعرض مرة واحدة فقط بعد التفعيل؛ لا تُخزَّن ولا تُطلَب من الخادم ثانيًة
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   const loadStatus = () => api.get("/2fa/status").then((r) => setStatus(r.data))
     .catch((e) => setErr(errMsg(e, t.err_load_status)));
@@ -129,12 +148,26 @@ export default function TwoFactor() {
     if (!/^\d{6}$/.test(code)) { setErr(t.err_code_6_digits); return; }
     setErr(""); setBusy(true);
     try {
-      await api.post("/2fa/confirm", { code });
+      const r = await api.post("/2fa/confirm", { code });
+      setRecoveryCodes(r.data?.recovery_codes || null);
       setMsg(t.enabled_success);
       setEnrollment(null);
       setCode("");
       await loadStatus();
     } catch (e: any) { setErr(errMsg(e, t.err_code_invalid)); }
+    finally { setBusy(false); }
+  };
+
+  const regenerate = async () => {
+    if (!password) { setErr(t.err_need_password); return; }
+    if (!window.confirm(t.rec_regen_confirm)) return;
+    setErr(""); setBusy(true);
+    try {
+      const r = await api.post("/2fa/recovery/regenerate", { password });
+      setRecoveryCodes(r.data?.recovery_codes || null);
+      setPassword("");
+      await loadStatus();
+    } catch (e: any) { setErr(errMsg(e, t.err_disable)); }
     finally { setBusy(false); }
   };
 
@@ -175,6 +208,44 @@ export default function TwoFactor() {
 
       {msg && <div className="ok" role="status" aria-live="polite">{msg}</div>}
       {err && <div className="err" role="alert" aria-live="assertive">{err}</div>}
+
+      {/* QA-30 — رموز الاسترداد: تُعرض مرة واحدة فور توليدها ثم لا سبيل إليها.
+          بدونها كان فقدان الهاتف قفًلا تاًما لا مخرج منه إلا تعديل يدوي في
+          قاعدة البيانات. */}
+      {recoveryCodes && (
+        <div className="card" style={{ borderTop: "3px solid var(--warning)" }}>
+          <h3 style={{ marginTop: 0 }}>{t.rec_title}</h3>
+          <p className="muted" style={{ marginTop: 0 }}>{t.rec_hint}</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                        gap: 8, direction: "ltr", fontFamily: "monospace", fontSize: 15 }}>
+            {recoveryCodes.map((c) => (
+              <div key={c} style={{ padding: "6px 10px", background: "var(--surface-2, #f4f6f8)",
+                                    borderRadius: 6, textAlign: "center" }}>{c}</div>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="ghost" onClick={() => {
+              navigator.clipboard?.writeText(recoveryCodes.join("\n"));
+              setMsg(t.rec_copied);
+            }}>{t.rec_copy}</button>
+            <button onClick={() => setRecoveryCodes(null)}>{t.rec_done}</button>
+          </div>
+        </div>
+      )}
+
+      {status?.enabled && !recoveryCodes && (
+        <div className="card">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <b>{t.rec_title}</b>
+              <div className="muted" style={{ fontSize: 13 }}>
+                {t.rec_remaining}: {status.recovery_codes_remaining ?? 0}
+              </div>
+            </div>
+            <button className="ghost" disabled={busy} onClick={regenerate}>{t.rec_regen}</button>
+          </div>
+        </div>
+      )}
 
       {status.enabled && (
         <div className="card">
