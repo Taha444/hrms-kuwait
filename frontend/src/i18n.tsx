@@ -56,6 +56,10 @@ const dict: Record<string, { ar: string; en: string }> = {
   loading: { ar: "جارِ التحميل…", en: "Loading…" },
   // QA-12 — سطر معلومة لا إجراء عليه
   tasks_info_only: { ar: "للعلم فقط", en: "For your information" },
+  // QA-28 — النسخ السابقة من المستندات
+  doc_prev_versions: { ar: "النسخ السابقة", en: "Previous versions" },
+  doc_uploaded_at: { ar: "تاريخ الرفع", en: "Uploaded" },
+  doc_current: { ar: "الحالية", en: "Current" },
   yes: { ar: "نعم", en: "Yes" },
   no: { ar: "لا", en: "No" },
   // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات

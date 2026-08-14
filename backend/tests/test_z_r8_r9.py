@@ -4006,3 +4006,23 @@ def test_retest_printed_docs_no_duplicate_unit_or_company(client):
             assert "د.ك د.ك" not in rendered, f"«د.ك د.ك» في القالب {tpl.code}"
     finally:
         db.close()
+
+
+def test_retest_document_versions_reachable(client):
+    """QA-14/QA-28 — الاسم البشري لنوع المستند، وكل إصدار قابل للتنزيل.
+
+    /documents/history كانت تُرجع الإصدارات بلا نقطة تنزيل تقبل معرّف إصدار،
+    وبلا واجهة تستدعيها — "محفوظة" ولا سبيل إلى فتحها.
+    """
+    from pathlib import Path
+
+    from app.main import app
+
+    routes = {getattr(r, "path", "") for r in app.routes}
+    assert "/api/documents/{doc_id}/download" in routes, "لا نقطة تنزيل لإصدار بعينه"
+
+    ui = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "EmployeeProfile.tsx"
+    if ui.exists():
+        text = ui.read_text(encoding="utf-8")
+        assert "/documents/history" in text, "الواجهة لا تستدعي سجل الإصدارات"
+        assert "d.type_label" in text, "الواجهة ما زالت تعرض كود نوع المستند"

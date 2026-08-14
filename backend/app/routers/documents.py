@@ -304,3 +304,25 @@ def document_history(entity_type: str, entity_id: int, document_type_code: str |
     return [{"id": d.id, "type": d.document_type_code, "title": d.title,
              "version": d.version, "is_current": d.is_current,
              "expiry_date": d.expiry_date, "created_at": d.created_at} for d in rows]
+
+
+@router.get("/{doc_id}/download")
+def download_document_version(doc_id: int, request: Request,
+                              user: models.User = Depends(require_perm("view_documents")),
+                              db: Session = Depends(get_db)):
+    """QA-28 — تنزيل نسخة بعينها من مستند (لا الأحدث وحدها).
+
+    ROOT CAUSE: ``/documents/history`` كانت تُرجع كل الإصدارات، لكن لا نقطة
+    تنزيل تقبل معرّف إصدار — و``/documents/latest`` تُرجع الحالي فقط. فالنسخ
+    السابقة كانت "محفوظة" ولا سبيل إلى فتحها: وجودها في القاعدة لا يكفي.
+    """
+    doc = db.get(models.Document, doc_id)
+    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+    assert_same_company(user, doc.company_id, db=db)
+    audit(db, user, "download_document_version", doc.entity_type, doc.entity_id,
+          detail=f"{doc.document_type_code} v{doc.version} (id={doc.id})",
+          request=request, company_id=doc.company_id)
+    db.commit()
+    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+                        media_type=doc.mime or "application/octet-stream")
