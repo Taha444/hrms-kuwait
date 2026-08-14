@@ -390,8 +390,11 @@ DEFAULT_REQUEST_TYPES = [
     # طلب تغيير التوقيع: الموظف يرفع أول توقيع مباشرة من ملفه، أما تغييره بعد ذلك
     # فيمر من هنا. التوقيع دليل يُحتجّ به على كل مستند وُقِّع سابقًا، فتغييره
     # قرار يوثَّق بسبب ويعتمده HR لا إجراء ذاتي صامت.
+    # QA-07 — visible_to_employee=True: النوع خدمة ذاتية بنص تعليقه أعلاه، لكنه
+    # وُرِث الافتراضي False المخصّص لإجراءات ADM* الداخلية، فاختفى من "طلب جديد"
+    # عند الموظف — وهو صاحبه الوحيد.
     _simple("REQSIG", "طلب تغيير التوقيع", CAT_ADMIN,
-           ["hr"], requires_physical_signature=False),
+           ["hr"], requires_physical_signature=False, visible_to_employee=True),
 ]
 
 

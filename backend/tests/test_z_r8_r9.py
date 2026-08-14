@@ -3609,3 +3609,78 @@ def test_retest_frontend_implements_show_rule():
         return
     text = f.read_text(encoding="utf-8")
     assert "cond.show" in text, "evalConditionals لا يقيّم قاعدة show"
+
+
+def test_retest_reqsig_visible_to_employee(client):
+    """QA-07 — طلب تغيير التوقيع خدمة ذاتية، فيجب أن يظهر للموظف في "طلب جديد"."""
+    from tests.conftest import auth_headers, login
+
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.get("/api/requests/types", headers=emp, params={"creatable_only": True})
+    assert r.status_code == 200, r.text
+    codes = {t["code"] for t in r.json()}
+    assert "REQSIG" in codes, "REQSIG غائب عن كتالوج الموظف"
+
+
+def test_retest_reqsig_fix_reaches_existing_databases():
+    """QA-07 — البذر يُدرج ولا يُحدِّث، فتصحيح التعريف وحده لا يبلغ قاعدة قائمة.
+
+    بلا ترحيل يبقى الصف في الإنتاج على قيمته الخاطئة ويمرّ الاختبار أعلاه
+    كذًبا لأنه يعمل على قاعدة مبذورة من الصفر — نفس الفخ الذي أوقع قوالب
+    الإشعارات ثم البنود الخمسة المعلَنة "مُتحقَّقة".
+    """
+    from pathlib import Path
+
+    versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    hits = [
+        p for p in versions.glob("*.py")
+        if "REQSIG" in p.read_text(encoding="utf-8")
+        and "visible_to_employee" in p.read_text(encoding="utf-8")
+    ]
+    assert hits, "لا ترحيل يوصّل تصحيح REQSIG إلى القواعد القائمة"
+
+
+def test_retest_creatable_catalog_dedupes_by_identity(client):
+    """QA-08 — نوعان بنفس الاسم لا يظهران مرتين في شاشة "طلب جديد"."""
+    from tests.conftest import auth_headers, login
+    from app import models
+    from app.database import SessionLocal
+
+    emp = auth_headers(login(client, "100000000101", "emp12345"))
+    before = client.get("/api/requests/types", headers=emp,
+                        params={"creatable_only": True}).json()
+    assert before, "الكتالوج فارغ"
+    target = before[0]
+
+    db = SessionLocal()
+    try:
+        # صف قديم مكرر كالذي في الإنتاج: كود مختلف، نفس الاسم
+        dup = models.RequestType(
+            company_id=None, code=f"{target['code']}_OLD", name=target["name"],
+            category=target["category"], approval_chain_json=[],
+            visible_to_employee=True, is_active=True,
+        )
+        db.add(dup)
+        db.commit()
+        dup_id = dup.id
+    finally:
+        db.close()
+
+    try:
+        after = client.get("/api/requests/types", headers=emp,
+                           params={"creatable_only": True}).json()
+        names = [t["name"] for t in after]
+        assert names.count(target["name"]) == 1, "الاسم مكرر في كتالوج الإنشاء"
+        # والكتالوج الكامل يبقى كما هو للقراءة وعرض الطلبات التاريخية
+        full = client.get("/api/requests/types", headers=emp).json()
+        assert any(t["code"] == f"{target['code']}_OLD" for t in full), \
+            "الكتالوج الكامل يجب ألا يُخفي الأنواع القديمة"
+    finally:
+        db = SessionLocal()
+        try:
+            row = db.get(models.RequestType, dup_id)
+            if row:
+                db.delete(row)
+                db.commit()
+        finally:
+            db.close()

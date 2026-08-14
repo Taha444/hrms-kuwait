@@ -164,7 +164,12 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
     canonical_display = ff.is_enabled(db, cid, ff.V15_CANONICAL_DISPLAY)
     hide_legacy = ff.is_enabled(db, cid, ff.V15_LEGACY_CATALOG_HIDDEN)
 
-    seen, out = set(), []
+    # QA-08 — التكرار في شاشة "طلب جديد" مصدره صفوف قديمة في القاعدة لا التعريفات
+    # (54 كوًدا فريًدا بلا أسماء مكرّرة). فبدل تنظيف بيانات لا نراها، نُلغي التكرار
+    # على مستوى الهوية: نوعان يحملان نفس canonical أو نفس الاسم هما نوع واحد
+    # للمستخدم. يقتصر ذلك على كتالوج الإنشاء؛ الكتالوج الكامل يبقى كما هو
+    # للقراءة وعرض الطلبات التاريخية.
+    seen, seen_identity, out = set(), set(), []
     for rt in sorted(rows, key=lambda r: (r.code, r.company_id is None)):
         if rt.company_id not in (None, cid):
             continue
@@ -182,6 +187,11 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         replacement = superseded_by(db, cid, rt.code)
         if creatable_only and replacement:
             continue
+        if creatable_only:
+            identity = canonical_code or (rt.name or "").strip()
+            if identity and identity in seen_identity:
+                continue
+            seen_identity.add(identity)
         # hide_legacy: يخفي الأنواع المُستبدَلة فعلًا فقط. سابقًا كان يخفي كل نوع
         # بلا canonical id — وهو 48 نوعًا من كتالوج V1.3 صالحة تمامًا — فيفرغ
         # القائمة من كل ما يمكن إنشاؤه ويترك المُستبدَل وحده معروضًا.
