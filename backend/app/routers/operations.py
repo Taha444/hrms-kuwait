@@ -91,13 +91,9 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
     pending_requests = db.scalar(rq) or 0
 
     # المهام الحكومية المفتوحة
-    tq = select(func.count()).select_from(models.Task).where(
-        models.Task.status == "open",
-        models.Task.type.in_(["renew_residency", "renew_work_permit", "license_expiring",
-                              "doc_expiring", "transfer_info", "exit_permit", "capacity_exceeded"]))
-    if cid is not None:
-        tq = tq.where(models.Task.company_id == cid)
-    open_gov_tasks = db.scalar(tq) or 0
+    # QA-20 — التعريف من مصدر واحد يشترك فيه عدّاد اللوحة وهذه الصفحة
+    from ..gov_tasks import count_open_gov_tasks
+    open_gov_tasks = count_open_gov_tasks(db, cid)
 
     # ملخّص الامتثال
     all_items = permits + licenses

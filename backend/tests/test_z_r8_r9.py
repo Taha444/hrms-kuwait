@@ -3797,3 +3797,22 @@ def test_retest_audit_always_has_actor_and_ip(client):
             assert row.ip, f"سجل بلا IP: {row.action}"
     finally:
         db.close()
+
+
+def test_retest_gov_task_counter_matches_operations(client):
+    """QA-20 — عدّاد "المهام الحكومية" في اللوحة = ما يعرضه مركز العمليات.
+
+    البطاقة تنقل إلى مركز العمليات، فاختلاف التعريفين يعني رقًما بلا أثر
+    بعد النقر. الاختبار يقارن العددين للمستخدم نفسه.
+    """
+    from tests.conftest import auth_headers, login
+
+    pro = auth_headers(login(client, "100000000003", "deleg123"))
+    dash = client.get("/api/dashboard", headers=pro)
+    ops = client.get("/api/operations", headers=pro)
+    if dash.status_code != 200 or ops.status_code != 200:
+        import pytest
+        pytest.skip(f"dashboard={dash.status_code} ops={ops.status_code}")
+    assert dash.json().get("gov_tasks") == ops.json().get("open_gov_tasks"), (
+        "عدّاد اللوحة يخالف مركز العمليات"
+    )

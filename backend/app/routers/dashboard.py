@@ -28,6 +28,8 @@ def dashboard(company_id: int | None = None,
             q = q.where(c)
         return db.scalar(q) or 0
 
+    from ..gov_tasks import count_open_gov_tasks
+
     my_open_tasks = db.scalar(
         select(func.count()).select_from(models.Task)
         .where(models.Task.assignee_user_id == user.id, models.Task.status == "open")) or 0
@@ -118,7 +120,10 @@ def dashboard(company_id: int | None = None,
                                        models.License.expiry_date.isnot(None),
                                        models.License.expiry_date <= soon),
             "open_transactions": count(models.Request, models.Request.status == "awaiting_delegate"),
-            "gov_tasks": my_open_tasks,
+            # QA-20 — نفس تعريف مركز العمليات (وجهة البطاقة). كان يعدّ كل
+            # مهامي المفتوحة أًيا كان نوعها، فيظهر رقم لا تجد له أثًرا بعد النقر.
+            "gov_tasks": count_open_gov_tasks(db, user.company_id),
+            "my_open_tasks": my_open_tasks,
             "notifications": crit_tasks,
         })
         return data
