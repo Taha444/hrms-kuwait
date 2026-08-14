@@ -110,6 +110,15 @@ def get_current_user(
     # QA-23 — الخمول يُنهي الجلسة من الخادم، لا من مؤقّت المتصفح.
     enforce_idle_timeout(db, user)
 
+    # QA-26 — سياق الفاعل: كتابات التدقيق العميقة (داخل محرّك المسار) لا يصلها
+    # user ولا Request، فكانت تُسجَّل بلا منفذ ولا IP. تقرأ من هنا الآن.
+    from .audit_context import set_actor
+    set_actor(
+        user.id,
+        request.client.host if request.client else None,
+        (request.headers.get("user-agent") or "")[:400] or None,
+    )
+
     # فرض تغيير كلمة المرور الإلزامي على مستوى الخادم (لا الواجهة فقط)
     if user.must_change_password and not request.url.path.endswith(_PRE_CHANGE_ALLOWED):
         raise HTTPException(status_code=403, detail="يجب تغيير كلمة المرور أولًا")

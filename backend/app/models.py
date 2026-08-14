@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -1075,3 +1076,27 @@ class LeaveLedger(Base):
     note: Mapped[str | None] = mapped_column(String(300))
     created_by: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ===========================================================================
+# QA-26 — لا سجل تدقيق بلا فاعل ولا IP.
+#
+# ROOT CAUSE: سجلات محرّك المسار (request_completed / request_apply_success /
+# request_apply_failed) تُكتب داخل _finalize، ولا يصلها user ولا Request عبر
+# سلسلة enter_stage → _advance، فكانت تُحفظ بـuser_id=None وip=None. تمرير
+# الفاعل يدوًيا في كل نداء يعالج المواضع الثلاثة اليوم ويعود العطل مع أول
+# مسار جديد؛ فالتعبئة هنا عند الإدراج، مصدًرا واحًدا لكل كتابة قائمة ومقبلة.
+#
+# لا يُدهس ما مُرِّر صراحًة — القيمة الصريحة أدق دائًما من سياق الطلب.
+# ===========================================================================
+@event.listens_for(AuditLog, "before_insert")
+def _fill_audit_actor(mapper, connection, target: "AuditLog") -> None:  # noqa: ARG001
+    from .audit_context import get_actor
+
+    actor = get_actor()
+    if target.user_id is None:
+        target.user_id = actor.get("user_id")
+    if target.ip is None:
+        target.ip = actor.get("ip")
+    if target.user_agent is None:
+        target.user_agent = actor.get("user_agent")

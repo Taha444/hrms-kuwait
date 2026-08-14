@@ -43,7 +43,11 @@ def list_audit(company_id: int | None = None, limit: int = 100, offset: int = 0,
                       .limit(limit).offset(max(offset, 0))).all()
     # خرائط أسماء للعرض
     user_names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
+    # QA-26 — لا سجل بلا منفذ: ما لا فاعل بشري له هو فعل النظام صراحًة
+    # (مجدوِل/صيانة)، لا حقل فارغ يُقرأ كعطل.
     return [{"id": r.id, "action": r.action, "entity_type": r.entity_type,
              "entity_id": r.entity_id, "detail": r.detail, "ip": r.ip,
-             "by": user_names.get(r.user_id, r.user_id), "at": r.created_at}
+             "by": user_names.get(r.user_id) if r.user_id else None,
+             "by_system": r.user_id is None,
+             "at": r.created_at}
             for r in rows]

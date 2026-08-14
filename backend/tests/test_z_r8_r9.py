@@ -3729,3 +3729,71 @@ def test_retest_idle_logout_enforced_by_server(client):
     # وتسجيل دخول جديد يعيد الجلسة
     hdr2 = auth_headers(login(client, "100000000101", "emp12345"))
     assert client.get("/api/auth/me", headers=hdr2).status_code == 200
+
+
+def test_retest_supervisor_has_no_eos_tab(client):
+    """QA-23 (بسيط) — مسؤول الفرع لا يملك صلاحية EOS، فلا يُعرض له التبويب فارًغا."""
+    from app import models
+    from app.database import SessionLocal
+    from tests.conftest import auth_headers, login
+
+    db = SessionLocal()
+    try:
+        sup = db.scalar(select(models.User).where(models.User.role == "branch_supervisor"))
+        emp = db.scalar(select(models.Employee).where(
+            models.Employee.company_id == sup.company_id)) if sup else None
+    finally:
+        db.close()
+    if not (sup and emp):
+        import pytest
+        pytest.skip("لا مسؤول فرع في البذرة")
+
+    hdr = auth_headers(login(client, sup.civil_id, "sup12345"))
+    r = client.get(f"/api/employees/{emp.id}/profile", headers=hdr)
+    if r.status_code != 200:
+        import pytest
+        pytest.skip(f"تعذّر فتح الملف: {r.status_code}")
+    tabs = r.json().get("allowed_tabs")
+    assert tabs is not None, "الخادم لا يرسل allowed_tabs"
+    assert "eos" not in tabs, "تبويب نهاية الخدمة ظاهر لمسؤول الفرع"
+
+    # وHR يملكها فعًلا — فلا نكون قد أخفيناها عن الجميع
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    rh = client.get(f"/api/employees/{emp.id}/profile", headers=hr)
+    if rh.status_code == 200:
+        assert "eos" in rh.json().get("allowed_tabs", []), "أُخفي التبويب عن HR بالخطأ"
+
+
+def test_retest_audit_always_has_actor_and_ip(client):
+    """QA-26 — سجلات محرّك المسار لم تعد بلا منفذ ولا IP.
+
+    request_completed تُكتب داخل _finalize التي لا يصلها user ولا Request،
+    فكانت تُحفظ فارغة. الاختبار ينفّذ طلًبا كامًلا حتى الإغلاق ثم يقرأ السجل.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from tests.conftest import auth_headers, login
+
+    emp_hdr = auth_headers(login(client, "100000000101", "emp12345"))
+    r = client.post("/api/requests", headers=emp_hdr, json={
+        "request_type_code": "REQCERTSAL",
+        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar",
+                         "include_salary": True},
+    })
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip(f"تعذّر إنشاء الطلب: {r.status_code} {r.text[:200]}")
+    req_id = r.json().get("id")
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(select(models.AuditLog).where(
+            models.AuditLog.entity_type == "request",
+            models.AuditLog.entity_id == req_id,
+        )).all()
+        assert rows, "لا سجلات تدقيق للطلب"
+        for row in rows:
+            assert row.user_id is not None, f"سجل بلا منفذ: {row.action}"
+            assert row.ip, f"سجل بلا IP: {row.action}"
+    finally:
+        db.close()
