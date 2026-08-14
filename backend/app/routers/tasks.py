@@ -26,6 +26,25 @@ def _category(task_type: str) -> str:
     return _CATEGORY.get(task_type, "system")
 
 
+# QA-12 — الفرق بين المهمة والإشعار (SKILL-8).
+#
+# ROOT CAUSE: جدول واحد يحمل النوعين، والواجهة تعرض "إنجاز/تجاهل" على كل سطر
+# فيه. فيُطلب من المستخدم أن "يُنجز" خبًرا لا إجراء فيه ("تم اعتماد طلبك")،
+# ولا يفهم ماذا يفعل، وإن تجاهله ظنّ أنه فوّت عمًلا.
+#
+# المهمة: مطلوب منك إجراء، لها صاحب واحد وتُقفل حين يتم.
+# الإشعار: معلومة. لا أزرار، ومكانه مركز الإشعارات.
+NOTIFICATION_TYPES = {
+    "request_update",   # "تم اعتماد/رفض طلبك" — خبر لا إجراء
+    "digest",           # ملخّص دوري
+    "sla_escalation",   # تنبيه تأخّر — الإجراء على المهمة الأصلية لا عليه
+}
+
+
+def is_notification(task_type: str) -> bool:
+    return task_type in NOTIFICATION_TYPES
+
+
 @router.get("/my")
 def my_tasks(status: str | None = "open", category: str | None = None,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -37,6 +56,8 @@ def my_tasks(status: str | None = "open", category: str | None = None,
             "detail": t.detail, "status": t.status, "severity": t.severity,
             "due_date": t.due_date, "related_entity_type": t.related_entity_type,
             "related_entity_id": t.related_entity_id, "created_at": t.created_at,
+            # QA-12 — الواجهة تعرف من هنا أيّهما إجراء وأيّهما خبر
+            "kind": "notification" if is_notification(t.type) else "task",
             "template_code": t.template_code, "channel": t.channel} for t in rows]
     if category:
         out = [x for x in out if x["category"] == category]

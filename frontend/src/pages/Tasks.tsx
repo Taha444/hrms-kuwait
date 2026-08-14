@@ -71,11 +71,17 @@ export default function Tasks() {
                 <td className="muted">{x.detail}</td>
                 <td><span className={`pill ${x.severity}`}>{severityAr(x.severity)}</span></td>
                 <td>
-                  {status === "open" && (
+                  {/* QA-12 — الإشعار خبر لا إجراء: "إنجاز/تجاهل" عليه تطلب من
+                      المستخدم أن يُنجز خبًرا، وتوهمه أنه فوّت عمًلا إن تجاهله.
+                      التصنيف من الخادم (kind) لا من قائمة أنواع مكرّرة هنا. */}
+                  {status === "open" && x.kind !== "notification" && (
                     <div className="row">
                       <button className="ghost sm" onClick={() => setTaskStatus(x.id, "done")}>{t("act_complete")}</button>
                       <button className="ghost sm" onClick={() => setTaskStatus(x.id, "dismissed")}>{t("act_dismiss")}</button>
                     </div>
+                  )}
+                  {status === "open" && x.kind === "notification" && (
+                    <span className="muted" style={{ fontSize: 12 }}>{t("tasks_info_only")}</span>
                   )}
                 </td>
               </tr>
