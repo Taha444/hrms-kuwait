@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { attAr, attModeAr, statusAr, contractTypeAr } from "../labels";
+import { attAr, attModeAr, statusAr, contractTypeAr, permitKindAr } from "../labels";
 import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
@@ -336,7 +336,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               <h3>{t("emp_permits")}</h3>
               <table><thead><tr><th>{t("epf_col_type")}</th><th>{t("pro_col_number")}</th><th>{t("pro_col_expiry")}</th><th>{t("status")}</th></tr></thead>
                 <tbody>{p.permits.map((x: any) => (
-                  <tr key={x.id}><td>{x.kind}</td><td>{x.number}</td><td>{x.expiry_date}</td>
+                  <tr key={x.id}><td>{permitKindAr(x.kind)}</td><td>{x.number}</td><td>{x.expiry_date}</td>
                     <td><span className="pill info">{statusAr(x.status)}</span></td></tr>
                 ))}{!p.permits.length && <tr><td colSpan={4} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
             </div>

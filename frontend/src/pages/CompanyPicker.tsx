@@ -4,6 +4,7 @@ import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
+import { statusAr } from "../labels";
 
 // شاشة اختيار الشركة — تظهر للإدارة العليا/المالك ليختاروا الشركة التي يعملون عليها.
 export default function CompanyPicker() {
@@ -60,7 +61,8 @@ export default function CompanyPicker() {
                 <h3>{c.name}</h3>
                 <p className="muted">{c.name_en || c.entity_type || "—"}</p>
                 <div style={{ marginTop: 10 }}>
-                  <span className={`pill ${c.status}`}>{c.status}</span>
+                  {/* QA-22 (sweep) — كانت تُعرض خاًما ("active") */}
+                  <span className={`pill ${c.status}`}>{statusAr(c.status)}</span>
                 </div>
               </button>
             ))}

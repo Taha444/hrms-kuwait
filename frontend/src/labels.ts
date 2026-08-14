@@ -67,6 +67,14 @@ export const contractTypeAr = M({
   definite: { ar: "محدد المدة", en: "Definite" },
 });
 
+// QA-22 (sweep) — نوع الإقامة/الإذن كان يُعرض خاًما ("residency") في ملف
+// الموظف وشاشة التعيين. القيم تأتي من Permit.kind في الخادم.
+export const permitKindAr = M({
+  residency: { ar: "إقامة", en: "Residency" },
+  work_permit: { ar: "إذن عمل", en: "Work permit" },
+  visa: { ar: "تأشيرة", en: "Visa" },
+});
+
 export const urgencyAr = M({
   expired: { ar: "منتهية", en: "Expired" }, critical: { ar: "حرجة", en: "Critical" },
   warning: { ar: "تحذير", en: "Warning" }, ok: { ar: "سليمة", en: "OK" }, none: { ar: "—", en: "—" },

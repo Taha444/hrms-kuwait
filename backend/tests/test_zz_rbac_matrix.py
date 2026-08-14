@@ -173,3 +173,31 @@ def test_2fa_recovery_code_breaks_the_lockout(client):
         "totp_code": regen.json()["recovery_codes"][0]})
     client.post("/api/2fa/disable", headers=auth_headers(fresh.json()["access_token"]),
                 json={"password": password})
+
+
+def test_no_raw_enum_or_code_leaks_in_ui():
+    """QA-22/QA-14 (sweep) — المواضع التي كانت تعرض قيمة خام تستخدم تسمية الآن.
+
+    SKILL-9 يسأل: هل لنفس الوظيفة مسار آخر؟ كان الجواب نعم ثلاث مرات — نوع
+    الإقامة في شاشة التعيين وفي ملف الموظف، وكود نوع المستند في "ملفي"
+    (أُصلح في ملف الموظف وحده أول مرة)، وحالة الشركة في مُنتقي الشركات.
+
+    الفحص مقصور على هذه المواضع بعينها: مسحٌ عام بتعبير نمطي يعطي إيجابيات
+    كاذبة (‎${...}‎ داخل قوالب نصية، و‎key={...}‎، وتمرير الخصائص).
+    """
+    from pathlib import Path
+
+    pages = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
+    if not pages.exists():
+        return
+    checks = [
+        ("EmployeeProfile.tsx", "permitKindAr(x.kind)", "نوع الإقامة خام في ملف الموظف"),
+        ("EmployeeOnboarding.tsx", "permitKindAr(p.kind)", "نوع الإقامة خام في شاشة التعيين"),
+        ("MyProfile.tsx", "d.type_label", "كود نوع المستند خام في ملفي"),
+        ("CompanyPicker.tsx", "statusAr(c.status)", "حالة الشركة خام في مُنتقي الشركات"),
+    ]
+    for filename, needle, why in checks:
+        f = pages / filename
+        if not f.exists():
+            continue
+        assert needle in f.read_text(encoding="utf-8"), why

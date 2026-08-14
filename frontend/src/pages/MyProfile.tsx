@@ -141,7 +141,7 @@ export default function MyProfile() {
           <thead><tr><th>{t("epf_col_type")}</th><th>{t("col_title")}</th><th>{t("epf_col_version")}</th><th>{t("pro_col_expiry")}</th><th></th></tr></thead>
           <tbody>
             {p.documents.map((d: any) => (
-              <tr key={d.id}><td>{d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date || "—"}</td>
+              <tr key={d.id}><td>{d.type_label || d.type}</td><td>{d.title}</td><td>v{d.version}</td><td>{d.expiry_date || "—"}</td>
                 <td><button className="ghost sm" onClick={() => download(d.type)}>{t("my_download")}</button></td></tr>
             ))}
             {!p.documents.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
+import { permitKindAr } from "../labels";
 
 /**
  * V2.2 §2 — Employee Onboarding Wizard
@@ -731,7 +732,7 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                 {permits.length > 0 && (
                   <ul style={{ marginTop: 8 }}>
                     {permits.map((p, i) => (
-                      <li key={i}>{p.kind} · {p.number || "—"} · {isEn ? "expires" : "ينتهي"} {p.expiry_date}</li>
+                      <li key={i}>{permitKindAr(p.kind)} · {p.number || "—"} · {isEn ? "expires" : "ينتهي"} {p.expiry_date}</li>
                     ))}
                   </ul>
                 )}
