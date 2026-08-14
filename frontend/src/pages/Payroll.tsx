@@ -23,13 +23,22 @@ export default function Payroll() {
   const loadRuns = () => api.get("/payroll/runs").then((r) => setRuns(r.data)).catch(() => {});
   useEffect(() => { loadRuns(); }, []);
 
+  // QA-24 — حقل الشهر يبدأ بقيمة، لكن المستخدم يستطيع مسحه. بلا هذا الفحص
+  // يُرسَل period فارًغا فيعود خطأ خادم غامض بدل رسالة تقول ما ينقص.
+  const requirePeriod = () => {
+    if (!period) { setErr(t("payroll_pick_month")); return false; }
+    return true;
+  };
+
   const preview = async () => {
     setErr(""); setRunId(null);
+    if (!requirePeriod()) return;
     try { setData((await api.get("/payroll/preview", { params: { period } })).data); }
-    catch (e: any) { setErr(errMsg(e, "خطأ")); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
   const run = async () => {
     setErr("");
+    if (!requirePeriod()) return;
     try {
       const r = await api.post("/payroll/run", null, { params: { period } });
       setData(r.data); setRunId(r.data.run_id); setMsg("تم تشغيل المسيّر وحفظه");

@@ -65,6 +65,8 @@ const dict: Record<string, { ar: string; en: string }> = {
                      en: "Due for renewal, no case opened ({n})" },
   rnw_expired: { ar: "منتهية", en: "Expired" },
   rnw_days_remaining: { ar: "{n} يوم متبقٍ", en: "{n} days left" },
+  // QA-24 — فلتر إلزامي قبل الطلب
+  payroll_pick_month: { ar: "اختر الشهر أولًا", en: "Pick a month first" },
   yes: { ar: "نعم", en: "Yes" },
   no: { ar: "لا", en: "No" },
   // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات
