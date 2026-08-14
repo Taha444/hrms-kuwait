@@ -60,6 +60,11 @@ const dict: Record<string, { ar: string; en: string }> = {
   doc_prev_versions: { ar: "النسخ السابقة", en: "Previous versions" },
   doc_uploaded_at: { ar: "تاريخ الرفع", en: "Uploaded" },
   doc_current: { ar: "الحالية", en: "Current" },
+  // QA-05 — إقامات تستحق التجديد بلا ملف مفتوح
+  rnw_due_no_case: { ar: "تستحق التجديد ولم يُفتح لها ملف ({n})",
+                     en: "Due for renewal, no case opened ({n})" },
+  rnw_expired: { ar: "منتهية", en: "Expired" },
+  rnw_days_remaining: { ar: "{n} يوم متبقٍ", en: "{n} days left" },
   yes: { ar: "نعم", en: "Yes" },
   no: { ar: "لا", en: "No" },
   // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات

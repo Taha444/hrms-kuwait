@@ -4026,3 +4026,29 @@ def test_retest_document_versions_reachable(client):
         text = ui.read_text(encoding="utf-8")
         assert "/documents/history" in text, "الواجهة لا تستدعي سجل الإصدارات"
         assert "d.type_label" in text, "الواجهة ما زالت تعرض كود نوع المستند"
+
+
+def test_retest_ocr_handles_residency_and_renewals_bridge(client):
+    """QA-05 — الإقامة لها قارئ، والصفحة الفارغة صار لها تفسير.
+
+    extract كانت تعالج passport و civil_id فقط، وكل ما عداهما يسقط إلى
+    {"_provider": "null", "_confidence": 0.0} بلا سبب ظاهر — فرفع صورة إقامة
+    يعطي ثقة صفر مهما كانت واضحة، ولا يُستخرج تاريخ انتهاء.
+    """
+    from app import ocr
+    from app.main import app
+    from tests.conftest import auth_headers, login
+
+    for tc in ("residency", "work_permit"):
+        r = ocr.extract(tc, "does_not_exist.jpg")
+        assert r.get("_provider") != "null", f"{tc} بلا قارئ"
+        assert r.get("_note"), f"{tc} يعيد صفًرا صامًتا بلا سبب"
+
+    unknown = ocr.extract("some_unknown_type", "x.jpg")
+    assert unknown.get("_note"), "نوع غير مدعوم يعيد صفًرا بلا تفسير"
+
+    assert "/api/renewals/due/permits" in {getattr(x, "path", "") for x in app.routes}
+    pro = auth_headers(login(client, "100000000003", "deleg123"))
+    due = client.get("/api/renewals/due/permits", headers=pro)
+    assert due.status_code == 200, due.text
+    assert isinstance(due.json(), list)

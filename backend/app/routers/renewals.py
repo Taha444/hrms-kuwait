@@ -621,3 +621,46 @@ def generate_gov_contract(rid: int, request: Request,
         "checksum_sha256": checksum,
         "note": "اطبع العقد → الموظف يوقّعه → ارفع النسخة الموقّعة عبر upload بـdoc_type=renewal_signed_gov",
     }
+
+
+@router.get("/due/permits")
+def permits_due_without_case(user: models.User = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    """QA-05 — إقامات تستحق التجديد ولم يُفتح لها ملف بعد.
+
+    ROOT CAUSE: صفحة التجديدات تعرض ملفات ResidencyRenewal — أي إجراءات
+    بُدئت فعًلا — بينما مركز العمليات يعرض الإقامات المقتربة من الانتهاء.
+    فرأى المستخدم "حالة حرجة" هناك وصفحة فارغة هنا، وقرأ الفراغ كعطل. الرقمان
+    صحيحان لكنهما عن شيئين مختلفين، ولم يكن في الواجهة ما يقول ذلك.
+
+    هذه النقطة تصل بينهما: ما يستحق فتح ملف ولم يُفتح له.
+    """
+    from datetime import timedelta
+
+    today = date.today()
+    soon = today + timedelta(days=90)
+    q = select(models.Permit).where(
+        models.Permit.kind == "residency",
+        models.Permit.status == "active",
+        models.Permit.expiry_date.isnot(None),
+        models.Permit.expiry_date <= soon,
+    )
+    if user.role not in ("super_admin", "company_owner"):
+        q = q.where(models.Permit.company_id == user.company_id)
+
+    out = []
+    for p in db.scalars(q.order_by(models.Permit.expiry_date)).all():
+        open_case = db.scalar(select(models.ResidencyRenewal.id).where(
+            models.ResidencyRenewal.employee_id == p.employee_id,
+            models.ResidencyRenewal.status.notin_(("completed", "rejected", "cancelled")),
+        ))
+        if open_case:
+            continue
+        emp = db.get(models.Employee, p.employee_id)
+        out.append({
+            "permit_id": p.id, "employee_id": p.employee_id,
+            "employee_name": emp.name if emp else None,
+            "number": p.number, "expiry_date": p.expiry_date,
+            "days_left": (p.expiry_date - today).days,
+        })
+    return out

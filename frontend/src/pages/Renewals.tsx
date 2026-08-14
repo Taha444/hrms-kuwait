@@ -44,10 +44,18 @@ export default function Renewals() {
   const isMgr = user?.role === "company_manager" || user?.role === "super_admin";
   const isHr = user?.role === "hr" || user?.role === "super_admin";
 
-  const load = () => api.get("/renewals").then((r) => {
-    setItems(r.data);
-    if (sel) { const u = r.data.find((x: any) => x.id === sel.id); if (u) setSel(u); }
-  }).catch((e) => setErr(errMsg(e, t("error"))));
+  // QA-05 — إقامات تستحق التجديد ولم يُفتح لها ملف. صفحة التجديدات تعرض
+  // الملفات المبدوءة، ومركز العمليات يعرض الإقامات المقتربة من الانتهاء —
+  // فرأى المستخدم "حالة حرجة" هناك وفراًغا هنا وقرأه عطًلا.
+  const [duePermits, setDuePermits] = useState<any[]>([]);
+
+  const load = () => {
+    api.get("/renewals/due/permits").then((r) => setDuePermits(r.data)).catch(() => setDuePermits([]));
+    return api.get("/renewals").then((r) => {
+      setItems(r.data);
+      if (sel) { const u = r.data.find((x: any) => x.id === sel.id); if (u) setSel(u); }
+    }).catch((e) => setErr(errMsg(e, t("error"))));
+  };
 
   // R9 §11 — تحقق من وجود قالب العقد الحكومي عند التحميل
   const [govContractTplExists, setGovContractTplExists] = useState<boolean | null>(null);
@@ -183,6 +191,24 @@ export default function Renewals() {
               </button>
             ))}
             {!items.length && <div className="empty" style={{ padding: 24 }}>{t("rnw_no_items")}</div>}
+            {/* QA-05 — ما يستحق فتح ملف ولم يُفتح له: الجسر بين هذه الصفحة ومركز العمليات */}
+            {duePermits.length > 0 && (
+              <div className="card" style={{ marginTop: 12, borderTop: "3px solid var(--warning)" }}>
+                <h4 style={{ marginTop: 0 }}>{t("rnw_due_no_case", { n: duePermits.length })}</h4>
+                <table><tbody>
+                  {duePermits.map((d: any) => (
+                    <tr key={d.permit_id}>
+                      <td>{d.employee_name || `#${d.employee_id}`}</td>
+                      <td className="muted">{d.number || "—"}</td>
+                      <td>{d.expiry_date}</td>
+                      <td className={d.days_left < 0 ? "pill expired" : "pill warning"}>
+                        {d.days_left < 0 ? t("rnw_expired") : t("rnw_days_remaining", { n: d.days_left })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody></table>
+              </div>
+            )}
           </div>
         </div>
 

@@ -271,7 +271,13 @@ def extract(document_type_code: str, file_path: str) -> dict:
                 "full_name": None, "passport_number": None, "nationality": None,
                 "date_of_birth": None, "expiry_date": None}
 
-    if document_type_code == "civil_id":
+    # QA-05 — الإقامة وإذن العمل يُقرآن بقارئ البطاقة نفسه.
+    # ROOT CAUSE: extract كانت تعالج passport و civil_id فقط، وكل ما عداهما
+    # يسقط إلى {"_provider": "null", "_confidence": 0.0} — بلا سبب ظاهر.
+    # فرفع صورة إقامة كان يعطي "ثقة 0.0" دائًما مهما كانت الصورة واضحة، ولا
+    # يُستخرج تاريخ انتهاء، فيبقى سجل الإقامة بلا تاريخ ولا يظهر في التجديدات.
+    # الإقامة الكويتية بطاقة عربية/إنجليزية بتواريخ — نفس ما يقرأه هذا المحلّل.
+    if document_type_code in ("civil_id", "residency", "work_permit"):
         if not tess["available"]:
             return {
                 "_provider": "tesseract_civil_id", "_confidence": 0.0,
@@ -324,4 +330,8 @@ def extract(document_type_code: str, file_path: str) -> dict:
                          "أو أدخل البيانات يدويًا.")
         return r
 
-    return {"_provider": "null", "_confidence": 0.0, "text": ""}
+    # نوع لا قارئ له بعد — نقول ذلك صراحًة بدل صفر صامت يُقرأ كفشل قراءة
+    return {"_provider": "null", "_confidence": 0.0, "text": "",
+            "_note": f"لا يوجد قارئ آلي لنوع المستند «{document_type_code}» — "
+                     "أدخل البيانات يدوًيا.",
+            "_diag": {"unsupported_type": document_type_code, **tess}}
