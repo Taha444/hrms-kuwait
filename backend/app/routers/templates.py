@@ -244,7 +244,17 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "job_title": emp.job_title or "",
         "department": department.name if department else "",
         "nationality": emp.nationality or "",
-        "basic_salary": f"{emp.basic_salary:.3f} د.ك" if emp.basic_salary else "",
+        # QA-13 — الوحدة تخصّ الجملة لا القيمة. كانت القيمة تحمل "د.ك" بينما
+        # القوالب تكتبها بعدها ("{{basic_salary}} د.ك") فتُطبع "د.ك د.ك"،
+        # وفي النسخة الإنجليزية "KWD 1234.000 د.ك". القيمة رقم مجرّد الآن،
+        # ولمن يحتاج الوحدة مفتاح صريح.
+        "basic_salary": f"{emp.basic_salary:.3f}" if emp.basic_salary else "",
+        "basic_salary_kwd": f"{emp.basic_salary:.3f} د.ك" if emp.basic_salary else "",
+        # QA-13 — كانا يأتيان من إدخال العميل: يُطبعان نقاًطا حين لا يرسلهما
+        # النموذج، والأخطر أنهما رقمان ماليان قابلان للتزوير من الفورم.
+        # النظام لا يسجّل بدلات منفصلة، فالبدل = الفرق بين الفعلي والأساسي.
+        "allowances_total": f"{max((emp.actual_salary or emp.basic_salary or 0) - (emp.basic_salary or 0), 0):.3f}",
+        "gross_salary": f"{(emp.actual_salary or emp.basic_salary or 0):.3f}",
         "hire_date": emp.hire_date.isoformat() if emp.hire_date else "",
         "contract_type": contract_type_ar,  # backward compat (النص القديم)
         "contract_type_ar": contract_type_ar,
@@ -311,7 +321,8 @@ def _resolve_authoritative_data(db: Session, emp: models.Employee, extras: dict)
     """
     ctx = _build_context(db, emp)
     # مفاتيح authoritative (لا تُقبَل من input) — الراتب والتاريخ والاسم من DB فقط
-    LOCKED = {"basic_salary", "hire_date", "civil_id", "employee_name",
+    LOCKED = {"basic_salary", "basic_salary_kwd", "allowances_total", "gross_salary",
+              "hire_date", "civil_id", "employee_name",
               "employee_name_en", "employee_id", "job_title", "nationality",
               "contract_type", "company_name", "company_name_en",
               "commercial_reg", "branch_name", "department"}
