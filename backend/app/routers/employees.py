@@ -375,13 +375,31 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
         for k in PRO_STRIP:
             if k in emp_out: emp_out[k] = None
 
+    # QA-23 (بسيط) — تبويب نهاية الخدمة كان يظهر فارًغا لمسؤول الفرع: قائمة
+    # التبويبات كانت تُشتقّ من view_scope وحده (تسمية دور خشنة) لا من الصلاحيات،
+    # فكل من ليس محاسًبا ولا مندوًبا يرى كل التبويبات ثم يصطدم بـ403 داخلها.
+    # الخادم هو من يحدّد التبويبات الآن، من الصلاحية نفسها التي يفرضها /eos.
+    from ..deps import get_user_perms
+    from ..permissions import has_permission
+
+    _assigned = get_user_perms(user, db)
+    _can_eos = (has_permission(user.role, _assigned, "calculate_eos")
+                or has_permission(user.role, _assigned, "terminate_employee"))
+    _scope = ("accountant" if is_accountant else "pro" if is_pro else "full")
+    _tabs_by_scope = {
+        "accountant": ["employment", "history"],
+        "pro": ["documents"],
+        "full": ["personal", "employment", "documents", "leave", "eos", "warnings", "history"],
+    }
+    allowed_tabs = [t for t in _tabs_by_scope[_scope] if t != "eos" or _can_eos or is_self]
+
     return {
         "employee": emp_out,
         "pii_masked": not can_view_pii,
         # R2 §2 — العلامة اللي الفرونت يستخدمها لتخفي التبويبات الممنوعة
-        "view_scope": ("accountant" if is_accountant
-                       else "pro" if is_pro
-                       else "full"),
+        "view_scope": _scope,
+        # مصدر واحد للتبويبات: الصلاحيات لا تسمية الدور
+        "allowed_tabs": allowed_tabs,
         # الراتب الفعلي يُعرَض/يُعدَّل حسب الصلاحية المالية فقط
         "actual_salary": emp.actual_salary if can_view_actual else None,
         "can_view_actual_salary": can_view_actual,

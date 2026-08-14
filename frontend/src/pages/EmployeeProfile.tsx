@@ -203,7 +203,11 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     pro: new Set(["documents"]),
     full: new Set(["personal", "employment", "documents", "leave", "eos", "warnings", "history"]),
   };
-  const allowedTabs = ALLOWED_BY_SCOPE[scope] || ALLOWED_BY_SCOPE.full;
+  // QA-23 — التبويبات من الخادم (مبنية على الصلاحيات الفعلية)؛ view_scope يبقى
+  // احتياًطا للتوافق مع نسخة خادم أقدم لا ترسل allowed_tabs.
+  const allowedTabs: Set<string> = Array.isArray(p.allowed_tabs)
+    ? new Set<string>(p.allowed_tabs)
+    : ALLOWED_BY_SCOPE[scope] || ALLOWED_BY_SCOPE.full;
   const TABS = ALL_TABS.filter(([k]) => allowedTabs.has(k));
   // لو التبويب النشط ما يظهرش لهذا الدور — نلقائيًا نروح لأول تبويب مسموح
   if (tab && !allowedTabs.has(tab) && TABS[0]) {
