@@ -54,6 +54,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   delete: { ar: "حذف", en: "Delete" },
   view: { ar: "عرض", en: "View" },
   loading: { ar: "جارِ التحميل…", en: "Loading…" },
+  // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات
+  needs_company: { ar: "اختر شركة محددة من أعلى الصفحة لعرض هذا القسم.",
+                   en: "Pick a specific company from the top to view this section." },
   no_data: { ar: "لا توجد بيانات", en: "No data" },
   load_failed: { ar: "تعذّر تحميل البيانات", en: "Failed to load data" },
   retry: { ar: "إعادة المحاولة", en: "Retry" },

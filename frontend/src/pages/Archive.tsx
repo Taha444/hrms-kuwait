@@ -4,6 +4,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
 import { fmtKuwaitDate } from "../utils/datetime";
+import NeedsCompany, { useNeedsCompany } from "../components/NeedsCompany";
 
 // أرشيف الشركة والفروع: المستندات الرسمية (عقد التأسيس، السجل التجاري، الرخص…)
 // R8 §2 — بالإضافة للمستندات الثابتة، يدعم مستندات مخصّصة ديناميكية (custom docs)
@@ -17,6 +18,7 @@ type CustomDocForm = {
 
 export default function Archive() {
   const { can } = useAuth();
+  const needsCompany = useNeedsCompany();
   const { t, lang } = useI18n();
   const isEn = lang === "en";
   const [tab, setTab] = useState<"company" | "branch">("company");
@@ -200,6 +202,10 @@ export default function Archive() {
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
+
+      {/* QA-16 — الأرشيف يخص شركة واحدة. مع "كل الشركات" كانت الصفحة تعرض
+          فراًغا برسالة "لا توجد مستندات بعد" — صحيحة نحوًيا وخاطئة معنى. */}
+      {needsCompany ? <NeedsCompany /> : (<>
 
       <div className="row" style={{ marginBottom: 14 }}>
         <button className={tab === "company" ? "" : "ghost"} onClick={() => setTab("company")}>{t("arch_tab_company")}</button>
@@ -437,6 +443,7 @@ export default function Archive() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }
