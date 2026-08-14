@@ -980,7 +980,7 @@ def _finalize(db: Session, req: models.Request) -> None:
                 create_task(
                     db, company_id=req.company_id, type="apply_failed",
                     assignee_user_id=u.id,
-                    title=f"فشل تطبيق طلب معتمَد: {rt.name if rt else req.request_type_code}",
+                    title=f"فشل التطبيق بعد الاعتماد: {rt.name if rt else req.request_type_code}",
                     detail=f"طلب #{req.id} — السبب: {note}",
                     related_entity_type="request", related_entity_id=req.id,
                     dedup_key=f"req_apply_failed:{req.id}", severity="critical",
@@ -1103,7 +1103,9 @@ def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
             continue
         create_task(
             db, company_id=req.company_id, assignee_user_id=uid, type="request_update",
-            title=f"تم {word} طلب: {rt.name} — {_employee_name(db, req)}",
+            # QA-11 — rt.name يبدأ بـ"طلب" أصًلا ("طلب إجازة")، فإضافة الكلمة
+            # هنا تنتج "تم اعتماد طلب: طلب إجازة".
+            title=f"تم {word}: {rt.name} — {_employee_name(db, req)}",
             detail=f"قام {actor.full_name or actor.role} بـ{word} الطلب.{reason}",
             related_entity_type="request", related_entity_id=req.id,
             dedup_key=f"req_term:{req.id}:u{uid}",

@@ -90,7 +90,24 @@ def create_task(
     V1.5 Phase 3 — sla_due_at يُملأ تلقائيًا إن كان قالب الإشعار (template_code)
     يحدد sla_hours، ليمكن للمجدول تصعيد المهام المتأخرة.
     """
+    # QA-11 — مفتاح إلغاء التكرار مشتقّ حين لا يُمرَّر.
+    # ROOT CAUSE: التكرار لم يكن عطًلا في هذه الدالة بل في مَن يستدعيها: تسعة
+    # من أحد عشر نداء لا تمرّر dedup_key، فتُنشأ مهمة جديدة لكل محاولة —
+    # ويكفي أن ينقر المستخدم مرتين ليصير له مهمتان لنفس الإجراء.
+    # الهوية الطبيعية للمهمة هي (النوع، الكيان، صاحبها): مهمة واحدة لكل
+    # إجراء لكل مسؤول، وهو نص القاعدة في SKILL-8.
+    if not dedup_key and related_entity_type and related_entity_id:
+        dedup_key = f"auto:{type}:{related_entity_type}:{related_entity_id}:u{assignee_user_id or 0}"
     if dedup_key:
+        # الجلسة autoflush=False، فالمهمة المُنشأة قبل قليل في نفس المعاملة لا
+        # تراها قاعدة البيانات بعد. بلا هذا الفحص تتكرر المهمة كلما أُنشئت أكثر
+        # من واحدة قبل commit — وهو ما يحدث في كل حلقة على المعتمِدين.
+        pending = [o for o in db.new
+                   if isinstance(o, models.Task) and o.dedup_key == dedup_key
+                   # status افتراضه يُطبَّق عند الإدراج، فهو None قبل flush
+                   and (o.status or "open") in ("open", "in_progress")]
+        if pending:
+            return pending[0]
         existing = db.scalar(
             select(models.Task).where(
                 models.Task.dedup_key == dedup_key,

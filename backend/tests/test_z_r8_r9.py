@@ -3867,3 +3867,46 @@ def test_retest_request_details_not_raw_json():
     assert view.exists(), "PayloadView غير موجود"
     vtext = view.read_text(encoding="utf-8")
     assert "/schema" in vtext, "العارض لا يقرأ التسميات من الـschema"
+
+
+def test_retest_task_dedup_without_explicit_key(client):
+    """QA-11 — مهمة واحدة لكل (نوع، كيان، مسؤول) ولو لم يمرّر المستدعي مفتاًحا."""
+    from app import models
+    from app.database import SessionLocal
+    from app.notifications import create_task
+
+    db = SessionLocal()
+    try:
+        u = db.scalar(select(models.User).where(models.User.role == "hr"))
+        assert u, "لا مستخدم HR"
+        for _ in range(3):
+            create_task(db, company_id=u.company_id, type="document",
+                        title="اختبار التكرار", assignee_user_id=u.id,
+                        related_entity_type="request", related_entity_id=999123)
+        db.commit()
+        n = len(db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "request",
+            models.Task.related_entity_id == 999123)).all())
+        assert n == 1, f"أُنشئت {n} مهام لنفس الإجراء"
+    finally:
+        for row in db.scalars(select(models.Task).where(
+                models.Task.related_entity_id == 999123)).all():
+            db.delete(row)
+        db.commit()
+        db.close()
+
+
+def test_retest_notifications_have_no_action_buttons(client):
+    """QA-12 — تحديثات الحالة تُصنَّف إشعاًرا لا مهمة."""
+    from app.routers.tasks import is_notification
+
+    assert is_notification("request_update"), "تحديث حالة الطلب ليس مهمة"
+    assert is_notification("digest")
+    assert not is_notification("renew_residency"), "تجديد الإقامة إجراء مطلوب"
+    assert not is_notification("ready_to_print")
+
+    from pathlib import Path
+    ui = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "Tasks.tsx"
+    if ui.exists():
+        assert 'x.kind !== "notification"' in ui.read_text(encoding="utf-8"), \
+            "الواجهة ما زالت تعرض أزرار الإجراء على الإشعارات"
