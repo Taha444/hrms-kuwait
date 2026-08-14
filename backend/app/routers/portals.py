@@ -43,11 +43,16 @@ class PortalIn(BaseModel):
 
 
 def _can_view_portals(user: models.User) -> bool:
-    """PRO + كل الإدارة يشوفوا الروابط. الموظف العادي لا."""
-    return user.role in (
-        "super_admin", "company_owner", "company_manager",
-        "hr", "accountant", "delegate", "admin_employee",
-    )
+    """QA-29 — بوابات الجهات للمندوب (PRO) وحده، وsuper_admin للصيانة.
+
+    ROOT CAUSE: الواجهة حُصرت في المندوب (nav + route guard) وبقيت هذه الدالة
+    تسمح لسبعة أدوار. فمن يعرف المسار — أو يستدعي الـAPI مباشرة — يصل كما كان،
+    وإخفاءٌ في الواجهة ليس صلاحية. القاعدة تُفرض هنا.
+
+    المعاملات الحكومية اختصاص المندوب، وغيره يتابعها من الطلبات لا من بوابات
+    الجهات مباشرة — وهو نص معيار القبول.
+    """
+    return user.role in ("super_admin", "delegate")
 
 
 def _can_manage_portals(user: models.User) -> bool:
