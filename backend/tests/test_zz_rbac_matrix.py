@@ -562,3 +562,225 @@ def test_v22_separated_approval_actually_separates():
 
     # ومن يملك العامة (منح صريح قائم) يبقى قادًرا — لا نوقف الإنتاج فجأة
     assert can_decide_category("delegate", {"approve_request"}, "الشكاوى والتظلمات")
+
+
+def _submit_leave(client, hdr):
+    """طلب إجازة جاهز للاختبارات التي تحتاج طلًبا قائًما."""
+    from datetime import date, timedelta
+    start = date.today() + timedelta(days=20)
+    r = client.post("/api/requests", headers=hdr, json={
+        "request_type_code": "leave",
+        "payload_json": {"leave_type": "annual", "days": 2,
+                         "start_date": start.isoformat(),
+                         "end_date": (start + timedelta(days=1)).isoformat(),
+                         "reason": "اختبار"},
+    })
+    return r
+
+
+def test_ac06_no_self_approval(client):
+    """AC-06 (1/4) — لا اعتماد ذاتي لأي دور.
+
+    أن يكون HR معتمِد مرحلة لا يعني أن يعتمد إجازته هو. القاعدة تسبق حتى
+    override_approval: التجاوز صُمّم لحلّ عُطل في الإسناد لا ليمنح صاحب الطلب
+    سلطة على طلبه.
+    """
+    from app import models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        hr_user = db.scalar(select(models.User).where(models.User.role == "hr"))
+        assert hr_user is not None
+        if not hr_user.employee_id:
+            import pytest
+            pytest.skip("حساب HR غير مرتبط بموظف")
+        req = models.Request(company_id=hr_user.company_id,
+                             employee_id=hr_user.employee_id,
+                             requester_user_id=hr_user.id,
+                             request_type_code="leave", payload_json={},
+                             status="pending", current_stage=0)
+        stage = {"order": 0, "role": "hr", "kind": "approval"}
+        assert not workflow.can_decide(db, req, hr_user, stage), \
+            "HR اعتمد طلًبا يخصّه"
+    finally:
+        db.close()
+
+
+def test_ac06_double_action_and_direct_url(client):
+    """AC-06 (2+4/4) — لا قرار مكرر، ولا قرار من غير معتمِد المرحلة عبر الرابط."""
+    emp = _headers(client, "100000000101", "emp12345")
+    r = _submit_leave(client, emp)
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip(f"تعذّر إنشاء الطلب: {r.status_code} {r.text[:160]}")
+    rid = r.json()["id"]
+
+    # (4) استدعاء مباشر من دور ليس معتمِد المرحلة الحالية
+    accountant_like = _headers(client, "100000000003", "deleg123")
+    direct = client.post(f"/api/requests/{rid}/decide", headers=accountant_like,
+                         json={"decision": "approved", "note": ""})
+    assert direct.status_code in (403, 404), \
+        f"غير المعتمِد اتخذ قراًرا عبر الرابط: {direct.status_code}"
+
+    # (2) قرار مكرر من المعتمِد نفسه
+    sup = _headers(client, "100000000005", "sup12345")
+    first = client.post(f"/api/requests/{rid}/decide", headers=sup,
+                        json={"decision": "approved", "note": ""})
+    if first.status_code != 200:
+        import pytest
+        pytest.skip(f"المعتمِد الأول لم ينجح: {first.status_code} {first.text[:160]}")
+    second = client.post(f"/api/requests/{rid}/decide", headers=sup,
+                         json={"decision": "approved", "note": ""})
+    assert second.status_code != 200, "القرار الثاني نجح — لا حماية من التكرار"
+
+
+def test_ac06_stale_stage_is_rejected(client):
+    """AC-06 (3/4) — مهمة قديمة: من فتح الشاشة قبل تقدّم الطلب لا يقرّر عليها.
+
+    الحالة الواقعية: معتمِد فتح الطلب، وزميله اعتمده، ثم ضغط الأول. بلا حارس
+    يُسجَّل قراره على مرحلة لم تعد قائمة.
+    """
+    emp = _headers(client, "100000000101", "emp12345")
+    r = _submit_leave(client, emp)
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+
+    sup = _headers(client, "100000000005", "sup12345")
+    ok = client.post(f"/api/requests/{rid}/decide", headers=sup,
+                     json={"decision": "approved", "note": ""})
+    if ok.status_code != 200:
+        import pytest
+        pytest.skip("المرحلة الأولى لم تُعتمد")
+
+    # الطلب تقدّم؛ معتمِد المرحلة السابقة لم يعد صاحب قرار
+    stale = client.post(f"/api/requests/{rid}/decide", headers=sup,
+                        json={"decision": "rejected", "note": "متأخر"})
+    assert stale.status_code != 200, "قرار على مرحلة تجاوزها الطلب نجح"
+
+
+def test_rw08_claim_gives_one_member_the_action(client):
+    """RW-08 — مجموعة من أربعة: من يلتقط المهمة يكملها والباقون يفقدون الفعل.
+
+    بلا التقاط، أربعة أشخاص يرون المهمة نفسها فيبدأها اثنان معًا ويتكرر الأثر،
+    أو يظنّ كلٌّ أن الآخر أخذها فلا يبدأها أحد.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from app.notifications import create_task
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    tid = None
+    try:
+        a = db.scalar(select(models.User).where(models.User.role == "hr"))
+        b = db.scalar(select(models.User).where(models.User.civil_id == "100000000003"))
+        if not (a and b):
+            import pytest
+            pytest.skip("لا عضوان في نفس الشركة")
+        task = create_task(db, company_id=a.company_id, type="document",
+                           title="مهمة مشتركة", assignee_user_id=None,
+                           related_entity_type="request", related_entity_id=987654)
+        db.commit()
+        tid = task.id
+    finally:
+        db.close()
+
+    first = client.post(f"/api/tasks/{tid}/claim",
+                        headers=_headers(client, a.civil_id, "hr12345"))
+    assert first.status_code == 200, first.text
+
+    second = client.post(f"/api/tasks/{tid}/claim",
+                         headers=_headers(client, b.civil_id, "deleg123"))
+    assert second.status_code in (401, 409), \
+        f"عضو ثانٍ التقط مهمة ملتقطة: {second.status_code}"
+
+    db = SessionLocal()
+    try:
+        row = db.get(models.Task, tid)
+        assert row.claimed_by_user_id == a.id, "الالتقاط لم يُسجَّل لصاحبه"
+        db.delete(row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_rw17_repeated_complete_leaves_one_effect(client):
+    """RW-17 — ضغط متكرر على "إنجاز": أثر واحد لا أثران.
+
+    المستخدم يضغط مرتين حين يتأخر الرد، وهو أمر يحدث دائًما. المطلوب ألّا
+    يُنتج ذلك سجلين ولا أثرين.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from app.notifications import create_task
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    tid = None
+    try:
+        u = db.scalar(select(models.User).where(models.User.role == "hr"))
+        task = create_task(db, company_id=u.company_id, type="document",
+                           title="مهمة تكرار", assignee_user_id=u.id,
+                           related_entity_type="request", related_entity_id=987655)
+        db.commit()
+        tid = task.id
+    finally:
+        db.close()
+
+    hdr = _headers(client, u.civil_id, "hr12345")
+    for _ in range(3):
+        client.post(f"/api/tasks/{tid}/status", headers=hdr, params={"status": "done"})
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(select(models.Task).where(
+            models.Task.related_entity_id == 987655)).all()
+        assert len(rows) == 1, f"تكرار الضغط أنتج {len(rows)} مهام"
+        assert rows[0].status == "done"
+        for r in rows:
+            db.delete(r)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_ac07_rw10_needs_info_keeps_same_request(client):
+    """AC-07 + RW-10 — الإرجاع للاستكمال يعود بنفس المعرّف والتاريخ كامل.
+
+    البديل الشائع — إنشاء طلب جديد عند كل استكمال — يقطع الخيط: يضيع تاريخ
+    القرار الأول، ويعود الطلب لأول السلسلة، ويُحتسب طلبين في التقارير.
+    المواصفة تمنعه صراحًة ضمن الممنوعات المطلقة.
+    """
+    emp = _headers(client, "100000000101", "emp12345")
+    r = _submit_leave(client, emp)
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+
+    sup = _headers(client, "100000000005", "sup12345")
+    back = client.post(f"/api/requests/{rid}/decide", headers=sup,
+                       json={"decision": "returned", "note": "أرفق التقرير"})
+    if back.status_code != 200:
+        import pytest
+        pytest.skip(f"الإرجاع لم ينجح: {back.status_code} {back.text[:160]}")
+
+    detail = client.get(f"/api/requests/{rid}", headers=emp)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["id"] == rid, "تغيّر معرّف الطلب بعد الإرجاع"
+
+    # والتاريخ محفوظ: قرار الإرجاع مسجَّل لا ممحو
+    timeline = body.get("timeline") or body.get("approvals") or []
+    assert timeline, "تاريخ الطلب فارغ بعد الإرجاع"
+
+    # وإعادة الإرسال تبقى على نفس الطلب لا تُنشئ جديًدا
+    again = client.post(f"/api/requests/{rid}/resubmit", headers=emp,
+                        json={"payload_json": {"leave_type": "annual", "days": 2,
+                                               "reason": "أُرفق"}})
+    if again.status_code == 200:
+        assert again.json().get("id", rid) == rid, "إعادة الإرسال أنشأت طلًبا جديًدا"

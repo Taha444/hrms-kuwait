@@ -610,6 +610,15 @@ def can_decide(db: Session, req: models.Request, user: models.User, stage: dict,
     مسمّاة (override_approval) لا تُمنح افتراضًا لأي دور، ويسجّلها مسار القرار
     في التدقيق. الطلبات السرّية لا تقبل تجاوًزا بحال.
     """
+    # V2.2 §13.6 (AC-06) — لا اعتماد ذاتي لأي دور.
+    #
+    # الحالة الواضحة: طلب يخصّ الشخص نفسه. أن يكون HR معتمِد مرحلة لا يعني أن
+    # يعتمد إجازته هو؛ ولا المحاسب سلفته. القاعدة تسبق كل شيء آخر — حتى
+    # override_approval — لأن التجاوز الإداري صُمّم لحلّ عُطل في الإسناد، لا
+    # ليمنح صاحب الطلب سلطة على طلبه.
+    if user.employee_id and req.employee_id == user.employee_id:
+        return False
+
     if is_stage_approver(db, req, user, stage):
         return True
     if user.company_id != req.company_id:

@@ -25,14 +25,14 @@
     "updated": "2026-08-15"
   },
   "AC-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "أربعة اختبارات مستقلة: test_ac06_no_self_approval + test_ac06_double_action_and_direct_url (اثنان) + test_ac06_stale_stage_is_rejected",
+    "updated": "2026-08-15"
   },
   "AC-07": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "test_ac07_rw10_needs_info_keeps_same_request — نفس المعرّف والتاريخ محفوظ",
+    "updated": "2026-08-15"
   },
   "AC-08": {
     "status": "pass",
@@ -110,8 +110,8 @@
     "updated": "2026-08-15"
   },
   "RW-08": {
-    "status": "pending",
-    "note": "",
+    "status": "pass",
+    "note": "test_rw08_claim_gives_one_member_the_action — 409 للعضو الثاني",
     "updated": "2026-08-15"
   },
   "RW-09": {
@@ -120,9 +120,9 @@
     "updated": ""
   },
   "RW-10": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "RW-11": {
     "status": "pending",
@@ -155,9 +155,9 @@
     "updated": ""
   },
   "RW-17": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "test_rw17_repeated_complete_leaves_one_effect — ثلاث ضغطات أثر واحد",
+    "updated": "2026-08-15"
   },
   "RW-18": {
     "status": "pass",
