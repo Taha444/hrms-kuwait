@@ -356,9 +356,28 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQEOS", "طلب احتساب وتسوية نهاية خدمة", CAT_CONTRACTS,
            ["hr", "accountant", "company_manager"], produces_document=True,
            default_template_code="HRMS-PR-028"),
-    _simple("REQCLR", "إخلاء طرف وتسليم عهدة", CAT_CONTRACTS,
-           ["accountant", "hr"], produces_document=True,
-           default_template_code="HRMS-PR-026"),
+    # V2.2 §13.10 (AC-10) + RW-14 — إخلاء الطرف بمهام متوازية لا سلسلة.
+    # الجهات مستقلة بطبعها: كل واحدة تعرف عهدتها ولا تعرف عهدة غيرها، وترتيبها
+    # بينها اصطناعي كان يجعل المالية تنتظر دور غيرها بلا سبب. والمندوب لا
+    # تُنشأ له مهمة إلا إن كان للموظف وثائق حكومية فعلًا.
+    {
+        "code": "REQCLR", "name": "إخلاء طرف وتسليم عهدة", "category": CAT_CONTRACTS,
+        "produces_document": True, "requires_physical_signature": True,
+        "is_confidential": False, "visible_to_employee": False,
+        "default_template_code": "HRMS-PR-026",
+        "approval_chain_json": [
+            {"order": 0, "kind": "parallel", "label": "إقرارات الجهات",
+             "step_type": "VALIDATION", "produces_document": False,
+             "parties": [
+                 {"role": "accountant", "label": "المالية — العهد والالتزامات"},
+                 {"role": "branch_supervisor", "label": "الفرع — عهدة الموقع"},
+                 {"role": "delegate", "label": "المندوب — الوثائق الحكومية",
+                  "when": {"field": "has_gov_documents", "truthy": True}},
+             ]},
+            {"order": 1, "label": "اعتماد شؤون الموظفين/القانونية", "role": "hr",
+             "kind": "approval", "step_type": "DECISION", "produces_document": True},
+        ],
+    },
 
     # نماذج إدارية
     _simple("ADMEMP", "إضافة موظف جديد", CAT_ADMIN,
@@ -580,9 +599,20 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
 
 def is_stage_approver(db: Session, req: models.Request, user: models.User,
                       stage: dict) -> bool:
-    """هل هذا المستخدم من معتمِدي هذه المرحلة فعلًا؟ — بلا أي تجاوز إداري."""
+    """هل هذا المستخدم من معتمِدي هذه المرحلة فعلًا؟ — بلا أي تجاوز إداري.
+
+    المصدر الوحيد لهذا السؤال: يستدعيه مسار القرار و can_decide وصندوق
+    "بانتظار موافقتي" معًا. وضع القاعدة في أحدها دون البقية هو بالضبط نمط
+    "موضعان يصفان قاعدة واحدة" الذي أنتج نصف أعطال هذا النظام.
+    """
     if user.company_id != req.company_id:
         return False
+    if stage.get("kind") == "parallel":
+        # V2.2 §13.10 — الجهة معتمِدة نصيبها وحده، ومرة واحدة
+        parties = {p["role"] for p in applicable_parties(stage, req.payload_json)}
+        if user.role not in parties:
+            return False
+        return user.role not in _party_decisions(db, req, req.current_stage)
     return any(u.id == user.id for u in resolve_stage_approvers(db, req, stage))
 
 
@@ -656,6 +686,46 @@ def create_request(db: Session, employee: models.Employee, requester: models.Use
     return req
 
 
+def applicable_parties(stage: dict, payload: dict | None) -> list[dict]:
+    """V2.2 §13.10 (AC-10) — الجهات المنطبقة على هذا الطلب وحدها.
+
+    ROOT CAUSE لإخلاء الطرف: كان سلسلة متتابعة، فتنتظر المالية دور تقنية
+    المعلومات وإن كان الموظف لا يحمل أي عهدة تقنية. الجهات مستقلة بطبعها: كل
+    واحدة تعرف عهدتها ولا تعرف عهدة غيرها، وترتيبها بينها اصطناعي.
+
+    ``when`` لكل جهة يُقيَّم بنفس مُقيِّم شروط المراحل، فجهة لا تنطبق لا تُنشأ
+    لها مهمة أصلًا — لا تُنشأ ثم تُغلق تلقائًيا (ذلك يُربك السجل ويوهم بإجراء
+    لم يقع).
+    """
+    out = []
+    for party in stage.get("parties") or []:
+        cond = party.get("when")
+        if cond and not _stage_applies({"when": cond}, payload):
+            continue
+        out.append(party)
+    return out
+
+
+def _party_decisions(db: Session, req: models.Request, stage_order: int) -> set[str]:
+    """أدوار الجهات التي حسمت هذه المرحلة المتوازية."""
+    rows = db.scalars(select(models.RequestApproval).where(
+        models.RequestApproval.request_id == req.id,
+        models.RequestApproval.stage_order == stage_order,
+        models.RequestApproval.decision == "approved",
+    )).all()
+    return {r.approver_role for r in rows if r.approver_role}
+
+
+def parallel_stage_complete(db: Session, req: models.Request, stage: dict) -> bool:
+    """هل حسمت كل الجهات المنطبقة؟ (All-of لا Any-of).
+
+    الإغلاق قبل اكتمالها يعني مخالصة نهائية بينما جهة لم تُقرّ بعد — وهو ما
+    يمنعه DOC-12 صراحًة.
+    """
+    needed = {p["role"] for p in applicable_parties(stage, req.payload_json)}
+    return needed and needed <= _party_decisions(db, req, req.current_stage)
+
+
 def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> None:
     """يهيّئ المرحلة الحالية: ضبط الحالة وإنشاء المهام للمستلِمين."""
     chain = _chain(rt, req)
@@ -666,7 +736,20 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
     name = _employee_name(db, req)
     label = stage.get("label", "")
 
-    if kind in ("approval", "hr_review"):
+    if kind == "parallel":
+        # مهمة لكل جهة منطبقة — كل جهة ترى مهمتها وحدها ولا تنتظر غيرها
+        req.status = "pending"
+        for party in applicable_parties(stage, req.payload_json):
+            for u in users_by_role(db, req.company_id, [party["role"]]):
+                notify_from_template(
+                    db, code="NTF-033", assignee_user_id=u.id, company_id=req.company_id,
+                    context={"request_type": rt.name, "employee_name": name,
+                             "stage_label": party.get("label") or label},
+                    related_entity_type="request", related_entity_id=req.id,
+                    severity="info",
+                    dedup_key=f"req_par:{req.id}:{req.current_stage}:{party['role']}:u{u.id}",
+                )
+    elif kind in ("approval", "hr_review"):
         req.status = "pending"
         for u in resolve_stage_approvers(db, req, stage):
             notify_from_template(
@@ -780,6 +863,14 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
             db, req, code="NTF-038", context={"scheduled_at": "أقرب وقت ممكن"},
             dedup_key=f"req_sign:{req.id}",
         )
+        db.commit()
+        db.refresh(req)
+        return req
+
+    # V2.2 §13.10 (AC-10) — مرحلة متوازية: الجهة تحسم نصيبها ولا تتقدّم
+    # المرحلة إلا باكتمال كل الجهات المنطبقة (All-of). الإغلاق قبل ذلك يعني
+    # مخالصة نهائية وجهة لم تُقرّ بعد — وهو ما يمنعه DOC-12 صراحًة.
+    if stage.get("kind") == "parallel" and not parallel_stage_complete(db, req, stage):
         db.commit()
         db.refresh(req)
         return req

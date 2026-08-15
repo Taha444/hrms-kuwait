@@ -45,9 +45,9 @@
     "updated": "2026-08-15"
   },
   "AC-10": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "مرحلة parallel بمنطق All-of + جهات مشروطة · دليل: test_ac10_rw14_doc12_clearance_parties_are_parallel + test_requests.py::test_reqeos_and_reqclr_complete_with_full_pdf",
+    "updated": "2026-08-15"
   },
   "AC-11": {
     "status": "pending",
@@ -140,9 +140,9 @@
     "updated": ""
   },
   "RW-14": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "ثلاث جهات، كل واحدة ترى مهمتها، والإغلاق بعد المنطبقات فقط",
+    "updated": "2026-08-15"
   },
   "RW-15": {
     "status": "pending",
@@ -220,9 +220,9 @@
     "updated": ""
   },
   "DOC-12": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "parallel_stage_complete يمنع الإغلاق وجهة مفتوحة",
+    "updated": "2026-08-15"
   },
   "DOC-13": {
     "status": "pending",

@@ -885,3 +885,57 @@ def test_rw16_expired_delegation_grants_nothing(client):
                 db.delete(row)
         db.commit()
         db.close()
+
+
+def test_ac10_rw14_doc12_clearance_parties_are_parallel(client):
+    """AC-10 + RW-14 + DOC-12 — إخلاء طرف: مهام متوازية، وإغلاق بعد المنطبقات فقط.
+
+    ROOT CAUSE: كان سلسلة متتابعة، فتنتظر المالية دورَ جهة أخرى وإن لم تكن
+    بينهما علاقة. الجهات مستقلة بطبعها: كل واحدة تعرف عهدتها ولا تعرف عهدة
+    غيرها، وترتيبها بينها اصطناعي.
+
+    و DOC-12: لا مخالصة نهائية وجهة لم تُقرّ بعد.
+    """
+    from app import models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        rt = db.scalar(select(models.RequestType).where(
+            models.RequestType.code == "REQCLR",
+            models.RequestType.company_id.is_(None)))
+        assert rt, "REQCLR غير مبذور"
+        stage = (rt.approval_chain_json or [])[0]
+        assert stage.get("kind") == "parallel", "مرحلة إخلاء الطرف ما زالت متتابعة"
+
+        roles = {p["role"] for p in stage["parties"]}
+        assert {"accountant", "branch_supervisor", "delegate"} <= roles
+
+        # المندوب لا تُنشأ له مهمة إلا مع وثائق حكومية — لا تُنشأ ثم تُغلق آلًيا
+        plain = {p["role"] for p in workflow.applicable_parties(stage, {})}
+        assert "delegate" not in plain, "المندوب أُقحم بلا وثائق حكومية"
+        withgov = {p["role"] for p in workflow.applicable_parties(
+            stage, {"has_gov_documents": True})}
+        assert "delegate" in withgov, "المندوب غاب رغم وجود وثائق حكومية"
+
+        # DOC-12 — الاكتمال All-of لا Any-of
+        req = models.Request(company_id=1, employee_id=1, request_type_code="REQCLR",
+                             payload_json={}, status="pending", current_stage=0)
+        db.add(req); db.flush()
+        db.add(models.RequestApproval(request_id=req.id, stage_order=0,
+                                      stage_label="المالية", approver_role="accountant",
+                                      approver_user_id=1, decision="approved"))
+        db.flush()
+        assert not workflow.parallel_stage_complete(db, req, stage), \
+            "اكتملت المرحلة وجهة لم تُقرّ — مخالصة نهائية قبل أوانها"
+
+        db.add(models.RequestApproval(request_id=req.id, stage_order=0,
+                                      stage_label="الفرع", approver_role="branch_supervisor",
+                                      approver_user_id=2, decision="approved"))
+        db.flush()
+        assert workflow.parallel_stage_complete(db, req, stage), \
+            "لم تكتمل المرحلة رغم إقرار كل الجهات المنطبقة"
+        db.rollback()
+    finally:
+        db.close()

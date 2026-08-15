@@ -134,8 +134,24 @@ def test_reqeos_and_reqclr_complete_with_full_pdf(client):
         "payload_json": {"assets": "لابتوب", "finance_status": "لا التزامات",
                          "department_signoffs": "تم"},
     }).json()["id"]
-    client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(acc), json={"decision": "approved"})
-    r2 = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(hr), json={"decision": "approved"})
+    # V2.2 §13.10 (AC-10) — المرحلة الأولى صارت متوازية: كل جهة تُقرّ نصيبها،
+    # ولا تتقدّم المرحلة إلا باكتمال المنطبقات (All-of). المندوب ليس منها هنا
+    # لأن الحمولة لا تحمل has_gov_documents.
+    sup = login(client, "100000000005", "sup12345")
+    first = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(acc),
+                        json={"decision": "approved"})
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] != "completed", "أُغلق الطلب وجهة لم تُقرّ بعد"
+
+    # HR ليس جهة في هذه المرحلة، فلا يقرّر فيها
+    early = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(hr),
+                        json={"decision": "approved"})
+    assert early.status_code in (403, 404), "غير الجهة قرّر في مرحلة متوازية"
+
+    client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(sup),
+                json={"decision": "approved"})
+    r2 = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(hr),
+                     json={"decision": "approved"})
     assert r2.status_code == 200 and r2.json()["status"] == "completed"
 
 
