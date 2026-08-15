@@ -362,3 +362,38 @@ def correct_document_expiry(doc_id: int, request: Request,
           request=request, company_id=doc.company_id)
     db.commit()
     return {"ok": True, "document_id": doc.id, "expiry_date": expiry_date}
+
+
+@router.post("/requests/{doc_id}/revoke")
+def revoke_request_document(doc_id: int, request: Request, reason: str,
+                            user: models.User = Depends(require_perm("manage_templates")),
+                            db: Session = Depends(get_db)):
+    """V2.2 §30 (DOC-10) — إلغاء مستند صادر **بلا حذف ملفه**.
+
+    ROOT CAUSE: لم يكن للإلغاء وجود. الخيار الوحيد أمام من أصدر ورقة خاطئة
+    كان حذف الصف — فتضيع القدرة على إثبات ما صدر ولمن، وتبقى الورقة في يد
+    من تسلّمها بلا أن يعرف أحد أنها باطلة.
+
+    الملف يبقى، والحالة تصير REVOKED، ورمز التحقق يُعلن ذلك لمن يمسحه. السبب
+    إلزامي ويُسجَّل في التدقيق؛ وما يُعلَن للطرف الخارجي عام لا تفصيلي.
+    """
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب الإلغاء إلزامي")
+    doc = db.get(models.RequestDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    req = db.get(models.Request, doc.request_id)
+    if req:
+        assert_same_company(user, req.company_id, db=db)
+    if doc.revoked_at:
+        return {"ok": True, "already_revoked": True}
+
+    doc.revoked_at = datetime.now()
+    doc.revoked_by_user_id = user.id
+    doc.revocation_reason = reason.strip()[:300]
+    doc.lifecycle_status = "REVOKED"
+    audit(db, user, "revoke_document", "request", doc.request_id,
+          detail=f"{doc.reference_no or doc.id}: {reason.strip()}",
+          request=request, company_id=req.company_id if req else None)
+    db.commit()
+    return {"ok": True, "revoked": True, "reference_no": doc.reference_no}

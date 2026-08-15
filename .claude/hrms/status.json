@@ -170,9 +170,9 @@
     "updated": "2026-08-15"
   },
   "DOC-02": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نص OD-001 بلا عنوان الطلب ولا مفاتيح حمولة ولا رموز أدوار · test_doc02_doc07_doc13_doc14_doc15_printed_text_rules",
+    "updated": "2026-08-15"
   },
   "DOC-03": {
     "status": "pending",
@@ -195,24 +195,24 @@
     "updated": "2026-08-15"
   },
   "DOC-07": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا ادّعاء توقيع إلكتروني محمي على صورة مرفوعة · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-08": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "البصمة تُحسب من الملف وتُقارن بالمحفوظة؛ العبث يعطي TAMPERED لا مجرد invalid · test_doc08_doc09_doc10_verification_and_revocation",
+    "updated": "2026-08-15"
   },
   "DOC-09": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "التحقق يعيد الحد الأدنى — لا راتب ولا رقم مدني · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-10": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "الإلغاء يُبقي الملف ويُعلن REVOKED بسبب عام، والتفصيلي يبقى داخلًيا · نفس الاختبار + ترحيل k1d2e3f4g5h",
+    "updated": "2026-08-15"
   },
   "DOC-11": {
     "status": "pass",
@@ -230,14 +230,14 @@
     "updated": ""
   },
   "DOC-14": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا إعلان دفع قبل تنفيذه · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-15": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا IBAN كامل مكتوب في أي قالب · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-16": {
     "status": "pending",

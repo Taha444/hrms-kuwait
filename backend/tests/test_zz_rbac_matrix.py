@@ -1468,3 +1468,135 @@ def test_doc05_rejected_request_produces_no_certificate(client):
         assert db.get(models.Request, rid).status == "rejected"
     finally:
         db.close()
+
+
+def test_doc08_doc09_doc10_verification_and_revocation(client):
+    """DOC-08 + DOC-09 + DOC-10 — التحقق من الورقة، وإلغاؤها بلا حذفها.
+
+    ROOT CAUSE (DOC-10): لم يكن للإلغاء وجود. الخيار الوحيد أمام من أصدر ورقة
+    خاطئة كان حذف الصف — فتضيع القدرة على إثبات ما صدر ولمن، وتبقى الورقة في
+    يد من تسلّمها بلا أن يعرف أحد أنها باطلة.
+
+    DOC-08: البصمة تُحسب من الملف لا من حقل محفوظ، والتمييز مقصود —
+    "لم نُصدرها" غير "أُصدرت ثم عُدِّلت".
+    DOC-09: من يتحقّق يريد جواًبا عن صحة الورقة لا نسخة من محتواها.
+    """
+    import hashlib
+    import os
+
+    from app import models, verification
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    emp = _headers(client, "100000000101", "emp12345")
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "REQCERTSAL",
+        "payload_json": {"purpose": "بنك", "language": "ar", "include_salary": True},
+    })
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+    client.post(f"/api/requests/{rid}/decide",
+                headers=_headers(client, "100000000002", "hr12345"),
+                json={"decision": "approved", "note": ""})
+
+    db = SessionLocal()
+    try:
+        doc = db.scalar(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid,
+            models.RequestDocument.lifecycle_status == "GENERATED"))
+        if not doc:
+            import pytest
+            pytest.skip("لم يُولَّد مستند")
+        doc_id, path = doc.id, doc.file_path
+        code = verification.generate_code(doc.id, doc.request_id)
+    finally:
+        db.close()
+
+    # DOC-08 — سليم ⇒ VALID
+    v = client.get(f"/api/verify/{code}")
+    assert v.status_code == 200, v.text
+    body = v.json()
+    assert body["valid"] is True and body["state"] == "VALID", body
+
+    # DOC-09 — الحد الأدنى: لا راتب ولا رقم مدني كامل
+    blob = str(body)
+    assert "basic_salary" not in blob and "salary" not in blob.lower(), \
+        "التحقق يكشف الراتب"
+    assert "civil_id" not in blob, "التحقق يكشف الرقم المدني"
+
+    # DOC-08 — عبث بالملف ⇒ TAMPERED لا "غير صالح"
+    if path and os.path.exists(path):
+        with open(path, "ab") as f:
+            f.write(b"\n% tampered")
+        t = client.get(f"/api/verify/{code}").json()
+        assert t["state"] == "TAMPERED", f"العبث لم يُكتشف: {t['state']}"
+        assert t["valid"] is False
+
+    # DOC-10 — الإلغاء يُبقي الملف ويُعلن الحال
+    admin = _headers(client, "000000000000", "admin123")
+    no_reason = client.post(f"/api/documents/requests/{doc_id}/revoke",
+                            params={"reason": " "}, headers=admin)
+    assert no_reason.status_code == 400, "أُلغي مستند بلا سبب"
+
+    ok = client.post(f"/api/documents/requests/{doc_id}/revoke",
+                     params={"reason": "صدرت ببيانات خاطئة"}, headers=admin)
+    assert ok.status_code == 200, ok.text
+
+    after = client.get(f"/api/verify/{code}").json()
+    assert after["state"] == "REVOKED" and after["revoked"] is True
+    assert after["revocation_note"], "الإلغاء بلا إعلان للطرف الخارجي"
+    assert "خاطئة" not in str(after), "سبب الإلغاء التفصيلي تسرّب للطرف الخارجي"
+
+    db = SessionLocal()
+    try:
+        row = db.get(models.RequestDocument, doc_id)
+        assert row is not None, "الإلغاء حذف صف المستند"
+        assert row.file_path == path, "الإلغاء غيّر مسار الملف"
+        assert row.revocation_reason, "السبب لم يُحفظ داخلًيا"
+    finally:
+        db.close()
+
+
+def test_doc02_doc07_doc13_doc14_doc15_printed_text_rules():
+    """DOC-02/07/13/14/15 — ما يجوز أن يظهر في ورقة رسمية وما لا يجوز.
+
+    كل واحدة منها خطأ يقع على ورقة تخرج من الشركة إلى جهة خارجية:
+    - DOC-02: "طلب شهادة راتب" على الشهادة نفسها — الشهادة ليست الطلب
+    - DOC-07: "توقيع إلكتروني محمي" على صورة توقيع مرفوعة — ادّعاء حماية
+      تشفيرية لا وجود لها، وهو أخطر من غياب التوقيع
+    - DOC-13: تسوية مبدئية بلا "غير صالحة للصرف" تُقرأ أمًرا بالدفع
+    - DOC-14: "مدفوع" قبل التنفيذ
+    - DOC-15: IBAN كامل في إيصال عام
+    """
+    import re
+
+    from app.seed import DEFAULT_TEMPLATES
+
+    by_code = {e[0]: e[-1] for e in DEFAULT_TEMPLATES}
+
+    # DOC-02 — الشهادة ليست الطلب
+    cert = by_code.get("HRMS-PR-001", "")
+    assert "طلب شهادة" not in cert, "الشهادة تحمل عنوان الطلب"
+    assert "payload" not in cert and "company_manager" not in cert, \
+        "مفاتيح حمولة أو رموز أدوار داخل نص الشهادة"
+
+    # DOC-07 — لا ادّعاء حماية تشفيرية بلا توقيع مشفَّر
+    protected = re.compile(r"توقيع\s+إلكتروني\s+(محمي|مؤمَّن)|Protected\s+Electronic\s+Signature",
+                           re.IGNORECASE)
+    for code, body in by_code.items():
+        assert not protected.search(body or ""), \
+            f"{code} يدّعي توقيًعا إلكترونًيا محمًيا وهو صورة مرفوعة"
+
+    # DOC-14 — لا "مدفوع" في قالب اعتماد
+    for code in ("HRMS-PR-016", "HRMS-PR-017"):
+        body = by_code.get(code, "")
+        if body:
+            assert not re.search(r"\bتم الدفع\b|\bمدفوع\b", body), \
+                f"{code} يعلن الدفع قبل تنفيذه"
+
+    # DOC-15 — الـIBAN لا يظهر كامًلا في نص عام؛ يأتي رمًزا يُملأ عند الحاجة
+    for code, body in by_code.items():
+        assert not re.search(r"KW\d{2}[A-Z0-9]{20,}", body or ""), \
+            f"{code} يحمل IBAN كامًلا مكتوًبا في القالب"

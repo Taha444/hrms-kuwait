@@ -3,6 +3,9 @@
 تمكين طرف خارجي (بنك/سفارة) لا حساب له في النظام من التأكد من صحة الورقة التي بين يديه.
 لا يُعاد أي بيانات حساسة (لا راتب، لا رقم مدني كامل) — فقط تأكيد الصحة والحد الأدنى للتعريف.
 """
+import hashlib
+import os
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,10 +31,34 @@ def verify_document(code: str, db: Session = Depends(get_db)):
         select(models.RequestType).where(models.RequestType.code == req.request_type_code)
     )
     company = db.get(models.Company, req.company_id)
+
+    # V2.2 §30 (DOC-08) — البصمة تُحسب من الملف على القرص وتُقارن بالمحفوظة
+    # وقت الإصدار. التمييز مقصود: "لم نُصدرها" غير "أُصدرت ثم عُدِّلت"، وهو
+    # فرق جوهري لمن يحقّق في ورقة بين يديه.
+    integrity = "UNKNOWN"
+    if doc.checksum_sha256:
+        if doc.file_path and os.path.exists(doc.file_path):
+            with open(doc.file_path, "rb") as f:
+                actual = hashlib.sha256(f.read()).hexdigest()
+            integrity = "VALID" if actual == doc.checksum_sha256 else "TAMPERED"
+        else:
+            integrity = "FILE_MISSING"
+
+    # V2.2 §30 (DOC-10) — الملغى يُعلن إلغاءه ولا يُخفى: مستند مُلغى معروف
+    # الحال خيرٌ من مستند مختٍف لا يُعرف مصيره.
+    revoked = doc.revoked_at is not None
+
     return {
-        "valid": True,
+        "valid": not revoked and integrity in ("VALID", "UNKNOWN"),
+        "state": "REVOKED" if revoked else integrity,
         "request_type": rt.name if rt else req.request_type_code,
         "company_name": company.name if company else None,
         "issued_at": doc.created_at,
         "status": req.status,
+        "reference_no": doc.reference_no,
+        # DOC-20 — بأي نسخة قالب صدرت
+        "template_version": doc.template_version,
+        "revoked": revoked,
+        # السبب عام لا تفصيلي: من يتحقّق يحتاج أن يعرف أنها مُلغاة لا لماذا
+        "revocation_note": "أُلغي هذا المستند من جهة إصداره" if revoked else None,
     }

@@ -685,6 +685,12 @@ class RequestDocument(Base):
     # بلا هذين العمودين يستحيل بعد شهور إثبات بأي نصٍّ صدرت شهادةٌ بعينها.
     template_code: Mapped[str | None] = mapped_column(String(50))
     template_version: Mapped[int | None] = mapped_column(Integer)
+    # V2.2 §30 (DOC-10) — إلغاء مستند: **الملف لا يُحذف**.
+    # مستند صدر ووصل جهة خارجية لا يُمحى من الوجود بضغطة؛ محوُه يُفقد القدرة
+    # على إثبات ما صدر ولمن. يُوسَم ملغى، ويُعلن رمز التحقق ذلك لمن يفحصه.
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    revocation_reason: Mapped[str | None] = mapped_column(String(300))
 
 
 class Appointment(Base):
