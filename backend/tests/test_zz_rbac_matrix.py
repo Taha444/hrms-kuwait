@@ -513,3 +513,52 @@ def test_v22_policy_reads_from_data_then_company_then_code(client):
                 db.delete(row)
         db.commit()
         db.close()
+
+
+def test_v22_separated_approval_permissions_lose_nothing():
+    """V2.2 §4.5 (AP-01) — كل مرحلة قائمة ما زال لها معتمِد بعد الفصل.
+
+    هذا هو الخطر الحقيقي في تفكيك approve_request: خطأ واحد في الخريطة يوقف
+    اعتماد نوع طلب كامل في الإنتاج — لا يُشوّه شاشة. الاختبار يمرّ على كل
+    مرحلة في كل نوع مبذور ويتأكد أن دورها ما زال يملك صلاحية مجالها.
+    """
+    from app.permissions import (DECISION_DOMAIN_BY_CATEGORY, ROLE_DEFAULT_PERMS,
+                                 can_decide_category)
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    # كل فئة في الكتالوج لها مجال معرَّف — لا فئة تسقط للعام بالصدفة
+    categories = {rt.get("category") for rt in DEFAULT_REQUEST_TYPES}
+    unmapped = {c for c in categories if c and c not in DECISION_DOMAIN_BY_CATEGORY}
+    assert not unmapped, f"فئات بلا مجال قرار: {sorted(unmapped)}"
+
+    orphaned = []
+    for rt in DEFAULT_REQUEST_TYPES:
+        for stage in rt.get("approval_chain_json") or []:
+            role = stage.get("role")
+            if not role:
+                continue
+            if not can_decide_category(role, set(), rt.get("category")):
+                orphaned.append(f"{rt['code']}/{stage.get('order')}/{role}")
+    assert not orphaned, "مراحل فقدت معتمِدها بعد الفصل: " + "; ".join(orphaned[:10])
+
+
+def test_v22_separated_approval_actually_separates():
+    """AP-01 — الفصل حقيقي: دور لا يعتمد مجاًلا لم يكن فيه.
+
+    لو منحنا كل دور كل المجالات لكان الفصل اسًما بلا أثر — نفس العلة التي
+    نصلحها. المندوب مثال: مراحله حكومية وعامة وإجازات فقط.
+    """
+    from app.permissions import ROLE_DEFAULT_PERMS, can_decide_category
+
+    assert can_decide_category("delegate", set(), "الإقامة والمعاملات الحكومية")
+    assert not can_decide_category("delegate", set(), "الشكاوى والتظلمات"), \
+        "المندوب يعتمد تظلًّما — الفصل بلا أثر"
+    assert not can_decide_category("delegate", set(), "العقود وإنهاء الخدمة")
+    assert not can_decide_category("employee", set(), "الحضور والإجازات")
+
+    # وapprove_request لم تُمنح لدور جديد
+    assert "approve_request" not in ROLE_DEFAULT_PERMS.get("delegate", set()), \
+        "المندوب مُنح الصلاحية العامة المهجورة"
+
+    # ومن يملك العامة (منح صريح قائم) يبقى قادًرا — لا نوقف الإنتاج فجأة
+    assert can_decide_category("delegate", {"approve_request"}, "الشكاوى والتظلمات")

@@ -463,6 +463,17 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     if req.status not in ("pending",):
         raise HTTPException(status_code=409, detail="لا يمكن اتخاذ قرار في هذه الحالة")
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    # V2.2 §4.5 (AP-01) — القرار يحتاج صلاحية مجاله لا صلاحية عامة.
+    # حارس المسار يقبل approve_request أو process_delegate_tasks، وهو حارس
+    # واحد لكل الأنواع: من يعتمد إجازة يصل لاعتماد خصم وتظلّم وإنهاء خدمة.
+    # الفحص هنا لأن المجال لا يُعرف إلا بعد قراءة نوع الطلب.
+    from ..deps import get_user_perms
+    if not permissions.can_decide_category(user.role, get_user_perms(user, db),
+                                           rt.category if rt else None):
+        raise HTTPException(status_code=403, detail=(
+            "لا تملك صلاحية القرار في هذه الفئة — "
+            f"المطلوب: {permissions.decision_permission(rt.category if rt else None)}"
+        ))
     chain = workflow._chain(rt, req)
     # P0-#6 — منع stale action: current_stage غير صالح (بره النطاق) في حالة pending
     if req.current_stage < 0 or req.current_stage >= len(chain):

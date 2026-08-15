@@ -39,7 +39,20 @@ PERMISSIONS: dict[str, str] = {
     "view_tasks": "عرض المهام والتنبيهات",
     "manage_tasks": "إدارة المهام",
     "submit_request": "تقديم الطلبات (خدمة ذاتية)",
-    "approve_request": "اعتماد الطلبات",
+    # V2.2 §4.5 (AP-01) — مهجورة: صلاحية اعتماد واحدة لكل الأنواع تعني أن من
+    # يعتمد إجازة يعتمد خصًما وتظلًما وإنهاء خدمة. تبقى مقبولة للتوافق مع منح
+    # صريحة قائمة، ولا تُمنح لدور جديد.
+    "approve_request": "اعتماد الطلبات (عام — مهجور)",
+    # الصلاحيات المفصولة: مجال قرار واحد لكل صلاحية. المصفوفة أدناه مشتقّة من
+    # approval_chain_json الفعلية لا مخمَّنة، فلا يفقد دور شيًئا كان يعتمده.
+    "approve_leave": "اعتماد الحضور والإجازات",
+    "approve_certificate": "اعتماد الشهادات والخطابات",
+    "approve_finance": "اعتماد الطلبات المالية",
+    "approve_government": "اعتماد المعاملات الحكومية والإقامات",
+    "approve_personnel": "اعتماد بيانات الموظف والتطوير الوظيفي",
+    "approve_grievance": "اعتماد الشكاوى والتظلمات",
+    "approve_exit": "اعتماد العقود وإنهاء الخدمة",
+    "approve_general": "اعتماد الطلبات العامة والنماذج الإدارية",
     "manage_request_types": "إدارة أنواع الطلبات وسلاسل الموافقات",
     "manage_templates": "إدارة الصيغ والنماذج وطباعتها",
     "process_delegate_tasks": "إجراءات المندوب (تجديد/إذن مغادرة)",
@@ -110,7 +123,15 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # ATT-03: record_attendance نُزعت بقرار العميل — لا شاشة حضور للمدير.
     # كانت تُمنح له ليبصم لنفسه (P0-#4)، لكنه يعتمد الطلبات ويمنح الصلاحيات،
     # فبصمه لنفسه يخلط الرقابة بالخضوع لها. view_attendance تبقى للمتابعة.
-    "company_manager": {"view_employee", "create_employee", "edit_employee", "delete_employee",
+    "company_manager": {
+        "approve_certificate",
+        "approve_exit",
+        "approve_finance",
+        "approve_general",
+        "approve_government",
+        "approve_grievance",
+        "approve_leave",
+        "approve_personnel","view_employee", "create_employee", "edit_employee", "delete_employee",
                         "view_documents", "upload_documents", "manage_leaves", "view_attendance",
                         "manage_branches", "manage_departments", "approve_request",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
@@ -124,7 +145,12 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # والاعتماد المالي في REQOT/REQBANK/REQADV/REQEXP/REQPAY/REQDED/ADMDED/REQCLR/REQEOS)،
     # وبدونها كان /decide و/received يرفضانه بـ403 فتتوقف الطلبات المالية عنده للأبد رغم
     # أن can_decide يتحقق أصًلا من كونه معتمِد المرحلة الفعلي.
-    "accountant": {"view_employee", "view_payroll", "run_payroll", "manage_deductions",
+    "accountant": {
+        "approve_exit",
+        "approve_finance",
+        "approve_general",
+        "approve_leave",
+        "approve_personnel","view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks",
                    "submit_request", "record_attendance", "approve_request",
@@ -141,7 +167,12 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # submit_request: لنفسه فقط. كان يبدأ طلبات تشغيلية عن موظفيه (تغيير وردية،
     # مهمة خارجية...) قبل قصر التقديم نيابًة على HR — انظر ON_BEHALF_ROLES.
     # P0-#4: أضفنا record_attendance — مسؤول الفرع موظف أيضًا (يبصم لنفسه).
-    "branch_supervisor": {"view_employee", "view_attendance", "approve_request",
+    "branch_supervisor": {
+        "approve_finance",
+        "approve_general",
+        "approve_government",
+        "approve_leave",
+        "approve_personnel","view_employee", "view_attendance", "approve_request",
                           "record_attendance",  # للـMy Attendance الشخصية
                           "view_tasks", "view_reports", "export_reports", "submit_request"},
     # الشؤون القانونية/HR: مسؤول عن الموظفين فقط (لا حكومة/إقامات/تراخيص).
@@ -151,7 +182,15 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # REQCLR، ADMEMP/ADMACTUAL/ADMDED/ADMVIO/ADMWARN/ADMTASK/ADMMISS/ADMSIGN) نيابًة عن
     # الموظف؛ بدونها لم يكن أي منها قابًلا للإنشاء أصًلا (لا HR ولا company_manager كان
     # يملك submit_request)، وهو السبب الحقيقي وراء توقّف REQEOS/REQCLR (P0-05).
-    "hr": {"view_employee", "create_employee", "edit_employee",
+    "hr": {
+        "approve_certificate",
+        "approve_exit",
+        "approve_finance",
+        "approve_general",
+        "approve_government",
+        "approve_grievance",
+        "approve_leave",
+        "approve_personnel","view_employee", "create_employee", "edit_employee",
            "view_documents", "upload_documents",
            "manage_leaves", "manage_deductions",
            "approve_request", "calculate_eos", "terminate_employee",
@@ -169,7 +208,10 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # R2-B: create_employee أُلغي — PRO لا يُنشئ موظفين (HR فقط). صلاحية إنشاء تُسبب
     # ظهور "موظف جديد" في القائمة الجانبية وتفتح فورمًا يعرض حقول (راتب/تاريخ تعيين/عقد)
     # ممنوعة على المندوب أصلاً في الرؤية.
-    "delegate": {"view_employee", "view_documents", "upload_documents",
+    "delegate": {
+        "approve_general",
+        "approve_government",
+        "approve_leave","view_employee", "view_documents", "upload_documents",
                  "manage_permits", "manage_licenses", "process_delegate_tasks", "submit_request",
                  "view_tasks", "manage_tasks"},
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
@@ -378,3 +420,44 @@ def check_legacy(role: str, assigned: set[str], perm: str) -> bool:
     if pa:
         return has_page_action(role, assigned, pa[0], pa[1])
     return has_permission(role, assigned, perm)
+
+# ===========================================================================
+# V2.2 §4.5 (AP-01) — مجال القرار لكل فئة طلب.
+#
+# ROOT CAUSE: صلاحية واحدة `approve_request` تحكم كل الأنواع — فمن يعتمد
+# إجازة يملك اعتماد خصم وتظلّم وإنهاء خدمة، والفصل بين الواجبات (SoD) يصير
+# اسًما بلا أثر. المواصفة تطلب صلاحية لكل نوع قرار.
+#
+# الخريطة مشتقّة من فئات الكتالوج، والمنح في ROLE_DEFAULT_PERMS مشتقّة من
+# approval_chain_json الفعلية — فلا يفقد دور صلاحية كان يمارسها.
+# ===========================================================================
+DECISION_DOMAIN_BY_CATEGORY: dict[str, str] = {
+    "الحضور والإجازات": "approve_leave",
+    "الشهادات والخطابات": "approve_certificate",
+    "الطلبات المالية": "approve_finance",
+    "الإقامة والمعاملات الحكومية": "approve_government",
+    "بيانات الموظف والمستندات": "approve_personnel",
+    "التطوير الوظيفي": "approve_personnel",
+    "الشكاوى والتظلمات": "approve_grievance",
+    "العقود وإنهاء الخدمة": "approve_exit",
+    "طلبات عامة": "approve_general",
+    "نماذج إدارية": "approve_general",
+}
+
+
+def decision_permission(category: str | None) -> str:
+    """الصلاحية المطلوبة للقرار في هذه الفئة — العامة لما لا فئة له."""
+    return DECISION_DOMAIN_BY_CATEGORY.get(category or "", "approve_general")
+
+
+def can_decide_category(role: str, assigned: set[str], category: str | None) -> bool:
+    """هل يملك هذا المستخدم قرار هذه الفئة؟
+
+    يُقبل approve_request المهجورة للتوافق مع منح صريحة قائمة على حسابات
+    فعلية — إسقاطها فجأة يوقف اعتماد أنواع كاملة في الإنتاج، وهو ما تمنعه
+    قاعدة "لا تغيّر سلوًكا يعمل".
+    """
+    if role == "super_admin":
+        return True
+    perms = effective_permissions(role, assigned)
+    return decision_permission(category) in perms or "approve_request" in perms

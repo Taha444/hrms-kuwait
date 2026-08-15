@@ -5,19 +5,19 @@
     "updated": "2026-08-15"
   },
   "AC-02": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "can_decide يمنع غير معتمِد المرحلة + الفصل بالمجال عند /decide · دليل: test_rbac_stage_approval_is_not_transitive",
+    "updated": "2026-08-15"
   },
   "AC-03": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fail",
+    "note": "الآلية جاهزة (approve_finance مفصولة) لكن HR يملكها لأنه معتمِد فعلي في السلاسل المالية المبذورة. إسقاطها قرار عمل على السلاسل نفسها لا على الصلاحيات",
+    "updated": "2026-08-15"
   },
   "AC-04": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "المندوب لا يعتمد تظلًما ولا إنهاء خدمة · دليل: test_v22_separated_approval_actually_separates",
+    "updated": "2026-08-15"
   },
   "AC-05": {
     "status": "fail",
