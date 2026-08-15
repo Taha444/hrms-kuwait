@@ -35,9 +35,9 @@
     "updated": ""
   },
   "AC-08": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "policy_snapshot_json يُلتقط عند الإرسال و_chain يقرأ منه لا من القراءة الحالية",
+    "updated": "2026-08-15"
   },
   "AC-09": {
     "status": "pending",
@@ -100,14 +100,14 @@
     "updated": ""
   },
   "RW-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "test_v22_policy_threshold_stage: تحت الحد لا مرحلة إضافية",
+    "updated": "2026-08-15"
   },
   "RW-07": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "test_v22_policy_threshold_stage: فوق الحد تُضاف المرحلة",
+    "updated": "2026-08-15"
   },
   "RW-08": {
     "status": "pending",
@@ -160,9 +160,9 @@
     "updated": ""
   },
   "RW-18": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لقطة السياسة محفوظة مع الطلب — تعديل الحد لاحًقا لا يغيّر مراحله",
+    "updated": "2026-08-15"
   },
   "DOC-01": {
     "status": "pending",
@@ -285,8 +285,8 @@
     "updated": "2026-08-15"
   },
   "STR-05": {
-    "status": "fail",
-    "note": "AP-03 رصد حدوًدا داخل الكود — policy_rule غير موجود",
+    "status": "pass",
+    "note": "app/policy.py — جدول policy_rules مؤرَّخ ومُصدَّر + شرط policy_gt في المحرك · دليل: test_v22_policy_threshold_stage + test_v22_policy_reads_from_data_then_company_then_code",
     "updated": "2026-08-15"
   },
   "STR-06": {

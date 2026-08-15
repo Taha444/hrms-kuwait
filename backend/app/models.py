@@ -624,6 +624,11 @@ class Request(Base):
     requester_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     request_type_code: Mapped[str] = mapped_column(String(50))
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V2.2 §13.8 (AC-08) + RW-18 — لقطة القواعد الفاعلة لحظة الإرسال.
+    # تعديل سياسة بعد الإرسال يجب ألّا يغيّر الطلب القائم: من قدّم مصروًفا تحت
+    # الحد القديم لا تُضاف له مرحلة اعتماد ظهرت بعده. وبلا اللقطة يستحيل بعد
+    # شهور تفسير لماذا مرّ هذا الطلب بمرحلتين وذاك بثلاث.
+    policy_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="pending")
     current_stage: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
@@ -1086,6 +1091,37 @@ class LeaveLedger(Base):
     leave_id: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(String(300))
     created_by: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PolicyRule(Base):
+    """V2.2 §7 (STR-05) — حدود السياسة بياًنا لا كوًدا.
+
+    ROOT CAUSE: الحدود المالية والمدد كانت إمّا مزروعة في الكود أو غير موجودة
+    أصًلا. فمرحلة "اعتماد فوق الحد" (RW-07) لم يكن لها وجود لأن الحد نفسه لم
+    يكن له وجود، وتغيير مهلة الإنذار يعني نشر إصدار جديد.
+
+    القاعدة تُنسخ ولا تُعدَّل: تعديل حدٍّ يُنشئ صًفا جديًدا بإصدار أعلى ويُنهي
+    سريان القديم. الطلبات القائمة تحتفظ بلقطتها (policy_snapshot_json)، فيبقى
+    قرار قديم مفهوًما على ضوء القاعدة التي حكمته لا القاعدة الحالية.
+
+    company_id = NULL ⇒ قاعدة عامة (افتراضي المنصّة)؛ صف الشركة يتقدّم عليها.
+    """
+    __tablename__ = "policy_rules"
+    __table_args__ = (
+        UniqueConstraint("company_id", "key", "version", name="uq_policy_rule_version"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+    key: Mapped[str] = mapped_column(String(80), index=True)
+    value_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

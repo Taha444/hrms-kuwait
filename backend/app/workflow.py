@@ -437,12 +437,20 @@ def get_request_type(db: Session, company_id: int, code: str) -> models.RequestT
     return None
 
 
-def _stage_applies(stage: dict, payload: dict | None) -> bool:
-    """هل تنطبق هذه المرحلة على هذا الطلب؟ (QA-10)
+def _stage_applies(stage: dict, payload: dict | None,
+                   policy: dict | None = None) -> bool:
+    """هل تنطبق هذه المرحلة على هذا الطلب؟ (QA-10 + V2.2 §7/§13.8)
 
-    المرحلة قد تحمل شرطًا: {"when": {"field": "travel_required", "truthy": true}}
-    أو {"when": {"field": "leave_type", "equals": "annual"}}. بلا شرط ⇒ تنطبق
-    دائمًا، وهو سلوك كل المراحل القائمة.
+    المرحلة قد تحمل شرًطا:
+      {"when": {"field": "travel_required", "truthy": true}}
+      {"when": {"field": "leave_type", "equals": "annual"}}
+      {"when": {"field": "amount", "policy_gt": "finance.extra_approval_threshold",
+                "policy_field": "amount"}}   ← V2.2: الحد من السياسة لا من الكود
+
+    بلا شرط ⇒ تنطبق دائًما، وهو سلوك كل المراحل القائمة.
+
+    ``policy`` هو لقطة القواعد المحفوظة مع الطلب لا القراءة الحالية: تعديل حدٍّ
+    بعد الإرسال لا يُضيف مرحلة لطلب قائم ولا يحذف منه (RW-18).
     """
     cond = stage.get("when")
     if not cond:
@@ -451,6 +459,19 @@ def _stage_applies(stage: dict, payload: dict | None) -> bool:
         # وصف النوع مجرًدا (بلا طلب): نعرض المراحل المشروطة لأنها جزء من التعريف
         return True
     value = (payload or {}).get(cond.get("field"))
+    if "policy_gt" in cond:
+        # حدّ من السياسة: المرحلة تُضاف فقط عند تجاوزه فعلًا (RW-06 مقابل RW-07)
+        key = cond["policy_gt"]
+        entry = (policy or {}).get(key) or {}
+        limit = (entry.get("value") or {}).get(cond.get("policy_field", "amount"))
+        if limit is None or float(limit) <= 0:
+            # لا حدّ معتمَد ⇒ لا مرحلة إضافية. هذا هو السلوك القائم بالضبط،
+            # فإدخال الآلية وحدها لا يغيّر شيًئا قبل اعتماد قيمة.
+            return False
+        try:
+            return float(value or 0) > float(limit)
+        except (TypeError, ValueError):
+            return False
     if "equals" in cond:
         return value == cond["equals"]
     if "in" in cond:
@@ -470,7 +491,9 @@ def _chain(rt: models.RequestType, req: models.Request | None = None) -> list[di
     """
     stages = sorted(rt.approval_chain_json or [], key=lambda s: s.get("order", 0))
     payload = (req.payload_json if req is not None else None)
-    return [s for s in stages if _stage_applies(s, payload)]
+    # لقطة السياسة المحفوظة مع الطلب لا القراءة الحالية (RW-18)
+    policy = (getattr(req, "policy_snapshot_json", None) or {}) if req is not None else {}
+    return [s for s in stages if _stage_applies(s, payload, policy)]
 
 
 def _warn_unassigned_stage(db: Session, req: models.Request,
@@ -601,10 +624,20 @@ def _employee_name(db: Session, req: models.Request) -> str:
 
 def create_request(db: Session, employee: models.Employee, requester: models.User,
                    rt: models.RequestType, payload: dict) -> models.Request:
+    # V2.2 §13.8 (AC-08) + RW-18 — لقطة القواعد الفاعلة لحظة الإرسال.
+    # المراحل المشروطة بحدّ تُحسب من هذه اللقطة لا من القراءة الحالية، فتعديل
+    # حدٍّ بعد الإرسال لا يُضيف مرحلة لطلب قائم ولا يحذف منه.
+    from . import policy as policy_service
+    snapshot = policy_service.snapshot(
+        db, employee.company_id,
+        [s.get("when", {}).get("policy_gt") for s in (rt.approval_chain_json or [])
+         if isinstance(s.get("when"), dict) and s["when"].get("policy_gt")],
+    )
     req = models.Request(
         company_id=employee.company_id, employee_id=employee.id,
         requester_user_id=requester.id, request_type_code=rt.code,
         payload_json=payload, status="pending", current_stage=0,
+        policy_snapshot_json=snapshot or None,
     )
     db.add(req)
     db.flush()

@@ -434,3 +434,82 @@ def test_v22_grouped_catalog_hits_the_targets(client):
                       params={"creatable_only": True}).json()
     assert len(flat) > len(services), "الوضع المسطّح تأثر بالتجميع"
     assert all("subtypes" not in x for x in flat), "التجميع تسرّب للوضع المسطّح"
+
+
+def test_v22_policy_threshold_stage(client):
+    """V2.2 §7 (STR-05) + §14 (RW-06/RW-07) — مرحلة تُضاف فوق الحد فقط.
+
+    ROOT CAUSE: مرحلة "اعتماد فوق الحد" لم يكن لها وجود — لا لأن المحرك لا
+    يدعمها بل لأن الحد نفسه لم يكن له وجود في النظام إطلاًقا.
+    """
+    from app.workflow import _stage_applies
+
+    stage = {"order": 3, "role": "company_owner",
+             "when": {"field": "amount", "policy_gt": "finance.extra_approval_threshold",
+                      "policy_field": "amount"}}
+    snap = {"finance.extra_approval_threshold":
+            {"value": {"amount": 500.0}, "version": 1, "source": "company"}}
+
+    assert not _stage_applies(stage, {"amount": 300}, snap), "RW-06: تحت الحد أضاف مرحلة"
+    assert _stage_applies(stage, {"amount": 900}, snap), "RW-07: فوق الحد لم يضف مرحلة"
+    assert not _stage_applies(stage, {"amount": 500}, snap), "المساواة ليست تجاوًزا"
+
+    # بلا حدّ معتمَد: لا مرحلة إضافية — السلوك القائم بالضبط قبل الجدول
+    assert not _stage_applies(stage, {"amount": 9999}, {}), "حدّ غير معتمَد أضاف مرحلة"
+    assert not _stage_applies(
+        stage, {"amount": 9999},
+        {"finance.extra_approval_threshold": {"value": {"amount": 0}}})
+
+    # وقيمة غير رقمية لا تُسقط المحرك
+    assert not _stage_applies(stage, {"amount": "غير رقم"}, snap)
+
+
+def test_v22_policy_reads_from_data_then_company_then_code(client):
+    """V2.2 §7 — تسلسل القراءة، وأن الافتراضي يُعلن أنه من الكود لا من سياسة."""
+    from datetime import date, timedelta
+
+    from app import models, policy
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    made = []
+    try:
+        cid = db.scalar(select(models.Company.id))
+
+        # لا صف ⇒ الافتراضي، ومصدره معلن
+        r = policy.get(db, cid, "finance.extra_approval_threshold")
+        assert r["source"] == "code_default" and r["version"] == 0
+
+        # صف عام ⇒ يتقدّم على الافتراضي
+        g = models.PolicyRule(company_id=None, key="finance.extra_approval_threshold",
+                              value_json={"amount": 250.0}, version=1)
+        db.add(g); db.commit(); made.append(g.id)
+        r = policy.get(db, cid, "finance.extra_approval_threshold")
+        assert r["source"] == "global" and r["value"]["amount"] == 250.0
+
+        # صف الشركة ⇒ يتقدّم على العام
+        c = models.PolicyRule(company_id=cid, key="finance.extra_approval_threshold",
+                              value_json={"amount": 750.0}, version=1)
+        db.add(c); db.commit(); made.append(c.id)
+        r = policy.get(db, cid, "finance.extra_approval_threshold")
+        assert r["source"] == "company" and r["value"]["amount"] == 750.0
+
+        # قاعدة لم يبدأ سريانها لا تُطبَّق
+        future = models.PolicyRule(company_id=cid, key="loan.max_amount",
+                                   value_json={"amount": 1.0}, version=2,
+                                   effective_from=date.today() + timedelta(days=30))
+        db.add(future); db.commit(); made.append(future.id)
+        assert policy.get(db, cid, "loan.max_amount")["source"] == "code_default"
+
+        # مفتاح مجهول يُرفَض بدل أن يُخترَع بصمت
+        import pytest
+        with pytest.raises(KeyError):
+            policy.get(db, cid, "key.does.not.exist")
+    finally:
+        for rid in made:
+            row = db.get(models.PolicyRule, rid)
+            if row:
+                db.delete(row)
+        db.commit()
+        db.close()
