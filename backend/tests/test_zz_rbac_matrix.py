@@ -1793,3 +1793,63 @@ def test_dlv06_build_identity_includes_migration(client):
     for k in ("version", "commit", "build_time", "deploy_time", "environment",
               "migration_version"):
         assert k in m, f"هوية البناء تنقصها {k}"
+
+
+def test_dlv23_scheduled_job_failure_raises_an_alert(client):
+    """DLV-23 — فشل مهمة مجدولة يصل مسؤوًلا لا سجًلا وحده.
+
+    ROOT CAUSE: كل مهمة كانت تُسجّل خطأها ثم تصمت. سجل الخادم لا يقرأه أحد
+    يومًيا، فالمسح اليومي يتوقف أسابيع بلا أن ينتبه أحد — **وتنتهي إقامات بلا
+    تنبيه لأن المُنبِّه نفسه هو المتعطّل**. أخطر أنواع الأعطال: عطل في آلية
+    الإنذار لا يُنذِر عن نفسه.
+    """
+    from unittest.mock import patch
+
+    from app import models, scheduler
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    with patch.object(scheduler, "daily_scan",
+                      side_effect=RuntimeError("قاعدة غير متاحة")):
+        scheduler._run_daily_scan()
+
+    db = SessionLocal()
+    try:
+        tasks = db.scalars(select(models.Task).where(
+            models.Task.type == "job_failure")).all()
+        assert tasks, "فشل المهمة لم يُنتج تنبيًها"
+        t = tasks[0]
+        assert t.severity == "critical"
+        assert "daily_scan" in (t.title or "")
+        assert t.assignee_user_id, "التنبيه بلا مسؤول يستلمه"
+
+        # ولا يتكاثر: فشل متكرر في اليوم نفسه = تنبيه واحد
+        before = len(tasks)
+        with patch.object(scheduler, "daily_scan", side_effect=RuntimeError("مرة أخرى")):
+            scheduler._run_daily_scan()
+            scheduler._run_daily_scan()
+        after = db.scalars(select(models.Task).where(
+            models.Task.type == "job_failure")).all()
+        assert len(after) == before, "تنبيهات فشل متكاثرة لنفس المهمة واليوم"
+    finally:
+        for row in db.scalars(select(models.Task).where(
+                models.Task.type == "job_failure")).all():
+            db.delete(row)
+        db.commit()
+        db.close()
+
+
+def test_dlv36_production_reset_needs_explicit_confirmation(client):
+    """DLV-36 — مسح بيانات العميل يحتاج قصًدا مكتوًبا لا إعداًدا قديًما.
+
+    متغيّر بيئة واحد (ALLOW_DEMO_RESET) كان يكفي لمسح قاعدة عميل كاملة بنداء
+    واحد: يُضبَط مرة لعرض توضيحي ثم يُنسى، فيبقى الباب مفتوًحا. الفعل غير قابل
+    للتراجع، فيلزمه تأكيد صريح.
+    """
+    import inspect
+
+    from app.routers import admin
+
+    src = inspect.getsource(admin.reset_demo_data)
+    assert "ERASE-ALL-DATA" in src, "المسح في الإنتاج بلا تأكيد صريح"
+    assert "is_production" in src, "التأكيد لا يفرّق بين الإنتاج والتطوير"

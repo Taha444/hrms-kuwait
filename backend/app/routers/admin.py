@@ -39,10 +39,20 @@ def reset_status(user: models.User = Depends(require_super_admin)):
 
 
 @router.post("/reset-demo-data")
-def reset_demo_data(request: Request,
+def reset_demo_data(request: Request, confirm: str | None = None,
                     user: models.User = Depends(require_super_admin)):
-    """يمسح كل البيانات ويعيد تعبئة seed الديمو (super_admin + owner + شركات + موظفين + طلبات).
-    مفيد جدًا قبل بداية عرض توضيحي جديد بعد ما يعبث المستخدمون بالبيانات."""
+    """يمسح كل البيانات ويعيد تعبئة seed الديمو.
+
+    DLV-36 — تأكيد صريح مطلوب على بيئة إنتاجية. متغيّر بيئة واحد
+    (ALLOW_DEMO_RESET) كان يكفي لمسح قاعدة عميل كاملة بنداء واحد: يُضبَط مرة
+    لعرض توضيحي ثم يُنسى، فيبقى الباب مفتوًحا. الفعل غير قابل للتراجع، فيلزمه
+    قصد مكتوب لا مجرد إعداد قديم.
+    """
+    if settings.is_production and (confirm or "").strip().upper() != "ERASE-ALL-DATA":
+        raise HTTPException(status_code=400, detail=(
+            "هذا الفعل يمسح كل بيانات القاعدة ولا تراجع عنه. "
+            "أعد النداء مع confirm=ERASE-ALL-DATA إن كنت متأكًدا."
+        ))
     if not _reset_allowed():
         raise HTTPException(status_code=403, detail=(
             "إعادة التعيين محظورة في هذه البيئة. "
