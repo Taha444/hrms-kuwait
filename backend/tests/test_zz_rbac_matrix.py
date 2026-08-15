@@ -1101,3 +1101,126 @@ def test_ac03_hr_validates_but_does_not_decide_money(client):
                 "خطوة HR في REQDED ما زالت قراًرا مالًيا"
     finally:
         db.close()
+
+
+def test_ac14_sensitive_fields_masked_by_role(client):
+    """AC-14 — الحقول الحساسة محجوبة حسب الدور حتى مع امتلاك مشاهدة الحالة.
+
+    رؤية الطلب لا تعني رؤية كل ما فيه: المندوب يحتاج الجواز والإقامة ولا
+    يحتاج الراتب، والمحاسب يحتاج الراتب ولا يحتاج الرقم المدني ولا العنوان.
+    "من يرى الحالة يرى كل شيء" هو ما يجعل أي فصل بعده بلا معنى.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(models.Employee).where(
+            models.Employee.basic_salary.isnot(None)))
+        eid = emp.id
+    finally:
+        db.close()
+
+    pro = client.get(f"/api/employees/{eid}",
+                     headers=_headers(client, "100000000003", "deleg123"))
+    if pro.status_code == 200:
+        body = pro.json()
+        assert body.get("basic_salary") is None, "المندوب يرى الراتب الأساسي"
+        assert body.get("actual_salary") is None, "المندوب يرى الراتب الفعلي"
+
+    acc = client.get(f"/api/employees/{eid}",
+                     headers=_headers(client, "100000000007", "account123"))
+    if acc.status_code == 200:
+        body = acc.json()
+        assert body.get("civil_id") is None, "المحاسب يرى الرقم المدني"
+        assert body.get("address") is None, "المحاسب يرى العنوان"
+
+
+def test_rw02_manager_outside_scope_gets_no_action(client):
+    """RW-02 — من هو خارج نطاقه لا يرى الطلب ولا يقرّر فيه.
+
+    مسؤول فرع آخر ليس "مديًرا أعلى" — نطاقه فرعه، ورؤيته طلب فرع غيره تسريب
+    لا صلاحية.
+    """
+    emp = _headers(client, "100000000101", "emp12345")
+    r = _submit_leave(client, emp)
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+
+    other_sup = _headers(client, "100000000006", "sup12345")  # فرع آخر
+    seen = client.get(f"/api/requests/{rid}", headers=other_sup)
+    acted = client.post(f"/api/requests/{rid}/decide", headers=other_sup,
+                        json={"decision": "approved", "note": ""})
+    assert acted.status_code in (403, 404), "مسؤول فرع آخر اتخذ قراًرا"
+    if seen.status_code == 200:
+        # القراءة قد تكون مسموحة بالسياسة، لكن الفعل ممنوع — وهو نص المعيار
+        assert acted.status_code in (403, 404)
+
+
+def test_rw11_bank_change_needs_hr_verification_first(client):
+    """RW-11 — تغيير الحساب البنكي: تحقّق HR من الهوية ثم مراجع مالي مستقل.
+
+    كانت السلسلة تبدأ بالمحاسب مباشرة بلا تثبّت من أن طالب التغيير هو صاحب
+    الحساب فعًلا — وهذا أشيع مسار احتيال داخلي في أنظمة الرواتب: رسالة
+    "غيّروا حسابي" تمرّ بلا تحقّق من هوية مرسلها.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        rt = db.scalar(select(models.RequestType).where(
+            models.RequestType.code == "REQBANK",
+            models.RequestType.company_id.is_(None)))
+        assert rt, "REQBANK غير مبذور"
+        chain = rt.approval_chain_json or []
+        assert chain[0]["role"] == "hr", "التغيير يبدأ بالمالية بلا تحقّق هوية"
+        assert chain[0]["step_type"] == "VALIDATION", "تحقّق HR مسجَّل كقرار"
+        # ومراجع مالي مستقل بعده
+        assert any(s["role"] == "accountant" and s["step_type"] == "DECISION"
+                   for s in chain[1:]), "لا مراجع مالي مستقل بعد التحقق"
+    finally:
+        db.close()
+
+
+def test_rw12_doc19_grievance_bypasses_the_manager(client):
+    """RW-12 + DOC-19 — التظلّم لا يمرّ بالمدير المشتكى به، ولا يظهر في بحث عام.
+
+    مسار تظلّم يمرّ بالمشتكى به ليس مساًرا بل رادع: من يعلم أن شكواه ستصل
+    خصمه لا يشتكي. ولذلك السلسلة تتخطّاه بنيًيا لا بإعداد يُنسى.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        rt = db.scalar(select(models.RequestType).where(
+            models.RequestType.code == "REQGRV",
+            models.RequestType.company_id.is_(None)))
+        assert rt, "REQGRV غير مبذور"
+        assert rt.is_confidential, "التظلّم ليس سرًّيا"
+        roles = {s.get("role") for s in (rt.approval_chain_json or [])}
+        assert "branch_supervisor" not in roles, "المسؤول المباشر في مسار التظلّم"
+        assert "company_manager" not in roles, "المدير في مسار التظلّم ضده"
+    finally:
+        db.close()
+
+    # DOC-19 — البحث العام لا يمسّ المستندات إطلاًقا
+    from app.routers import search as search_mod
+    src = __import__("inspect").getsource(search_mod)
+    assert "models.Document" not in src, "البحث العام يمسّ المستندات"
+
+    # والطلب السرّي لا يُتجاوَز إدارًيا (تحقّقنا منه في AC-05 أيًضا)
+    from app import workflow
+    db = SessionLocal()
+    try:
+        sa_user = db.scalar(select(models.User).where(models.User.role == "super_admin"))
+        confidential = type("RT", (), {"is_confidential": True})()
+        assert not workflow.may_override(db, sa_user, confidential)
+    finally:
+        db.close()

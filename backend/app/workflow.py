@@ -294,8 +294,13 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_DATA,
            ["hr"], requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-039"),
+    # RW-11 — تغيير الحساب البنكي: تحقّق HR من الهوية والمستند أوًلا، ثم مراجع
+    # مالي مستقل. كان يبدأ بالمحاسب مباشرة بلا تحقّق من أن طالب التغيير هو
+    # صاحب الحساب فعًلا — وهذا أشيع مسار احتيال داخلي في أنظمة الرواتب:
+    # رسالة "غيّروا حسابي" تمرّ بلا تثبّت من هوية مرسلها.
     _simple("REQBANK", "طلب تغيير الحساب البنكي", CAT_EMP_DATA,
-           ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
+           ["hr", "accountant", "company_manager"], validation_roles=("hr",),
+           requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-004"),
     _simple("REQCONTACT", "تحديث بيانات الاتصال والطوارئ", CAT_EMP_DATA,
            ["hr"], requires_physical_signature=False, visible_to_employee=True,

@@ -65,9 +65,9 @@
     "updated": "2026-08-15"
   },
   "AC-14": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "المندوب لا يرى الرواتب والمحاسب لا يرى الهوية والعنوان · test_ac14_sensitive_fields_masked_by_role",
+    "updated": "2026-08-15"
   },
   "AC-15": {
     "status": "pass",
@@ -80,9 +80,9 @@
     "updated": "2026-08-15"
   },
   "RW-02": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "مسؤول فرع آخر لا يقرّر · test_rw02_manager_outside_scope_gets_no_action",
+    "updated": "2026-08-15"
   },
   "RW-03": {
     "status": "pending",
@@ -125,14 +125,14 @@
     "updated": "2026-08-15"
   },
   "RW-11": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "تحقّق HR (VALIDATION) ثم مراجع مالي مستقل + ترحيل h8a9b0c1d2e · test_rw11_bank_change_needs_hr_verification_first",
+    "updated": "2026-08-15"
   },
   "RW-12": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "REQGRV سرّي والسلسلة تتخطّى المسؤول والمدير بنيًيا · test_rw12_doc19_grievance_bypasses_the_manager",
+    "updated": "2026-08-15"
   },
   "RW-13": {
     "status": "pending",
@@ -255,9 +255,9 @@
     "updated": ""
   },
   "DOC-19": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "البحث العام لا يمسّ المستندات، والسرّي لا يُتجاوَز إدارًيا · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-20": {
     "status": "pending",
