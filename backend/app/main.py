@@ -319,6 +319,24 @@ def health_deep():
     except Exception as e:  # noqa: BLE001 — التشخيص لا يُسقط الفحص
         results["checks"].setdefault("alembic", {})["code_head_error"] = str(e)[:200]
 
+    # 7-d) DLV-31 — حسابات بكلمات مرور بذرة ما زالت تعمل
+    try:
+        from . import seed_guard
+        with SessionLocal() as _db:
+            _seed_hits = seed_guard.find_seed_accounts(_db)
+        results["checks"]["seed_accounts"] = {
+            "status": "fail" if _seed_hits else "ok",
+            "count": len(_seed_hits),
+            # لا كلمات مرور ولا أسماء كاملة — الرقم المدني والدور يكفيان
+            "accounts": [{"civil_id": h["civil_id"], "role": h["role"]} for h in _seed_hits],
+            "note": ("حسابات تقبل كلمات مرور البذرة — غيّرها قبل التسليم (DLV-31)"
+                     if _seed_hits else None),
+        }
+        if _seed_hits:
+            ok = False
+    except Exception as e:  # noqa: BLE001
+        results["checks"]["seed_accounts"] = {"status": "unknown", "error": str(e)[:200]}
+
     # 7-c) انحراف ساعة الخادم — QA-30/QA-22
     #
     # TOTP يقارن بالوقت لا بالسر، فانحراف الساعة يُبطل النظام كله بلا أي خطأ
@@ -379,6 +397,19 @@ def version():
     return {k: m[k] for k in ("service", "version", "commit", "commit_full", "build_time", "environment")}
 
 
+def _current_migration_version() -> str | None:
+    """رقم ترحيل القاعدة الفاعل — جزء من هوية البناء لا تفصيلة تشخيصية."""
+    from sqlalchemy import text as _text
+
+    from .database import SessionLocal
+    try:
+        with SessionLocal() as db:
+            row = db.execute(_text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+            return row[0] if row else None
+    except Exception:  # noqa: BLE001 — الهوية لا تُسقط النقطة
+        return None
+
+
 @app.get("/api/manifest")
 def manifest():
     """V1.5 Manifest: version + commit + build_time + deploy_time + migration_version + registry stats.
@@ -415,6 +446,10 @@ def manifest():
         "build_time": build_time,
         "deploy_time": _DEPLOY_STARTED_AT,
         "environment": "production" if settings.is_production else "development",
+        # DLV-06 — نسخة الترحيلات جزء من هوية البناء: "أي كود يعمل؟" سؤال ناقص
+        # بلا "على أي بنية قاعدة؟". بناءان بنفس الـcommit وقاعدتان مختلفتان
+        # يسلكان سلوًكا مختلًفا، وتشخيص ذلك بلا هذا الرقم تخمين.
+        "migration_version": _current_migration_version(),
         "spec": {
             "current_spec": "V1.5 Consolidated Revision 2",
             "supersedes": ["V1.3", "V1.4"],

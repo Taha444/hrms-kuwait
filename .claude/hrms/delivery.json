@@ -1,0 +1,414 @@
+{
+  "categories": {
+    "gate": "البوابة الأولى",
+    "build": "هوية النسخة",
+    "env": "البيئة والبنية",
+    "backup": "النسخ الاحتياطي والاسترجاع",
+    "ops": "المراقبة والتشغيل",
+    "accounts": "الحسابات والمفاتيح",
+    "data": "البيانات",
+    "docs": "الوثائق",
+    "training": "التدريب",
+    "support": "الدعم والضمان",
+    "legal": "الامتثال والاعتماد",
+    "signoff": "القبول والتسليم"
+  },
+  "items": [
+    {
+      "id": "DLV-01",
+      "cat": "gate",
+      "text": "لا يوجد أي blocker مفتوح في سجل العيوب",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-02",
+      "cat": "gate",
+      "text": "كل رحلات الـ blocker نجحت على GUF و MUF",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-03",
+      "cat": "gate",
+      "text": "الفحص الأمني مكتمل بلا بند فاشل",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-04",
+      "cat": "gate",
+      "text": "فحوص سلامة البيانات نظيفة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-05",
+      "cat": "gate",
+      "text": "النسخة المُختبَرة هي نفسها المُسلَّمة (نفس Commit)",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-06",
+      "cat": "build",
+      "text": "Version و Commit و Built At و Deployed At و Environment و Migration Version ظاهرة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-07",
+      "cat": "build",
+      "text": "لا يظهر Development على رابط التسليم",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-08",
+      "cat": "build",
+      "text": "System Health: Data و Migrations = PASS",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-09",
+      "cat": "build",
+      "text": "Service Worker يُحدَّث ولا يُبقي المستخدم على بناء قديم",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-10",
+      "cat": "build",
+      "text": "وثيقة إصدار Release Notes بما تم وما لم يتم",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-11",
+      "cat": "env",
+      "text": "بيئة العميل منفصلة تماما عن Staging",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-12",
+      "cat": "env",
+      "text": "نطاق نهائي وشهادة SSL صالحة مع تنبيه قبل الانتهاء",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-13",
+      "cat": "env",
+      "text": "موارد الخادم موثّقة وتقدير للنمو",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-14",
+      "cat": "env",
+      "text": "ملكية الاستضافة والنطاق والشهادة موثّقة صراحة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-15",
+      "cat": "env",
+      "text": "بيانات الشركة (شعار، اسم قانوني، رخصة، عنوان، ختم) مركّبة ومعتمدة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-16",
+      "cat": "backup",
+      "text": "نسخ احتياطي آلي مجدول للقاعدة والملفات",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-17",
+      "cat": "backup",
+      "text": "اختبار استرجاع فعلي مُنفَّذ وموثّق",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-18",
+      "cat": "backup",
+      "text": "مدة الاحتفاظ محددة ومتفق عليها",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-19",
+      "cat": "backup",
+      "text": "نسخة خارج الخادم off-site",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-20",
+      "cat": "backup",
+      "text": "RTO و RPO مكتوبان ومتفق عليهما",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-21",
+      "cat": "backup",
+      "text": "إجراء الاسترجاع مكتوب خطوة بخطوة لغير كاتب الكود",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-22",
+      "cat": "ops",
+      "text": "Health Checks و Monitoring و Error Tracking و Structured Logs",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-23",
+      "cat": "ops",
+      "text": "تنبيهات فشل: Daily Scan · Notification · PDF · Backup · Payroll Job",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-24",
+      "cat": "ops",
+      "text": "جهة استقبال التنبيهات محددة بالاسم لا بالفريق",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-25",
+      "cat": "ops",
+      "text": "Rate Limits مفعّلة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-26",
+      "cat": "ops",
+      "text": "Rollback Plan مكتوب ومُجرَّب",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-27",
+      "cat": "ops",
+      "text": "Smoke Test بعد النشر",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-28",
+      "cat": "accounts",
+      "text": "حساب Super Admin الداخلي لا يُسلَّم؛ حساب مالك للعميل",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-29",
+      "cat": "accounts",
+      "text": "حسابات شخصية لكل مسؤول بلا حساب مشترك",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-30",
+      "cat": "accounts",
+      "text": "إجبار تغيير كلمة السر عند أول دخول",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-31",
+      "cat": "accounts",
+      "text": "كل بيانات الدخول التجريبية معطّلة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-32",
+      "cat": "accounts",
+      "text": "مفاتيح Kiosk مُدوَّرة وغير معروضة كاملة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-33",
+      "cat": "accounts",
+      "text": "مفاتيح الأنظمة الخارجية مُدوَّرة ومملوكة للعميل",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-34",
+      "cat": "accounts",
+      "text": "تسليم بيانات الدخول عبر قناة آمنة مع توثيق من استلم ماذا ومتى",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-35",
+      "cat": "data",
+      "text": "بيانات QA منظّفة أو معزولة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-36",
+      "cat": "data",
+      "text": "Reset Demo Data وأدوات الاختبار معطّلة في بيئة العميل",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-37",
+      "cat": "data",
+      "text": "الشهادة التجريبية في ملف الموظف محذوفة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-38",
+      "cat": "data",
+      "text": "الشركة المكررة محذوفة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-39",
+      "cat": "data",
+      "text": "البيانات الأولية محمّلة: شركات · فروع · أقسام · موظفون · مستخدمون · سياسات حضور",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-40",
+      "cat": "data",
+      "text": "خطة الترحيل من النظام القديم مُنفَّذة وموثّقة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-41",
+      "cat": "docs",
+      "text": "دليل المستخدم لكل دور بالعربي والإنجليزي",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-42",
+      "cat": "docs",
+      "text": "دليل المسؤول: إعدادات وصلاحيات وقوالب وسياسات",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-43",
+      "cat": "docs",
+      "text": "دليل التشغيل Runbook: نشر · نسخ احتياطي · استرجاع · تنبيهات",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-44",
+      "cat": "docs",
+      "text": "مخطط قاعدة البيانات ووصف الجداول الأساسية",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-45",
+      "cat": "docs",
+      "text": "توثيق الـ API إن كان سيُستخدم",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-46",
+      "cat": "docs",
+      "text": "مصفوفة الصلاحيات: دور × شاشة × إجراء",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-47",
+      "cat": "docs",
+      "text": "دفتر السياسات: الحدود المالية ومدد الإجازات وقواعد الاعتماد",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-48",
+      "cat": "docs",
+      "text": "قائمة القرارات المعلّقة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-49",
+      "cat": "training",
+      "text": "Tutorial داخل النظام لكل دور عربي وإنجليزي مع Replay",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-50",
+      "cat": "training",
+      "text": "جلسة تدريب لكل مجموعة أدوار",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-51",
+      "cat": "training",
+      "text": "صفحة مساعدة أو FAQ مختصرة",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-52",
+      "cat": "training",
+      "text": "Empty States تشرح الخطوة التالية",
+      "weight": "medium"
+    },
+    {
+      "id": "DLV-53",
+      "cat": "support",
+      "text": "مدة الضمان وما يشمله وما لا يشمله — مكتوبة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-54",
+      "cat": "support",
+      "text": "تعريف واضح لعيب مقابل طلب تغيير",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-55",
+      "cat": "support",
+      "text": "قنوات الدعم وأوقاته وأزمنة الاستجابة حسب الخطورة",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-56",
+      "cat": "support",
+      "text": "آلية طلبات التغيير وتسعيرها",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-57",
+      "cat": "support",
+      "text": "ملكية الكود والبيانات صريحة ومكتوبة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-58",
+      "cat": "support",
+      "text": "ما يحدث عند انتهاء العلاقة: تصدير البيانات · تسليم الكود · مدة انتقالية",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-59",
+      "cat": "legal",
+      "text": "اعتماد مالك الشركة لشكل الورقة الرسمية وبياناتها",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-60",
+      "cat": "legal",
+      "text": "اعتماد HR Owner لحقول كل مستند",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-61",
+      "cat": "legal",
+      "text": "مراجعة محامٍ كويتي لصياغات الإنذار والتحقيق والخصم والسلفة والاستقالة و EOS والمخالصة والتظلم",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-62",
+      "cat": "legal",
+      "text": "اعتماد Finance لمصادر الأرقام وقواعد التقريب",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-63",
+      "cat": "legal",
+      "text": "اعتماد المخوّلين بالتوقيع لنطاق كل منهم",
+      "weight": "high"
+    },
+    {
+      "id": "DLV-64",
+      "cat": "signoff",
+      "text": "جلسة UAT مُنفَّذة ونتائجها موثّقة",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-65",
+      "cat": "signoff",
+      "text": "محضر تسليم موقّع من الطرفين",
+      "weight": "critical"
+    },
+    {
+      "id": "DLV-66",
+      "cat": "signoff",
+      "text": "قائمة ما لم يكتمل ولماذا وموعده — مسلّمة للعميل",
+      "weight": "critical"
+    }
+  ]
+}

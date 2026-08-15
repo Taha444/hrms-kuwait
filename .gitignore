@@ -54,3 +54,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/settings.json
+.claude/hrms/scripts/env.sh
+.claude/hrms/evidence/
+.claude/hrms/journeys/current-run.json

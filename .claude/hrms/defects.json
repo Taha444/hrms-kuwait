@@ -1,0 +1,528 @@
+{
+  "build": {"version": "v1.0.0", "commit": "3a74741", "verdict": "NO-GO"},
+  "sources": {
+    "FUR": "Final User Readiness Review (الأحدث) — build v1.0.0 / 3a74741",
+    "RT": "Retest Findings (23 بندا) — يستخدم صيغة «لسه» أي بعد محاولة إصلاح",
+    "QA": "QA Observations (31 بندا) — القائمة الأقدم",
+    "BLK": "الأخطاء المؤكدة المانعة للإطلاق (11 بندا)",
+    "SPEC": "باقي تنفيذ V1.5 + V2.2 (26 قسما)",
+    "API": "بلاغات الـ Endpoints المباشرة"
+  },
+  "severities": ["blocker", "high", "medium", "low"],
+  "clusters": {
+    "ACCESS": "الهوية والصلاحيات والجلسات",
+    "WF": "محرك المسارات والمراحل",
+    "CAT": "كتالوج الطلبات والنماذج",
+    "ATT": "الحضور",
+    "PAY": "الرواتب",
+    "EOS": "نهاية الخدمة",
+    "PRO": "الإقامات والمعاملات الحكومية والأرشيف",
+    "DOC": "المستندات والقوالب والـ PDF",
+    "SIG": "التوقيع الإلكتروني",
+    "TASK": "المهام والإشعارات",
+    "AUDIT": "سجل التدقيق",
+    "UX": "الواجهة واللغة والتدريب",
+    "DATA": "سلامة البيانات والتصدير",
+    "API": "أخطاء Endpoints محددة",
+    "OPS": "النشر والتشغيل والتسليم"
+  },
+  "conflicts": [
+    {"id": "CONF-01", "items": ["ATT-05"], "note": "QA-3 يقول عدم وجود حضور = غياب وخصم. RT (الأحدث) يدرجه ضمن «نجحت ومش محتاجة تعديل». تحقق من البناء الحالي قبل أي تعديل — تعديل نقطة سليمة قد يسبب Regression."},
+    {"id": "CONF-02", "items": ["UX-10"], "note": "QA-15 يقول الموظف الجديد لا يظهر بلا Refresh. RT يقول اتصلح. تحقق فقط."},
+    {"id": "CONF-03", "items": ["PAY-10"], "note": "QA-24 يقول لا تحذير عند Preview بلا شهر. RT يقول Payroll Preview Validation شغال. تحقق فقط."},
+    {"id": "CONF-04", "items": ["UX-02"], "note": "QA-17 switch_company خام. RT يقول تغيير الشركة مترجم صح. تحقق فقط."},
+    {"id": "CONF-05", "items": ["UX-03"], "note": "QA-27 عمود المسار فاضي. RT يقول عمود المسار شغال. تحقق فقط."},
+    {"id": "CONF-06", "items": ["ACCESS-05"], "note": "QA-29 الروابط الحكومية ظاهرة لغير المندوب. RT يقول اتظبطت وبقت للمندوب فقط. تحقق فقط."},
+    {"id": "CONF-07", "items": ["ATT-04"], "note": "RT-3 يوضح أن Payroll Preview اتصلح لأيام ما قبل التعيين لكن Attendance Review لسه غلط. الإصلاح لازم يكون في مصدر البيانات المشترك لا في الشاشتين منفصلتين."},
+    {"id": "CONF-08", "items": ["PAY-12"], "note": "RT ينص صراحة: لا تعدل نقطة Future Days إلا لو ظهر Regression جديد. لا تلمسها استباقيا."}
+  ],
+  "defects": [
+
+    {"id": "API-01", "cluster": "API", "sev": "blocker", "src": ["API"],
+     "title": "GET /api/employees يرجع HTTP 500 على شركة GUF فقط",
+     "detail": "متكرر بحسابات HR و Manager و Branch Supervisor و Accountant. نفس الـ endpoint على MUF يرجع 200.",
+     "verify": "افتح GUF بكل دور من الأربعة واضرب GET /api/employees. سجّل الـ traceback الحقيقي من لوج الخادم.",
+     "fix": "أصلح الـ query أو الـ mapping/relationship المكسور بعد إعادة هيكلة الـ DB · ممنوع catch للـ 500 أو إخفاؤه من الواجهة · بعد الإصلاح: HR/Manager يرون موظفي GUF المسموحين، Branch Supervisor فروعه فقط، Accountant بالحقول المسموحة · اختبر GUF و MUF معا حتى لا يكسر أحدهما الآخر"},
+
+    {"id": "API-02", "cluster": "API", "sev": "blocker", "src": ["API", "QA-9", "RT-8", "FUR-5"],
+     "title": "صفحة New Request تعرض أكواد Legacy والخادم يرفضها بـ LEGACY_ALIAS_BLOCKED",
+     "detail": "الواجهة تجلب Codes قديمة، وعند الإنشاء يرفضها الخادم. الـ Canonical مثل WF-001 يعمل.",
+     "verify": "افتح New Request واقرأ الاستجابة الفعلية لقائمة الأنواع. قارن الأكواد المعروضة بما يقبله الخادم.",
+     "fix": "New Request تجلب من Canonical Registry فقط · المسار: Canonical Definition → Form Schema → Canonical Workflow → POST بنفس الكود → قبول الخادم · Legacy aliases تبقى للطلبات التاريخية والـ migration فقط ولا تظهر كخيار إنشاء · كرر التحقق على: Leave, Attendance Correction, Salary Certificate, Personal Data Update, Document Update, Permission, Advance/Loan, Residency Renewal, Payroll Objection, Expense"},
+
+    {"id": "WF-01", "cluster": "WF", "sev": "blocker", "src": ["QA-1", "RT-1"],
+     "title": "مدير الشركة يعتمد مراحل ليست مرحلته",
+     "detail": "رامين حسن علي محمدي (GUF) اعتمد مرحلة مسؤول الفرع ثم مرحلته ثم مرحلة HR بنفس الحساب.",
+     "verify": "طلب إجازة واقف على مرحلة مسؤول الفرع → ادخل بحساب مدير الشركة → هل يظهر زر الاعتماد؟",
+     "fix": "زر القرار يظهر فقط للـ current assignee لمهمة DECISION · الفحص على الخادم أولا (403 عند الرابط المباشر) · تخطي الموافق المكرر أو الفصل بمراجع مستقل حسب SoD · هذا و WF-02 على الأرجح نفس Root Cause — عالجهما معا لا منفصلين"},
+
+    {"id": "WF-02", "cluster": "WF", "sev": "blocker", "src": ["QA-2", "RT-2"],
+     "title": "مسؤول الفرع لا يستلم مرحلته",
+     "detail": "الطلب واقف على «اعتماد مسؤول الفرع» و«بانتظار موافقتي» فاضي، وفتح الطلب يقول إنه ليس الموافق الحالي.",
+     "verify": "موظف من فرع محدد يقدم إجازة → ادخل بحساب مسؤول نفس الفرع → افتح بانتظار موافقتي.",
+     "fix": "افحص الـ Dynamic Resolver لـ Branch Supervisor: هل يحل من علاقة الفرع الفعلية؟ · تأكد من إنشاء task_instance بالـ assignee الصحيح · تأكد أن شاشة «بانتظار موافقتي» تستعلم بنفس مصدر الصلاحيات"},
+
+    {"id": "WF-03", "cluster": "WF", "sev": "blocker", "src": ["QA-10", "RT-9"],
+     "title": "الإجازة العادية تدخل المندوب حتى بدون سفر",
+     "detail": "إجازة بسفر وبدون سفر أعطتا نفس الـ Workflow وفيه مرحلة PRO. الـ travel flag لا يُحفظ.",
+     "verify": "قدّم إجازة بدون اختيار سفر → افتح مسار الطلب → هل مرحلة المندوب موجودة؟ افحص قيمة travel_required في السجل.",
+     "fix": "أصلح حفظ travel_required من النموذج للخادم · مرحلة PRO شرطية على القيمة لا ثابتة · وفق WF-002: مسار الإجازة العادي أولا، وبعد اعتماده تُنشأ Case مستقلة لـ PRO عند الحاجة · المندوب لا يدخل في الاستئذان أثناء الدوام إطلاقا"},
+
+    {"id": "WF-04", "cluster": "WF", "sev": "blocker", "src": ["BLK-4"],
+     "title": "طلب تصحيح الحضور يصل Completed بدون تطبيق التصحيح",
+     "detail": "الطلب اعتُمد من مسؤول الفرع و HR ووصل Completed، لكن التاريخ اختفى ولا توجد قيم Corrected Check-in/out ولم يتغير سجل الحضور.",
+     "verify": "أنشئ طلب تصحيح لتاريخ محدد → مرره بكل الموافقات → افحص سجل الحضور فعليا بعد Completed.",
+     "fix": "تطبيق التعديل والانتقال إلى Completed في Transaction واحدة · ممنوع الوصول إلى Completed لو التعديل لم يُطبق · عند الفشل حالة واضحة Failed أو Not Applied · Audit فيه Before/After واسم الموافق ووقت التطبيق"},
+
+    {"id": "WF-05", "cluster": "WF", "sev": "high", "src": ["BLK-2"],
+     "title": "طلب الإجازة لا يُرسل من الواجهة — start_date/end_date مطلوبان رغم إدخالهما",
+     "detail": "الحقول ظاهرة ومملوءة لكن Submit يقول إنهما مطلوبان.",
+     "verify": "قدّم إجازة عادية كاملة من الواجهة. راقب الـ payload المرسل فعليا في Network tab.",
+     "fix": "توحيد أسماء الحقول بين الواجهة و Form Schema والخادم · التحقق من المنطقة الزمنية وصيغة التاريخ · الخطأ يظهر بجانب الحقل الصحيح · فشل الطلب لا ينشئ Request أو Task أو Notification أو Audit نجاح ناقص"},
+
+    {"id": "WF-06", "cluster": "WF", "sev": "high", "src": ["SPEC-5", "FUR-5"],
+     "title": "محرك Workflow حقيقي بدل Approve/Reject عامين",
+     "detail": "مطلوب دعم أنواع الخطوات والمعيّن الديناميكي والحمايات.",
+     "verify": "افحص workflow_step: هل فيه step_type؟ هل allowed_actions تأتي من الخادم؟",
+     "fix": "Decision · Validation · Execution · Acknowledgment · Notification · Automation · Current Assignee · Dynamic Resolver (Direct Manager, Branch Supervisor, Company Manager, HR, Finance, PRO, Authorized Signatory) · Claim · Delegation · SLA · Escalation · Needs Info · Return · Resubmit على نفس الطلب · Cancel · Idempotency · منع Double/Stale Action · منع Self Approval · حفظ Original Actor عند الانتحال · اختفاء أزرار القرار بعد انتقال المرحلة"},
+
+    {"id": "WF-07", "cluster": "WF", "sev": "medium", "src": ["SPEC-6"],
+     "title": "فصل Request Status عن Operational Stage عن Document Status",
+     "verify": "قارن الحالة المعروضة في: List, Details, Task, Notification, Timeline, PDF, Audit, Reports — هل متطابقة ومن مصدر واحد؟",
+     "fix": "ثلاثة حقول منفصلة لا حقل واحد · منع القفز لمرحلة غير مسموحة · الحالات: Draft, Submitted, Pending, Needs Info, Returned, Approved, Rejected, Under Process, Completed, Ready to Print, Printed, Filed, Cancelled, Failed, Locked"},
+
+    {"id": "WF-08", "cluster": "WF", "sev": "medium", "src": ["SPEC-8"],
+     "title": "المسؤول المباشر لا يُربط باسم Role واحد",
+     "fix": "أي Employee يمكن أن يكون مسؤولا عن آخرين · المحاسب قد يشرف على محاسبين · مسؤول المحل موظف ومسؤول في آن · حفظ تاريخ علاقات الإشراف · Resolver واضح عند غياب المسؤول حسب الشركة والفرع والقسم"},
+
+    {"id": "WF-09", "cluster": "WF", "sev": "high", "src": ["SPEC-7"],
+     "title": "تنفيذ مسارات الطلبات End-to-End مع الأثر الفعلي على البيانات",
+     "detail": "لا يكفي ظهور اسم الطلب.",
+     "verify": "لكل مسار: هل الأثر التشغيلي طُبق فعلا على الرصيد/الحضور/الراتب/السجل؟",
+     "fix": "اختبر كاملا: الإجازة العادية · إجازة السفر · تصحيح الحضور · الشهادات · تحديث البيانات والمستندات · الحساب البنكي · السلفة/القرض · المصروفات · اعتراضات الراتب والخصم · العمل الإضافي · النقل والترقية · الإنذار والتحقيق · التظلم · الاستقالة و EOS و Clearance · التجديدات"},
+
+    {"id": "CAT-01", "cluster": "CAT", "sev": "high", "src": ["QA-9", "RT-8", "FUR-5"],
+     "title": "أنواع Legacy مكررة ما زالت تقبل إنشاء طلبات جديدة",
+     "detail": "ظهر فعليا: «طلب شهادة راتب» و«طلب شهادة راتب (V1.3)» · «سلفة أو قرض» و«سلفة» و«قرض» · أكثر من نوع إذن/استئذان.",
+     "verify": "افتح تقديم طلب بكل دور واحصر الأنواع الظاهرة. أي تكرار = fail.",
+     "fix": "نوع Canonical واحد لكل مسار بالاسم النهائي المعتمد · Legacy تبقى للطلبات التاريخية فقط · إخفاء من إنشاء الطلبات الجديدة · Backend Allowlist يرفض غير المسموح · عدم إظهار أكواد Legacy أو PRN للمستخدم"},
+
+    {"id": "CAT-02", "cluster": "CAT", "sev": "high", "src": ["FUR-5", "SPEC-4"],
+     "title": "سبعة أنواع ما زالت تستخدم النموذج العام Date/Amount/Details",
+     "detail": "Attendance Correction, Salary Certificate, Personal Data Update, Document Update, Permission, Residency Renewal, Payroll Objection.",
+     "verify": "افتح كل نوع من السبعة وقارن حقوله بالمطلوب لكل مسار.",
+     "fix": "form_schema_json مستقل لكل نوع · الواجهة والخادم يستخدمان نفس Schema · حقول شرطية · attachment_rules · visible_roles · workflow_code · default_document · requires_pdf/finance/delegate/legal · subtype rules · لا آثار جانبية قبل نجاح الطلب"},
+
+    {"id": "CAT-03", "cluster": "CAT", "sev": "high", "src": ["BLK-4"],
+     "title": "نموذج تصحيح الحضور يعرض Amount KWD ونصوص الإجازة",
+     "verify": "افتح نموذج تصحيح الحضور واقرأ كل حقل وكل نص إرشادي.",
+     "fix": "الحقول: Attendance Date, Correction Type, Existing Check-in/out, Requested Check-in/out, Reason, Attachment عند الحاجة · إظهار Before/After للموافق · الاحتفاظ بالتاريخ والقيم خلال كل مراحل الموافقة · إزالة Amount وأي حقل لا يخص الحضور"},
+
+    {"id": "CAT-04", "cluster": "CAT", "sev": "high", "src": ["QA-7", "RT-6"],
+     "title": "تفاصيل الطلب تعرض JSON خام للمستخدم",
+     "detail": "يظهر: {\"start_date\":\"...\",\"end_date\":\"...\",\"leave_type\":\"annual\",\"days\":5}",
+     "verify": "افتح تفاصيل طلب إجازة بحساب Super Admin و Manager و HR.",
+     "fix": "عرض بأسماء مفهومة: نوع الإجازة / من / إلى / عدد الأيام / السبب · العرض مبني على form_schema لا على dump للـ payload · ممنوع Raw Payload أو Field Codes للمستخدمين أو الموافقين · انتبه: التواريخ محجوبة عن الموظف نفسه (راجع CAT-06)"},
+
+    {"id": "CAT-05", "cluster": "CAT", "sev": "high", "src": ["SPEC-3", "FUR-3"],
+     "title": "فصل My Requests عن Work Actions مع بقاء صفة الموظف",
+     "detail": "الدور الوظيفي لا يلغي صفة المستخدم كموظف.",
+     "verify": "ادخل بحساب HR/Manager/PRO مربوط بـ Employee: هل يستطيع تقديم إجازة شخصية؟ هل يرى إجراءات دوره منفصلة؟",
+     "fix": "كل مستخدم مربوط بملف Employee يرى ويقدم الخدمات الذاتية المسموحة مهما كان دوره · الفصل في الواجهة بين «طلباتي» و«إجراءات العمل» · الإجراءات الداخلية (إنذار، تشغيل راتب، تكليف مندوب، اعتماد مصروف) لا تظهر كطلبات شخصية · المستخدم الإداري غير المربوط بـ Employee لا تظهر له خدمات ذاتية · منع اعتماد المستخدم لطلبه وتحويله لموافق بديل"},
+
+    {"id": "CAT-06", "cluster": "CAT", "sev": "blocker", "src": ["BLK-3", "FUR-6"],
+     "title": "الموظف ما زال يرى تواريخ الإجازة From/To",
+     "detail": "القائمة والإشعار لا يعرضان التواريخ، لكن Request Details يعرض start_date/end_date، وجدول الإجازات في My Profile يعرض From/To.",
+     "verify": "بحساب موظف: افحص My Profile, Leave History, Request List, Request Details, Dashboard, Notifications, Downloads, Exports, PDFs. وافحص Raw JSON و Timeline و Notification payload.",
+     "fix": "الحذف من Backend projection وليس CSS أو Frontend · التواريخ تظل ظاهرة لـ HR والمدير والمخوّلين حسب صلاحياتهم · تأكد من عدم التسريب في أي payload"},
+
+    {"id": "CAT-07", "cluster": "CAT", "sev": "high", "src": ["SPEC-3"],
+     "title": "تطبيق Canonical Request Catalog و WF-001 إلى WF-029",
+     "fix": "تصنيف كل نوع: Self-Service / Internal / Contextual / Retired Alias · الموظف يرى 15-18 خدمة · توحيد المتكرر: Leave العادية والسفر حسب travel_required · Advance/Loan بـ subtype · Salary Certificate نوع واحد · Permission و Early Departure مسار واحد بـ subtype · وباقي الأنواع المذكورة في المواصفة · Super Admin يدير التعريفات ولا يفرض إظهار كل الأنواع"},
+
+    {"id": "ACCESS-01", "cluster": "ACCESS", "sev": "blocker", "src": ["BLK-1"],
+     "title": "إنشاء User بدور Employee بدون employee_id",
+     "detail": "الحساب دخل وغيّر كلمة السر بنجاح، لكن My Profile يرجع 404 و My Attendance لا يعمل ولا يستطيع إنشاء طلبات، بينما سجل الموظف موجود في الحضور والرواتب.",
+     "verify": "أنشئ Employee ثم User بنفس الرقم المدني وتتبّع المسار كاملا: Company > Branch > Department > Employee > User > Link > Login > Change Password > My Profile > Attendance > Requests.",
+     "fix": "اختيار وربط Employee من نفس الشركة صراحة، أو ربط تلقائي بالمدني مع company context بشرط عدم الالتباس · ممنوع تفعيل Employee User و employee_id فارغ · الإنشاء والربط Transaction واحدة · فشل الربط لا ينشئ حساب Active · معالجة وربط كل الحسابات الحالية بدون employee_id · Audit للإنشاء والتغيير"},
+
+    {"id": "ACCESS-02", "cluster": "ACCESS", "sev": "blocker", "src": ["FUR-3"],
+     "title": "الحسابات الإدارية المرتبطة بموظفين لا يظهر لها My Profile و My Attendance",
+     "detail": "يشمل HR و Branch Supervisor و Manager و PRO.",
+     "verify": "ادخل بكل دور من الأربعة (مربوط بـ Employee) وافحص ظهور الخدمات الشخصية وإجراءات الدور معا.",
+     "fix": "كل حساب مربوط بـ Employee يرى My Profile و My Attendance و My Requests · وفي نفس الوقت Work Actions و Approvals و Tasks الخاصة بدوره · المستخدم الإداري غير المربوط لا تظهر له خدمات شخصية · منع Self Approval وتحويل الطلب لموافق بديل"},
+
+    {"id": "ACCESS-03", "cluster": "ACCESS", "sev": "blocker", "src": ["FUR-2"],
+     "title": "Accountant يصل لملفات الهوية والعقود والإجازات والإنذارات و EOS",
+     "detail": "يصل حاليا إلى: Passport, Civil ID, Contract, Documents, Leave Management, Warnings, End of Service tabs.",
+     "verify": "ادخل بحساب Accountant وحاول فتح كل تبويب من السبعة، ثم اضرب الـ API والـ Storage endpoint مباشرة.",
+     "fix": "Accountant يرى فقط البيانات والحقول المطلوبة للرواتب · المنع في UI و API و Storage endpoint معا · المحاولة غير المصرح بها ترفض بدون إرجاع بيانات"},
+
+    {"id": "ACCESS-04", "cluster": "ACCESS", "sev": "blocker", "src": ["FUR-2"],
+     "title": "PRO يفتح New Employee ويرى الراتب والتوظيف",
+     "detail": "يرى Civil ID و Job Title و Basic Salary و Hire Date و Contract fields.",
+     "verify": "ادخل بحساب PRO وحاول فتح New Employee وافحص الحقول المعروضة.",
+     "fix": "إزالة إنشاء الموظف من PRO · إزالة بيانات الراتب والتوظيف الحساسة · PRO يرى فقط ما يلزم للإقامات والمعاملات الحكومية داخل نطاقه"},
+
+    {"id": "ACCESS-05", "cluster": "ACCESS", "sev": "medium", "src": ["QA-29"], "conflict": "CONF-06",
+     "title": "صفحة الروابط الحكومية ظاهرة لغير المندوب",
+     "verify": "افحص Sidebar بكل دور. RT يقول اتصلحت — تحقق فقط ولا تعدّل بلا سبب.",
+     "fix": "تظهر لـ PRO فقط وتُشال من كل دور آخر بما فيهم HR والمدير"},
+
+    {"id": "ACCESS-06", "cluster": "ACCESS", "sev": "low", "src": ["QA-23", "RT-18"],
+     "title": "تبويب نهاية الخدمة ظاهر لمسؤول الفرع لكنه فارغ",
+     "fix": "لو لا يملك الصلاحية، التبويب لا يظهر أصلا بدل أن يفتح فارغا"},
+
+    {"id": "ACCESS-07", "cluster": "ACCESS", "sev": "medium", "src": ["QA-21", "RT-extra"],
+     "title": "صاحب الشركات لا يجد رابط الموظفين في Sidebar",
+     "detail": "الصفحة موجودة والـ Route شغال والنطاق بين GUF/MUF صحيح، لكن الرابط غير ظاهر.",
+     "fix": "إظهار صفحة الموظفين في قائمة Owner ليصل لها طبيعيا حسب الشركة المختارة"},
+
+    {"id": "ACCESS-08", "cluster": "ACCESS", "sev": "blocker", "src": ["RT-22", "QA-30"],
+     "title": "2FA غير صالح للاستخدام — فرق توقيت السيرفر 111 ثانية",
+     "detail": "رموز TOTP الصحيحة رُفضت. الخوارزمية سليمة، والرمز عمل فقط عند حسابه على توقيت السيرفر المتأخر.",
+     "verify": "افحص NTP sync على الخادم. ثم Retest فعلي على HR و Manager و PRO.",
+     "fix": "ضبط وقت السيرفر/NTP · تفعيل 2FA فعليا في مسار تسجيل الدخول لا كصفحة إعداد فقط · الأدوار: HR والمندوب ومدير الشركة (والمواصفة تضيف Super Admin و Owner و Accountant للحسابات الحساسة) · Cleanup: إزالة 2FA من QA Employee Test — الموظف العادي غير مطلوب له 2FA"},
+
+    {"id": "ACCESS-09", "cluster": "ACCESS", "sev": "high", "src": ["RT-23", "QA-31"],
+     "title": "Auto Logout بعد 10 دقائق خمول غير منفّذ",
+     "detail": "لا يوجد Idle/Inactivity mechanism فعلي — الجلسة تعتمد على Token Expiry فقط.",
+     "fix": "تنفيذ Auto Logout بعد ~10 دقائق عدم تفاعل · للأدوار الثلاثة فقط: HR, Manager, PRO"},
+
+    {"id": "ACCESS-10", "cluster": "ACCESS", "sev": "blocker", "src": ["BLK-9", "FUR-reminders"],
+     "title": "بيانات الدخول التجريبية وحساب Super Admin المشترك ما زالت تعمل",
+     "fix": "تغيير أو تعطيل كل كلمات السر التجريبية · إلغاء الحساب الإداري المشترك · حسابات شخصية للمسؤولين · إجبار تغيير كلمة السر أول Login · إزالة بيانات الدخول الظاهرة قبل التسليم · حساب Super Admin الحالي داخلي ولن يُسلّم للعميل"},
+
+    {"id": "ACCESS-11", "cluster": "ACCESS", "sev": "high", "src": ["BLK-9"],
+     "title": "Rate Limit و Lockout على محاولات الدخول",
+     "fix": "تنفيذ Rate Limit و Lockout · إنهاء Sessions القديمة بعد تغيير كلمة السر أو تعطيل الحساب · عدم عرض كلمات السر في أي شاشة أو Export أو Log · ملاحظة: منع دخول المستخدم المعطل نجح في الاختبار — حافظ عليه"},
+
+    {"id": "ACCESS-12", "cluster": "ACCESS", "sev": "blocker", "src": ["FUR-1", "BLK-11", "SPEC-22"],
+     "title": "مصدر صلاحيات واحد للـ Menu و Route و API و Button",
+     "detail": "توجد صلاحية في API بلا مسار ظاهر، ورابط ظاهر بلا صلاحية.",
+     "verify": "لكل شاشة: هل الرابط والمسار والزر والـ API يقرأون من نفس Permission Source؟",
+     "fix": "مصدر واحد · الحماية تشمل: Menu, Route, API, Action, Field, File, Export · البيانات الحساسة: Salary, Civil ID, Passport, IBAN, Documents, EOS, Grievances, Investigations · Owner يرى شركاته · Manager/HR داخل الشركة · Supervisor داخل فروعه · PRO داخل نطاقه · Employee نفسه فقط"},
+
+    {"id": "ACCESS-13", "cluster": "ACCESS", "sev": "medium", "src": ["FUR-4"],
+     "title": "HR لا يستطيع تعديل البيانات الأساسية للموظف",
+     "detail": "الوظيفة، الراتب، تاريخ التعيين، بيانات العقد، البيانات الشخصية.",
+     "fix": "تعديل كامل حسب الصلاحية · Validation في UI و Backend · Company scope · Audit Before/After · Effective Date و Version History للراتب والوظيفة والعقد · عدم السماح بتعديل مالي أو وظيفي حساس بدون Workflow إذا كان مطلوبا"},
+
+    {"id": "ACCESS-14", "cluster": "ACCESS", "sev": "medium", "src": ["FUR-4th"],
+     "title": "Unauthorized / Not Found بدل Loading دائم عند الوصول خارج النطاق",
+     "fix": "حالة واضحة لكل من: Loading, Empty, Error, Unauthorized — لا خلط بينها"},
+
+    {"id": "ACCESS-15", "cluster": "ACCESS", "sev": "medium", "src": ["FUR-4th"],
+     "title": "Quick Actions تعرض إجراءات ممنوعة حسب الدور",
+     "fix": "لا يظهر Payroll للـ Manager إذا كان ممنوعا · لا يظهر EOS للـ Accountant · نص 2FA يتغير حسب الدور الحقيقي"},
+
+    {"id": "ATT-01", "cluster": "ATT", "sev": "blocker", "src": ["FUR-1", "BLK-11"],
+     "title": "HR ممنوع من Attendance Review",
+     "verify": "ادخل بحساب HR وافحص ظهور Attendance Review في القائمة وفي الـ Route وفي الـ API.",
+     "fix": "HR يراجع موظفي شركته · Menu و Route و API نفس مصدر الصلاحيات"},
+
+    {"id": "ATT-02", "cluster": "ATT", "sev": "blocker", "src": ["FUR-1", "BLK-11"],
+     "title": "Branch Supervisor ممنوع من Attendance Review",
+     "fix": "يراجع الفروع المسندة له فقط · Employee يظل ممنوعا من المراجعة العامة ويرى My Attendance فقط"},
+
+    {"id": "ATT-03", "cluster": "ATT", "sev": "blocker", "src": ["FUR-1"],
+     "title": "Manager يرى 12 موظفا بينما الشركة فيها 13 Active Employee",
+     "verify": "احصِ Active Employees في الشركة وقارنه بعدد الظاهرين في Attendance Review وفي Payroll.",
+     "fix": "كل Active Employee يظهر في Attendance Review أو له Attendance Policy / Exempt Reason واضح · العدد يطابق Employees و Payroll بدون سقوط موظف · حدد الموظف الساقط بالاسم وسبب سقوطه"},
+
+    {"id": "ATT-04", "cluster": "ATT", "sev": "blocker", "src": ["QA-4", "RT-3"], "conflict": "CONF-07",
+     "title": "غياب محسوب قبل تاريخ التعيين في Attendance Review",
+     "detail": "QA Retest Aug14، تاريخ التعيين 2026-08-10، ظهر غياب في 2،3،4،5،6،9 أغسطس. Payroll Preview اتصلح لكن Attendance Review لسه غلط.",
+     "verify": "افتح موظفا حديث التعيين في Attendance Review وفي Payroll Preview معا.",
+     "fix": "أي يوم قبل تاريخ التعيين لا يدخل في الحضور أو الغياب أصلا · الإصلاح في مصدر البيانات المشترك لا في الشاشتين منفصلتين — وإلا سيعود الخلل"},
+
+    {"id": "ATT-05", "cluster": "ATT", "sev": "high", "src": ["QA-3"], "conflict": "CONF-01",
+     "title": "عدم وجود تسجيل حضور يُحسب غيابا وخصما",
+     "detail": "مثال: رامين — أساسي 2500، حضور 0، غياب 10، خصم 833.333. RT يدرج هذه ضمن ما نجح.",
+     "verify": "تحقق من البناء الحالي أولا. إن كانت سليمة، سجّلها verified ولا تعدّل.",
+     "fix": "عدم وجود تسجيل حضور لا يتحول تلقائيا إلى غياب وخصم"},
+
+    {"id": "ATT-06", "cluster": "ATT", "sev": "high", "src": ["SPEC-17"],
+     "title": "Attendance Policy أو Exempt إلزامي لكل Active Employee",
+     "fix": "إزالة None كقيمة افتراضية صامتة · Exempt يحتاج سببا وموافقة · ربط الفرع والسياسة · Check-in/Check-out ومنع التكرار · Audit لأي تعديل"},
+
+    {"id": "ATT-07", "cluster": "ATT", "sev": "blocker", "src": ["FUR-9", "SPEC-17", "BLK-7"],
+     "title": "Attendance Close غير موجود — الرواتب تُشغّل بلا ضمان صحة الحضور",
+     "fix": "Attendance Close Batch · Approved Input Set للـ Payroll · تصحيح الحضور المعتمد ينعكس قبل احتساب الراتب · تطابق Attendance و Payroll populations"},
+
+    {"id": "PAY-01", "cluster": "PAY", "sev": "blocker", "src": ["BLK-7", "FUR-9"],
+     "title": "Run & Save ينتج Finalized مباشرة بلا دورة اعتماد",
+     "verify": "شغّل Payroll وراقب الحالة الناتجة مباشرة.",
+     "fix": "الدورة: Draft/Preview > Attendance Reviewed > Attendance Closed > Prepared > Approved > Finalized > Locked · أي دورة غير مكتملة قبل الإطلاق يُغلق Run & Save الخاص بها بدل تركها تنفّذ راتبا غير معتمد"},
+
+    {"id": "PAY-02", "cluster": "PAY", "sev": "blocker", "src": ["BLK-7", "FUR-9"],
+     "title": "تشغيل Payroll من All Companies خطر",
+     "fix": "Payroll Run يحتاج company_id واحدا صريحا · ممنوع Run من All Companies · Owner لا يستطيع Preview أثناء All Companies"},
+
+    {"id": "PAY-03", "cluster": "PAY", "sev": "high", "src": ["FUR-9", "BLK-7"],
+     "title": "لا يوجد Maker-Checker ولا حماية من التكرار",
+     "fix": "فصل من يجهّز عن من يعتمد نهائيا · منع Duplicate Run لنفس الشركة والفترة · منع الحفظ النهائي لو الحضور غير معتمد · Manager له مسار واضح في الاعتماد"},
+
+    {"id": "PAY-04", "cluster": "PAY", "sev": "high", "src": ["BLK-7"],
+     "title": "لا يوجد Lock / Reopen / Adjustment Run",
+     "fix": "Reopen يحتاج صلاحية وسببا و Audit · بعد Lock لا يُعدّل الراتب القديم بل Adjustment Run"},
+
+    {"id": "PAY-05", "cluster": "PAY", "sev": "medium", "src": ["BLK-7", "FUR-9"],
+     "title": "Breakdown غير كامل",
+     "fix": "Basic · Allowances · Overtime · Absence · Advance/Loan · Deductions · Net"},
+
+    {"id": "PAY-06", "cluster": "PAY", "sev": "medium", "src": ["QA-18", "RT-15"],
+     "title": "PRO secondary assignment يدخل في Payroll و EOS براتب صفر",
+     "detail": "محمد فاروق موجود في GUF و MUF عمدا، لكن سجل الشركة الثانية مجرد Assignment للعمل كمندوب.",
+     "fix": "يظل مربوطا بالشركتين ويعمل كمندوب فيهما · الـ secondary assignment لا يدخل في Payroll أو EOS أو financial count · احذر: لا تفصله عن الشركة الثانية"},
+
+    {"id": "PAY-07", "cluster": "PAY", "sev": "medium", "src": ["BLK-7", "SPEC-2"],
+     "title": "استبعاد Archived Employees من الرواتب والحضور والتقارير",
+     "fix": "الموظف المؤرشف يختفي من: Dashboard KPIs, Payroll, Attendance, Selectors, Reports, Renewals, Org Structure النشط · يبقى في Archive والتاريخ السابق فقط"},
+
+    {"id": "PAY-08", "cluster": "PAY", "sev": "low", "src": ["QA-24"], "conflict": "CONF-03",
+     "title": "Preview بلا اختيار شهر بلا رسالة",
+     "fix": "تنبيه «اختر الشهر أولا» — RT يقول Validation شغال، تحقق فقط"},
+
+    {"id": "PAY-09", "cluster": "PAY", "sev": "info", "src": ["RT-note"], "conflict": "CONF-08",
+     "title": "Future Days — لا تُعدَّل",
+     "detail": "آخر اختبار أثبت أن الأيام بعد تاريخ المعاينة لم تُحسب كغياب.",
+     "fix": "لا تعدّل هذه النقطة إلا لو ظهر Regression جديد. سجّلها verified فقط."},
+
+    {"id": "EOS-01", "cluster": "EOS", "sev": "blocker", "src": ["BLK-8", "FUR-10"],
+     "title": "End Service ينفّذ مباشرة من ملف الموظف بلا Workflow",
+     "fix": "إلغاء التنفيذ المباشر · المسار: HR Initiate/Review > Finance Calculation and Verification > Manager/Authorized Final Approval > Clearance > Employee Acknowledgment > Final Settlement > Ready to Print > Printed > Filed/Closed · ممنوع إنهاء موظف أو تغيير حالته من مستخدم واحد بدون الموافقات"},
+
+    {"id": "EOS-02", "cluster": "EOS", "sev": "blocker", "src": ["FUR-10", "BLK-8"],
+     "title": "صفحة EOS ما زالت Demo Calculator",
+     "fix": "فصل Preview EOS عن قرار إنهاء الخدمة · إزالة القيم التجريبية الافتراضية · اختيار موظف حقيقي وجلب الراتب والتواريخ من النظام · رفض salary <= 0 · رفض End Date قبل Hire Date · حساب رصيد الإجازات والمستحقات والخصومات والعهدة · مستند مبدئي ونهائي · Before/After Audit"},
+
+    {"id": "EOS-03", "cluster": "EOS", "sev": "blocker", "src": ["QA-5", "RT-4"],
+     "title": "رصيد الإجازات متناقض بين ملف الموظف و EOS",
+     "detail": "رامين: ملف الموظف 30 يوم / EOS 92.16 يوم — والـ 92.16 دخلوا فعلا في بدل الإجازات. QA Retest Aug14: 30 مقابل 1.72. QA Employee Final Test: 30 مقابل 2.46.",
+     "verify": "افتح نفس الموظف في الشاشتين وقارن. تتبّع مصدر كل رقم في الكود.",
+     "fix": "مصدر واحد للرصيد يُستخدم في الشاشتين · ملف الموظف يعرض 30 ثابتة — هذه على الأرجح قيمة استحقاق سنوي لا رصيد فعلي · حدد أي الرقمين الصحيح قبل التوحيد، ولا توحّد على الرقم الخاطئ"},
+
+    {"id": "PRO-01", "cluster": "PRO", "sev": "blocker", "src": ["RT-5", "QA-6"],
+     "title": "OCR يرجع confidence = 0.0 و MRZ incomplete وبلا Expiry Date",
+     "detail": "تم رفع مستند إقامة واضح فيه تاريخ انتهاء. الـ OCR قرأ النص لكن لم يستخرج البيانات المطلوبة.",
+     "verify": "ارفع مستند إقامة واضحا وافحص استجابة الـ OCR الخام.",
+     "fix": "استخراج تاريخ الانتهاء أو طلب تأكيده من المستخدم · التاريخ يُحفظ على المستند/الإقامة · المستخدم يقدر يصحح القراءة · متفق مسبقا أن OCR شغال — فالمستخدم لا يُطالب بإدخال تواريخ الانتهاء يدويا"},
+
+    {"id": "PRO-02", "cluster": "PRO", "sev": "blocker", "src": ["RT-5", "FUR-7", "QA-6"],
+     "title": "صفحة Residency Renewals فارغة و /api/renewals يرجع []",
+     "detail": "مركز العمليات يعرض 4 حالات إقامة تحتاج إجراء، وأُنشئت إقامة تنتهي خلال 14 يوما واكتُشفت كحالة حرجة، لكن صفحة التجديدات فضلت فاضية. ولا يوجد Start/Create Action.",
+     "verify": "قارن استعلام مركز العمليات باستعلام /api/renewals — أين يختلفان؟",
+     "fix": "توحيد مصدر البيانات بين Dashboard ومركز العمليات و Renewals · إضافة Start/Create Renewal Action · تنفيذ حالة QA واحدة كاملة على الأقل"},
+
+    {"id": "PRO-03", "cluster": "PRO", "sev": "blocker", "src": ["QA-6"],
+     "title": "Dashboard تعرض الإقامات السارية = 0 في الشركتين رغم وجود مستندات مرفوعة",
+     "fix": "العدادات تعتمد على نفس بيانات المستندات والتواريخ · لا مصدر منفصل لكل شاشة"},
+
+    {"id": "PRO-04", "cluster": "PRO", "sev": "blocker", "src": ["FUR-7"],
+     "title": "تنفيذ مسار تجديد إقامة كامل End-to-End",
+     "fix": "المسار: Alert > Start Renewal > Required Documents > Under Renewal > Government Reference > Fees/Receipt عند الحاجة > New Number/Expiry > HR Verification > Employee Notification > Task Closure > Archive Current/History > Audit"},
+
+    {"id": "PRO-05", "cluster": "PRO", "sev": "high", "src": ["SPEC-16"],
+     "title": "إزالة صفحة PRO Transactions القديمة",
+     "detail": "القرار النهائي: لا تُصلح ولا يُعاد بناؤها.",
+     "fix": "الحذف · صفحة Residency Renewals الجديدة هي المسار الوحيد للإقامة · مستندات وتراخيص الشركة والفروع تُدار من Company Archive و Branch Archive"},
+
+    {"id": "PRO-06", "cluster": "PRO", "sev": "high", "src": ["SPEC-16"],
+     "title": "إشعارات انتهاء المستندات ومنع التكرار",
+     "fix": "قبل 90 يوما · قبل 30 يوما · تذكيرات متكررة حتى الإتمام · منع Duplicate Tasks و Notification Spam · مهمة Active واحدة لكل مستند · تشغيل Daily Scan أكثر من مرة لا ينشئ تكرارا · بعد التجديد: الجديدة Current والقديمة History والمهمة تُغلق والتذكيرات تتوقف و Audit Before/After"},
+
+    {"id": "PRO-07", "cluster": "PRO", "sev": "medium", "src": ["QA-20", "RT-16"],
+     "title": "عداد المهام الحكومية للمندوب مخالف للفلتر",
+     "detail": "Dashboard تقول 2 أو 3 مهام حكومية، والفلتر يقول 0.",
+     "fix": "توحيد الاستعلام بين العداد والفلتر"},
+
+    {"id": "PRO-08", "cluster": "PRO", "sev": "medium", "src": ["QA-19"],
+     "title": "نسب التراخيص في Dashboard تناقض مركز العمليات",
+     "detail": "Dashboard: 76% سارية / 24% غير سارية. مركز العمليات: لا تراخيص منتهية أو قريبة.",
+     "fix": "نفس مصدر البيانات والتواريخ للعدادين"},
+
+    {"id": "PRO-09", "cluster": "PRO", "sev": "medium", "src": ["SPEC-16"],
+     "title": "حقول مستندات الأرشيف كاملة",
+     "fix": "Document Type, Number, Issue Date, Expiry Date, Issuing Authority, Company, Branch, Assigned PRO, Attachment, Notes, Status, Version History"},
+
+    {"id": "PRO-10", "cluster": "PRO", "sev": "medium", "src": ["SPEC-16"],
+     "title": "فصل مسار التجديد المبكر عن الطبيعي",
+     "fix": "المبكر (31-90 يوما أو سبب خاص): Employee > Manager > HR > PRO > Government Process > Verification > Update Document > Completed · الطبيعي (30 يوما أو أقل): المسار المختصر المعتمد"},
+
+    {"id": "DOC-01", "cluster": "DOC", "sev": "blocker", "src": ["FUR-8"],
+     "title": "زر Preview & Print أنشأ وأرشف شهادة راتب فعلية",
+     "detail": "form_HRMS-PR-001 / شهادة راتب / v1 في ملف أحمد محمود علي.",
+     "verify": "اضغط Preview وافحص هل نشأ artifact في قاعدة البيانات والتخزين.",
+     "fix": "Preview لا ينشئ ولا يحفظ Artifact · فصل المراحل: Preview > Generate > Issue > Download/Print > File · حذف شهادة QA من ملف أحمد محمود علي · ممنوع Mark Printed أو Filed بدون PDF صادر فعليا"},
+
+    {"id": "DOC-02", "cluster": "DOC", "sev": "high", "src": ["FUR-8", "SPEC-13"],
+     "title": "المستند لا يحمل بيانات الإصدار الإلزامية",
+     "fix": "Document Code · Reference Number · Template Version · Generated At/By · Checksum · Signature Version · Employee/Company Snapshot · Status · بيانات الراتب تأتي من النظام لا إدخالا يدويا"},
+
+    {"id": "DOC-03", "cluster": "DOC", "sev": "high", "src": ["QA-13", "RT-12"],
+     "title": "شهادة الراتب فيها أسماء حقول تقنية وأخطاء نصية وبيانات خاطئة",
+     "detail": "ظهر فعليا: allowances_total, gross_salary, target_entity · «شركة شركة الاتحاد الخليجي للأقمشة» · «د.ك د.ك» · النسخة الإنجليزية تستخدم اسم الشركة العربي · Placeholders فارغة مطبوعة · Employee ID = رقم DB بدل الرقم الوظيفي.",
+     "verify": "ولّد الشهادة فعليا واستخرج نصها وافحص كل بند من الستة.",
+     "fix": "لا أسماء حقول تقنية في الواجهة ولا في المستند · إصلاح تكرار «شركة» و«د.ك» (على الأرجح القالب يضيف البادئة والقيمة تحملها أصلا) · النسخة الإنجليزية تستخدم company_legal_name_en · إخفاء Placeholders الفارغة بدل طباعتها · Employee ID = الرقم الوظيفي الحقيقي (مرتبط بـ UX-04)"},
+
+    {"id": "DOC-04", "cluster": "DOC", "sev": "medium", "src": ["QA-14", "RT-13"],
+     "title": "مستندات الموظف تعرض أكوادا خاما وتكرارات",
+     "detail": "form_HRMS-PR-001, form_HRMS-PR-038, gov_contract_hire_12, company_contract_hire_12 · شهادة راتب وخبرة مكررتان بنفس الاسم ونفس رقم النسخة.",
+     "fix": "اسم مستند واضح ومفهوم · المستخدم يقدر يفرق بين المستندات · معالجة سبب التكرار لا إخفاؤه"},
+
+    {"id": "DOC-05", "cluster": "DOC", "sev": "high", "src": ["QA-28", "RT-21"],
+     "title": "النسخ القديمة من المستندات غير متاحة من الواجهة",
+     "detail": "أحدث نسخة فقط ظاهرة كـ Current — وهذا صحيح — لكن لا يوجد زر «النسخ السابقة».",
+     "fix": "آخر Version يظل الظاهر على وش الصفحة · مكان واضح للنسخ السابقة · فتح وتنزيل أي نسخة قديمة · رفع نسخة جديدة لا يمسح القديمة · تنطبق على مستند الموظف ومستند الأرشيف معا"},
+
+    {"id": "DOC-06", "cluster": "DOC", "sev": "medium", "src": ["QA-16", "RT-14"],
+     "title": "أرشيف الشركة صفحة بيضاء عند All Companies",
+     "detail": "الخادم يرجع الرسالة الصحيحة «اختر شركة لعرض أرشيفها» لكن الواجهة لا تعرضها.",
+     "fix": "عرض الرسالة بدل الصفحة البيضاء"},
+
+    {"id": "DOC-07", "cluster": "DOC", "sev": "high", "src": ["SPEC-13"],
+     "title": "PDF حقيقي Server-Side بمواصفات كاملة",
+     "fix": "HTTP 200 · Content-Type application/pdf · الملف يبدأ بـ %PDF · خطوط عربية سليمة · RTL صحيح · الشعار والجداول والتوقيعات واضحة · Filename و Reference واضحان · Storage آمن وصلاحيات تنزيل · ممنوع Raw JSON أو Role Codes أو Session Links أو Scripts"},
+
+    {"id": "DOC-08", "cluster": "DOC", "sev": "medium", "src": ["SPEC-9", "SPEC-10", "SPEC-11", "SPEC-12"],
+     "title": "معمار المستندات: 9 Layouts + 25 Canonical + 6 Reports + 2 System Records",
+     "fix": "ممنوع 42 أو 54 قالبا منفصلا كنظام دائم · Legacy Alias Resolver · Layout للتصميم فقط و Document Definition للحقول والنص والتوقيع والصلاحيات · كل تعديل منشور ينشئ Version جديدة ولا يغير القديمة · التقارير الستة لا تظهر كقوالب طلبات · السجلان الداخليان لا يظهران في Print Catalog"},
+
+    {"id": "DOC-09", "cluster": "DOC", "sev": "medium", "src": ["SPEC-14"],
+     "title": "إدارة القوالب وتأمينها",
+     "fix": "إدارة القوالب لـ Super Admin فقط · باقي الأدوار تستخدم المنشور ولا تعدّل · Versioning إلزامي · منع حذف قالب مستخدم · ربط القالب بالـ Workflow والطلب · تعقيم HTML · عدم تنفيذ Scripts أو Events أو Active SVG أو URLs غير آمنة · Print Preview معزول · عدم تمرير Session Tokens للطباعة"},
+
+    {"id": "SIG-01", "cluster": "SIG", "sev": "blocker", "src": ["BLK-5", "FUR-11"],
+     "title": "استبدال توقيع الموظف يتم مباشرة بلا موافقة HR",
+     "detail": "الشاشة تقول إن الموظف يستطيع استبداله anytime، وتم الاستبدال فعليا بلا طلب ولا سبب ولا Pending Version.",
+     "fix": "أول رفع مباشر فقط · أي تغيير بعده ينشئ Signature Replacement Request بسبب ونسخة Pending · القديم يظل Active حتى اعتماد HR · عند الرفض يظل القديم · الاحتفاظ بكل النسخ وتاريخها وسببها ومن وافق · إلغاء أي Endpoint أو زر قديم يسمح بالاستبدال المباشر"},
+
+    {"id": "SIG-02", "cluster": "SIG", "sev": "high", "src": ["QA-8", "RT-7"],
+     "title": "زر استبدال التوقيع يعطي «نوع الطلب REQSIG غير متاح لحسابك» ويفتح نوعا خاطئا",
+     "verify": "بحساب موظف لديه توقيع: اضغط استبدال التوقيع وتتبّع النوع الذي يفتحه.",
+     "fix": "تعريف نوع الطلب الصحيح وإتاحته للموظف · ربط الزر بالنوع الصحيح · اختبار المسار: سبب → طلب تغيير → HR → موافقة/رفض → History"},
+
+    {"id": "SIG-03", "cluster": "SIG", "sev": "low", "src": ["BLK-5"],
+     "title": "تعارض حجم ملف التوقيع: الشاشة 500KB ورسالة الخطأ 15MB",
+     "fix": "توحيد الحجم والامتدادات ورسائل الخطأ في الواجهة والخادم"},
+
+    {"id": "SIG-04", "cluster": "SIG", "sev": "low", "src": ["QA-25", "RT-19"],
+     "title": "حالة التوقيع متناقضة بعد الحذف",
+     "detail": "يظهر «لم يتم رفع توقيع بعد» و«آخر تحديث: ...» معا.",
+     "fix": "لو لا يوجد توقيع حالي لا يظهر Last Update القديم بهذا الشكل"},
+
+    {"id": "SIG-05", "cluster": "SIG", "sev": "high", "src": ["SPEC-15"],
+     "title": "سجل المخوّلين بالتوقيع",
+     "fix": "الشركة · المسمى · أنواع المستندات المسموح توقيعها · بداية ونهاية الصلاحية · Active/Revoked · حفظ نسخة التوقيع المستخدمة · عدم إصدار مستند حساس Final قبل اعتماد المخول والنص القانوني"},
+
+    {"id": "SIG-06", "cluster": "SIG", "sev": "high", "src": ["SPEC-15-addendum"],
+     "title": "ربط التوقيع الإلكتروني بمراحل الاعتماد",
+     "fix": "التوقيع يُضاف فقط عند تنفيذ Approval أو Final Approval معتمد · لا يُضاف عند Reject أو Needs Info أو Return أو Cancel أو المشاهدة · كل توقيع يتضمن: الاسم، المسمى، الدور الذي اعتمد به، الشركة والفرع، مرحلة الاعتماد، تاريخ ووقت، Signature Version, Verification ID, IP و User Agent و Correlation ID في الـ Audit · Snapshot ثابتة لا تتغير بتغيير المستخدم لتوقيعه لاحقا · في الطلبات متعددة الموافقات تظهر التوقيعات بترتيب المراحل"},
+
+    {"id": "SIG-07", "cluster": "SIG", "sev": "high", "src": ["SPEC-15-addendum"],
+     "title": "التحقق من صلاحية الموقّع قبل الإصدار",
+     "fix": "توقيع Active ومعتمد · المستخدم مخوّل لهذا النوع · الصلاحية لم تنتهِ ولم تُلغَ · الموافقة داخل نطاق الشركة والفرع المسموحين · إذا لا يوجد توقيع صالح: لا يصدر المستند النهائي وتظهر حالة Signature Required مع مهمة استكمال دون فقد الموافقة المسجلة"},
+
+    {"id": "SIG-08", "cluster": "SIG", "sev": "high", "src": ["SPEC-15-addendum"],
+     "title": "إبطال التوقيعات عند إعادة الفتح أو التعديل",
+     "fix": "إلغاء صلاحية التوقيعات السابقة على النسخة المعدلة · إنشاء Document Version جديدة · إعادة التوجيه للموافقين · النسخة السابقة محفوظة في History · منع نسخ صورة التوقيع أو رابطها من الـ API أو Storage بدون صلاحية · عدم عرض مسار الملف أو Storage URL"},
+
+    {"id": "TASK-01", "cluster": "TASK", "sev": "high", "src": ["QA-11", "RT-10"],
+     "title": "مهام مكررة وتبقى مفتوحة بعد اتخاذ القرار",
+     "detail": "4 مهام اعتماد متطابقة رغم أن الطلبات أقل · مهمة اعتمدها المدير ولسه مفتوحة · لا رابط يفتح الطلب · نص «طلب طلب إجازة» · مهمة قرار مصنفة «معلومة».",
+     "fix": "مهمة واحدة لكل Action مرتبطة بالطلب وتُغلق مع انتهاء الإجراء · Auto Close عند الاكتمال أو الرفض أو الإلغاء · منع Orphan و Duplicate Tasks · العداد يتغير فورا · إصلاح نص «طلب طلب» · تصنيف صحيح للأهمية"},
+
+    {"id": "TASK-02", "cluster": "TASK", "sev": "high", "src": ["QA-12", "RT-11"],
+     "title": "الإشعارات تظهر كمهام بأزرار إنجاز/تجاهل",
+     "detail": "«تم إلغاء طلب» و«تم رفض طلب» و«ملخص اليوم» تظهر كمهام.",
+     "fix": "التفريق بين Task و Notification · المعلومة إشعار فقط · المهمة عندما يكون مطلوبا من المستخدم إجراء"},
+
+    {"id": "TASK-03", "cluster": "TASK", "sev": "high", "src": ["SPEC-20", "FUR-4th"],
+     "title": "محرك الإشعارات غير مكتمل والتسليم الفعلي غير مؤكد",
+     "verify": "أرسل إشعارا فعليا وتتبّع وصوله — وجود الأيقونة لا يكفي.",
+     "fix": "Templates · Notifications · Deliveries · Preferences · Channels · Read/Unread · Retry · Mandatory · SLA Reminders · Escalation · Digest · Idempotency · الأحداث المطلوبة: إنشاء الطلب، انتقال المرحلة، Needs Info، Return، Approval، Rejection، Completion، Ready to Print، Printed، Filed، Attendance Correction Applied، Payroll، Signature Replacement، Document Expiry، Residency، Missing Documents، Security Events · بعد اكتمال طلب رسمي يصل إشعار بأن النموذج جاهز للطباعة والحفظ"},
+
+    {"id": "TASK-04", "cluster": "TASK", "sev": "medium", "src": ["SPEC-19"],
+     "title": "نطاق المهام وصلاحياتها",
+     "fix": "Task للمسؤول الحالي فقط · Scope حسب الشركة والفرع والدور · Bulk Complete/Dismiss حسب الصلاحية · Audit"},
+
+    {"id": "AUDIT-01", "cluster": "AUDIT", "sev": "medium", "src": ["QA-26", "RT-20"],
+     "title": "حدث request_completed بلا Actor وبلا IP",
+     "fix": "الحدث يرتبط بالمستخدم/الإجراء الذي أدى لاكتمال الطلب · إن كان اكتمالا آليا يُسجَّل النظام كـ actor مع سبب التشغيل"},
+
+    {"id": "AUDIT-02", "cluster": "AUDIT", "sev": "high", "src": ["SPEC-21"],
+     "title": "سجل تدقيق كامل الحقول والأحداث",
+     "fix": "الحقول: Actor, Original Actor, Impersonated User, Role, Company, Branch, Entity, Action, Result, Before, After, Reason, IP, User Agent, Correlation ID, Timestamp · الأحداث: Employee/User Create/Update/Archive, Request Actions, Attendance, Payroll, Renewal, Signature, Template, Document Generate/Issue/Print/File/Download, Export, Forbidden Access, Role/Permission Changes · لا يُسجَّل Success عند فشل العملية · عدم فقد Audit Events أثناء النشر أو Migration"},
+
+    {"id": "AUDIT-03", "cluster": "AUDIT", "sev": "medium", "src": ["FUR-4th"],
+     "title": "عرض Audit timestamps بتوقيت الكويت مع بقاء UTC داخليا",
+     "fix": "التخزين UTC · العرض بتوقيت الكويت · تنسيق تاريخ موحد في كل الشاشات"},
+
+    {"id": "UX-01", "cluster": "UX", "sev": "low", "src": ["QA-22", "RT-17"],
+     "title": "قيم إنجليزية خام في الواجهة العربية",
+     "detail": "المتبقي بعد الإصلاح الجزئي: active, delegate, digest, sla_escalation, prepared, residency. (تم إصلاح: qr, gps, both, none)",
+     "fix": "كل قيمة تظهر باسم مفهوم حسب لغة الواجهة · عدم ظهور أسماء Field أو Status تقنية"},
+
+    {"id": "UX-02", "cluster": "UX", "sev": "low", "src": ["QA-17"], "conflict": "CONF-04",
+     "title": "switch_company يظهر خاما للمندوب",
+     "fix": "«تغيير الشركة» / «Switch Company» — RT يقول اتصلح، تحقق فقط"},
+
+    {"id": "UX-03", "cluster": "UX", "sev": "low", "src": ["QA-27"], "conflict": "CONF-05",
+     "title": "عمود «المسار» فارغ في جدول الطلبات",
+     "fix": "إما يعرض المسار/المرحلة الحالية أو يُشال — RT يقول اتصلح، تحقق فقط"},
+
+    {"id": "UX-04", "cluster": "UX", "sev": "blocker", "src": ["BLK-6", "FUR-4th"],
+     "title": "Employee ID غير موجود ولا ظاهر في أي شاشة",
+     "detail": "غير ظاهر في: إنشاء الموظف، قائمة الموظفين، ملف الموظف، My Profile، البحث، التقارير، المستندات الرسمية.",
+     "fix": "مولّد تلقائي: اختصار الشركة + كود الفرع + تسلسل الموظف داخل الفرع · Unique وآمن عند الإنشاء المتزامن · لا يُدخل يدويا · لا يُعاد استخدام رقم موظف مؤرشف · ثابت بعد النقل إلا بقاعدة معتمدة صراحة · Read Only في كل الشاشات والتقارير والمستندات · Search بالـ Employee ID · معالجة الموظفين الحاليين بدونه"},
+
+    {"id": "UX-05", "cluster": "UX", "sev": "medium", "src": ["QA-15"], "conflict": "CONF-02",
+     "title": "الموظف الجديد لا يظهر في القائمة بلا Refresh يدوي",
+     "fix": "الموظف والعداد يظهران مباشرة — RT يقول اتصلح، تحقق فقط"},
+
+    {"id": "UX-06", "cluster": "UX", "sev": "high", "src": ["FUR-3rd"],
+     "title": "Tutorial ثنائي اللغة حسب الدور غير موجود — الموجود Welcome panel فقط",
+     "fix": "يظهر أول Login لكل User + Role · 5 إلى 8 خطوات · Highlight للعناصر · Next/Back/Skip/Finish · زر Replay Tour في User Menu · حفظ tour_completed لكل User و Role · عربي وإنجليزي و RTL/LTR · Help page أو FAQ قصيرة · Empty States تشرح الخطوة التالية · محتوى مخصص لكل دور: Employee, Branch Supervisor, HR, Manager, Accountant, PRO (التفاصيل في review-plan.md)"},
+
+    {"id": "UX-07", "cluster": "UX", "sev": "medium", "src": ["SPEC-24"],
+     "title": "اتساق اللغة والواجهة والتنسيق",
+     "fix": "عربي وإنجليزي متسقان · RTL/LTR · توقيت الكويت · تنسيق تاريخ موحد · KWD وتقريب مالي معتمد · Sidebar بارتفاع كامل وScroll داخلي وخلفية مستمرة · لا قص أو تداخل · Desktop و Mobile · Labels و Keyboard و Focus و Contrast و Zoom 200%"},
+
+    {"id": "DATA-01", "cluster": "DATA", "sev": "blocker", "src": ["BLK-10"],
+     "title": "إمكانية إنشاء أكثر من شركة بنفس السجل التجاري",
+     "fix": "Commercial Registration فريد حسب القاعدة المعتمدة · التحقق في الواجهة والخادم وقاعدة البيانات · رسالة واضحة قبل إنشاء الثانية · تنظيف الشركة التجريبية المكررة · عدم إنشاء فروع أو موظفين أو Users لشركة فشل إنشاؤها"},
+
+    {"id": "DATA-02", "cluster": "DATA", "sev": "high", "src": ["SPEC-2"],
+     "title": "التحقق الذري عند إنشاء الموظف",
+     "fix": "الحقول الإلزامية: Civil ID صحيح وفريد داخل الشركة، الاسم، الوظيفة، تاريخ التعيين، الشركة، الفرع، القسم، Employment Status، Attendance Policy أو Exempt Reason · Invalid أو Partial لا ينشئ أي سجل · لا User أو Task أو Audit نجاح لموظف فشل إنشاؤه · Transaction و Rollback كاملان"},
+
+    {"id": "DATA-03", "cluster": "DATA", "sev": "medium", "src": ["SPEC-23"],
+     "title": "التصدير CSV/XLSX",
+     "fix": "Civil ID و Employee ID و Phone و Passport و IBAN تُصدَّر كنص بدون Scientific Notation أو فقد أصفار · UTF-8 · عربي/إنجليزي · Masking حسب الدور · سبب للتصدير الحساس · Export Audit · Scope صحيح"},
+
+    {"id": "DATA-04", "cluster": "DATA", "sev": "high", "src": ["SPEC-26"],
+     "title": "الترحيل الآمن من النظام القديم",
+     "fix": "عدم حذف الطلبات والمستندات القديمة · Legacy Aliases تحل إلى Canonical · عدم إنشاء طلبات جديدة بالأنواع القديمة بعد التفعيل · الطلبات المفتوحة: Legacy Continue أو Controlled Migration · Dual Read مؤقت عند الحاجة · Feature Flags حسب الشركة · Rollback لا يكرر أي معاملة أو مستند · الحفاظ على Attachments و Timeline و Audit · عدم تشغيل النظامين بالتوازي كحل دائم"},
+
+    {"id": "OPS-01", "cluster": "OPS", "sev": "high", "src": ["SPEC-1", "FUR-4th"],
+     "title": "هوية النسخة والنشر غير معروضة",
+     "fix": "إظهار: Version, Commit, Built At, Deployed At, Environment, Migration Version, Feature Flags · عدم ظهور Development على رابط التسليم · ربط كل اختبار بالـ Build المنشور نفسه · تطبيق Migrations المطلوبة · System Health: Data و Migrations = PASS"},
+
+    {"id": "OPS-02", "cluster": "OPS", "sev": "medium", "src": ["FUR-4th"],
+     "title": "PWA/Service Worker يُبقي المستخدم على Build قديم",
+     "fix": "تحديث Service Worker وإجبار تحديث العميل عند نشر نسخة جديدة"},
+
+    {"id": "OPS-03", "cluster": "OPS", "sev": "high", "src": ["SPEC-25"],
+     "title": "جاهزية التشغيل والاستضافة",
+     "fix": "Backup فعلي للقاعدة والملفات · اختبار Restore · Health Checks · Monitoring · Error Tracking · Structured Logs · Rate Limits · Job Monitoring · تنبيه عند فشل Daily Scan أو Notification أو PDF Generation · Rollback Plan · Smoke Test بعد النشر · Data/File Retention · Staging منفصلة"},
+
+    {"id": "OPS-04", "cluster": "OPS", "sev": "high", "src": ["FUR-reminders", "SPEC-25"],
+     "title": "تنظيف بيئة العميل قبل التسليم",
+     "fix": "تعطيل Reset Demo Data وأدوات الاختبار · عزل وتنظيف بيانات QA حتى لا تختلط ببيانات العميل · Rotate لمفاتيح Kiosk وعدم عرضها كاملة · عدم تفعيل النصوص القانونية الحساسة كـ Production Final قبل اعتماد المختص والمخول"},
+
+    {"id": "OPS-05", "cluster": "OPS", "sev": "blocker", "src": ["FUR-reminders"],
+     "title": "انضباط الـ Retest النهائي",
+     "fix": "لا تُرفع Build جديدة أثناء الـ Retest النهائي · بعد الانتهاء: إرسال Full Commit SHA ووقت الـ Deployment و Migration Version · تحديد Fixed / Not Completed أمام كل بند · الـ Retest مركّز على البنود فقط وليس Audit جديدا"}
+  ]
+}

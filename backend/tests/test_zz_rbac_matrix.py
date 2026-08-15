@@ -1744,3 +1744,52 @@ def test_str07_migration_report_is_clean(client):
         if code == ["pass"] and not explained:
             missing.append(f"{f.name}: downgrade فارغ بلا تفسير")
     assert not missing, "ترحيلات بلا رجوع: " + "; ".join(missing[:8])
+
+
+def test_dlv31_seed_accounts_are_detected(client):
+    """DLV-31 + ACCESS-10 — حساب بكلمة مرور بذرة يُكتشف ويمنع التسليم.
+
+    ROOT CAUSE: المنع القائم يغطّي **تشغيل** البذر (ALLOW_DEMO_SEED) لا **وجود**
+    حسابها. فقاعدة بُذرت على staging ثم رُقّيت للإنتاج، أو بيئة شُغّل عليها
+    البذر بتصريح مؤقّت ونُسي — تبقى فيها حسابات بكلمات مرور منشورة في
+    المستودع، وأخطرها super_admin مشترك.
+
+    السؤال الصحيح: هل تعمل كلمة مرور بذرة على هذه القاعدة **الآن**؟ لا "هل
+    شُغّل البذر؟" — الأول واقع يُقاس، والثاني تاريخ لا أحد يتذكّره.
+    """
+    from app import seed_guard
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        hits = seed_guard.find_seed_accounts(db)
+        # قاعدة الاختبار مبذورة، فالحساسية يجب أن تكتشفها
+        assert hits, "الفحص لم يكتشف حسابات البذرة في قاعدة مبذورة"
+        roles = {h["role"] for h in hits}
+        assert "super_admin" in roles, "لم يُكتشف حساب super_admin المشترك"
+        # ولا تسريب لكلمات المرور في الناتج
+        blob = str(hits)
+        assert "admin123" not in blob and "hr12345" not in blob, \
+            "الفحص يسرّب كلمات المرور في ناتجه"
+    finally:
+        db.close()
+
+    # ويظهر في فحص الصحة بلا أسماء ولا كلمات مرور
+    deep = client.get("/api/health/deep").json()
+    check = deep["checks"].get("seed_accounts")
+    assert check is not None, "فحص الصحة لا يعرض حسابات البذرة"
+    assert check["status"] == "fail" and check["count"] >= 1
+    assert all(set(a) == {"civil_id", "role"} for a in check["accounts"]), \
+        "فحص الصحة يكشف أكثر من اللازم"
+
+
+def test_dlv06_build_identity_includes_migration(client):
+    """DLV-06 — هوية البناء تشمل نسخة الترحيلات.
+
+    "أي كود يعمل؟" سؤال ناقص بلا "على أي بنية قاعدة؟": بناءان بنفس الـcommit
+    وقاعدتان مختلفتان يسلكان سلوًكا مختلًفا، وتشخيص ذلك بلا الرقم تخمين.
+    """
+    m = client.get("/api/manifest").json()
+    for k in ("version", "commit", "build_time", "deploy_time", "environment",
+              "migration_version"):
+        assert k in m, f"هوية البناء تنقصها {k}"

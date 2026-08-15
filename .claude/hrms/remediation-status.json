@@ -1,0 +1,512 @@
+{
+  "API-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "API-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "WF-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "CAT-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-05": {
+    "status": "verified",
+    "note": "بوابات الجهات محصورة في المندوب على الخادم لا الواجهة · tests/test_zz_rbac_matrix.py::test_rbac_gov_portals_delegate_only",
+    "updated": "2026-08-15"
+  },
+  "ACCESS-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-10": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-11": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-12": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-13": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-14": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ACCESS-15": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ATT-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ATT-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ATT-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ATT-04": {
+    "status": "verified",
+    "note": "القص على hire_date في Payroll و Attendance Review مًعا · test_qa04_no_absence_before_hire_date",
+    "updated": "2026-08-15"
+  },
+  "ATT-05": {
+    "status": "verified",
+    "note": "unrecorded منفصل عن absent ولا خصم بلا سجل · test_qa03_unrecorded_days_are_not_deducted",
+    "updated": "2026-08-15"
+  },
+  "ATT-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "ATT-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PAY-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "EOS-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "EOS-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "EOS-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "PRO-10": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DOC-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "SIG-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "TASK-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "TASK-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "TASK-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "TASK-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "AUDIT-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "AUDIT-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "AUDIT-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "UX-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "UX-02": {
+    "status": "verified",
+    "note": "مفتاح switch_company مترجَم في i18n.tsx:123",
+    "updated": "2026-08-15"
+  },
+  "UX-03": {
+    "status": "verified",
+    "note": "عمود المسار يعرض ProgressMini بالمرحلة الحالية · Requests.tsx:246",
+    "updated": "2026-08-15"
+  },
+  "UX-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "UX-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "UX-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "UX-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DATA-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DATA-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DATA-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "DATA-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "OPS-01": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "OPS-02": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "OPS-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "OPS-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "OPS-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  }
+}

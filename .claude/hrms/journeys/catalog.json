@@ -1,0 +1,239 @@
+{
+  "version": "1.0",
+  "roles": ["Employee", "BranchSupervisor", "Manager", "HR", "Accountant", "PRO", "Owner", "SuperAdmin"],
+  "companies": ["GUF", "MUF"],
+  "journeys": [
+
+    {"id": "SMK-01", "role": "any", "type": "smoke", "title": "النظام حي والصفحة الأولى ترد",
+     "steps": ["افتح الرابط الأساسي", "تحقق من كود 200 ولا يوجد Development على رابط التسليم", "افحص هوية النسخة: Version, Commit, Built At, Environment, Migration Version"],
+     "expect": "الصفحة ترد · البيئة صحيحة · هوية النسخة ظاهرة", "blocks": ["OPS-01"]},
+
+    {"id": "SMK-02", "role": "all", "type": "smoke", "title": "تسجيل الدخول بكل دور",
+     "steps": ["سجّل دخول بكل دور من الثمانية على الشركتين", "سجّل أي دور يفشل ولماذا"],
+     "expect": "كل دور يدخل ويصل للوحته", "note": "أي دور لا يدخل يوقف اختبار رحلاته — أبلغ فورا"},
+
+    {"id": "SMK-03", "role": "all", "type": "smoke", "title": "الـ endpoints الأساسية ترد لكل دور",
+     "steps": ["اضرب /api/employees و /api/requests و /api/tasks و /api/notifications و /api/renewals بكل دور على الشركتين", "سجّل كود الحالة وحجم الرد"],
+     "expect": "لا 500 · الأكواد منطقية (200 أو 403) · لا ردود فارغة بلا سبب", "blocks": ["API-01", "PRO-02"]},
+
+    {"id": "EMP-01", "role": "Employee", "type": "journey", "title": "الملف الشخصي والحضور",
+     "steps": ["افتح My Profile", "تحقق من ظهور Employee ID بالصيغة الصحيحة", "افتح My Attendance", "افتح جدول الإجازات"],
+     "expect": "الملف يفتح بلا 404 · Employee ID ظاهر وهو الرقم الوظيفي لا رقم DB · الحضور يعمل · جدول الإجازات لا يعرض From/To",
+     "blocks": ["ACCESS-01", "UX-04", "CAT-06"]},
+
+    {"id": "EMP-02", "role": "Employee", "type": "journey", "title": "كتالوج الخدمات الذاتية",
+     "steps": ["افتح تقديم طلب", "احصِ الأنواع الظاهرة", "ابحث عن أي تكرار أو أكواد داخلية"],
+     "expect": "15-18 خدمة · لا تكرار (شهادة راتب مرة واحدة، سلفة/قرض مرة واحدة، إذن مرة واحدة) · لا أكواد PRN أو Legacy ظاهرة",
+     "blocks": ["CAT-01", "API-02", "CAT-07"]},
+
+    {"id": "EMP-03", "role": "Employee", "type": "journey", "title": "طلب إجازة عادية من البداية للنهاية",
+     "steps": ["قدّم إجازة بدون سفر", "املأ التواريخ وأرسل", "افحص مسار الطلب", "تابع الحالة حتى الاكتمال", "افحص رصيد الإجازة بعد الاعتماد", "افحص سجل الحضور"],
+     "expect": "الإرسال ينجح من أول مرة · لا مرحلة PRO في الإجازة بلا سفر · الرصيد خُصم فعلا · الحضور تحدّث · الموظف لا يرى From/To في أي شاشة",
+     "blocks": ["WF-05", "WF-03", "CAT-06", "WF-09"]},
+
+    {"id": "EMP-04", "role": "Employee", "type": "journey", "title": "إجازة بسفر خارج البلاد",
+     "steps": ["قدّم إجازة واختر سفر", "افحص مسار الطلب"],
+     "expect": "مرحلة PRO تظهر هنا فقط · travel_required محفوظ في السجل", "blocks": ["WF-03"]},
+
+    {"id": "EMP-05", "role": "Employee", "type": "journey", "title": "طلب تصحيح حضور وتطبيقه فعليا",
+     "steps": ["قدّم تصحيح حضور لتاريخ محدد", "افحص حقول النموذج", "مرّره بكل الموافقات", "افحص سجل الحضور بعد Completed"],
+     "expect": "النموذج فيه Attendance Date و Correction Type و Existing/Requested Check-in/out — بلا Amount KWD · التاريخ والقيم محفوظة عبر المراحل · سجل الحضور تغيّر فعلا بعد الاكتمال",
+     "blocks": ["WF-04", "CAT-03"]},
+
+    {"id": "EMP-06", "role": "Employee", "type": "journey", "title": "شهادة راتب — الطلب والمستند",
+     "steps": ["اطلب شهادة راتب", "تابع حتى الإصدار", "نزّل المستند وافحص نصه"],
+     "expect": "لا Manager ولا Finance في المسار افتراضيا · المستند لا يحوي: allowances_total, gross_salary, target_entity, «شركة شركة», «د.ك د.ك», placeholders فارغة · النسخة الإنجليزية باسم الشركة الإنجليزي · Employee ID هو الرقم الوظيفي",
+     "blocks": ["DOC-03", "DOC-02"]},
+
+    {"id": "EMP-07", "role": "Employee", "type": "journey", "title": "استبدال التوقيع",
+     "steps": ["ارفع توقيعا أول مرة", "حاول استبداله"],
+     "expect": "الأول مباشر · الاستبدال ينشئ طلبا بسبب ونسخة Pending · القديم يظل Active · لا رسالة «REQSIG غير متاح» · لا استبدال مباشر",
+     "blocks": ["SIG-01", "SIG-02"]},
+
+    {"id": "EMP-08", "role": "Employee", "type": "journey", "title": "المهام والإشعارات",
+     "steps": ["افتح المهام", "افتح الإشعارات", "قارن ما يظهر في كل منهما"],
+     "expect": "المهام تحتوي إجراءات مطلوبة فقط · «تم رفض طلب» و«تم إلغاء» و«ملخص اليوم» في الإشعارات لا المهام · لا مهام مكررة · كل مهمة لها رابط للطلب",
+     "blocks": ["TASK-01", "TASK-02"]},
+
+    {"id": "SUP-01", "role": "BranchSupervisor", "type": "journey", "title": "استلام مرحلة الاعتماد",
+     "steps": ["اجعل طلب موظف من فرعه يقف على مرحلة مسؤول الفرع", "ادخل بحسابه وافتح بانتظار موافقتي", "افتح الطلب مباشرة بالرابط"],
+     "expect": "الطلب يظهر في بانتظار موافقتي · يقدر يعتمد/يرفض/يرجع · Task وصلته",
+     "blocks": ["WF-02"], "severity": "blocker"},
+
+    {"id": "SUP-02", "role": "BranchSupervisor", "type": "journey", "title": "مراجعة الحضور ونطاق الفرع",
+     "steps": ["افتح Attendance Review", "احصِ الموظفين الظاهرين", "قارنهم بموظفي فروعه"],
+     "expect": "الشاشة ظاهرة في القائمة · يرى فروعه المسندة فقط · لا يرى فروعا أخرى",
+     "blocks": ["ATT-02", "ACCESS-12"]},
+
+    {"id": "SUP-03", "role": "BranchSupervisor", "type": "journey", "title": "التبويبات غير المصرح بها",
+     "steps": ["افتح ملف موظف", "افحص التبويبات الظاهرة"],
+     "expect": "تبويب EOS لا يظهر أصلا — لا يظهر فارغا", "blocks": ["ACCESS-06"]},
+
+    {"id": "MGR-01", "role": "Manager", "type": "journey", "title": "لا يعتمد إلا مرحلته",
+     "steps": ["اجعل طلبا يقف على مرحلة مسؤول الفرع", "ادخل بحساب مدير الشركة", "افتح الطلب", "جرّب الرابط المباشر للاعتماد", "اضرب الـ API مباشرة"],
+     "expect": "زر الاعتماد لا يظهر · الرابط المباشر يرد 403 · الـ API يرد 403 بلا تسريب بيانات",
+     "blocks": ["WF-01", "ACCESS-12"], "severity": "blocker"},
+
+    {"id": "MGR-02", "role": "Manager", "type": "journey", "title": "عدد الموظفين في مراجعة الحضور",
+     "steps": ["احصِ Active Employees في الشركة من قاعدة البيانات", "افتح Attendance Review واحصِ الظاهرين", "افتح Payroll واحصِ الظاهرين"],
+     "expect": "الأعداد الثلاثة متطابقة · أي موظف ناقص له Exempt Reason موثق",
+     "blocks": ["ATT-03", "ATT-07"]},
+
+    {"id": "MGR-03", "role": "Manager", "type": "journey", "title": "Quick Actions حسب الدور",
+     "steps": ["افحص Quick Actions في لوحة المدير"],
+     "expect": "لا يظهر Payroll إن كان ممنوعا · نص 2FA يطابق دوره الحقيقي", "blocks": ["ACCESS-15"]},
+
+    {"id": "MGR-04", "role": "Manager", "type": "journey", "title": "الخدمات الشخصية مع إجراءات الدور",
+     "steps": ["ادخل بحساب مدير مربوط بـ Employee", "افحص ظهور My Profile و My Attendance و My Requests", "جرّب تقديم طلب إجازة شخصي"],
+     "expect": "يرى الاثنين: خدماته الشخصية وإجراءات دوره · يقدر يقدم طلبا شخصيا · لا يستطيع اعتماد طلبه بنفسه — يُحوَّل لموافق بديل",
+     "blocks": ["ACCESS-02", "CAT-05"]},
+
+    {"id": "HR-01", "role": "HR", "type": "journey", "title": "إنشاء موظف كامل وربط مستخدم",
+     "steps": ["أنشئ موظفا بكل الحقول الإلزامية", "جرّب الحفظ ببيانات ناقصة", "أنشئ User واربطه", "سجّل دخول بالحساب الجديد وافتح My Profile"],
+     "expect": "البيانات الناقصة لا تنشئ أي سجل · الإنشاء والربط Transaction واحدة · الموظف يظهر في القائمة بلا Refresh · Employee ID تولّد تلقائيا · My Profile يفتح بلا 404",
+     "blocks": ["ACCESS-01", "DATA-02", "UX-04", "UX-05"]},
+
+    {"id": "HR-02", "role": "HR", "type": "journey", "title": "تعديل بيانات موظف أساسية",
+     "steps": ["افتح ملف موظف", "عدّل الوظيفة والراتب وتاريخ التعيين وبيانات العقد", "احفظ", "افحص سجل التدقيق"],
+     "expect": "التعديل ممكن حسب الصلاحية · Validation في الواجهة والخادم · Audit فيه Before/After · Effective Date و Version History للراتب والوظيفة",
+     "blocks": ["ACCESS-13"]},
+
+    {"id": "HR-03", "role": "HR", "type": "journey", "title": "مراجعة الحضور والغياب قبل التعيين",
+     "steps": ["افتح Attendance Review", "افتح موظفا حديث التعيين", "افحص الأيام قبل تاريخ تعيينه", "افتح نفس الموظف في Payroll Preview"],
+     "expect": "الشاشة ظاهرة لـ HR · لا غياب قبل تاريخ التعيين في الشاشتين معا",
+     "blocks": ["ATT-01", "ATT-04"], "severity": "blocker"},
+
+    {"id": "HR-04", "role": "HR", "type": "journey", "title": "رصيد الإجازات في الملف مقابل EOS",
+     "steps": ["افتح موظفا > إدارة الإجازات وسجّل الرصيد", "افتح نهاية الخدمة لنفس الموظف واحسب", "قارن الرقمين", "تتبّع مصدر كل رقم في الكود"],
+     "expect": "نفس الرقم في الشاشتين · الرقم المستخدم في بدل الإجازات صحيح",
+     "blocks": ["EOS-03"], "severity": "blocker"},
+
+    {"id": "HR-05", "role": "HR", "type": "journey", "title": "اعتماد استبدال توقيع",
+     "steps": ["استقبل طلب استبدال توقيع", "افحص النسخة Pending والقديمة", "ارفض ثم تحقق", "وافق ثم تحقق"],
+     "expect": "عند الرفض يظل القديم Active · عند الموافقة الجديدة تصبح Active · History محفوظ بالسبب ومن وافق · المستند المُصدَر سابقا يحتفظ بنسخة التوقيع وقت إصداره",
+     "blocks": ["SIG-01", "SIG-08"]},
+
+    {"id": "ACC-01", "role": "Accountant", "type": "security", "title": "المحاسب والملفات الحساسة",
+     "steps": ["حاول فتح: Passport, Civil ID, Contract, Documents, Leave Management, Warnings, EOS", "لكل واحد: جرّب من الواجهة، ثم الرابط المباشر، ثم الـ API، ثم Storage endpoint"],
+     "expect": "ممنوع في الطبقات الأربع · 403 بلا تسريب بيانات في جسم الرد",
+     "blocks": ["ACCESS-03"], "severity": "blocker"},
+
+    {"id": "ACC-02", "role": "Accountant", "type": "journey", "title": "دورة الرواتب الكاملة",
+     "steps": ["اختر شركة واحدة وشهرا", "جرّب Preview بلا اختيار شهر", "جرّب Run من All Companies", "شغّل Preview", "افحص Breakdown", "مرّر الدورة: Prepared > Approved > Finalized > Locked", "جرّب Run مكررا لنفس الشركة والفترة", "جرّب تعديل بعد Lock"],
+     "expect": "تحذير عند غياب الشهر · Run من All Companies مرفوض · لا Finalize مباشر · الحضور يجب أن يكون Closed أولا · Maker-Checker مفعّل · Duplicate مرفوض · بعد Lock لا تعديل بل Adjustment Run · Breakdown كامل: Basic/Allowances/Overtime/Absence/Advance/Deductions/Net",
+     "blocks": ["PAY-01", "PAY-02", "PAY-03", "PAY-04", "PAY-05", "ATT-07"], "severity": "blocker"},
+
+    {"id": "ACC-03", "role": "Accountant", "type": "journey", "title": "المندوب المسند لشركتين في الرواتب",
+     "steps": ["افتح Payroll Preview للشركة الثانية", "ابحث عن المندوب المسند"],
+     "expect": "لا يظهر كسطر موظف براتب صفر · يظل مربوطا بالشركتين ويعمل كمندوب فيهما",
+     "blocks": ["PAY-06"]},
+
+    {"id": "PRO-01", "role": "PRO", "type": "security", "title": "المندوب والبيانات المحظورة",
+     "steps": ["حاول فتح New Employee", "افحص الحقول المتاحة", "حاول الوصول للرواتب", "افحص نطاق الشركات والفروع"],
+     "expect": "لا إنشاء موظف · لا Basic Salary ولا Hire Date ولا Contract fields · لا رواتب · الشركات والفروع المسندة فقط",
+     "blocks": ["ACCESS-04"], "severity": "blocker"},
+
+    {"id": "PRO-02", "role": "PRO", "type": "journey", "title": "رفع مستند إقامة واستخراج تاريخ الانتهاء",
+     "steps": ["ارفع مستند إقامة واضحا فيه تاريخ انتهاء", "افحص استجابة الـ OCR الخام", "افحص هل حُفظ تاريخ الانتهاء على السجل"],
+     "expect": "OCR يستخرج التاريخ أو يطلب تأكيده — لا confidence 0.0 صامت · التاريخ محفوظ · المستخدم يقدر يصحح",
+     "blocks": ["PRO-01"], "severity": "blocker"},
+
+    {"id": "PRO-03", "role": "PRO", "type": "journey", "title": "منظومة التجديد من التنبيه للأرشفة",
+     "steps": ["أنشئ إقامة تنتهي خلال 14 يوما", "افحص Dashboard", "افحص مركز العمليات", "افحص صفحة Renewals", "اضرب /api/renewals", "ابدأ تجديدا ومرّره لآخر مرحلة"],
+     "expect": "الأرقام متطابقة في الشاشات الثلاث · الحالة تظهر في Renewals · Start Renewal موجود · المسار كامل: Required Documents > Under Renewal > Government Reference > Fees > New Number/Expiry > HR Verification > Notification > Task Closure > Archive > Audit",
+     "blocks": ["PRO-02", "PRO-03", "PRO-04"], "severity": "blocker"},
+
+    {"id": "PRO-04", "role": "PRO", "type": "journey", "title": "الإشعارات ومنع التكرار",
+     "steps": ["شغّل Daily Scan مرتين متتاليتين", "افحص المهام والإشعارات المنشأة"],
+     "expect": "مهمة Active واحدة لكل مستند · لا تكرار من التشغيل المزدوج · تنبيهات 90 و 30 يوما تعمل",
+     "blocks": ["PRO-06"]},
+
+    {"id": "PRO-05", "role": "PRO", "type": "journey", "title": "عدادات المهام الحكومية",
+     "steps": ["اقرأ عداد المهام الحكومية في Dashboard", "افتح المهام وطبّق فلتر «حكومية»", "قارن"],
+     "expect": "العدد متطابق", "blocks": ["PRO-07"]},
+
+    {"id": "OWN-01", "role": "Owner", "type": "journey", "title": "نطاق الشركات وصفحة الموظفين",
+     "steps": ["افحص Sidebar", "افتح صفحة الموظفين", "بدّل بين GUF و MUF", "افحص عدادات التراخيص في Dashboard وقارنها بمركز العمليات"],
+     "expect": "رابط الموظفين ظاهر · النطاق صحيح لكل شركة · عدادات التراخيص متطابقة بين الشاشتين",
+     "blocks": ["ACCESS-07", "PRO-08"]},
+
+    {"id": "OWN-02", "role": "Owner", "type": "security", "title": "منع تشغيل الرواتب من All Companies",
+     "steps": ["اختر All Companies", "حاول Payroll Preview"],
+     "expect": "مرفوض بوضوح", "blocks": ["PAY-02"]},
+
+    {"id": "SEC-01", "role": "all", "type": "security", "title": "مصفوفة دور × endpoint",
+     "steps": ["شغّل rbac-probe.sh", "راجع كل خلية فيها 200 لدور غير مخوّل"],
+     "expect": "لا 200 لغير مخوّل · لا 500 · الردود المرفوضة بلا تسريب",
+     "blocks": ["ACCESS-12"], "severity": "blocker"},
+
+    {"id": "SEC-02", "role": "any", "type": "security", "title": "الوصول بالرابط المباشر والـ stale task",
+     "steps": ["خذ رابط action لمهمة", "افتحه بمستخدم آخر", "افتحه بعد انتقال المرحلة", "اضغط Complete مرتين متتاليتين"],
+     "expect": "403 لغير المعيّن · رفض المهمة المنتهية · أثر واحد فقط عند الضغط المكرر",
+     "blocks": ["WF-06"]},
+
+    {"id": "SEC-03", "role": "any", "type": "security", "title": "2FA وانتهاء الجلسة",
+     "steps": ["افحص فرق توقيت الخادم عن UTC", "فعّل 2FA لحساب HR وسجّل خروجا ودخولا", "اترك جلسة HR بلا تفاعل 12 دقيقة"],
+     "expect": "فرق التوقيت ضمن ثوانٍ · 2FA يُطلب فعليا عند الدخول · تسجيل خروج تلقائي بعد ~10 دقائق للأدوار الثلاثة",
+     "blocks": ["ACCESS-08", "ACCESS-09"], "severity": "blocker"},
+
+    {"id": "SEC-04", "role": "any", "type": "security", "title": "الحسابات التجريبية وكلمات السر",
+     "steps": ["جرّب كل بيانات دخول تجريبية معروفة", "افحص الشاشات بحثا عن بيانات دخول ظاهرة", "جرّب دخولا خاطئا 10 مرات"],
+     "expect": "كل التجريبية معطلة · لا بيانات ظاهرة · Rate limit و Lockout يعملان",
+     "blocks": ["ACCESS-10", "ACCESS-11"], "severity": "blocker"},
+
+    {"id": "SEC-05", "role": "Employee", "type": "security", "title": "خصوصية تواريخ الإجازة",
+     "steps": ["بحساب موظف افحص: My Profile, Leave History, Request List, Request Details, Dashboard, Notifications, Downloads, Exports, PDF", "افحص Raw JSON و Timeline و Notification payload لكل استجابة"],
+     "expect": "لا start_date ولا end_date ولا From/To في أي منها · الحجب في استجابة الخادم لا في CSS",
+     "blocks": ["CAT-06"], "severity": "blocker"},
+
+    {"id": "DOC-01", "role": "HR", "type": "journey", "title": "Preview لا ينشئ مستندا",
+     "steps": ["اضغط Preview & Print لشهادة راتب", "افحص قاعدة البيانات والتخزين بحثا عن artifact جديد"],
+     "expect": "لا artifact · لا أرشفة · المراحل منفصلة: Preview > Generate > Issue > Download/Print > File",
+     "blocks": ["DOC-01"], "severity": "blocker"},
+
+    {"id": "DOC-02", "role": "HR", "type": "journey", "title": "المستند المُصدَر وبياناته",
+     "steps": ["ولّد مستندا رسميا", "نزّله وافحص الملف", "افحص أول بايتات الملف و Content-Type", "افحص الخطوط العربية والـ RTL"],
+     "expect": "يبدأ بـ %PDF · Content-Type: application/pdf · خطوط عربية مضمّنة · RTL صحيح · يحمل Document Code و Reference Number و Template Version و Generated At/By و Checksum و Signature Version · لا Raw JSON ولا Role Codes ولا Session Links",
+     "blocks": ["DOC-02", "DOC-07"]},
+
+    {"id": "DOC-03", "role": "any", "type": "journey", "title": "النسخ السابقة من المستندات",
+     "steps": ["ارفع نسخة v2 لمستند موجود", "افحص الصفحة", "ابحث عن طريقة للوصول للنسخة v1"],
+     "expect": "v2 هي الظاهرة كـ Current · زر واضح للنسخ السابقة · v1 قابلة للفتح والتنزيل · لم تُحذف",
+     "blocks": ["DOC-05"]},
+
+    {"id": "DOC-04", "role": "any", "type": "journey", "title": "أسماء المستندات في ملف الموظف",
+     "steps": ["افتح مستندات موظف", "اقرأ أسماء الأنواع"],
+     "expect": "لا form_HRMS-PR-001 ولا gov_contract_hire_12 ولا أكواد خام · لا تكرار بنفس الاسم ونفس النسخة",
+     "blocks": ["DOC-04"]},
+
+    {"id": "DAT-01", "role": "SuperAdmin", "type": "journey", "title": "تكرار السجل التجاري",
+     "steps": ["أنشئ شركة بسجل تجاري", "حاول إنشاء ثانية بنفس الرقم", "جرّب من الـ API مباشرة"],
+     "expect": "مرفوض في الواجهة والخادم وقاعدة البيانات · رسالة واضحة · لا فروع ولا موظفين لشركة فشلت",
+     "blocks": ["DATA-01"]},
+
+    {"id": "DAT-02", "role": "HR", "type": "journey", "title": "التصدير وصيغة الأرقام",
+     "steps": ["صدّر قائمة موظفين CSV و XLSX", "افتح الملف وافحص أعمدة Civil ID و Employee ID و Phone و Passport و IBAN"],
+     "expect": "نص بلا Scientific Notation وبلا فقد أصفار · UTF-8 · Masking حسب الدور · Export Audit مسجّل",
+     "blocks": ["DATA-03"]},
+
+    {"id": "UX-01", "role": "all", "type": "ux", "title": "اللغة والقيم الخام",
+     "steps": ["تصفّح الواجهة بالعربي بحثا عن: active, delegate, digest, sla_escalation, prepared, residency, switch_company", "بدّل للإنجليزي وكرر"],
+     "expect": "لا قيم إنجليزية خام في الواجهة العربية · لا أسماء Field أو Status تقنية",
+     "blocks": ["UX-01"]},
+
+    {"id": "UX-02", "role": "all", "type": "ux", "title": "حالات الشاشة",
+     "steps": ["افتح شاشة بلا بيانات", "افتح شاشة خارج نطاقك", "افتح شاشة بخطأ خادم", "افتح أرشيف الشركة عند All Companies"],
+     "expect": "Empty ≠ Loading ≠ Error ≠ Unauthorized · لا صفحة بيضاء · رسالة «اختر شركة لعرض أرشيفها» تظهر",
+     "blocks": ["ACCESS-14", "DOC-06"]},
+
+    {"id": "UX-03", "role": "all", "type": "ux", "title": "التخطيط والاستجابة",
+     "steps": ["افحص Sidebar على Desktop و Mobile", "جرّب Zoom 200%", "افحص RTL و LTR"],
+     "expect": "Sidebar بارتفاع كامل مع Scroll داخلي وخلفية مستمرة · لا قص ولا تداخل · Zoom 200% مقروء",
+     "blocks": ["UX-07"]},
+
+    {"id": "AUD-01", "role": "SuperAdmin", "type": "journey", "title": "سجل التدقيق",
+     "steps": ["نفّذ إجراءات: إنشاء موظف، اعتماد طلب، اكتمال طلب، تصدير، محاولة وصول مرفوضة", "افتح سجل التدقيق وافحص كل حدث"],
+     "expect": "كل حدث فيه Actor و IP و Before/After و Reason و Correlation ID · request_completed له actor · لا Success عند فشل · التوقيت معروض بتوقيت الكويت",
+     "blocks": ["AUDIT-01", "AUDIT-02", "AUDIT-03"]}
+  ]
+}

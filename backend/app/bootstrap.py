@@ -149,6 +149,18 @@ def _run_auto_link() -> None:
         for row in report["conflicts"][:5]:
             print(f"  · user #{row['user_id']} تعارض مع user #{row['other_user_id']}")
 
+    # DLV-28/29/31 (ACCESS-10) — آخر ما يُفحص قبل اعتبار الإقلاع ناجًحا.
+    # المنع القائم يغطّي تشغيل البذر لا وجود حسابها: قاعدة بُذرت على staging
+    # ثم رُقّيت للإنتاج تبقى فيها كلمات مرور منشورة في المستودع.
+    from . import seed_guard
+    db = SessionLocal()
+    try:
+        hits = seed_guard.enforce(db)
+        if hits:
+            print(f"[bootstrap] ⚠ {len(hits)} حساب بكلمة مرور بذرة — غيّرها قبل التسليم")
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     main()
