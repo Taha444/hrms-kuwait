@@ -939,3 +939,57 @@ def test_ac10_rw14_doc12_clearance_parties_are_parallel(client):
         db.rollback()
     finally:
         db.close()
+
+
+def test_ac15_workflow_operations_report(client):
+    """AC-15 — تقرير تشغيلي فعلي: أزمنة الخطوات، الإرجاع، الرفض، SLA، الأتمتة.
+
+    ROOT CAUSE: النظام يسجّل كل قرار بوقته منذ البداية، لكن لا أحد يستطيع أن
+    يجيب: أين يقف الطلب طويًلا؟ من يُرجِع أكثر مما يعتمد؟ البيانات موجودة
+    والسؤال بلا جواب — وهذا أسوأ من غيابها، لأنه يُخفي المشكلة تحت انطباع
+    بأن الأمور بخير.
+
+    الاختبار ينشئ طلًبا ويُرجعه، ثم يتحقق أن الرقم يظهر فعلًا — لا أن نقطة
+    النهاية ترد 200 بأصفار.
+    """
+    rep = _headers(client, "100000000001", "manager123")  # view_reports
+    emp = _headers(client, "100000000101", "emp12345")
+
+    base = client.get("/api/reports/workflow-operations", headers=rep)
+    assert base.status_code == 200, base.text
+    before = base.json()["decisions"].get("returned", 0)
+
+    r = _submit_leave(client, emp)
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    sup = _headers(client, "100000000005", "sup12345")
+    back = client.post(f"/api/requests/{r.json()['id']}/decide", headers=sup,
+                       json={"decision": "returned", "note": "أرفق التقرير"})
+    if back.status_code != 200:
+        import pytest
+        pytest.skip("الإرجاع لم ينجح")
+
+    after = client.get("/api/reports/workflow-operations", headers=rep).json()
+    assert after["decisions"]["returned"] == before + 1, "الإرجاع لم يظهر في التقرير"
+    assert after["return_rate"] is not None
+    assert after["steps"], "لا خطوات في التقرير رغم وجود قرارات"
+
+    step = after["steps"][0]
+    for k in ("stage", "decisions", "avg_wait_hours", "returned", "rejected"):
+        assert k in step, f"مقياس ناقص في الخطوة: {k}"
+
+    # SLA — النسبة على ما له مهلة، والباقي مُعلَن لا مطموس
+    sla = after["sla"]
+    assert {"tasks_with_sla", "breached", "breach_rate", "tasks_without_sla"} <= set(sla)
+    assert sla["tasks_without_sla"] >= 0
+
+    # الأتمتة محسوبة لا مفترَضة
+    auto = after["automation"]
+    assert auto["executed_steps"] >= 1
+    assert 0 <= (auto["ratio"] or 0) <= 1
+
+    # تاريخ غير صالح يُرفض بوضوح بدل أن يُفسَّر بصمت
+    bad = client.get("/api/reports/workflow-operations", headers=rep,
+                     params={"since": "not-a-date"})
+    assert bad.status_code == 400

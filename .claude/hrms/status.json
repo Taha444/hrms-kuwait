@@ -70,9 +70,9 @@
     "updated": ""
   },
   "AC-15": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "GET /reports/workflow-operations — زمن انتظار لكل خطوة + زمن الدورة + الإرجاع والرفض + خرق SLA + نسبة الأتمتة · دليل: test_ac15_workflow_operations_report (ينشئ إرجاًعا ويتحقق من ظهوره)",
+    "updated": "2026-08-15"
   },
   "RW-01": {
     "status": "pass",

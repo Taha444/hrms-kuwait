@@ -179,3 +179,35 @@ def export_attendance(request: Request, month: str | None = None, fmt: str = "cs
         return _file(exports.to_xlsx(f"حضور {y}-{m:02d}", headers, rows),
                      f"attendance_{y}-{m:02d}.xlsx", XLSX_MIME)
     return _file(exports.to_csv(headers, rows), f"attendance_{y}-{m:02d}.csv", CSV_MIME)
+
+
+@router.get("/workflow-operations")
+def workflow_operations_report(company_id: int | None = None,
+                               since: str | None = None, until: str | None = None,
+                               user: models.User = Depends(require_perm("view_reports")),
+                               db: Session = Depends(get_db)):
+    """V2.2 §13.15 (AC-15) — تقرير تشغيل المسارات.
+
+    يجيب عن أسئلة كانت بلا جواب رغم توفّر بياناتها: أين يقف الطلب طويلًا؟ من
+    يُرجِع أكثر مما يعتمد؟ كم مرة خُرقت المهلة؟ وكم من الخطوات أنهاها النظام
+    بلا تدخّل؟
+
+    البيانات كانت مسجَّلة منذ البداية والسؤال بلا جواب — وهذا أسوأ من غيابها،
+    لأنه يُخفي المشكلة تحت انطباع بأن الأمور بخير.
+    """
+    from datetime import date as _date
+
+    from .. import workflow_metrics
+
+    cid = scope_company_id(user, company_id)
+
+    def _parse(v):
+        if not v:
+            return None
+        try:
+            return _date.fromisoformat(v)
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail=f"تاريخ غير صالح: {v} — الصيغة YYYY-MM-DD")
+
+    return workflow_metrics.workflow_operations(db, cid, _parse(since), _parse(until))
