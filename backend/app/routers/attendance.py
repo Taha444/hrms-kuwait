@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import attendance_close, models, schemas
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
@@ -467,9 +467,15 @@ def attendance_close_status(period: str, company_id: int | None = None,
         models.AttendanceMonthClose.company_id == cid,
         models.AttendanceMonthClose.period == period,
     ))
+    # ATT-07: ``closed`` مشتقّ من المصدر الواحد الذي يحكم به المسيّر أيًضا،
+    # فلا تشتقّه الواجهة من نصّ ``status`` وتنحرف عنه.
+    closed = attendance_close.is_closed(db, cid, period)
+    pending = attendance_close.unrecorded_day_count(db, cid, period)
     if not c:
-        return {"period": period, "status": "open"}
-    return {"period": period, "status": c.status,
+        return {"period": period, "status": "open", "closed": closed,
+                "unrecorded_days": pending}
+    return {"period": period, "status": c.status, "closed": closed,
+            "unrecorded_days": pending,
             "closed_at": c.closed_at.isoformat() if c.closed_at else None,
             "reopened_at": c.reopened_at.isoformat() if c.reopened_at else None,
             "reopen_reason": c.reopen_reason}
@@ -491,3 +497,4 @@ def branch_attendance(branch_id: int,
     return [{"id": r.id, "employee_id": r.employee_id, "check_in_at": r.check_in_at,
              "check_out_at": r.check_out_at, "status": r.status,
              "selfie_in": bool(r.selfie_in_path)} for r in rows]
+

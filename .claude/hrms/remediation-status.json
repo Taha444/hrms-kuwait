@@ -195,9 +195,9 @@
     "updated": ""
   },
   "ATT-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "المسيّر يرفض 409 على فترة غير مقفلة؛ التجاوز الواعي allow_open_attendance يُدوَّن في السجل. tests/test_zz_rbac_matrix.py::test_att07_payroll_requires_closed_attendance",
+    "updated": "2026-08-16"
   },
   "PAY-01": {
     "status": "open",

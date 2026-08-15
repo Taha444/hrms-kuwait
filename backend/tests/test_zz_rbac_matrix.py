@@ -1853,3 +1853,60 @@ def test_dlv36_production_reset_needs_explicit_confirmation(client):
     src = inspect.getsource(admin.reset_demo_data)
     assert "ERASE-ALL-DATA" in src, "المسح في الإنتاج بلا تأكيد صريح"
     assert "is_production" in src, "التأكيد لا يفرّق بين الإنتاج والتطوير"
+
+
+def test_att07_payroll_requires_closed_attendance(client):
+    """ATT-07 / DLV-01 — لا مسيّر رواتب على فترة حضور لم تُغلَق.
+
+    ROOT CAUSE: المسيّر كان يُحسب على حضور لم يُراجَع — أيام بلا سجل،
+    وتصحيحات معلّقة، وإجازات لم تُعتمَد. ثم يُصرف ويُكتشف الخطأ في راتب موظف،
+    **والتصحيح بعد الصرف أصعب من منعه بكثير**: مالٌ خرج، وموظف رأى رقًما، وثقة
+    اهتزّت.
+
+    الإغلاق إقرار مؤرَّخ بفاعل يوثّق **على كم يوم غير مسجَّل** أُقرّ — فبعد
+    شهور، حين يُسأل عن راتب، يوجد جواب مكتوب لا ذاكرة.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    acc = _headers(client, "100000000007", "account123")
+    period = "2026-03"
+
+    # 1) فترة مفتوحة ⇒ المسيّر يُرفض بسبب مفهوم
+    blocked = client.post("/api/payroll/run", headers=acc, params={"period": period})
+    assert blocked.status_code == 409, f"المسيّر مرّ على فترة مفتوحة: {blocked.status_code}"
+    assert "لم تُغلَق" in blocked.text
+
+    # 2) والحالة معروضة قبل الإغلاق
+    st = client.get("/api/attendance/close-status", headers=acc, params={"period": period})
+    assert st.status_code == 200 and st.json()["closed"] is False
+
+    # 3) الإغلاق يوثّق عدد الأيام غير المسجَّلة
+    hr = _headers(client, "100000000002", "hr12345")
+    closed = client.post("/api/attendance/close-month", headers=hr,
+                         params={"period": period, "note": "روجعت السجلات"})
+    assert closed.status_code == 200, closed.text
+
+    # 4) ثم يمرّ المسيّر
+    ok = client.post("/api/payroll/run", headers=acc, params={"period": period})
+    assert ok.status_code == 200, f"المسيّر رُفض بعد الإغلاق: {ok.text[:200]}"
+
+    # 5) إعادة الفتح تحتاج سبًبا، ولا تمحو السجل
+    no_reason = client.post("/api/attendance/reopen-month", headers=hr,
+                            params={"period": period, "reason": " "})
+    assert no_reason.status_code == 400, "أُعيد الفتح بلا سبب"
+
+    reopened = client.post("/api/attendance/reopen-month", headers=hr,
+                           params={"period": period, "reason": "تصحيح سجل موظف"})
+    assert reopened.status_code == 200, reopened.text
+
+    db = SessionLocal()
+    try:
+        row = db.scalar(select(models.AttendanceMonthClose).where(
+            models.AttendanceMonthClose.period == period))
+        assert row is not None, "إعادة الفتح حذفت سجل الإغلاق"
+        assert row.reopen_reason and row.reopened_by, "من أعاد الفتح ولماذا لم يُحفَظ"
+        assert row.closed_by, "من أغلق أوًلا ضاع"
+    finally:
+        db.close()

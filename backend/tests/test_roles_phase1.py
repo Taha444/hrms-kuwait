@@ -205,7 +205,7 @@ def test_branch_supervisor_scoped_to_own_branch(client):
     # V2.2 §3 — الأدوار الإدارية الآن موظفون كمان (13 موظف/إداري بالشركة)،
     # مسؤول الفرع يشوف اللي في فرعه فقط (< 13، > 0)
     assert 0 < len(emps) < 13
-    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01", "allow_open_attendance": True}).status_code == 403
     # تقرير الموظفين مقيّد بفرعه (لا يتعدّى عدد موظفي فرعه)
     rep = client.get("/api/reports/employees", headers=h, params={"fmt": "csv"})
     assert rep.status_code == 200
@@ -217,7 +217,7 @@ def test_hr_employee_lifecycle_only(client):
     hr = login(client, "100000000002", "hr12345")
     h = auth_headers(hr)
     assert client.get("/api/operations", headers=h).status_code == 403
-    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01", "allow_open_attendance": True}).status_code == 403
     eid = _emp_id(client, hr)
     # إقامة (حكومية) ممنوعة على HR
     assert client.post(f"/api/employees/{eid}/permits", headers=h,
@@ -235,7 +235,7 @@ def test_manager_is_operational_only(client):
     # المدير: تشغيل يومي فقط — لا رواتب/EOS/عمليات حكومية/تدقيق
     mgr = login(client, "100000000001", "manager123")
     h = auth_headers(mgr)
-    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01"}).status_code == 403
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-01", "allow_open_attendance": True}).status_code == 403
     assert client.get("/api/operations", headers=h).status_code == 403
     assert client.get("/api/audit", headers=h).status_code == 403
     eid = _emp_id(client, mgr)
@@ -256,7 +256,7 @@ def test_accountant_runs_payroll_not_employees_edit(client):
     # المحاسب: الرواتب فقط — لا تعديل موظفين
     acc = login(client, "100000000007", "account123")
     h = auth_headers(acc)
-    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-02"}).status_code == 200
+    assert client.post("/api/payroll/run", headers=h, params={"period": "2026-02", "allow_open_attendance": True}).status_code == 200
     assert client.post("/api/employees", headers=h,
                        json={"name": "x", "basic_salary": 100}).status_code == 403
 

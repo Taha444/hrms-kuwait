@@ -159,7 +159,7 @@ def _p07_period(offset_months: int) -> str:
 def test_P0_7_payroll_new_run_starts_prepared_not_finalized(client):
     """المسيّر الجديد يبدأ بـ prepared فقط — لا اعتماد ذاتي."""
     acc = auth_headers(login(client, "100000000007", "account123"))
-    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(2)})
+    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(2), "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "prepared"
 
@@ -167,7 +167,7 @@ def test_P0_7_payroll_new_run_starts_prepared_not_finalized(client):
 def test_P0_7_self_approval_rejected(client):
     """المُجَهِّز لا يعتمد مسيّره — فصل السلطات إلزامي."""
     acc = auth_headers(login(client, "100000000007", "account123"))
-    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(3)})
+    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(3), "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     run_id = r.json()["run_id"]
     rej = client.post(f"/api/payroll/runs/{run_id}/approve", headers=acc)
@@ -178,7 +178,7 @@ def test_P0_7_finalize_before_approve_rejected(client):
     """لا finalize قبل approve."""
     acc = auth_headers(login(client, "100000000007", "account123"))
     admin = auth_headers(login(client, "000000000000", "admin123"))
-    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(4)})
+    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(4), "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     run_id = r.json()["run_id"]
     fin = client.post(f"/api/payroll/runs/{run_id}/finalize", headers=admin)
@@ -189,7 +189,7 @@ def test_P0_7_lock_before_finalize_rejected(client):
     """لا lock قبل finalize."""
     acc = auth_headers(login(client, "100000000007", "account123"))
     admin = auth_headers(login(client, "000000000000", "admin123"))
-    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(5)})
+    r = client.post("/api/payroll/run", headers=acc, params={"period": _p07_period(5), "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     run_id = r.json()["run_id"]
     client.post(f"/api/payroll/runs/{run_id}/approve", headers=admin)
@@ -762,7 +762,7 @@ def test_P0_7_adjustment_requires_reason_and_lock(client):
     acc = auth_headers(login(client, "100000000007", "account123"))
     admin = auth_headers(login(client, "000000000000", "admin123"))
     period = _p07_period(6)
-    r = client.post("/api/payroll/run", headers=acc, params={"period": period})
+    r = client.post("/api/payroll/run", headers=acc, params={"period": period, "allow_open_attendance": True})
     run_id = r.json()["run_id"]
     # مسيّر لسه في prepared — لا تسوية
     adj_early = client.post(f"/api/payroll/runs/{run_id}/adjustment", headers=admin,

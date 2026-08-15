@@ -62,6 +62,7 @@ def preview(period: str, request: Request, company_id: int | None = None,
 
 @router.post("/run")
 def run(period: str, request: Request, company_id: int | None = None, force_future: bool = False,
+        allow_open_attendance: bool = False,
         user: models.User = Depends(require_perm("run_payroll")),
         db: Session = Depends(get_db)):
     """PILOT-P0-7 — تجهيز مسيّر جديد بحالة `prepared` (مش finalized مباشرة).
@@ -74,6 +75,25 @@ def run(period: str, request: Request, company_id: int | None = None, force_futu
     if (y, m) > (today.year, today.month) and not force_future:
         raise HTTPException(status_code=400,
                             detail="لا يمكن تشغيل مسيّر لشهر مستقبلي دون تأكيد صريح (force_future)")
+
+    # ATT-07 / DLV-01 — لا مسيّر على فترة حضور لم تُغلَق.
+    #
+    # ROOT CAUSE: المسيّر كان يُحسب على حضور لم يُراجَع — أيام بلا سجل،
+    # وتصحيحات معلّقة، وإجازات لم تُعتمَد. ثم يُصرف ويُكتشف الخطأ في راتب
+    # موظف، والتصحيح بعد الصرف أصعب من منعه بكثير.
+    #
+    # allow_open_attendance مخرج صريح لحالة مبرَّرة، ويُسجَّل في التدقيق —
+    # لا إعداد صامت يُنسى.
+    from .. import attendance_close
+    if not allow_open_attendance and not attendance_close.is_closed(db, cid, period):
+        pending = attendance_close.unrecorded_day_count(db, cid, period)
+        raise HTTPException(status_code=409, detail=(
+            f"فترة الحضور {period} لم تُغلَق بعد ({pending} يوم بلا سجل). "
+            "أغلقها من مراجعة الحضور أوًلا، أو مرّر allow_open_attendance=true "
+            "بمسؤوليتك."))
+    if allow_open_attendance and not attendance_close.is_closed(db, cid, period):
+        audit(db, user, "payroll_run_on_open_attendance", "company", cid,
+              detail=f"period={period}", request=request)
 
     result = payroll_engine.compute_payroll(db, cid, y, m)
 

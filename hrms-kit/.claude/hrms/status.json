@@ -1,330 +1,300 @@
 {
-  "DLV-01": {
-    "status": "fixed",
-    "note": "رُفع الحجب: ATT-07 مغلق. tests/test_zz_rbac_matrix.py::test_att07_payroll_requires_closed_attendance",
-    "updated": "2026-08-16"
-  },
-  "DLV-02": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
-  },
-  "DLV-03": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
-  },
-  "DLV-04": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
-  },
-  "DLV-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
-  },
-  "DLV-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
-  },
-  "DLV-07": {
+  "AC-01": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-08": {
+  "AC-02": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-09": {
+  "AC-03": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-10": {
+  "AC-04": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-11": {
+  "AC-05": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-12": {
+  "AC-06": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-13": {
+  "AC-07": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-14": {
+  "AC-08": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-15": {
+  "AC-09": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-16": {
+  "AC-10": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-17": {
+  "AC-11": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-18": {
+  "AC-12": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-19": {
+  "AC-13": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-20": {
+  "AC-14": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-21": {
+  "AC-15": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-22": {
+  "RW-01": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-23": {
+  "RW-02": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-24": {
+  "RW-03": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-25": {
+  "RW-04": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-26": {
+  "RW-05": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-27": {
+  "RW-06": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-28": {
+  "RW-07": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-29": {
+  "RW-08": {
     "status": "pending",
     "note": "",
-    "updated": ""
+    "updated": "2026-08-15"
   },
-  "DLV-30": {
+  "RW-09": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-31": {
+  "RW-10": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-32": {
+  "RW-11": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-33": {
+  "RW-12": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-34": {
+  "RW-13": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-35": {
+  "RW-14": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-36": {
+  "RW-15": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-37": {
+  "RW-16": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-38": {
+  "RW-17": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-39": {
+  "RW-18": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-40": {
+  "DOC-01": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-41": {
+  "DOC-02": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-42": {
+  "DOC-03": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-43": {
+  "DOC-04": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-44": {
+  "DOC-05": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-45": {
+  "DOC-06": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-46": {
+  "DOC-07": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-47": {
+  "DOC-08": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-48": {
+  "DOC-09": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-49": {
+  "DOC-10": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-50": {
+  "DOC-11": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-51": {
+  "DOC-12": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-52": {
+  "DOC-13": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-53": {
+  "DOC-14": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-54": {
+  "DOC-15": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-55": {
+  "DOC-16": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-56": {
+  "DOC-17": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-57": {
+  "DOC-18": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-58": {
+  "DOC-19": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-59": {
+  "DOC-20": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-60": {
+  "STR-01": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-61": {
+  "STR-02": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-62": {
+  "STR-03": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-63": {
+  "STR-04": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-64": {
+  "STR-05": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-65": {
+  "STR-06": {
     "status": "pending",
     "note": "",
     "updated": ""
   },
-  "DLV-66": {
+  "STR-07": {
     "status": "pending",
     "note": "",
     "updated": ""

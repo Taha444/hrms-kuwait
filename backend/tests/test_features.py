@@ -77,7 +77,7 @@ def test_payroll_run_and_view(client):
     acc = login(client, "100000000007", "account123")  # محاسب الشركة
     h = auth_headers(acc)
     period = f"{date.today().year}-{date.today().month:02d}"
-    r = client.post("/api/payroll/run", headers=h, params={"period": period})
+    r = client.post("/api/payroll/run", headers=h, params={"period": period, "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     body = r.json()
     # V2.2 §3 — كل الأدوار الإدارية الآن موظفون: 6 عاملين + 7 إداريين
@@ -93,7 +93,7 @@ def test_payroll_run_and_view(client):
 
 def test_payroll_requires_permission(client):
     emp = login(client, "100000000101", "emp12345")
-    r = client.post("/api/payroll/run", headers=auth_headers(emp), params={"period": "2026-01"})
+    r = client.post("/api/payroll/run", headers=auth_headers(emp), params={"period": "2026-01", "allow_open_attendance": True})
     assert r.status_code == 403
 
 
@@ -102,9 +102,9 @@ def test_payroll_rejects_future_period_without_force(client):
     acc = login(client, "100000000007", "account123")
     h = auth_headers(acc)
     future = f"{date.today().year + 5}-01"
-    r = client.post("/api/payroll/run", headers=h, params={"period": future})
+    r = client.post("/api/payroll/run", headers=h, params={"period": future, "allow_open_attendance": True})
     assert r.status_code == 400
-    r2 = client.post("/api/payroll/run", headers=h, params={"period": future, "force_future": True})
+    r2 = client.post("/api/payroll/run", headers=h, params={"period": future, "force_future": True, "allow_open_attendance": True})
     assert r2.status_code == 200, r2.text
 
 
@@ -117,7 +117,7 @@ def test_payroll_lock_prevents_rerun(client):
     h_admin = auth_headers(admin)
     period = f"{date.today().year}-{date.today().month:02d}"
     # 1) تجهيز
-    r = client.post("/api/payroll/run", headers=h_acc, params={"period": period})
+    r = client.post("/api/payroll/run", headers=h_acc, params={"period": period, "allow_open_attendance": True})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "prepared"
     run_id = r.json()["run_id"]
@@ -133,7 +133,7 @@ def test_payroll_lock_prevents_rerun(client):
     lock = client.post(f"/api/payroll/runs/{run_id}/lock", headers=h_admin)
     assert lock.status_code == 200 and lock.json()["status"] == "locked"
     # إعادة التشغيل فوق مسيّر متقدّم — مرفوضة
-    r2 = client.post("/api/payroll/run", headers=h_acc, params={"period": period})
+    r2 = client.post("/api/payroll/run", headers=h_acc, params={"period": period, "allow_open_attendance": True})
     assert r2.status_code == 409
     # التسوية بعد lock — مسموحة بسبب صريح
     adj = client.post(f"/api/payroll/runs/{run_id}/adjustment", headers=h_admin,
