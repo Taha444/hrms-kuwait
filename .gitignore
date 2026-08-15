@@ -57,3 +57,6 @@ Thumbs.db
 .claude/hrms/scripts/env.sh
 .claude/hrms/evidence/
 .claude/hrms/journeys/current-run.json
+
+# مجلّدات فكّ ضغط الكِتات — المصدر المعتمد هو .claude/
+hrms-kit/
