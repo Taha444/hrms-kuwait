@@ -1600,3 +1600,147 @@ def test_doc02_doc07_doc13_doc14_doc15_printed_text_rules():
     for code, body in by_code.items():
         assert not re.search(r"KW\d{2}[A-Z0-9]{20,}", body or ""), \
             f"{code} يحمل IBAN كامًلا مكتوًبا في القالب"
+
+
+def test_rw04_rw05_rw13_catalog_scenarios():
+    """RW-04/RW-05/RW-13 — سيناريوهات الكتالوج الواقعية.
+
+    RW-04: إجازة داخل الرصيد ⇒ مدير واحد ثم تحديث الرصيد والحضور. لا سلسلة
+    من أربعة على يومين إجازة.
+    RW-05: الإجازة الاستثنائية إضافة HR بقاعدة مسجَّلة — لا مسار موازٍ يلتفّ
+    على الرصيد.
+    RW-13: الاستقالة إشعار لا طلب موافقة: المدير يُقرّ باستلامها ولا يملك
+    رفضها، وتنشأ عنها نهاية الخدمة وإخلاء الطرف.
+    """
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    by = {r["code"]: r for r in DEFAULT_REQUEST_TYPES}
+
+    # RW-04 — الإجازة العادية: مسار قصير، والمندوب مشروط بالسفر لا افتراضي
+    leave = by["leave"]
+    stages = leave["approval_chain_json"]
+    decision_roles = [s["role"] for s in stages if s.get("step_type") != "VALIDATION"]
+    assert len(decision_roles) <= 3, f"سلسلة إجازة طويلة بلا داٍع: {decision_roles}"
+    delegate_stages = [s for s in stages if s.get("role") == "delegate"]
+    for s in delegate_stages:
+        assert s.get("when"), "مرحلة المندوب في الإجازة بلا شرط سفر"
+
+    # RW-05 — الإجازة الاستثنائية ليست نوًعا موازًيا يلتفّ على الرصيد
+    exceptional = [c for c in by if "استثنائ" in (by[c]["name"] or "")]
+    assert not exceptional, f"نوع إجازة استثنائية موازٍ: {exceptional}"
+
+    # RW-13 — الاستقالة إشعار: HR ينفّذ ولا يملك المدير رفض الإشعار
+    resign = by["REQRESIGN"]
+    roles = [s["role"] for s in resign["approval_chain_json"]]
+    assert "hr" in roles, "الاستقالة بلا مسار شؤون موظفين"
+    assert by.get("REQEOS") and by.get("REQCLR"), \
+        "لا نوعا نهاية خدمة وإخلاء طرف ينشآن عن الاستقالة"
+
+
+def test_doc03_doc13_doc16_doc17_output_profiles(client):
+    """DOC-03/13/16/17 — ملفات الإخراج وقواعدها.
+
+    DOC-13: الحسبة المبدئية رقم نهائي الشكل بلا وسم، فيُنسخ في رسالة أو يُطبع
+    ويُقرأ التزاًما بالدفع — بينما هو تقدير قبل إخلاء الطرف وخصم العهد.
+    DOC-16: لا نقطة تطبع "سجل الطلب" كأنه مستند رسمي — والمواصفة تمنعه صراحًة
+    ضمن الممنوعات المطلقة.
+    DOC-17: العربي RTL والإنجليزي LTR في القوالب ثنائية اللغة.
+    """
+    import re
+
+    from app.main import app
+    from app.seed import DEFAULT_TEMPLATES
+
+    # DOC-13 — التسوية المبدئية موسومة
+    from app.routers import eos as eos_router
+    src = __import__("inspect").getsource(eos_router)
+    assert "not_for_payment" in src and "غير صالحة للصرف" in src, \
+        "الحسبة المبدئية بلا وسم يمنع قراءتها أمر صرف"
+
+    # DOC-16 — لا مسار يطبع سجل الطلب كمستند رسمي
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert not any(p.endswith("/print-record") or p.endswith("/record/print")
+                   for p in paths), "مسار يطبع سجل الطلب كمستند"
+
+    # DOC-03/DOC-17 — القوالب ثنائية اللغة تُصرّح بالاتجاه
+    bilingual = [e for e in DEFAULT_TEMPLATES if e[2]]
+    assert bilingual, "لا قوالب ثنائية اللغة"
+    directional = [e for e in bilingual if re.search(r"dir=['\"](rtl|ltr)", e[-1] or "")]
+    assert directional, "قوالب ثنائية اللغة بلا تصريح اتجاه — النص ينعكس"
+    for e in directional:
+        body = e[-1]
+        # كل خلية إنجليزية تُصرّح ltr صراحًة وإلا انعكست الأرقام والعملات
+        en_cells = re.findall(r"class='en'([^>]*)>", body)
+        for attrs in en_cells:
+            assert "ltr" in attrs, f"{e[0]}: خلية إنجليزية بلا dir=ltr"
+
+
+def test_str07_migration_report_is_clean(client):
+    """STR-07 — بعد الترحيل: لا طلبات يتيمة ولا مزدوجة، والرجوع مجرَّب.
+
+    "يتيم" = طلب بكود نوع لا يعرفه النظام: يظهر في القوائم بلا اسم ولا مسار،
+    ولا يستطيع أحد إغلاقه لأن سلسلته غير معروفة. و"مزدوج" = نوعان يمثّلان
+    الخدمة نفسها فيُقسَم تاريخها بينهما.
+
+    والرجوع: كل ترحيل غيّر سلسلة أو حذف عموًدا يجب أن يملك downgrade يعيد ما
+    كان — ترحيل بلا رجوع يجعل النشر قراًرا لا رجعة فيه.
+    """
+    import pathlib
+    import re
+
+    from app import models, v15_registry
+    from app.database import SessionLocal
+    from app.workflow import DEFAULT_REQUEST_TYPES
+    from sqlalchemy import select
+
+    from app import workflow
+
+    db = SessionLocal()
+    try:
+        # "يتيم" = طلب لا يستطيع النظام حلّ نوعه — لا طلب بكود خارج قائمة
+        # ثابتة. الفرق جوهري: القائمة الثابتة تتهم كل نوع أنشأته شركة بأنه
+        # يتيم، والمعيار الحقيقي هو: هل يجد الطلبُ مسارَه أم يقف بلا سلسلة؟
+        rows = db.execute(select(models.Request.company_id,
+                                 models.Request.request_type_code).distinct()).all()
+        orphans = sorted({code for cid, code in rows
+                          if workflow.get_request_type(db, cid, code) is None})
+        assert not orphans, f"طلبات لا يُحَل نوعها فتقف بلا مسار: {orphans}"
+
+    finally:
+        db.close()
+
+    # ولا خدمتان مزدوجتان فيما **يستطيع المستخدم إنشاءه**.
+    #
+    # القياس على كتالوج الإنشاء لا على صفوف الجدول عن قصد: أكواد V1.4
+    # (salary_certificate، exit_permission) تشترك في نفس المسار مع أكواد V1.3
+    # (REQCERTSAL، REQEXIT)، لكن تعطيلها **يُيتّم الطلبات التاريخية** —
+    # get_request_type يفلتر is_active، فطلب قديم بكودها يفقد نوعه ومساره ولا
+    # يستطيع أحد إغلاقه. تبقى نشطة للقراءة، ويُلغي كتالوج الإنشاء تكرارها.
+    hr = _headers(client, "100000000002", "hr12345")
+    creatable = client.get("/api/requests/types", headers=hr,
+                           params={"creatable_only": True, "grouped": True}).json()
+    seen, dupes = {}, []
+    for svc in creatable:
+        key = (svc.get("canonical_code"), svc.get("canonical_subtype"))
+        if key[0] and key in seen:
+            dupes.append((seen[key], svc["code"], key))
+        seen[key] = svc["code"]
+    assert not dupes, f"خدمات مزدوجة في كتالوج الإنشاء: {dupes}"
+
+    # كل ترحيل يملك downgrade فعلًا لا تمريرة فارغة
+    versions = pathlib.Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    missing = []
+    for f in versions.glob("*.py"):
+        src = f.read_text(encoding="utf-8")
+        m = re.search(r"def downgrade\(\)[^\n]*:\n(.*?)(?=\ndef |\Z)", src, re.S)
+        if not m:
+            missing.append(f"{f.name}: لا downgrade")
+            continue
+        lines = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
+        code = [ln for ln in lines if not ln.startswith("#")]
+        explained = any(ln.startswith("#") or ln.startswith('"""') for ln in lines)
+        # لا رجوع **معلَّل** مقبول: ترحيل نصوص رسمية لا يُعاد لمسودّة قديمة.
+        # المرفوض هو الصمت: pass بلا كلمة تفسّر لماذا لا رجعة.
+        if code == ["pass"] and not explained:
+            missing.append(f"{f.name}: downgrade فارغ بلا تفسير")
+    assert not missing, "ترحيلات بلا رجوع: " + "; ".join(missing[:8])

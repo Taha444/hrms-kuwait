@@ -3362,8 +3362,11 @@ def test_qa10_a_leave_without_travel_completes_without_delegate(client):
     roles = [s.get("role") for s in (detail.get("chain") or detail.get("stages") or [])]
     if roles:  # لو الاستجابة تعرض المراحل
         assert "delegate" not in roles, f"المندوب ما زال في المسار: {roles}"
-    assert detail["total_stages"] == 3, \
-        f"عدد المراحل يجب أن يكون 3 بلا مرحلة المندوب: {detail['total_stages']}"
+    # RW-04 — صارت مرحلتين: قرار المسؤول المباشر ثم تحديث الرصيد (VALIDATION).
+    # مرحلة "اعتماد المدير العام" لا تضيف قراًرا فوق قرار المسؤول المباشر:
+    # كلاهما يجيب السؤال نفسه، والثاني يؤخّر إجازة أُقرّت فعًلا.
+    assert detail["total_stages"] == 2, \
+        f"عدد المراحل يجب أن يكون 2 بلا مرحلة المندوب: {detail['total_stages']}"
 
 
 # ===========================================================================

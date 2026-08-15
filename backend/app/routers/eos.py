@@ -96,6 +96,17 @@ def for_employee(data: schemas.EosForEmployeeIn,
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     result["employee"] = {"id": emp.id, "name": emp.name, "job_title": emp.job_title}
+    # V2.2 §30 (DOC-13) — حسبة مبدئية لا أمر صرف.
+    #
+    # ROOT CAUSE: الحاسبة تُعيد رقًما نهائي الشكل بلا وسم، فيُنسخ في رسالة أو
+    # يُطبع ويُقرأ التزاًما بالدفع — بينما هو تقدير قبل إخلاء الطرف وقبل خصم
+    # العهد. الرقم الصحيح في سياق خاطئ يصير وعًدا لا يملك أحد الوفاء به.
+    result["is_preliminary"] = True
+    result["not_for_payment"] = True
+    result["disclaimer"] = (
+        "حسبة مبدئية غير صالحة للصرف — تصبح نهائية بعد إخلاء الطرف واعتماد "
+        "التسوية. لا رقم صرف ولا مرجع دفع مرتبط بها."
+    )
     return result
 
 

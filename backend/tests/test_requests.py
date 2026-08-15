@@ -221,13 +221,15 @@ def test_full_leave_workflow(client):
                     json={"decision": "approved"})
     assert r.status_code == 200, r.text
 
-    # 3) المدير العام يعتمد
+    # RW-04 — أُزيلت مرحلة "اعتماد المدير العام": لا تضيف قراًرا فوق قرار
+    # المسؤول المباشر، وكانت تؤخّر إجازة أُقرّت فعًلا. فالمدير لم يعد معتمًِدا
+    # لهذه المرحلة ويُرفض استدعاؤه.
     mgr = login(client, "100000000001", "manager123")
-    r = client.post(f"/api/requests/{req_id}/decide", headers=auth_headers(mgr),
-                    json={"decision": "approved"})
-    assert r.status_code == 200, r.text
+    denied = client.post(f"/api/requests/{req_id}/decide", headers=auth_headers(mgr),
+                         json={"decision": "approved"})
+    assert denied.status_code in (403, 404), denied.text
 
-    # 4) HR يعتمد → الحالة awaiting_signature
+    # 3) HR يحدّث الرصيد → الحالة awaiting_signature
     hr = login(client, "100000000002", "hr12345")
     r = client.post(f"/api/requests/{req_id}/decide", headers=auth_headers(hr),
                     json={"decision": "approved"})

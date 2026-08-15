@@ -175,13 +175,18 @@ DEFAULT_REQUEST_TYPES = [
         "requires_physical_signature": True,
         "produces_document": True,
         "approval_chain_json": [
-            {"order": 0, "label": "اعتماد مسؤول الفرع", "role": "branch_supervisor", "kind": "approval"},
-            {"order": 1, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
-            {"order": 2, "label": "مراجعة شؤون الموظفين وتحديد موعد التوقيع", "role": "hr",
-             "kind": "hr_review", "produces_document": True},
+            # V2.2 §14 (RW-04) — إجازة داخل الرصيد والمدة: مدير واحد ثم تحديث
+            # الرصيد والحضور. كانت تمرّ بأربعة معتمِدين — مسؤول الفرع والمدير
+            # العام وHR والمندوب — على يومين إجازة. المدير العام لا يضيف قراًرا
+            # فوق قرار المسؤول المباشر: كلاهما يجيب السؤال نفسه، والثاني يؤخّر
+            # إجازة أُقرّت فعًلا. ومراجعة HR تحقّق من الرصيد لا قرار عليه.
+            {"order": 0, "label": "اعتماد مسؤول الفرع", "role": "branch_supervisor",
+             "kind": "approval", "step_type": "DECISION"},
+            {"order": 1, "label": "تحديث الرصيد والحضور (شؤون الموظفين)", "role": "hr",
+             "kind": "hr_review", "step_type": "VALIDATION", "produces_document": True},
             # QA-10 — تظهر فقط مع سفر خارج البلاد؛ إجازة داخل الكويت لا تمر
             # بالمندوب أصًلا
-            {"order": 3, "label": "إجراءات إذن مغادرة البلاد (المندوب)", "role": "delegate",
+            {"order": 2, "label": "إجراءات إذن مغادرة البلاد (المندوب)", "role": "delegate",
              "kind": "delegate_exit",
              "when": {"field": "travel_required", "truthy": True}},
         ],
@@ -471,6 +476,20 @@ def get_request_type(db: Session, company_id: int, code: str) -> models.RequestT
     if code in CANONICAL_WORKFLOWS:
         for legacy_code, info in LEGACY_REQUEST_ALIASES.items():
             if info.get("canonical") == code:
+                rt = _lookup(legacy_code)
+                if rt:
+                    return rt
+
+    # STR-07 — كود معروف في السجل بلا صف نوع: يُحَل عبر مساره الـcanonical.
+    #
+    # ROOT CAUSE: أكواد مثل REQLV لها نموذج (form_schema) ولا صف RequestType.
+    # فطلب أُنشئ بها يُقبل ثم **يعجز النظام عن حلّ نوعه**: يظهر بلا اسم ولا
+    # سلسلة، ولا يستطيع أحد إغلاقه لأن مراحله غير معروفة. "قُبل ثم يتيم" أسوأ
+    # من "رُفض عند الإنشاء" — الأول يترك أثًرا معطًلا في القاعدة.
+    own = LEGACY_REQUEST_ALIASES.get(code, {}).get("canonical")
+    if own:
+        for legacy_code, info in LEGACY_REQUEST_ALIASES.items():
+            if legacy_code != code and info.get("canonical") == own:
                 rt = _lookup(legacy_code)
                 if rt:
                     return rt

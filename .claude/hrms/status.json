@@ -90,14 +90,14 @@
     "updated": "2026-08-15"
   },
   "RW-04": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "إجازة داخل الرصيد: قرار المسؤول المباشر ثم تحديث الرصيد (VALIDATION)؛ أُزيلت مرحلة المدير العام + ترحيل l2e3f4g5h6i · test_rw04_rw05_rw13_catalog_scenarios",
+    "updated": "2026-08-15"
   },
   "RW-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا نوع إجازة استثنائية موازٍ يلتفّ على الرصيد · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "RW-06": {
     "status": "pass",
@@ -135,9 +135,9 @@
     "updated": "2026-08-15"
   },
   "RW-13": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "الاستقالة تمرّ بـHR وتنشأ عنها REQEOS وREQCLR · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "RW-14": {
     "status": "pass",
@@ -175,9 +175,9 @@
     "updated": "2026-08-15"
   },
   "DOC-03": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "القوالب ثنائية اللغة تُصرّح بالاتجاه · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-04": {
     "status": "pass",
@@ -225,9 +225,9 @@
     "updated": "2026-08-15"
   },
   "DOC-13": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "الحسبة المبدئية موسومة not_for_payment بنصّ صريح · test_doc03_doc13_doc16_doc17_output_profiles",
+    "updated": "2026-08-15"
   },
   "DOC-14": {
     "status": "pass",
@@ -240,14 +240,14 @@
     "updated": "2026-08-15"
   },
   "DOC-16": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا مسار يطبع سجل الطلب كمستند رسمي · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-17": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "كل خلية إنجليزية تُصرّح dir=ltr فلا تنعكس الأرقام والعملات · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-18": {
     "status": "pass",
@@ -295,8 +295,8 @@
     "updated": "2026-08-15"
   },
   "STR-07": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا طلبات بأكواد مجهولة، ولا خدمات مزدوجة في كتالوج الإنشاء، وكل ترحيل له downgrade أو تعليل صريح لعدم الرجوع · test_str07_migration_report_is_clean",
+    "updated": "2026-08-15"
   }
 }
