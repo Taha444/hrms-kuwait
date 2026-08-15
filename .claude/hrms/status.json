@@ -55,9 +55,9 @@
     "updated": ""
   },
   "AC-12": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "توليد PDF محروس: الفشل يُسجَّل FAILED ولا يُسقط قرار الاعتماد ولا يُسجَّل DELIVERED · test_ac12_rw15_doc18_pdf_failure_does_not_lose_the_decision",
+    "updated": "2026-08-15"
   },
   "AC-13": {
     "status": "pass",
@@ -145,9 +145,9 @@
     "updated": "2026-08-15"
   },
   "RW-15": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نفس الاختبار — القرار ينجو والمستند FAILED",
+    "updated": "2026-08-15"
   },
   "RW-16": {
     "status": "pass",
@@ -180,9 +180,9 @@
     "updated": ""
   },
   "DOC-04": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "النسخة الصادرة وبصمتها ورقمها المرجعي ثابتة · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-05": {
     "status": "pending",
@@ -190,9 +190,9 @@
     "updated": ""
   },
   "DOC-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "مفتاح تكرار (الطلب، النوع، آخر قرار): ضغطتان = مستند واحد · test_doc06_doc04_generate_twice_yields_one_artifact",
+    "updated": "2026-08-15"
   },
   "DOC-07": {
     "status": "pending",
@@ -250,9 +250,9 @@
     "updated": ""
   },
   "DOC-18": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نفس الاختبار — لا DELIVERED ولا مسار ملف لمستند فاشل",
+    "updated": "2026-08-15"
   },
   "DOC-19": {
     "status": "pass",

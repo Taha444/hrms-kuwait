@@ -1256,3 +1256,128 @@ def test_str06_no_free_html_in_generation_path():
     assert "script" not in out and "alert" not in out, "سكربت نجا من التعقيم"
     out2 = _sanitize_body_html('<div onclick="x()">نص</div>')
     assert "onclick" not in out2, "معالج حدث نجا من التعقيم"
+
+
+def test_ac12_rw15_doc18_pdf_failure_does_not_lose_the_decision(client):
+    """AC-12 + RW-15 + DOC-18 — فشل توليد PDF لا يُسقط قرار الاعتماد.
+
+    ROOT CAUSE: التوليد كان بلا حارس، فاستثناء واحد (خط عربي ناقص، قرص
+    ممتلئ، قالب معطوب) يُسقط المعاملة كلها — بما فيها **قرار الاعتماد نفسه**.
+    المعتمِد يضغط "اعتماد" فيُخبَر بخطأ، ويظنّ أن قراره لم يُسجَّل فيعيده،
+    والطلب عالق بلا سبب ظاهر.
+
+    القرار قرار والمستند مستند: الاعتماد يبقى، والمستند FAILED لا GENERATED،
+    ولا يُسجَّل نجاح توليد لم يقع.
+    """
+    from unittest.mock import patch
+
+    from app import models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    emp = _headers(client, "100000000101", "emp12345")
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "REQCERTSAL",
+        "payload_json": {"purpose": "بنك", "language": "ar", "include_salary": True},
+    })
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip(f"تعذّر إنشاء الطلب: {r.status_code}")
+    rid = r.json()["id"]
+
+    hr = _headers(client, "100000000002", "hr12345")
+    mgr = _headers(client, "100000000001", "manager123")
+
+    # نُفشل التوليد عمًدا عند كل مرحلة تُنتج مستنًدا
+    # الترقيع على المصدر لا على الوحدة المستوردة: render_request_pdf تُستورَد
+    # داخل جسم generate_document، فترقيع workflow لا يعترضها إطلاًقا — وكان
+    # الاختبار سيمرّ بلا أن يُفشل شيًئا.
+    from app import pdf_export
+    with patch.object(pdf_export, "render_request_pdf",
+                      side_effect=RuntimeError("خط عربي مفقود")):
+        for hdr in (hr, mgr, hr, mgr):
+            client.post(f"/api/requests/{rid}/decide", headers=hdr,
+                        json={"decision": "approved", "note": ""})
+
+    db = SessionLocal()
+    try:
+        req = db.get(models.Request, rid)
+        approvals = db.scalars(select(models.RequestApproval).where(
+            models.RequestApproval.request_id == rid,
+            models.RequestApproval.decision == "approved")).all()
+        assert approvals, "ضاعت قرارات الاعتماد مع فشل التوليد"
+
+        docs = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid)).all()
+        # إثبات أن مسار الفشل نُفِّذ فعًلا — لا أن التوليد لم يُستدعَ أصًلا
+        assert any(d.lifecycle_status == "FAILED" for d in docs),             "لم يُسجَّل أي مستند فاشل — الاختبار لم يُفشل شيًئا"
+        for d in docs:
+            assert d.lifecycle_status != "DELIVERED", "DELIVERED رغم فشل التوليد"
+            if d.lifecycle_status == "FAILED":
+                assert not d.file_path, "مستند فاشل ومعه مسار ملف"
+    finally:
+        db.close()
+
+
+def test_doc06_doc04_generate_twice_yields_one_artifact(client):
+    """DOC-06 — ضغطتان على "توليد" = مستند واحد. و DOC-04 — النسخة الصادرة ثابتة.
+
+    ROOT CAUSE: التوليد كان يُنشئ نسخة جديدة دائًما ويوسم السابقة SUPERSEDED.
+    ذلك صحيح لإعادة إصدار حقيقية، لكن المستخدم يضغط مرتين حين يتأخر الرد —
+    فيحصل على مستندين برقمين مرجعيين مختلفين لنفس القرار، ويقدّم أحدهما لجهة
+    رسمية بينما النظام يعتبره باطًلا.
+    """
+    from app import models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    emp = _headers(client, "100000000101", "emp12345")
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "REQCERTSAL",
+        "payload_json": {"purpose": "بنك", "language": "ar", "include_salary": True},
+    })
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+
+    hr = _headers(client, "100000000002", "hr12345")
+    mgr = _headers(client, "100000000001", "manager123")
+    for hdr in (hr, mgr, hr, mgr):
+        client.post(f"/api/requests/{rid}/decide", headers=hdr,
+                    json={"decision": "approved", "note": ""})
+
+    db = SessionLocal()
+    try:
+        req = db.get(models.Request, rid)
+        rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+        before = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid,
+            models.RequestDocument.kind == "generated_pdf")).all()
+        if not before:
+            import pytest
+            pytest.skip("لم يُولَّد مستند")
+        first = [d for d in before if d.lifecycle_status == "GENERATED"]
+        if not first:
+            import pytest
+            pytest.skip("لا نسخة مولَّدة بنجاح")
+        original_hash = first[0].checksum_sha256
+        original_ref = first[0].reference_no
+
+        # ضغطة ثانية بلا قرار جديد ⇒ نفس المستند لا نسخة ثانية
+        hr_user = db.scalar(select(models.User).where(models.User.role == "hr"))
+        again = workflow.generate_document(db, req, rt, kind="generated_pdf",
+                                           actor=hr_user)
+        db.commit()
+        assert again.id == first[0].id, "الضغطة الثانية أنشأت مستنًدا آخر"
+
+        after = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid,
+            models.RequestDocument.kind == "generated_pdf")).all()
+        assert len(after) == len(before), "تكاثرت النسخ بلا قرار جديد"
+
+        # DOC-04 — النسخة الصادرة وبصمتها ورقمها ثابتة
+        assert first[0].checksum_sha256 == original_hash, "تغيّرت بصمة نسخة صادرة"
+        assert first[0].reference_no == original_ref, "تغيّر الرقم المرجعي"
+    finally:
+        db.close()

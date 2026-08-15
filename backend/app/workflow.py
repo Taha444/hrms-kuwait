@@ -1437,6 +1437,31 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             models.RequestDocument.kind == kind,
         )
     ).all()
+    # V2.2 §30 (DOC-06) — ضغطتان على "توليد" = مستند واحد.
+    #
+    # ROOT CAUSE: التوليد كان يُنشئ نسخة جديدة دائًما ويوسم السابقة SUPERSEDED.
+    # ذلك صحيح لإعادة إصدار حقيقية، لكن المستخدم يضغط مرتين حين يتأخر الرد —
+    # فيحصل على مستندين برقمين مرجعيين مختلفين لنفس القرار، ويقدّم أحدهما
+    # لجهة رسمية بينما النظام يعتبره باطًلا.
+    #
+    # مفتاح التكرار = (الطلب، النوع، آخر قرار). ما دام لم يُتَّخذ قرار جديد
+    # بعد توليد النسخة القائمة، فالضغط تكرار لا إعادة إصدار.
+    def _naive(d):
+        # _now() يُعيد وقًتا واعًيا بالمنطقة بينما الأعمدة naive، فالصف المقروء
+        # من القاعدة قد يكون naive والمُنشأ في الذاكرة aware. مقارنتهما مباشرة
+        # ترمي TypeError يُسقط توليد المستند كله.
+        return d.replace(tzinfo=None) if d and d.tzinfo else d
+
+    # التطبيع قبل max لا بعده: القائمة نفسها تخلط صًفا مقروًءا من القاعدة
+    # (naive) بآخر أُنشئ في هذه المعاملة (aware)، فـmax يقارنهما ويرمي.
+    _decided = [_naive(a.decided_at) for a in approvals if a.decided_at]
+    last_decision = max(_decided) if _decided else None
+    for prev in existing:
+        if prev.lifecycle_status == "GENERATED" and prev.file_path:
+            made = _naive(prev.created_at)
+            if last_decision is None or (made and made >= last_decision):
+                return prev
+
     # V2.2 Module 15 — regenerating invalidates prior versions:
     # النسخ السابقة تُوسم SUPERSEDED (signature snapshots القديمة تصبح باطلة)
     # والنسخة الجديدة تحصل على version أعلى.
@@ -1487,11 +1512,40 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             last_user = db.get(models.User, last.approver_user_id)
             if last_user and last_user.signature_path and os.path.exists(last_user.signature_path):
                 company_sig = last_user.signature_path
-    pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, _body_lines(rt, req, emp),
-                                   verification_code=verification_code,
-                                   employee_signature=emp_sig,
-                                   company_signature=company_sig,
-                                   authorized_signer_label=signer_label)
+    # V2.2 §13.12 (AC-12) + RW-15/DOC-18 — دورة المستند مستقلة عن دورة الطلب.
+    #
+    # ROOT CAUSE: التوليد كان بلا حارس، فاستثناء واحد (خط عربي ناقص، قرص
+    # ممتلئ، قالب معطوب) يُسقط المعاملة كلها — بما فيها **قرار الاعتماد
+    # نفسه**. المعتمِد يضغط "اعتماد" فيُخبَر بخطأ، ويظنّ أن قراره لم يُسجَّل
+    # فيعيده، والطلب عالق بلا سبب ظاهر.
+    #
+    # القرار قرار والمستند مستند: الاعتماد يبقى، والمستند يُسجَّل FAILED
+    # بسببه فيُعاد توليده لاحًقا. ولا يُسجَّل نجاح توليد لم يقع.
+    try:
+        pdf_bytes = render_request_pdf(rt, req, emp, company, approvals,
+                                       _body_lines(rt, req, emp),
+                                       verification_code=verification_code,
+                                       employee_signature=emp_sig,
+                                       company_signature=company_sig,
+                                       authorized_signer_label=signer_label)
+    except Exception as e:  # noqa: BLE001 — الفشل يُسجَّل ولا يُسقط القرار
+        import logging
+        doc.lifecycle_status = "FAILED"
+        doc.file_path = None
+        # لا عمود note على المستند؛ السبب يُحفظ في مرجعه ليظهر في أي قائمة
+        doc.reference_no = f"FAILED-{type(e).__name__}"[:80]
+        logging.getLogger("hrms.documents").exception(
+            "فشل توليد مستند الطلب %s (%s)", req.id, kind)
+        for u in users_by_role(db, req.company_id, ["hr"]):
+            create_task(
+                db, company_id=req.company_id, assignee_user_id=u.id,
+                type="document", severity="critical",
+                title=f"فشل توليد مستند: {rt.name if rt else req.request_type_code}",
+                detail=(f"الطلب #{req.id} معتمَد لكن مستنده لم يُولَّد. "
+                        f"السبب: {type(e).__name__}. أعد التوليد بعد معالجته."),
+                related_entity_type="request", related_entity_id=req.id,
+            )
+        return doc
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
