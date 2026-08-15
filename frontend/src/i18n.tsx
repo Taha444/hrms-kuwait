@@ -67,6 +67,11 @@ const dict: Record<string, { ar: string; en: string }> = {
   rnw_days_remaining: { ar: "{n} يوم متبقٍ", en: "{n} days left" },
   // QA-24 — فلتر إلزامي قبل الطلب
   payroll_pick_month: { ar: "اختر الشهر أولًا", en: "Pick a month first" },
+  // QA-06 — تصحيح تاريخ انتهاء قرأه OCR خطأً بلا إعادة رفع المستند
+  doc_fix_expiry: { ar: "تصحيح التاريخ", en: "Fix expiry" },
+  doc_fix_expiry_prompt: { ar: "تاريخ الانتهاء الصحيح (YYYY-MM-DD) — اتركه فارًغا لإزالته",
+                           en: "Correct expiry date (YYYY-MM-DD) — leave empty to clear" },
+  doc_fix_expiry_reason: { ar: "تصحيح يدوي", en: "Manual correction" },
   yes: { ar: "نعم", en: "Yes" },
   no: { ar: "لا", en: "No" },
   // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات

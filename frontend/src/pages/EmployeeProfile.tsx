@@ -189,6 +189,19 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     }
   };
 
+  // QA-06 — تصحيح تاريخ الانتهاء يدوًيا. الرفع يقبل تاريًخا يدوًيا لكن لا سبيل
+  // لتعديله بعده، فتصحيح تاريخ قرأه OCR خطأً كان يستلزم إعادة رفع المستند كله.
+  const correctExpiry = async (docId: number, current?: string | null) => {
+    const v = window.prompt(t("doc_fix_expiry_prompt"), current || "");
+    if (v === null) return;
+    try {
+      await api.patch(`/documents/${docId}/expiry`, null, {
+        params: { expiry_date: v.trim() || undefined, reason: t("doc_fix_expiry_reason") },
+      });
+      setMsg(t("epf_saved")); load();
+    } catch (err: any) { setMsg(errMsg(err, t("error"))); }
+  };
+
   const openVersions = async (type: string, label: string) => {
     try {
       const r = await api.get("/documents/history", {
@@ -461,6 +474,11 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <td className="row">
                   <button className="ghost" onClick={() => downloadLatest(d.type)}>{t("epf_download_latest")}</button>
                   <button className="ghost sm" onClick={() => openVersions(d.type, d.type_label || d.type)}>{t("doc_prev_versions")}</button>
+                  {can("upload_documents") && (
+                    <button className="ghost sm" onClick={() => correctExpiry(d.id, d.expiry_date)}>
+                      {t("doc_fix_expiry")}
+                    </button>
+                  )}
                 </td></tr>
             ))}{!p.documents.length && <tr><td colSpan={5} className="muted">{t("att_no_records")}</td></tr>}</tbody></table>
 

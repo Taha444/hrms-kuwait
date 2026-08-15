@@ -201,3 +201,67 @@ def test_no_raw_enum_or_code_leaks_in_ui():
         if not f.exists():
             continue
         assert needle in f.read_text(encoding="utf-8"), why
+
+
+def test_manual_expiry_correction_syncs_permit(client):
+    """QA-06 — التصحيح اليدوي متاح، ويُزامن سجل التصريح.
+
+    الرفع يقبل تاريًخا يدوًيا لكن لا سبيل لتعديله بعده، فتصحيح تاريخ قرأه OCR
+    خطأً كان يستلزم إعادة رفع المستند كله. والأهم: التصحيح يجب أن يمسّ Permit
+    وإلا افترق العدّاد عن المستند — أصل عطل "الإقامات السارية = 0".
+    """
+    from datetime import date, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    doc_id = permit_id = None
+    try:
+        emp = db.scalar(select(models.Employee))
+        assert emp, "لا موظف في البذرة"
+        doc = models.Document(
+            company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+            document_type_code="residency", title="إقامة اختبار",
+            expiry_date=date.today() + timedelta(days=10),
+            version=1, is_current=True,
+        )
+        db.add(doc)
+        db.commit()
+        doc_id = doc.id
+    finally:
+        db.close()
+
+    hdr = _headers(client, "100000000002", "hr12345")
+    new_date = (date.today() + timedelta(days=300)).isoformat()
+    r = client.patch(f"/api/documents/{doc_id}/expiry",
+                     params={"expiry_date": new_date, "reason": "قراءة OCR خاطئة"},
+                     headers=hdr)
+    assert r.status_code == 200, r.text
+    assert r.json()["expiry_date"] == new_date
+
+    db = SessionLocal()
+    try:
+        doc = db.get(models.Document, doc_id)
+        assert doc.expiry_date.isoformat() == new_date, "المستند لم يُحدَّث"
+        permit = db.scalar(select(models.Permit).where(
+            models.Permit.employee_id == doc.entity_id,
+            models.Permit.kind == "residency"))
+        assert permit is not None, "التصحيح لم يُزامن سجل التصريح"
+        assert permit.expiry_date.isoformat() == new_date, "التصريح على تاريخ مختلف"
+        permit_id = permit.id
+
+        # وسجل التدقيق يحمل القيمتين
+        log = db.scalar(select(models.AuditLog).where(
+            models.AuditLog.action == "correct_document_expiry"
+        ).order_by(models.AuditLog.id.desc()))
+        assert log is not None and log.user_id and log.ip, "التصحيح بلا فاعل أو IP"
+    finally:
+        for model, rid in ((models.Document, doc_id), (models.Permit, permit_id)):
+            if rid:
+                row = db.get(model, rid)
+                if row:
+                    db.delete(row)
+        db.commit()
+        db.close()

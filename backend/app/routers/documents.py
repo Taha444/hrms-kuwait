@@ -326,3 +326,39 @@ def download_document_version(doc_id: int, request: Request,
     db.commit()
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
+
+
+@router.patch("/{doc_id}/expiry")
+def correct_document_expiry(doc_id: int, request: Request,
+                            expiry_date: date | None = None,
+                            reason: str | None = None,
+                            user: models.User = Depends(require_perm("upload_documents")),
+                            db: Session = Depends(get_db)):
+    """QA-06 — تصحيح تاريخ الانتهاء يدوًيا.
+
+    ROOT CAUSE: الرفع يقبل تاريًخا يدوًيا (ويفوز على OCR)، لكن لا سبيل لتعديله
+    بعد ذلك — فتصحيح تاريخ قرأه OCR خطأً كان يستلزم إعادة رفع المستند كله.
+    ومعيار قبول البند يشترط "تصحيح يدوي متاح" صراحًة.
+
+    التصحيح يُزامن سجل التصريح (Permit) بنفس الدالة التي يستخدمها الرفع، وإلا
+    تفرّق العدّاد عن المستند من جديد — وهو أصل عطل "الإقامات السارية = 0".
+    """
+    doc = db.get(models.Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    assert_same_company(user, doc.company_id, db=db)
+
+    before = doc.expiry_date
+    if before == expiry_date:
+        return {"ok": True, "unchanged": True, "expiry_date": expiry_date}
+
+    doc.expiry_date = expiry_date
+    _sync_permit_from_document(db, doc)
+    audit(db, user, "correct_document_expiry", doc.entity_type, doc.entity_id,
+          detail=f"{doc.document_type_code}: {before} → {expiry_date}"
+                 + (f" ({reason})" if reason else ""),
+          before={"expiry_date": before.isoformat() if before else None},
+          after={"expiry_date": expiry_date.isoformat() if expiry_date else None},
+          request=request, company_id=doc.company_id)
+    db.commit()
+    return {"ok": True, "document_id": doc.id, "expiry_date": expiry_date}
