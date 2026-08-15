@@ -190,6 +190,31 @@ export default function SystemHealth() {
             ? <>{isEn ? "Head" : "الرأس"}: <code style={{ fontSize: 11 }}>{c.alembic.head.slice(0, 12)}</code></>
             : (isEn ? "No version" : "لا يوجد إصدار")
           }
+          {/* رأس القاعدة وحده لا يقول شيًئا — المقارنة برأس الكود هي التي
+              تكشف ترحيًلا لم يُطبَّق قبل أن يُكتشف بعطل في الاستخدام. */}
+          {c.alembic?.code_head && c.alembic.up_to_date === false && (
+            <div style={{ marginTop: 6, color: "#b91c1c" }}>
+              {isEn ? "Code head" : "رأس الكود"}:{" "}
+              <code style={{ fontSize: 11 }}>{c.alembic.code_head.slice(0, 12)}</code>
+              <div>{c.alembic.note}</div>
+            </div>
+          )}
+          {c.alembic?.up_to_date === true && (
+            <div style={{ marginTop: 6, color: "#065f46" }}>
+              {isEn ? "Up to date" : "محدَّثة"} ✓
+            </div>
+          )}
+        </Card>
+
+        {/* انحراف الساعة: TOTP يقارن بالوقت لا بالسر، فالانحراف يُبطل رموًزا
+            صحيحة بلا أي خطأ ظاهر — وكان تشخيصه بالتجربة والخطأ. */}
+        <Card title={isEn ? "Server clock" : "ساعة الخادم"} status={c.clock?.status || "unknown"}>
+          {c.clock?.skew_seconds != null
+            ? <>{isEn ? "Skew" : "الانحراف"}: <b>{c.clock.skew_seconds}s</b></>
+            : (isEn ? "Unknown" : "غير معروف")}
+          {c.clock?.note && (
+            <div style={{ marginTop: 6, color: "#b91c1c" }}>{c.clock.note}</div>
+          )}
         </Card>
 
         <Card title={isEn ? "Notification Channels" : "قنوات الإشعار"} status={c.notifications?.status || "fail"}>

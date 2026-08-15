@@ -295,6 +295,55 @@ def health_deep():
                     if is_missing_table else None,
         }
 
+    # 7-b) هل القاعدة على رأس الكود فعًلا؟
+    #
+    # عرض version_num وحده لا يقول شيًئا: الرقم يبدو سليًما دائًما. ما يهمّ هو
+    # المقارنة برأس الكود — فترحيل لم يُطبَّق يظهر هنا بدل أن يُكتشف بعطل في
+    # الاستخدام (كما حدث مع قوالب الإشعارات، ومع خمسة بنود أُعلنت "مُتحقَّقة").
+    try:
+        from alembic.config import Config as _AlConfig
+        from alembic.script import ScriptDirectory as _ScriptDir
+
+        _cfg = _AlConfig(os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini"))
+        _cfg.set_main_option("script_location",
+                             os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic"))
+        code_head = _ScriptDir.from_config(_cfg).get_current_head()
+        db_head = (results["checks"].get("alembic") or {}).get("head")
+        results["checks"]["alembic"]["code_head"] = code_head
+        results["checks"]["alembic"]["up_to_date"] = (db_head == code_head)
+        if db_head and code_head and db_head != code_head:
+            results["checks"]["alembic"]["status"] = "fail"
+            results["checks"]["alembic"]["note"] = (
+                f"القاعدة عند {db_head} والكود عند {code_head} — شغّل alembic upgrade head")
+            ok = False
+    except Exception as e:  # noqa: BLE001 — التشخيص لا يُسقط الفحص
+        results["checks"].setdefault("alembic", {})["code_head_error"] = str(e)[:200]
+
+    # 7-c) انحراف ساعة الخادم — QA-30/QA-22
+    #
+    # TOTP يقارن بالوقت لا بالسر، فانحراف الساعة يُبطل النظام كله بلا أي خطأ
+    # ظاهر في الكود. وُجدت الساعة متأخرة ~111 ثانية فرُفضت رموز صحيحة تماًما،
+    # وكان تشخيصها بالتجربة والخطأ. تظهر هنا الآن بحكم صريح.
+    try:
+        from .routers.twofa import clock_skew_seconds
+        skew = clock_skew_seconds()
+        if skew is None:
+            results["checks"]["clock"] = {"status": "unknown",
+                                          "note": "تعذّر الوصول لمصدر وقت خارجي"}
+        else:
+            # نافذة TOTP 30 ثانية؛ تجاوز 60 يعني رفض رموز صحيحة
+            bad = abs(skew) > 60
+            results["checks"]["clock"] = {
+                "status": "fail" if bad else "ok",
+                "skew_seconds": skew,
+                "note": ("ساعة الخادم منحرفة — رموز 2FA الصحيحة سُترفض. اضبط NTP."
+                         if bad else None),
+            }
+            if bad:
+                ok = False
+    except Exception as e:  # noqa: BLE001
+        results["checks"]["clock"] = {"status": "unknown", "error": str(e)[:200]}
+
     # 8) R7-F — قنوات الإشعار الفعّالة (in-app / log / SMS / WhatsApp)
     try:
         from . import channels
