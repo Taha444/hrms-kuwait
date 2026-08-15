@@ -1224,3 +1224,35 @@ def test_rw12_doc19_grievance_bypasses_the_manager(client):
         assert not workflow.may_override(db, sa_user, confidential)
     finally:
         db.close()
+
+
+def test_str06_unknown_placeholders_are_reported(client):
+    """STR-06 — الرمز المجهول يُبلَّغ عند الحفظ لا يُكتشف عند الطباعة.
+
+    ROOT CAUSE: _fill_html تستبدل أي رمز مجهول بنقاط، فقالب يكتب
+    {{empolyee_name}} بخطأ مطبعي يُحفظ بلا شكوى ويُطبع بفراغ — ويُكتشف حين
+    يقرأ موظفٌ شهادته وفيها سطر نقاط مكان اسمه.
+
+    ولا يُرفض: النظام يدعم حقوًلا مخصّصة عمًدا عبر extras، والرفض يهدم ميزة
+    قائمة. الإبلاغ يضع الخطأ أمام من يستطيع إصلاحه.
+    """
+    from app.routers.templates import unknown_placeholders
+
+    assert unknown_placeholders("<p>{{employee_name}} — {{company_name}}</p>") == []
+    assert "empolyee_name" in unknown_placeholders("<p>{{empolyee_name}}</p>")
+
+    # وكل القوالب الرسمية المبذورة معروفة الرموز
+    from app.seed import DEFAULT_TEMPLATES
+    for entry in DEFAULT_TEMPLATES:
+        assert not unknown_placeholders(entry[-1]), f"قالب رسمي برموز مجهولة: {entry[0]}"
+
+
+def test_str06_no_free_html_in_generation_path():
+    """STR-06/AP-06 — لا HTML/JS حر في مسار التوليد: التعقيم بـbleach بقائمة وسوم."""
+    from app.routers.templates import _ALLOWED_TPL_TAGS, _sanitize_body_html
+
+    assert "script" not in _ALLOWED_TPL_TAGS
+    out = _sanitize_body_html('<p>مرحبا</p><script>alert(1)</script>')
+    assert "script" not in out and "alert" not in out, "سكربت نجا من التعقيم"
+    out2 = _sanitize_body_html('<div onclick="x()">نص</div>')
+    assert "onclick" not in out2, "معالج حدث نجا من التعقيم"

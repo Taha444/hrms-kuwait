@@ -290,9 +290,9 @@
     "updated": "2026-08-15"
   },
   "STR-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "التوليد server-side: bleach بقائمة وسوم + حذف script/style بمحتواها + استبدال رموز مغلق. الرموز المجهولة تُبلَّغ عند الحفظ (لا تُرفض: extras ميزة مقصودة) · دليل: test_str06_unknown_placeholders_are_reported + test_str06_no_free_html_in_generation_path",
+    "updated": "2026-08-15"
   },
   "STR-07": {
     "status": "pending",

@@ -6,6 +6,8 @@ import os
 import re
 from datetime import date, datetime
 
+from functools import lru_cache
+
 import bleach
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -62,8 +64,56 @@ _ALLOWED_TPL_TAGS = [
 _ALLOWED_TPL_ATTRS = {"*": ["class", "dir"]}
 
 
+# script/style: bleach بـstrip=True يحذف الوسم ويُبقي نصّه، فيظهر "alert(1)"
+# مكتوًبا داخل مستند رسمي مطبوع. ليس ثغرة تنفيذ — لا وسم يبقى — لكنه نص
+# دخيل على ورقة تُقدَّم لجهة خارجية. يُحذف بمحتواه قبل التعقيم.
+_DROP_WITH_CONTENT = re.compile(
+    r"<\s*(script|style|iframe|object|embed)\b.*?<\s*/\s*\1\s*>",
+    re.IGNORECASE | re.DOTALL)
+
+
 def _sanitize_body_html(raw: str) -> str:
-    return bleach.clean(raw or "", tags=_ALLOWED_TPL_TAGS, attributes=_ALLOWED_TPL_ATTRS, strip=True)
+    cleaned = _DROP_WITH_CONTENT.sub("", raw or "")
+    return bleach.clean(cleaned, tags=_ALLOWED_TPL_TAGS,
+                        attributes=_ALLOWED_TPL_ATTRS, strip=True)
+
+
+def unknown_placeholders(body_html: str) -> list[str]:
+    """V2.2 §28.4 (STR-06) — الرموز التي لا يعرفها النظام في هذا القالب.
+
+    ROOT CAUSE: ``_fill_html`` تستبدل أي رمز مجهول بنقاط، فقالب يكتب
+    ``{{empolyee_name}}`` بخطأ مطبعي يُحفظ بلا شكوى ويُطبع بفراغ — ويُكتشف
+    حين يقرأ موظفٌ شهادته وفيها سطر نقاط مكان اسمه. التحقق وقت الحفظ يجعل
+    الخطأ يظهر لمن يستطيع إصلاحه، لا لمن يتضرّر منه.
+
+    القائمة **مشتقّة لا مكتوبة**، من ثلاثة مصادر:
+    1. ``PLACEHOLDERS`` المُعلَنة للواجهة
+    2. مفاتيح ``_build_context`` الفعلية — تُقرأ من الدالة نفسها
+    3. ما تستخدمه القوالب الرسمية المبذورة — فهي حدّ ما يدعمه النظام فعلًا
+
+    قائمة يدوية ثالثة كانت ستنحرف عن الثلاثة مع أول حقل يُضاف، وهو نمط
+    "موضعان يصفان قاعدة واحدة" نفسه.
+    """
+    return sorted(set(_TOKEN_RE.findall(body_html or "")) - _known_placeholders())
+
+
+@lru_cache(maxsize=1)
+def _known_placeholders() -> frozenset[str]:
+    """الرموز المسموحة — مشتقّة من الإعلان والسياق والقوالب الرسمية."""
+    from ..seed import DEFAULT_TEMPLATES
+
+    used_by_official: set[str] = set()
+    for entry in DEFAULT_TEMPLATES:
+        used_by_official |= set(_TOKEN_RE.findall(entry[-1] or ""))
+    return frozenset(set(PLACEHOLDERS) | _context_keys() | used_by_official)
+
+
+def _context_keys() -> set[str]:
+    """مفاتيح السياق الفعلية — تُقرأ من الدالة نفسها لا من قائمة موازية."""
+    import inspect
+    import re as _re
+    src = inspect.getsource(_build_context)
+    return set(_re.findall(r'"(\w+)":', src))
 
 
 @router.get("/placeholders")
@@ -132,7 +182,11 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
     db.flush()
     audit(db, user, "create_template", "template", t.id, request=request)
     db.commit()
-    return {"ok": True, "id": t.id}
+    # STR-06 — تُبلَّغ ولا تمنع: النظام يدعم حقوًلا مخصّصة عمًدا عبر extras،
+    # فالرفض يهدم ميزة قائمة. لكن السكوت عنها يجعل خطأ مطبعًيا واحًدا
+    # يُطبع سطر نقاط مكان اسم الموظف في شهادته.
+    return {"ok": True, "id": t.id,
+            "unknown_placeholders": unknown_placeholders(data.body_html)}
 
 
 @router.put("/{tpl_id}")

@@ -4,7 +4,10 @@
 # الاستخدام: bash .claude/hrms/scripts/antipattern-scan.sh [مسار-المشروع]
 
 ROOT="${1:-.}"
-EXCLUDE='--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor --exclude-dir=dist --exclude-dir=build --exclude-dir=.next --exclude-dir=coverage --exclude-dir=.claude'
+# .venv/site-packages: مكتبات الطرف الثالث ليست كود المشروع. bleach وحدها
+# تُنتج ثمانية إيجابيات كاذبة في AP-06 (innerHTML داخل html5lib) فتُخفي
+# أي مخالفة حقيقية وسط الضجيج.
+EXCLUDE='--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor --exclude-dir=dist --exclude-dir=build --exclude-dir=.next --exclude-dir=coverage --exclude-dir=.claude --exclude-dir=.venv --exclude-dir=venv --exclude-dir=site-packages --exclude-dir=__pycache__ --exclude-dir=legacy_prototype'
 FOUND=0
 
 hit() { # $1=code $2=وصف $3=نمط $4=امتداد-اختياري
