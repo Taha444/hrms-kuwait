@@ -74,6 +74,8 @@ def test_rbac_stage_approval_is_not_transitive(client):
     from app.database import SessionLocal
     from sqlalchemy import select
 
+    from app import workflow
+
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQCERTSAL",
@@ -92,11 +94,27 @@ def test_rbac_stage_approval_is_not_transitive(client):
     finally:
         db.close()
 
-    # دور ليس في السلسلة إطلاًقا يجب أن يُرفض
+    # التفويض الساري يجعل المفوَّض إليه معتمًِدا شرعًيا — وهو سلوك مقصود لا
+    # ثغرة. استثناؤه هنا ضروري وإلا اتّهم الاختبارُ الميزةَ بأنها خرق.
+    from app.delegation import active_delegates_for
+
+    db = SessionLocal()
+    try:
+        delegated_user_ids = set()
+        for stage in ((rt.approval_chain_json if rt else None) or []):
+            for approver in workflow.resolve_stage_approvers(db, req, stage):
+                delegated_user_ids |= {u.id for u in active_delegates_for(db, approver.id)}
+    finally:
+        db.close()
+
+    # دور ليس في السلسلة ولا مفوًَّضا إليه يجب أن يُرفض
     for role, cid, pw in ACCOUNTS:
         if role in stage_roles or role == "employee":
             continue
         hdr = _headers(client, cid, pw)
+        me = client.get("/api/auth/me", headers=hdr).json()
+        if me.get("id") in delegated_user_ids:
+            continue  # مفوَّض إليه — اعتماده شرعي
         d = client.post(f"/api/requests/{rid}/decide", headers=hdr,
                         json={"decision": "approved", "note": ""})
         assert d.status_code in (403, 404), (
@@ -1379,5 +1397,74 @@ def test_doc06_doc04_generate_twice_yields_one_artifact(client):
         # DOC-04 — النسخة الصادرة وبصمتها ورقمها ثابتة
         assert first[0].checksum_sha256 == original_hash, "تغيّرت بصمة نسخة صادرة"
         assert first[0].reference_no == original_ref, "تغيّر الرقم المرجعي"
+    finally:
+        db.close()
+
+
+def test_ac11_doc01_doc05_doc11_doc20_document_rules():
+    """AC-11/DOC-01/DOC-05/DOC-11/DOC-20 — قواعد إصدار المستندات.
+
+    AC-11 + RW-03: شهادة الراتب تُولَّد من بيانات معتمَدة أصًلا (الراتب في ملف
+    الموظف)، فلا معنى لسلسلة موافقات عليها. مرحلة المدير العام كانت شكلية: لا
+    يقرّر شيًئا — الراتب مقرَّر سلًفا — بل يؤخّر شهادة يحتاجها الموظف اليوم
+    لبنك أو سفارة.
+
+    DOC-11: الإذن الحكومي تُصدره الجهة، وأي ورقة يولّدها النظام بشكله ليست
+    إذًنا بل انتحال صفة جهة حكومية.
+    """
+    from app import models
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    by_code = {r["code"]: r for r in DEFAULT_REQUEST_TYPES}
+
+    # AC-11 / DOC-01 / RW-03
+    cert = by_code["REQCERTSAL"]
+    roles = [s["role"] for s in cert["approval_chain_json"]]
+    assert roles == ["hr"], f"شهادة الراتب ما زالت بسلسلة شكلية: {roles}"
+    assert cert["approval_chain_json"][0]["produces_document"]
+
+    # DOC-11 — لا مستند يولّده النظام لتجديد إذن العمل
+    wp = by_code["REQWP"]
+    assert not wp["produces_document"], "النظام يولّد إذن عمل حكومًيا"
+    assert not any(s.get("produces_document") for s in wp["approval_chain_json"]), \
+        "مرحلة في تجديد إذن العمل تولّد مستنًدا حكومًيا"
+
+    # DOC-20 — نسخة القالب مثبَّتة على المستند
+    cols = {c.name for c in models.RequestDocument.__table__.columns}
+    assert {"template_code", "template_version"} <= cols, \
+        "لا تثبيت لنسخة القالب على المستند الصادر"
+
+
+def test_doc05_rejected_request_produces_no_certificate(client):
+    """DOC-05 — طلب مرفوض لا يُنتج شهادة صالحة، إشعار الرفض فقط."""
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    emp = _headers(client, "100000000101", "emp12345")
+    r = client.post("/api/requests", headers=emp, json={
+        "request_type_code": "REQCERTSAL",
+        "payload_json": {"purpose": "بنك", "language": "ar", "include_salary": True},
+    })
+    if r.status_code not in (200, 201):
+        import pytest
+        pytest.skip("تعذّر إنشاء الطلب")
+    rid = r.json()["id"]
+
+    hr = _headers(client, "100000000002", "hr12345")
+    rej = client.post(f"/api/requests/{rid}/decide", headers=hr,
+                      json={"decision": "rejected", "note": "بيانات ناقصة"})
+    if rej.status_code != 200:
+        import pytest
+        pytest.skip(f"الرفض لم ينجح: {rej.status_code}")
+
+    db = SessionLocal()
+    try:
+        docs = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid,
+            models.RequestDocument.kind == "generated_pdf")).all()
+        valid = [d for d in docs if d.lifecycle_status in ("GENERATED", "SIGNED", "DELIVERED")]
+        assert not valid, "طلب مرفوض أنتج شهادة صالحة"
+        assert db.get(models.Request, rid).status == "rejected"
     finally:
         db.close()

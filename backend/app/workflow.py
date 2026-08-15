@@ -279,8 +279,11 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQCID", "طلب تحديث أو تجديد البطاقة المدنية", CAT_RESIDENCY,
            ["hr", "delegate"], requires_physical_signature=False,
            default_template_code="HRMS-PR-023"),
+    # DOC-11 — تجديد إذن العمل لا يُنتج مستنًدا من النظام: الإذن تُصدره الهيئة
+    # العامة للقوى العاملة، وأي ورقة يولّدها النظام بشكله ليست إذًنا بل انتحال
+    # صفة جهة حكومية. المندوب يرفع المستند الرسمي بعد استخراجه.
     _simple("REQWP", "طلب تجديد إذن عمل", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], produces_document=True,
+           ["hr", "company_manager", "delegate"], produces_document=False,
            default_template_code="HRMS-PR-022"),
     _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
            ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
@@ -307,9 +310,13 @@ DEFAULT_REQUEST_TYPES = [
            default_template_code="HRMS-PR-039"),
 
     # الشهادات والخطابات
+    # AC-11 + RW-03 + DOC-01 — شهادة الراتب تُولَّد من بيانات معتمَدة أصًلا
+    # (الراتب في ملف الموظف)، فلا معنى لسلسلة موافقات عليها. مرحلة المدير
+    # العام كانت شكلية: لا يقرّر شيًئا — الراتب مقرَّر سلًفا — بل يؤخّر شهادة
+    # يحتاجها الموظف اليوم لبنك أو سفارة. ختم HR وحده يكفي ويُثبت المصدر.
     _simple("REQCERTSAL", "طلب شهادة راتب (V1.3)", CAT_CERTIFICATES,
-           ["company_manager", "hr"], produces_document=True, requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-001"),
+           ["hr"], produces_document=True, requires_physical_signature=False,
+           visible_to_employee=True, default_template_code="HRMS-PR-001"),
     _simple("REQCERTEMP", "طلب شهادة لمن يهمه الأمر", CAT_CERTIFICATES,
            ["hr"], produces_document=True, requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-002"),
@@ -1558,6 +1565,16 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     import hashlib
     doc.checksum_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
     doc.reference_no = f"REQ-{req.id:06d}-{kind.upper()[:6]}-v{doc.version}"
+    # DOC-20 — تثبيت نسخة القالب: القالب يتطوّر والمستند الصادر يبقى، وحُجّيته
+    # على نصّه لا على نصّ اليوم. بلا هذا يستحيل بعد شهور إثبات بأي نصٍّ صدرت.
+    if rt is not None and rt.default_template_code:
+        tpl = db.scalar(select(models.DocumentTemplate).where(
+            models.DocumentTemplate.code == rt.default_template_code,
+            models.DocumentTemplate.company_id.in_((None, req.company_id)),
+        ).order_by(models.DocumentTemplate.company_id.isnot(None).desc()))
+        if tpl:
+            doc.template_code = tpl.code
+            doc.template_version = tpl.version
     # V2.2 Module 15 — signature_version: يشير للنسخة الفعلية من signature_path المستخدمة
     #   وقت التوليد. لو الموقّع بدّل توقيعه بعدين، هذا المستند يبقى محتفظًا بالنسخة الأصلية.
     if approvals:

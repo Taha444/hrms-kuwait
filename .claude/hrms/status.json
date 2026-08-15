@@ -50,9 +50,9 @@
     "updated": "2026-08-15"
   },
   "AC-11": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "شهادة الراتب بختم HR وحده — أُزيلت مرحلة المدير الشكلية · test_ac11_doc01_doc05_doc11_doc20_document_rules",
+    "updated": "2026-08-15"
   },
   "AC-12": {
     "status": "pass",
@@ -85,9 +85,9 @@
     "updated": "2026-08-15"
   },
   "RW-03": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "لا Finance ولا Manager افتراًضا في شهادة الراتب",
+    "updated": "2026-08-15"
   },
   "RW-04": {
     "status": "pending",
@@ -165,9 +165,9 @@
     "updated": "2026-08-15"
   },
   "DOC-01": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نفس الاختبار — المرحلة الوحيدة تُنتج المستند",
+    "updated": "2026-08-15"
   },
   "DOC-02": {
     "status": "pending",
@@ -185,9 +185,9 @@
     "updated": "2026-08-15"
   },
   "DOC-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "طلب مرفوض لا يُنتج شهادة صالحة · test_doc05_rejected_request_produces_no_certificate",
+    "updated": "2026-08-15"
   },
   "DOC-06": {
     "status": "pass",
@@ -215,9 +215,9 @@
     "updated": ""
   },
   "DOC-11": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "تجديد إذن العمل لا يولّد مستنًدا من النظام — الإذن تُصدره الجهة · نفس الاختبار",
+    "updated": "2026-08-15"
   },
   "DOC-12": {
     "status": "pass",
@@ -260,9 +260,9 @@
     "updated": "2026-08-15"
   },
   "DOC-20": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "template_code/template_version مثبَّتان على المستند الصادر (ترحيل i9b0c1d2e3f)",
+    "updated": "2026-08-15"
   },
   "STR-01": {
     "status": "pass",

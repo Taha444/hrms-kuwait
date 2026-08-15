@@ -680,6 +680,11 @@ class RequestDocument(Base):
     checksum_sha256: Mapped[str | None] = mapped_column(String(64))
     reference_no: Mapped[str | None] = mapped_column(String(40), unique=True, index=True)
     signature_version: Mapped[int | None] = mapped_column(Integer)
+    # V2.2 §30 (DOC-20) — نسخة القالب التي وُلِّد بها هذا المستند.
+    # القالب يتطوّر والمستند الصادر يبقى، وحُجّيته على نصّه لا على نصّ اليوم:
+    # بلا هذين العمودين يستحيل بعد شهور إثبات بأي نصٍّ صدرت شهادةٌ بعينها.
+    template_code: Mapped[str | None] = mapped_column(String(50))
+    template_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class Appointment(Base):
