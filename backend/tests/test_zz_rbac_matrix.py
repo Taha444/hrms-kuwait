@@ -784,3 +784,104 @@ def test_ac07_rw10_needs_info_keeps_same_request(client):
                                                "reason": "أُرفق"}})
     if again.status_code == 200:
         assert again.json().get("id", rid) == rid, "إعادة الإرسال أنشأت طلًبا جديًدا"
+
+
+def test_ac09_rw09_duplicate_approver_is_skipped(client):
+    """AC-09 + RW-09 — مرحلة معتمِدها هو نفسه معتمِد السابقة تُتخطّى.
+
+    ROOT CAUSE: في شركة صغيرة يجمع شخص واحد دورين متتاليين، فيصله الطلب مرتين
+    ليضغط "اعتماد" على قراره هو. ذلك ليس مراجعة مستقلة بل إيهام بها: خطوتان
+    في السجل وقرار واحد في الواقع.
+
+    والشرط "وحده" جوهري: لو كان للمرحلة معتمِدون آخرون فالمراجعة المستقلة ما
+    زالت ممكنة فلا نتخطّاها — نتركها لهم.
+    """
+    from unittest.mock import patch
+
+    from app import models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        hr = db.scalar(select(models.User).where(models.User.role == "hr"))
+        mgr = db.scalar(select(models.User).where(
+            models.User.role == "company_manager",
+            models.User.company_id == hr.company_id))
+        assert hr and mgr
+
+        req = models.Request(company_id=hr.company_id, employee_id=1,
+                             requester_user_id=None, request_type_code="leave",
+                             payload_json={}, status="pending", current_stage=1)
+        db.add(req); db.flush()
+        # قرار المرحلة السابقة باسم hr
+        db.add(models.RequestApproval(request_id=req.id, stage_order=0,
+                                      stage_label="مراجعة", approver_role="hr",
+                                      approver_user_id=hr.id, decision="approved"))
+        db.flush()
+
+        rt = type("RT", (), {"approval_chain_json": [
+            {"order": 0, "role": "hr"}, {"order": 1, "role": "hr"}]})()
+
+        # معتمِد المرحلة الحالية هو hr وحده ⇒ تُتخطّى
+        with patch.object(workflow, "resolve_stage_approvers", return_value=[hr]):
+            assert workflow._skip_duplicate_approver(db, req, rt) is True
+
+        # ولو كان معه غيره ⇒ لا تُتخطّى، المراجعة المستقلة ممكنة
+        req.current_stage = 1
+        with patch.object(workflow, "resolve_stage_approvers", return_value=[hr, mgr]):
+            assert workflow._skip_duplicate_approver(db, req, rt) is False
+
+        # والتخطّي مسجَّل بسببه لا صامًتا
+        skipped = db.scalars(select(models.RequestApproval).where(
+            models.RequestApproval.request_id == req.id,
+            models.RequestApproval.decision == "skipped")).all()
+        assert skipped and "مراجعة مستقلة" in (skipped[0].note or ""), \
+            "التخطّي بلا سبب مكتوب"
+        db.rollback()
+    finally:
+        db.close()
+
+
+def test_rw16_expired_delegation_grants_nothing(client):
+    """RW-16 — تفويض منتهٍ لا يمنح فعلًا.
+
+    التفويض بلا مدة محترمة أخطر من غيابه: من فوّضته أسبوًعا يبقى معتمًِدا سنة
+    ولا أحد ينتبه.
+    """
+    from datetime import datetime, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from app.delegation import active_delegates_for
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    made = []
+    try:
+        a = db.scalar(select(models.User).where(models.User.role == "hr"))
+        b = db.scalar(select(models.User).where(models.User.civil_id == "100000000003"))
+        now = datetime.now()
+
+        expired = models.ApprovalDelegation(
+            company_id=a.company_id, delegator_user_id=a.id, delegate_user_id=b.id,
+            starts_at=now - timedelta(days=30), ends_at=now - timedelta(days=1),
+            is_active=True, reason="انتهى")
+        db.add(expired); db.commit(); made.append(expired.id)
+        assert b.id not in [u.id for u in active_delegates_for(db, a.id)], \
+            "تفويض منتهٍ ما زال يمنح الاعتماد"
+
+        live = models.ApprovalDelegation(
+            company_id=a.company_id, delegator_user_id=a.id, delegate_user_id=b.id,
+            starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=5),
+            is_active=True, reason="ساري")
+        db.add(live); db.commit(); made.append(live.id)
+        assert b.id in [u.id for u in active_delegates_for(db, a.id)], \
+            "تفويض ساٍر لا يمنح الاعتماد"
+    finally:
+        for did in made:
+            row = db.get(models.ApprovalDelegation, did)
+            if row:
+                db.delete(row)
+        db.commit()
+        db.close()

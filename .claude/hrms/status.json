@@ -40,9 +40,9 @@
     "updated": "2026-08-15"
   },
   "AC-09": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "تخطّي الموافق المكرر (_skip_duplicate_approver) + التفويض بمدة مربوط بالمحرك · دليل: test_ac09_rw09_duplicate_approver_is_skipped + test_rw16_expired_delegation_grants_nothing",
+    "updated": "2026-08-15"
   },
   "AC-10": {
     "status": "pending",
@@ -115,9 +115,9 @@
     "updated": "2026-08-15"
   },
   "RW-09": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "نفس الاختبار — ويُترك للمراجعة المستقلة إن وُجد معتمِد آخر",
+    "updated": "2026-08-15"
   },
   "RW-10": {
     "status": "pass",
@@ -150,9 +150,9 @@
     "updated": ""
   },
   "RW-16": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "active_delegates_for يحترم starts_at/ends_at · test_rw16_expired_delegation_grants_nothing",
+    "updated": "2026-08-15"
   },
   "RW-17": {
     "status": "pass",

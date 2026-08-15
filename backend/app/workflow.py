@@ -815,8 +815,59 @@ def mark_pickup_received(db: Session, req: models.Request, rt: models.RequestTyp
     db.commit()
 
 
+def _decided_by(db: Session, req: models.Request, stage_order: int) -> int | None:
+    """من اتخذ قرار هذه المرحلة فعلًا (آخر قرار مسجَّل عليها)."""
+    row = db.scalar(select(models.RequestApproval).where(
+        models.RequestApproval.request_id == req.id,
+        models.RequestApproval.stage_order == stage_order,
+    ).order_by(models.RequestApproval.id.desc()))
+    return getattr(row, "approver_user_id", None) if row else None
+
+
+def _skip_duplicate_approver(db: Session, req: models.Request,
+                             rt: models.RequestType) -> bool:
+    """V2.2 §13.9 (AC-09) + RW-09 — تتخطّى المرحلة إن كان معتمِدها هو نفسه من
+    اعتمد السابقة، وكان وحده معتمِدها.
+
+    ROOT CAUSE: في شركة صغيرة يجمع شخص واحد دورين متتاليين في السلسلة، فيصله
+    الطلب مرتين ليضغط "اعتماد" على قراره هو. ذلك ليس مراجعة مستقلة بل إيهام
+    بها: خطوتان في السجل وقرار واحد في الواقع.
+
+    الشرط "وحده": لو كان للمرحلة معتمِدون آخرون فالمراجعة المستقلة ما زالت
+    ممكنة، فلا نتخطّاها — نتركها لهم. والتخطّي يُسجَّل بسببه حتى لا يبدو
+    القرار وقد قفز مرحلة بلا تفسير.
+    """
+    chain = _chain(rt, req)
+    if req.current_stage <= 0 or req.current_stage >= len(chain):
+        return False
+    previous = _decided_by(db, req, req.current_stage - 1)
+    if not previous:
+        return False
+    approvers = resolve_stage_approvers(db, req, chain[req.current_stage])
+    ids = {u.id for u in approvers}
+    if ids != {previous}:
+        return False
+
+    stage = chain[req.current_stage]
+    db.add(models.RequestApproval(
+        request_id=req.id, stage_order=req.current_stage,
+        stage_label=stage.get("label") or stage.get("role") or "",
+        approver_role=stage.get("role"), approver_user_id=previous,
+        decision="skipped",
+        note="تخطٍّ آلي: معتمِد هذه المرحلة هو نفسه معتمِد السابقة ولا معتمِد غيره "
+             "(V2.2 §13.9) — مراجعة الشخص لقراره ليست مراجعة مستقلة.",
+    ))
+    # الجلسة autoflush=False: بلا غسل صريح لا يرى _decided_by هذا الصف في
+    # الدورة التالية، فتنكسر التخطّيات المتتالية (شخص يجمع ثلاثة أدوار).
+    db.flush()
+    return True
+
+
 def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
     req.current_stage += 1
+    # قد تتوالى مراحل لنفس الشخص، فنتخطّى ما دام الشرط قائًما
+    while _skip_duplicate_approver(db, req, rt):
+        req.current_stage += 1
     if req.current_stage >= len(_chain(rt, req)):
         _finalize(db, req)
     else:
