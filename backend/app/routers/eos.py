@@ -114,10 +114,10 @@ def for_employee(data: schemas.EosForEmployeeIn,
 # QA §6 — دورة حياة إنهاء الخدمة الكاملة (9 مراحل بفصل سلطات)
 # ==========================================================================
 # initiated → calculated → approved → clearance → acknowledged
-#           → settled → ready_to_print → printed → filed
+#           → settled   (والطباعة/الحفظ في document_status لا هنا — AP-04)
 
 EOS_FLOW = ["initiated", "calculated", "approved", "clearance", "acknowledged",
-            "settled", "ready_to_print", "printed", "filed"]
+            "settled"]
 
 # الأدوار المخوّلة لكل انتقال (super_admin يمرّ دائمًا للطوارئ)
 _STAGE_ROLES = {
@@ -159,6 +159,7 @@ def _serialize_case(db: Session, case: models.EosCase) -> dict:
     emp = db.get(models.Employee, case.employee_id)
     return {
         "id": case.id, "reference_no": case.reference_no,
+        "document_status": getattr(case, "document_status", "PENDING"),
         "status": case.status,
         "stage_index": EOS_FLOW.index(case.status) if case.status in EOS_FLOW else -1,
         "total_stages": len(EOS_FLOW),
@@ -366,10 +367,12 @@ def settle_case(case_id: int, request: Request, payment_reference: str,
     case.settled_by = user.id
     case.settled_at = datetime.now(timezone.utc)
     case.payment_reference = payment_reference.strip()
-    # الصرف تم → الحالة جاهزة للطباعة
-    _advance(db, user, request, case, "ready_to_print",
+    # V2.2 §3.3 (AP-04) — الصرف يُنهي الحالة. الطباعة حدث على المستند لا
+    # مرحلة في الحالة: تسوية مصروفة لا تصير "غير مكتملة" لأن أحًدا لم يطبعها.
+    _advance(db, user, request, case, "settled",
              detail=f"payment_ref={payment_reference.strip()}",
              payment_reference=payment_reference.strip())
+    case.document_status = "READY"
     # الآن يُطبَّق الفصل فعليًا على ملف الموظف
     emp = db.get(models.Employee, case.employee_id)
     if emp:
@@ -388,11 +391,14 @@ def print_case(case_id: int, request: Request,
                db: Session = Depends(get_db)):
     """QA §6 — المرحلة 7→8: تسجيل الطباعة."""
     case = _get_case(db, user, case_id)
-    _require_stage(case, "ready_to_print")
+    _require_stage(case, "settled")
     _require_role(user, "printed")
+    if case.document_status == "FILED":
+        raise HTTPException(status_code=409, detail="المستند محفوظ بالفعل")
     case.printed_by = user.id
     case.printed_at = datetime.now(timezone.utc)
-    _advance(db, user, request, case, "printed", detail="-")
+    case.document_status = "PRINTED"
+    audit(db, user, "eos_document_printed", "eos_case", case.id, request=request)
     db.commit()
     return _serialize_case(db, case)
 
@@ -403,14 +409,18 @@ def file_case(case_id: int, request: Request, filing_location: str,
               db: Session = Depends(get_db)):
     """QA §6 — المرحلة 9: الأرشفة النهائية (مكان الحفظ الورقي). حالة نهائية."""
     case = _get_case(db, user, case_id)
-    _require_stage(case, "printed")
+    _require_stage(case, "settled")
     _require_role(user, "filed")
+    if case.document_status != "PRINTED":
+        raise HTTPException(status_code=409, detail="يُطبع المستند قبل أرشفته")
     if not filing_location or not filing_location.strip():
         raise HTTPException(status_code=400, detail="مكان الأرشفة مطلوب")
     case.filed_by = user.id
     case.filed_at = datetime.now(timezone.utc)
     case.filing_location = filing_location.strip()
-    _advance(db, user, request, case, "filed", detail=filing_location.strip())
+    case.document_status = "FILED"
+    audit(db, user, "eos_document_filed", "eos_case", case.id,
+          detail=filing_location.strip(), request=request)
     db.commit()
     return _serialize_case(db, case)
 

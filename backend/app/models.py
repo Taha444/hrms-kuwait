@@ -120,8 +120,13 @@ class User(Base):
 class EosCase(Base):
     """QA §6 — دورة حياة إنهاء الخدمة الكاملة (9 مراحل، فصل سلطات).
 
-    initiated → calculated → approved → clearance → acknowledged
-              → settled → ready_to_print → printed → filed
+    initiated → calculated → approved → clearance → acknowledged → settled
+
+    V2.2 §3.3/§15 (AP-04) — الطباعة والحفظ **ليستا حالتَي عمل**: كانت الحالة
+    تمتدّ إلى ready_to_print → printed → filed، فحالة تشغيلية (هل طُبعت الورقة؟)
+    تختلط بحالة قانونية (هل صُرفت المستحقات؟). النتيجة أن تسوية مصروفة تبدو
+    "غير مكتملة" لأن أحًدا لم يطبعها، وأن تقارير الإنهاء تعدّ الطباعة إنجاًزا.
+    الحالة تنتهي عند settled، ودورة المستند مستقلة في document_status.
 
     من ينفّذ ماذا (Separation of Duties):
       initiate   : HR (يفتح الحالة ويحدد تاريخ وسبب الإنهاء)
@@ -141,6 +146,8 @@ class EosCase(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="initiated", index=True)
+    # V2.2 §3.3 (AP-04) — دورة المستند مستقلة عن حالة الحالة نفسها
+    document_status: Mapped[str] = mapped_column(String(20), default="PENDING")
     reference_no: Mapped[str | None] = mapped_column(String(60), unique=True, index=True)
 
     termination_date: Mapped[date | None] = mapped_column(Date)

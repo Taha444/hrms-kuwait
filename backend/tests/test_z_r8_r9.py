@@ -1891,7 +1891,10 @@ def test_eos_full_lifecycle_nine_stages(client):
     st = client.post(f"/api/eos/cases/{cid}/settle", headers=acc_h,
                     params={"payment_reference": "TRX-EOS-0001"})
     assert st.status_code == 200, st.text
-    assert st.json()["status"] == "ready_to_print"
+    # AP-04 — الحالة تنتهي عند settled؛ الطباعة والأرشفة في document_status.
+    # خلطُهما كان يجعل تسوية مصروفة تبدو "غير مكتملة" لأن أحًدا لم يطبعها.
+    assert st.json()["status"] == "settled"
+    assert st.json()["document_status"] == "READY"
 
     # الفصل يُطبَّق على ملف الموظف بعد الصرف فقط
     db = SessionLocal()
@@ -1904,13 +1907,15 @@ def test_eos_full_lifecycle_nine_stages(client):
 
     # 7) الطباعة ثم 8) الأرشفة
     pr = client.post(f"/api/eos/cases/{cid}/print", headers=hr)
-    assert pr.status_code == 200 and pr.json()["status"] == "printed"
+    assert pr.status_code == 200 and pr.json()["document_status"] == "PRINTED"
+    assert pr.json()["status"] == "settled", "الطباعة غيّرت حالة الحالة"
 
     fl = client.post(f"/api/eos/cases/{cid}/file", headers=hr,
                     params={"filing_location": "أرشيف الموارد البشرية — رف 3"})
     assert fl.status_code == 200
     final = fl.json()
-    assert final["status"] == "filed"
+    assert final["document_status"] == "FILED"
+    assert final["status"] == "settled", "الأرشفة غيّرت حالة الحالة"
     assert final["filing_location"]
 
     # كل مرحلة سجّلت الفاعل والوقت
