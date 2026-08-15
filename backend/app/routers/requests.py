@@ -142,6 +142,7 @@ def superseded_by(db: Session, company_id: int | None, code: str) -> str | None:
 
 @router.get("/types")
 def list_request_types(category: str | None = None, creatable_only: bool = False,
+                       grouped: bool = False,
                        user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """كتالوج أنواع الطلبات.
 
@@ -227,6 +228,52 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         out.append(entry)
     if category:
         out = [x for x in out if x["category"] == category]
+    if grouped:
+        out = _group_by_canonical(out)
+    return out
+
+
+def _group_by_canonical(entries: list[dict]) -> list[dict]:
+    """V2.2 §12 — خدمة واحدة لكل مسار canonical، والنوع الفرعي خيار داخلها.
+
+    ROOT CAUSE للأرقام (47 بدل 29، و25 بدل 15-18): ستة أنواع تمثّل "تغيير
+    وظيفي" واحد (وردية/موقع/نقل/ترخيص/عقد/راتب فعلي)، وستة أخرى تمثّل "طلب
+    عام". المستخدم يراها اثني عشر خياًرا منفصًلا فيحتار أيّها يخصّه، ثم يختار
+    الخطأ فيُرجَع طلبه. المواصفة تعتبرها مساًرا واحًدا بأنواع فرعية.
+
+    لا تُحذف صفوف ولا تُدمج بيانات: التجميع في طبقة العرض وحدها. كل نوع فرعي
+    يحتفظ بكوده ونموذجه وسلسلة موافقاته، فالطلبات التاريخية تبقى كما هي،
+    والتراجع لا يكلّف إلا إسقاط هذا البارامتر.
+    """
+    from .. import v15_registry
+
+    groups: dict[str, dict] = {}
+    order: list[str] = []
+    for e in entries:
+        key = e.get("canonical_code") or f"~{e['code']}"
+        if key not in groups:
+            groups[key] = {**e, "subtypes": []}
+            order.append(key)
+        groups[key]["subtypes"].append({
+            "code": e["code"],
+            "label": e["name"],
+            "subtype": e.get("canonical_subtype"),
+            "produces_document": e.get("produces_document"),
+        })
+
+    out = []
+    for key in order:
+        g = groups[key]
+        subs = g["subtypes"]
+        if len(subs) > 1 and g.get("canonical_code"):
+            # اسم المسار الرسمي أوضح من اسم أول نوع فرعي صادف الترتيب
+            info = v15_registry.CANONICAL_WORKFLOWS.get(g["canonical_code"]) or {}
+            g["name"] = info.get("name_ar") or g["name"]
+            g["name_en"] = info.get("name_en")
+        # code يبقى كوًدا صالًحا للإرسال: نوع فرعي واحد ⇒ هو هو
+        g["code"] = subs[0]["code"]
+        g["has_subtypes"] = len(subs) > 1
+        out.append(g)
     return out
 
 

@@ -27,6 +27,11 @@ export default function Requests() {
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [showNew, setShowNew] = useState(false);
   const [typeCode, setTypeCode] = useState("");
+  // الخدمة التي ينتمي إليها الكود المختار — الكود المُرسَل يبقى كود النوع
+  // الفرعي نفسه، فلا يتغيّر شيء في الخادم ولا في الطلبات المحفوظة.
+  const serviceOf = (code: string) =>
+    types.find((x: any) => x.code === code
+      || (x.subtypes || []).some((s: any) => s.code === code));
   const [payload, setPayload] = useState<any>({});
   // schema النوع المختار (null = لا schema، undefined = لم يُحمَّل بعد)
   const [activeSchema, setActiveSchema] = useState<Schema | null | undefined>(undefined);
@@ -51,13 +56,18 @@ export default function Requests() {
   useEffect(() => {
     load();
     // FIX — كتالوج الإنشاء: الأنواع التي يقبلها POST فعليًا فقط (بلا legacy aliases)
-    api.get("/requests/types", { params: { creatable_only: true } })
+    // V2.2 §12 — grouped: خدمة واحدة لكل مسار canonical والنوع الفرعي خيار
+    // داخلها. ستة أنواع كانت تمثّل "تغيير وظيفي" واحًدا وستة أخرى "طلب عام"،
+    // فيرى المستخدم اثني عشر خياًرا منفصًلا ويختار الخطأ فيُرجَع طلبه.
+    api.get("/requests/types", { params: { creatable_only: true, grouped: true } })
       .then((r) => {
         setTypes(r.data);
         // ?type=&new=1 — يصل من زر "استبدال التوقيع" في الملف الشخصي: يفتح
         // النموذج على النوع المطلوب مباشرة بدل أن يبحث عنه المستخدم في القائمة.
         const wanted = params.get("type");
-        const exists = wanted && r.data.some((x: any) => x.code === wanted);
+        // ?type= قد يشير لنوع فرعي داخل خدمة (مثل REQSIG داخل "طلب عام")
+        const exists = wanted && r.data.some((x: any) =>
+          x.code === wanted || (x.subtypes || []).some((s: any) => s.code === wanted));
         setTypeCode(exists ? wanted! : (r.data[0]?.code || ""));
         if (params.get("new") === "1") setShowNew(true);
         // حالة منفصلة عن err: تأثير [typeCode] يمسح err عند تغيير النوع، فكانت
@@ -132,10 +142,30 @@ export default function Requests() {
           {linkErr && <div className="err">{linkErr}</div>}
           <div className="field">
             <label htmlFor="req-type">{t("req_type")}</label>
-            <select id="req-type" value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
+            <select id="req-type" value={serviceOf(typeCode)?.code || typeCode}
+                    onChange={(e) => {
+                      const svc = types.find((x) => x.code === e.target.value);
+                      setTypeCode(svc?.subtypes?.[0]?.code || e.target.value);
+                    }}>
               {types.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
             </select>
           </div>
+          {/* النوع الفرعي: لا يظهر إلا للخدمات التي لها أكثر من واحد */}
+          {(() => {
+            const svc = serviceOf(typeCode);
+            if (!svc?.has_subtypes) return null;
+            return (
+              <div className="field">
+                <label htmlFor="req-subtype">{t("req_service_subtype")}</label>
+                <select id="req-subtype" value={typeCode}
+                        onChange={(e) => setTypeCode(e.target.value)}>
+                  {svc.subtypes.map((s: any) => (
+                    <option key={s.code} value={s.code}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
           {canActOnBehalf && (
             <div className="field">
               <label htmlFor="req-on-behalf">{t("req_on_behalf_of")}</label>

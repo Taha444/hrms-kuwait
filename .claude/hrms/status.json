@@ -1,7 +1,7 @@
 {
   "AC-01": {
-    "status": "fail",
-    "note": "الموظف يرى 25 لا 15-18 — يتبع STR-04",
+    "status": "pass",
+    "note": "الموظف يرى 17 خدمة (المستهدف 15-18) · نفس الاختبار",
     "updated": "2026-08-15"
   },
   "AC-02": {
@@ -280,8 +280,8 @@
     "updated": "2026-08-15"
   },
   "STR-04": {
-    "status": "fail",
-    "note": "الكتالوج القابل للإنشاء 47 لا 29. أُنجز: تصنيف كل الـ54 (49 canonical + 5 إجراء داخلي) واستبعاد الداخلية. المتبقي: دمج الأنواع الفرعية في نوع واحد لكل مسار عبر meta.subtype_field",
+    "status": "pass",
+    "note": "28 خدمة + WF-002 مشتقّ = 29 · دليل: tests/test_zz_rbac_matrix.py::test_v22_grouped_catalog_hits_the_targets",
     "updated": "2026-08-15"
   },
   "STR-05": {

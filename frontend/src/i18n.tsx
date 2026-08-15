@@ -72,6 +72,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   doc_fix_expiry_prompt: { ar: "تاريخ الانتهاء الصحيح (YYYY-MM-DD) — اتركه فارًغا لإزالته",
                            en: "Correct expiry date (YYYY-MM-DD) — leave empty to clear" },
   doc_fix_expiry_reason: { ar: "تصحيح يدوي", en: "Manual correction" },
+  // V2.2 §12 — النوع الفرعي داخل الخدمة الواحدة (req_subtype محجوز للطلب المالي)
+  req_service_subtype: { ar: "نوع الطلب الفرعي", en: "Request subtype" },
   yes: { ar: "نعم", en: "Yes" },
   no: { ar: "لا", en: "No" },
   // QA-16 — صفحات تخص شركة واحدة: الفراغ مع "كل الشركات" ليس نقًصا في البيانات

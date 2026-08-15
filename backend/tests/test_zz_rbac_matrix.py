@@ -393,3 +393,44 @@ def test_v22_internal_actions_are_not_creatable(client):
     # والكتالوج الكامل يبقى شامًلا لها — الطلبات التاريخية تُقرأ
     full = {t["code"] for t in client.get("/api/requests/types", headers=hr).json()}
     assert internal & full, "الكتالوج الكامل أخفى الإجراءات الداخلية أيًضا"
+
+
+def test_v22_grouped_catalog_hits_the_targets(client):
+    """V2.2 §12 (STR-04) + §13.1 (AC-01) — 29 خدمة، والموظف يرى 15-18.
+
+    ستة أنواع كانت تمثّل "تغيير وظيفي" واحًدا (وردية/موقع/نقل/ترخيص/عقد/راتب
+    فعلي) وستة أخرى "طلب عام" — اثنا عشر خياًرا منفصًلا يحتار المستخدم أيّها
+    يخصّه فيختار الخطأ ويُرجَع طلبه. التجميع في طبقة العرض وحدها: كل نوع فرعي
+    يحتفظ بكوده ونموذجه وسلسلة موافقاته.
+    """
+    from app import v15_registry as V
+
+    hr = _headers(client, "100000000002", "hr12345")
+    emp = _headers(client, "100000000101", "emp12345")
+    params = {"creatable_only": True, "grouped": True}
+
+    services = client.get("/api/requests/types", headers=hr, params=params).json()
+    # 28 خدمة + WF-002 (إجازة سفر) المشتقّ من travel_required = 29
+    assert 28 <= len(services) <= 29, f"عدد الخدمات {len(services)} خارج المستهدف"
+
+    emp_services = client.get("/api/requests/types", headers=emp, params=params).json()
+    assert 15 <= len(emp_services) <= 18, \
+        f"الموظف يرى {len(emp_services)} خدمة — المستهدف 15-18"
+
+    # لكل خدمة كود صالح للإرسال، ومن له أنواع فرعية يعلنها
+    for s in services:
+        assert s["code"], f"خدمة بلا كود: {s['name']}"
+        subs = s.get("subtypes") or []
+        assert subs, f"خدمة بلا أنواع فرعية إطلاًقا: {s['code']}"
+        assert s["code"] == subs[0]["code"], "الكود لا يطابق أول نوع فرعي"
+        if s.get("has_subtypes"):
+            assert len(subs) > 1
+            info = V.CANONICAL_WORKFLOWS.get(s["canonical_code"]) or {}
+            assert s["name"] == info.get("name_ar"), \
+                f"{s['canonical_code']} يحمل اسم نوع فرعي لا اسم المسار"
+
+    # والوضع المسطّح يبقى كما هو — لا كسر لمن يستدعيه
+    flat = client.get("/api/requests/types", headers=hr,
+                      params={"creatable_only": True}).json()
+    assert len(flat) > len(services), "الوضع المسطّح تأثر بالتجميع"
+    assert all("subtypes" not in x for x in flat), "التجميع تسرّب للوضع المسطّح"
