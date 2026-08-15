@@ -1910,3 +1910,149 @@ def test_att07_payroll_requires_closed_attendance(client):
         assert row.closed_by, "من أغلق أوًلا ضاع"
     finally:
         db.close()
+
+
+def _drive_to_completion(client, req_id, max_steps=8):
+    """يمرّر طلًبا عبر سلسلته الفعلية حتى يكتمل، بمن يملك القرار حًقا.
+
+    لا يستدعي المحرّك مباشرة: كل خطوة تمرّ بالمسار وبحارس الصلاحيات، فالاختبار
+    يثبت أن الأثر يقع في التشغيل الحقيقي لا في استدعاء داخلي.
+    """
+    from app import models, workflow
+    from app.database import SessionLocal
+    from app.seed import PW
+
+    for _ in range(max_steps):
+        db = SessionLocal()
+        try:
+            req = db.get(models.Request, req_id)
+            if req.status != "pending":
+                return req.status
+            rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+            chain = workflow._chain(rt, req)
+            stage = chain[req.current_stage]
+            approvers = workflow.resolve_stage_approvers(db, req, stage)
+            pick = next((u for u in approvers
+                         if u.id != req.requester_user_id and PW.get(u.role)), None)
+            assert pick is not None, (
+                f"لا معتمِد متاح للمرحلة {req.current_stage} "
+                f"({stage.get('label')}) — الأدوار: {stage.get('roles')}")
+            civil, pw, is_validation = pick.civil_id, PW[pick.role], \
+                stage.get("type") == "VALIDATION"
+        finally:
+            db.close()
+
+        hdr = _headers(client, civil, pw)
+        path = f"/api/requests/{req_id}/" + ("complete-validation" if is_validation else "decide")
+        body = {"note": "اختبار"} if is_validation else {"decision": "approved", "note": "اختبار"}
+        r = client.post(path, headers=hdr, json=body)
+        assert r.status_code == 200, f"تعذّر تمرير المرحلة: {r.status_code} {r.text[:200]}"
+
+    raise AssertionError("لم يكتمل الطلب خلال الحد الأقصى للخطوات")
+
+
+def test_wf09_approved_request_actually_changes_the_record(client):
+    """WF-09 — الطلب المعتمَد يغيّر البيانات فعلًا، لا يُغلق فقط.
+
+    ROOT CAUSE: ``_finalize`` كان يطبّق أًثرا لنوعين فقط (إجازة وتصحيح حضور).
+    بقية الأنواع تمرّ بالسلسلة كاملة وتُغلق "مكتملة" وسجل الموظف كما هو: جواز
+    جديد معتمَد ورقمه القديم باقٍ — ومحرّك انتهاء الصلاحية يظلّ ينبّه على
+    تاريخ بطل، والمندوب يجدّد إقامة برقم خاطئ.
+
+    وأخطر ما فيه أن الفشل **يبدو نجاًحا**: الحالة "مكتمل" والاعتمادات كاملة،
+    فلا يظهر التناقض إلا بمقارنة يدوية لا يفعلها أحد.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    emp_hdr = _headers(client, "100000000101", "emp12345")
+    me = client.get("/api/auth/me", headers=emp_hdr).json()
+    emp_id = me.get("employee_id")
+    assert emp_id, "حساب الموظف غير مربوط بسجل موظف"
+
+    db = SessionLocal()
+    try:
+        before = db.get(models.Employee, emp_id)
+        old_passport = before.passport_number
+    finally:
+        db.close()
+
+    new_no = "P99887766"
+    assert old_passport != new_no
+    created = client.post("/api/requests", headers=emp_hdr, json={
+        "request_type_code": "REQPASS",
+        "payload_json": {"old_passport": old_passport or "—", "new_passport": new_no,
+                         "new_expiry": "2032-05-01", "issue_country": "مصر",
+                         "reason": "تجديد الجواز",
+                         "_attachments": ["passport_scan"]},
+    })
+    assert created.status_code in (200, 201), created.text
+    req_id = created.json()["id"]
+
+    status = _drive_to_completion(client, req_id)
+    assert status == "completed", f"الطلب انتهى بحالة {status}"
+
+    db = SessionLocal()
+    try:
+        emp = db.get(models.Employee, emp_id)
+        assert emp.passport_number == new_no, (
+            f"الطلب اكتمل والجواز لم يتغيّر: {emp.passport_number!r}")
+        assert emp.passport_expiry and emp.passport_expiry.isoformat() == "2032-05-01"
+
+        # الأثر مقيَّد على الطلب وعلى الموظف — من يفتّش تاريخ موظف يجده
+        trail = db.scalars(select(models.AuditLog).where(
+            models.AuditLog.action == "employee_updated_by_request",
+            models.AuditLog.entity_id == emp_id)).all()
+        assert trail, "التغيير وقع بلا سطر تدقيق على الموظف"
+        assert trail[-1].before_json.get("passport_number") == old_passport
+        assert trail[-1].after_json.get("passport_number") == new_no
+    finally:
+        db.close()
+
+
+def test_wf09_effect_is_applied_once_only(client):
+    """WF-09 — إعادة التطبيق لا تكرّر الأثر.
+
+    الترقية أخطر مثال: تطبيق مزدوج يرفع الراتب مرتين، ويظهر الخطأ في كشف
+    الرواتب بعد الصرف. البصمة سطر تدقيق لا علَم قابل لإعادة الضبط.
+    """
+    from app import models, request_effects
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(models.Employee).where(models.Employee.status == "active"))
+        req = models.Request(
+            company_id=emp.company_id, employee_id=emp.id, requester_user_id=1,
+            request_type_code="REQPROM", status="pending", current_stage=0,
+            payload_json={"new_title": "مدير أول", "new_salary": 950,
+                          "effective_date": "2026-09-01", "reason": "ترقية"},
+        )
+        db.add(req)
+        db.commit()
+
+        ok, note = request_effects.apply_field_effect(db, req)
+        assert ok, note
+        assert emp.basic_salary == 950, note
+        db.commit()
+
+        emp.basic_salary = 950  # الحالة بعد التطبيق الأول
+        ok2, note2 = request_effects.apply_field_effect(db, req)
+        assert ok2 and "مطبَّق مسبًقا" in note2, note2
+        assert emp.basic_salary == 950, "طُبِّق الأثر مرتين"
+
+        # قيمة غير صالحة تُفشِل التطبيق بدل أن تكتب فراغًا فوق بيانات صحيحة
+        bad = models.Request(
+            company_id=emp.company_id, employee_id=emp.id, requester_user_id=1,
+            request_type_code="REQCIVIL", status="pending", current_stage=0,
+            payload_json={"new_civil": "  ", "reason": "تحديث"},
+        )
+        db.add(bad)
+        db.commit()
+        ok3, note3 = request_effects.apply_field_effect(db, bad)
+        assert not ok3 and "مطلوب" in note3, note3
+    finally:
+        db.rollback()
+        db.close()

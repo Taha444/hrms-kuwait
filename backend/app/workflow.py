@@ -1180,8 +1180,16 @@ def _finalize(db: Session, req: models.Request) -> None:
 
     # PILOT-P0-4 — تصحيح الحضور: نطبّق الأثر الفعلي قبل ما نعتبر الطلب Completed
     # وطلب الإجازة مثله: كان يكتمل بلا أثر — لا سجل إجازة ولا خصم رصيد.
+    # WF-09 — بقية الأنواع التي تغيّر بيانات الموظف (جواز، بطاقة، اتصال،
+    # ترقية، وردية، نقل) كانت تُغلق "مكتملة" بلا أثر. سجلّها التصريحي في
+    # request_effects.FIELD_EFFECTS وتدخل من نفس الباب: نفس الذرّية ونفس
+    # مسار apply_failed، فلا يوجد طريقان لتطبيق أثر.
+    from .request_effects import FIELD_EFFECTS, apply_field_effect
+
     _effect = {"REQATT": _apply_attendance_correction,
                "REQLV": _apply_leave, "leave": _apply_leave}.get(req.request_type_code)
+    if _effect is None and req.request_type_code in FIELD_EFFECTS:
+        _effect = apply_field_effect
     if _effect:
         applied, note = _effect(db, req)
         if not applied:
@@ -1227,6 +1235,8 @@ def _finalize(db: Session, req: models.Request) -> None:
         db.add(models.RequestApproval(
             request_id=req.id, stage_order=req.current_stage,
             stage_label=("تطبيق تصحيح الحضور" if req.request_type_code == "REQATT"
+                         else FIELD_EFFECTS[req.request_type_code][0]
+                         if req.request_type_code in FIELD_EFFECTS
                          else "تسجيل الإجازة وخصم الرصيد"),
             approver_role="system", decision="approved", note=note,
         ))
