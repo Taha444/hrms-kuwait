@@ -523,7 +523,7 @@ def test_v22_separated_approval_permissions_lose_nothing():
     مرحلة في كل نوع مبذور ويتأكد أن دورها ما زال يملك صلاحية مجالها.
     """
     from app.permissions import (DECISION_DOMAIN_BY_CATEGORY, ROLE_DEFAULT_PERMS,
-                                 can_decide_category)
+                                 can_complete_stage, can_decide_category)
     from app.workflow import DEFAULT_REQUEST_TYPES
 
     # كل فئة في الكتالوج لها مجال معرَّف — لا فئة تسقط للعام بالصدفة
@@ -537,7 +537,8 @@ def test_v22_separated_approval_permissions_lose_nothing():
             role = stage.get("role")
             if not role:
                 continue
-            if not can_decide_category(role, set(), rt.get("category")):
+            if not can_complete_stage(role, set(), rt.get("category"),
+                                      stage.get("step_type")):
                 orphaned.append(f"{rt['code']}/{stage.get('order')}/{role}")
     assert not orphaned, "مراحل فقدت معتمِدها بعد الفصل: " + "; ".join(orphaned[:10])
 
@@ -1054,4 +1055,49 @@ def test_ac05_super_admin_needs_break_glass(client):
             if row:
                 db.delete(row)
         db.commit()
+        db.close()
+
+
+def test_ac03_hr_validates_but_does_not_decide_money(client):
+    """AC-03 — HR يكمل التحقق ولا يحصل تلقائًيا على القرار المالي.
+
+    ROOT CAUSE: كل خطوة في السلسلة كانت "اعتماًدا"، فمن يتحقّق من صحة بيانات
+    الخصم يحتاج صلاحية القرار المالي نفسها التي يحتاجها من يقرّر صرفه. ومتى
+    مُنحت له لأجل خطوته، صار يملك القرار في **كل** الطلبات المالية — سلفة
+    وقرًضا واسترداد مصروفات.
+
+    الفصل: خطوة VALIDATION تُنجَز بـcomplete_validation، والقرار وحده يحتاج
+    صلاحية مجاله.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from app.permissions import ROLE_DEFAULT_PERMS, can_complete_stage
+    from sqlalchemy import select
+
+    assert "approve_finance" not in ROLE_DEFAULT_PERMS["hr"], \
+        "HR ما زال يملك القرار المالي افتراضًيا"
+    assert "complete_validation" in ROLE_DEFAULT_PERMS["hr"]
+
+    # الاختبار السلبي الذي يطلبه المعيار
+    assert not can_complete_stage("hr", set(), "الطلبات المالية", "DECISION"), \
+        "HR يقرّر في خطوة قرار مالي"
+    assert can_complete_stage("hr", set(), "الطلبات المالية", "VALIDATION"), \
+        "HR لا يستطيع إتمام خطوة تحقّق — عُطّلت خطوته بدل فصلها"
+    assert can_complete_stage("accountant", set(), "الطلبات المالية", "DECISION")
+
+    # ولم يفقد HR مجالاته الأخرى
+    for cat in ("الشهادات والخطابات", "العقود وإنهاء الخدمة", "الشكاوى والتظلمات"):
+        assert can_complete_stage("hr", set(), cat, "DECISION"), f"HR فقد {cat}"
+
+    # وخطوة HR في اعتراض الخصم موسومة تحقًقا في الكتالوج المبذور
+    db = SessionLocal()
+    try:
+        rt = db.scalar(select(models.RequestType).where(
+            models.RequestType.code == "REQDED",
+            models.RequestType.company_id.is_(None)))
+        if rt:
+            hr_steps = [s for s in (rt.approval_chain_json or []) if s.get("role") == "hr"]
+            assert hr_steps and hr_steps[0].get("step_type") == "VALIDATION", \
+                "خطوة HR في REQDED ما زالت قراًرا مالًيا"
+    finally:
         db.close()

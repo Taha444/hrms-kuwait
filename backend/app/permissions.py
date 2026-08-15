@@ -53,6 +53,9 @@ PERMISSIONS: dict[str, str] = {
     "approve_grievance": "اعتماد الشكاوى والتظلمات",
     "approve_exit": "اعتماد العقود وإنهاء الخدمة",
     "approve_general": "اعتماد الطلبات العامة والنماذج الإدارية",
+    # V2.2 §13.3 (AC-03) — إتمام خطوة تحقّق لا قرار. من يتحقّق من صحة البيانات
+    # ليس من يقرّر صرف المال؛ الخلط بينهما هو ما يجعل الفصل بين الواجبات ورًقا.
+    "complete_validation": "إتمام خطوات التحقق",
     "manage_request_types": "إدارة أنواع الطلبات وسلاسل الموافقات",
     "manage_templates": "إدارة الصيغ والنماذج وطباعتها",
     "process_delegate_tasks": "إجراءات المندوب (تجديد/إذن مغادرة)",
@@ -67,8 +70,7 @@ PERMISSIONS: dict[str, str] = {
     # كل المراحل وامتلأ صندوقه بكل الطلبات — وهو نفسه سبب عدم وصول الطلب
     # لمسؤول الفرع (QA-02). صار صلاحية مسمّاة لا تُمنح لأي دور افتراضًا، ويُسجَّل
     # كل استخدام لها في التدقيق كما تشترط SKILL-3.
-    "override_approval": "تجاوز إداري: اعتماد مرحلة ليست لصاحبها (يُسجَّل)",
-}
+    "override_approval": "تجاوز إداري: اعتماد مرحلة ليست لصاحبها (يُسجَّل)"}
 
 # قوالب صلاحيات جاهزة
 PERMISSION_TEMPLATES: dict[str, dict] = {
@@ -76,32 +78,25 @@ PERMISSION_TEMPLATES: dict[str, dict] = {
         "label": "موظف موارد بشرية",
         "perms": ["view_employee", "create_employee", "edit_employee", "manage_permits",
                   "manage_leaves", "upload_documents", "view_documents", "view_attendance",
-                  "approve_request", "view_tasks", "view_reports", "submit_request"],
-    },
+                  "approve_request", "view_tasks", "view_reports", "submit_request"]},
     "branch_supervisor": {
         "label": "مسؤول فرع",
         "perms": ["view_employee", "view_attendance", "approve_request", "view_tasks",
-                  "view_reports", "submit_request"],
-    },
+                  "view_reports", "submit_request"]},
     "delegate": {
         "label": "مندوب / شؤون قانونية",
         "perms": ["view_employee", "view_documents", "upload_documents", "manage_permits",
-                  "process_delegate_tasks", "view_tasks", "submit_request"],
-    },
+                  "process_delegate_tasks", "view_tasks", "submit_request"]},
     "viewer": {
         "label": "مطّلع فقط",
-        "perms": ["view_employee", "view_reports", "view_tasks", "view_documents"],
-    },
+        "perms": ["view_employee", "view_reports", "view_tasks", "view_documents"]},
     "payroll": {
         "label": "مسؤول رواتب",
         "perms": ["view_employee", "manage_deductions", "manage_attendance", "view_attendance",
-                  "run_payroll", "view_payroll", "calculate_eos", "view_reports", "export_reports"],
-    },
+                  "run_payroll", "view_payroll", "calculate_eos", "view_reports", "export_reports"]},
     "company_admin": {
         "label": "مدير شركة (كل الصلاحيات)",
-        "perms": [p for p in PERMISSIONS if p != "manage_companies"],
-    },
-}
+        "perms": [p for p in PERMISSIONS if p != "manage_companies"]}}
 
 # صلاحيات افتراضية لكل دور (يُمنحها النظام تلقائيًا دون الحاجة لإسناد فردي)
 _ALL = set(PERMISSIONS.keys())
@@ -124,6 +119,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # كانت تُمنح له ليبصم لنفسه (P0-#4)، لكنه يعتمد الطلبات ويمنح الصلاحيات،
     # فبصمه لنفسه يخلط الرقابة بالخضوع لها. view_attendance تبقى للمتابعة.
     "company_manager": {
+        "complete_validation",
         "approve_certificate",
         "approve_exit",
         "approve_finance",
@@ -133,7 +129,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
         "approve_leave",
         "approve_personnel","view_employee", "create_employee", "edit_employee", "delete_employee",
                         "view_documents", "upload_documents", "manage_leaves", "view_attendance",
-                        "manage_branches", "manage_departments", "approve_request",
+                        "manage_branches", "manage_departments",
                         "view_reports", "export_reports", "view_tasks", "manage_tasks",
                         # QA §6: مرحلة "Authorized Approval" في إنهاء الخدمة — جهة ثالثة
                         # غير من حسب التسوية (المالية) وغير من فتح الحالة (HR).
@@ -146,6 +142,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # وبدونها كان /decide و/received يرفضانه بـ403 فتتوقف الطلبات المالية عنده للأبد رغم
     # أن can_decide يتحقق أصًلا من كونه معتمِد المرحلة الفعلي.
     "accountant": {
+        "complete_validation",
         "approve_exit",
         "approve_finance",
         "approve_general",
@@ -153,7 +150,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
         "approve_personnel","view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks",
-                   "submit_request", "record_attendance", "approve_request",
+                   "submit_request", "record_attendance",
                    # PILOT-P0-8: المحاسب هو المُعتمِد المالي لإنهاء الخدمة (فصل السلطات عن HR)
                    "approve_termination",
                    # QA §6: مرحلة "Finance Calculation" في دورة إنهاء الخدمة — المالية
@@ -168,11 +165,12 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # مهمة خارجية...) قبل قصر التقديم نيابًة على HR — انظر ON_BEHALF_ROLES.
     # P0-#4: أضفنا record_attendance — مسؤول الفرع موظف أيضًا (يبصم لنفسه).
     "branch_supervisor": {
+        "complete_validation",
         "approve_finance",
         "approve_general",
         "approve_government",
         "approve_leave",
-        "approve_personnel","view_employee", "view_attendance", "approve_request",
+        "approve_personnel","view_employee", "view_attendance",
                           "record_attendance",  # للـMy Attendance الشخصية
                           "view_tasks", "view_reports", "export_reports", "submit_request"},
     # الشؤون القانونية/HR: مسؤول عن الموظفين فقط (لا حكومة/إقامات/تراخيص).
@@ -185,15 +183,16 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     "hr": {
         "approve_certificate",
         "approve_exit",
-        "approve_finance",
+        # AC-03 — لا approve_finance: HR يتحقّق ولا يقرّر صرف المال.
+        # خطوته في "اعتراض على خصم" تحقّق تعاقدي، وتُنجَز بـcomplete_validation.
+        "complete_validation",
         "approve_general",
         "approve_government",
         "approve_grievance",
         "approve_leave",
         "approve_personnel","view_employee", "create_employee", "edit_employee",
            "view_documents", "upload_documents",
-           "manage_leaves", "manage_deductions",
-           "approve_request", "calculate_eos", "terminate_employee",
+           "manage_leaves", "manage_deductions", "calculate_eos", "terminate_employee",
            "manage_templates", "view_tasks",
            "view_attendance", "manage_attendance",  # تصحيح واعتماد سجلات الحضور (FIX-015)
            # لا record_attendance: HR معفي من البصم بقرار العميل. كانت تُمنح له
@@ -217,8 +216,7 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
     # موظف إداري مرن: بلا صلاحيات افتراضية — تُمنح بالكامل عبر مصفوفة الأذونات
     "admin_employee": set(),
     # الموظف: خدمة ذاتية فقط (لا إحصائيات شركة)
-    "employee": {"submit_request", "record_attendance", "view_tasks"},
-}
+    "employee": {"submit_request", "record_attendance", "view_tasks"}}
 
 ROLES = list(ROLE_DEFAULT_PERMS.keys())
 
@@ -232,8 +230,7 @@ ROLE_LEVEL: dict[str, int] = {
     "accountant": 35,
     "delegate": 30,
     "admin_employee": 20,
-    "employee": 10,
-}
+    "employee": 10}
 
 # الأدوار التي يحق لها تقديم طلب باسم موظف آخر ("تقديم نيابةً عن").
 #
@@ -292,8 +289,7 @@ def is_cross_company_user(user) -> bool:
 ROLE_LABEL_AR: dict[str, str] = {
     "branch_supervisor": "المسؤول المباشر", "company_manager": "المدير العام",
     "hr": "شؤون الموظفين/القانونية", "delegate": "المندوب", "accountant": "المحاسب",
-    "company_owner": "صاحب الشركة", "super_admin": "الإدارة العليا", "employee": "الموظف",
-}
+    "company_owner": "صاحب الشركة", "super_admin": "الإدارة العليا", "employee": "الموظف"}
 
 
 def role_level(role: str) -> int:
@@ -326,8 +322,7 @@ def has_permission(role: str, assigned: set[str], perm: str) -> bool:
 # ===========================================================================
 ACTIONS_AR = {
     "read": "قراءة", "add": "إضافة", "edit": "تعديل", "delete": "حذف",
-    "print": "طباعة", "export": "تصدير", "approve": "اعتماد",
-}
+    "print": "طباعة", "export": "تصدير", "approve": "اعتماد"}
 
 # ربط الصلاحية القديمة بـ (الصفحة، الفعل) — فقط ما نريد التحكم الدقيق فيه
 LEGACY_TO_PA: dict[str, tuple[str, str]] = {
@@ -351,16 +346,14 @@ LEGACY_TO_PA: dict[str, tuple[str, str]] = {
     "manage_users": ("users", "edit"),
     "view_audit": ("audit", "read"),
     "manage_branches": ("branches", "edit"),
-    "calculate_eos": ("eos", "read"),
-}
+    "calculate_eos": ("eos", "read")}
 PA_TO_LEGACY: dict[tuple[str, str], str] = {v: k for k, v in LEGACY_TO_PA.items()}
 
 PAGE_LABELS = {
     "employees": "الموظفون", "reports": "التقارير", "requests": "الطلبات",
     "documents": "المستندات", "attendance": "الحضور", "permits": "الإقامات",
     "licenses": "التراخيص", "payroll": "الرواتب", "templates": "الصيغ",
-    "users": "المستخدمون", "audit": "سجل التدقيق", "branches": "الفروع", "eos": "نهاية الخدمة",
-}
+    "users": "المستخدمون", "audit": "سجل التدقيق", "branches": "الفروع", "eos": "نهاية الخدمة"}
 
 # السطح الكامل للأفعال المتاحة لكل صفحة — المرجع الوحيد لبناء المصفوفة وفرضها.
 # يشمل الأفعال السبعة [قراءة، إضافة، تعديل، حذف، طباعة، تصدير، اعتماد] حيثما تنطبق.
@@ -377,8 +370,7 @@ PAGE_ACTIONS: dict[str, list[str]] = {
     "users":      ["read", "edit"],
     "audit":      ["read", "export"],
     "branches":   ["read", "edit"],
-    "eos":        ["read", "print"],
-}
+    "eos":        ["read", "print"]}
 
 # الأفعال المشتقّة: عند غياب منح مخصّصة، تَرِث افتراضيًا من فعل أساس بنفس الصفحة.
 # (من يستطيع العرض يطبع/يصدّر افتراضيًا؛ من يستطيع التعديل يعتمد) — قابلة للإلغاء بالمصفوفة.
@@ -441,13 +433,40 @@ DECISION_DOMAIN_BY_CATEGORY: dict[str, str] = {
     "الشكاوى والتظلمات": "approve_grievance",
     "العقود وإنهاء الخدمة": "approve_exit",
     "طلبات عامة": "approve_general",
-    "نماذج إدارية": "approve_general",
-}
+    "نماذج إدارية": "approve_general"}
 
 
 def decision_permission(category: str | None) -> str:
     """الصلاحية المطلوبة للقرار في هذه الفئة — العامة لما لا فئة له."""
     return DECISION_DOMAIN_BY_CATEGORY.get(category or "", "approve_general")
+
+
+# كل صلاحيات القرار — يستخدمها حرّاس المسارات بدل الصلاحية العامة المهجورة.
+# بلا هذه المجموعة كان نزع approve_request من الأدوار يُغلق /decide على الجميع.
+APPROVAL_PERMS: tuple[str, ...] = (
+    "approve_leave", "approve_certificate", "approve_finance", "approve_government",
+    "approve_personnel", "approve_grievance", "approve_exit", "approve_general",
+    "complete_validation", "approve_request",
+)
+
+
+def can_complete_stage(role: str, assigned: set[str], category: str | None,
+                       step_type: str | None) -> bool:
+    """V2.2 §13.3 (AC-03) — التحقق شيء والقرار شيء آخر.
+
+    ROOT CAUSE: كل خطوة في السلسلة كانت "اعتماًدا"، فمن يتحقّق من صحة بيانات
+    الخصم يحتاج صلاحية القرار المالي نفسها التي يحتاجها من يقرّر صرفه. ومتى
+    مُنحت له لأجل خطوة التحقق، صار يملك القرار في كل الطلبات المالية.
+
+    خطوة VALIDATION تُنجَز بـcomplete_validation؛ والقرار وحده يحتاج صلاحية
+    مجاله.
+    """
+    if role == "super_admin":
+        return True
+    perms = effective_permissions(role, assigned)
+    if (step_type or "").upper() == "VALIDATION":
+        return "complete_validation" in perms or "approve_request" in perms
+    return can_decide_category(role, assigned, category)
 
 
 def can_decide_category(role: str, assigned: set[str], category: str | None) -> bool:

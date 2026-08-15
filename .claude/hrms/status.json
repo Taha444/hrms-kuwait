@@ -10,8 +10,8 @@
     "updated": "2026-08-15"
   },
   "AC-03": {
-    "status": "fail",
-    "note": "الآلية جاهزة (approve_finance مفصولة) لكن HR يملكها لأنه معتمِد فعلي في السلاسل المالية المبذورة. إسقاطها قرار عمل على السلاسل نفسها لا على الصلاحيات",
+    "status": "pass",
+    "note": "complete_validation مفصولة عن approve_finance؛ خطوة HR في REQDED موسومة VALIDATION؛ approve_request نُزعت من كل الأدوار الافتراضية · دليل: test_ac03_hr_validates_but_does_not_decide_money (اختبار سلبي) + test_v22_separated_approval_permissions_lose_nothing",
     "updated": "2026-08-15"
   },
   "AC-04": {

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import models, renewal as R
+from .. import models, permissions, renewal as R
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, get_user_perms
@@ -232,7 +232,7 @@ def list_renewals(user: models.User = Depends(get_current_user), db: Session = D
     if user.role not in ("super_admin", "company_owner"):
         q = q.where(models.ResidencyRenewal.company_id == user.company_id)
     # الموظف العادي: طلباته فقط
-    if not _is_pro(user, perms) and not has_permission(user.role, perms, "approve_request") \
+    if not _is_pro(user, perms) and not any(has_permission(user.role, perms, x) for x in permissions.APPROVAL_PERMS) \
             and user.role not in ("super_admin", "company_owner"):
         q = q.where(models.ResidencyRenewal.employee_id == (user.employee_id or -1))
     return [_serialize(db, rn) for rn in db.scalars(q).all()]
@@ -242,7 +242,7 @@ def list_renewals(user: models.User = Depends(get_current_user), db: Session = D
 def get_renewal(rid: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     rn = _get_renewal(db, user, rid)
     perms = get_user_perms(user, db)
-    if not _is_pro(user, perms) and not has_permission(user.role, perms, "approve_request") \
+    if not _is_pro(user, perms) and not any(has_permission(user.role, perms, x) for x in permissions.APPROVAL_PERMS) \
             and user.employee_id != rn.employee_id and user.role not in ("super_admin", "company_owner"):
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
     return _serialize(db, rn)
@@ -254,7 +254,7 @@ def download_renewal_document(rid: int, doc_type: str,
     """تنزيل مستند تجديد (عقد/موقّع) أو مستند الموظف المرتبط (إذن عمل/بطاقة مدنية)."""
     rn = _get_renewal(db, user, rid)
     perms = get_user_perms(user, db)
-    if not _is_pro(user, perms) and not has_permission(user.role, perms, "approve_request") \
+    if not _is_pro(user, perms) and not any(has_permission(user.role, perms, x) for x in permissions.APPROVAL_PERMS) \
             and user.employee_id != rn.employee_id and user.role not in ("super_admin", "company_owner"):
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
 
@@ -283,7 +283,7 @@ def decide_renewal(rid: int, decision: str = Form(...), reject_reason: str | Non
     """موافقة/رفض مرحلة (المدير ثم الشؤون) للتجديد المبكر."""
     rn = _get_renewal(db, user, rid)
     perms = get_user_perms(user, db)
-    if not has_permission(user.role, perms, "approve_request"):
+    if not any(has_permission(user.role, perms, x) for x in permissions.APPROVAL_PERMS):
         raise HTTPException(status_code=403, detail="لا تملك صلاحية اعتماد الطلبات")
     # مطابقة الدور للمرحلة
     stage_role = {R.PENDING_MANAGER: "company_manager", R.PENDING_HR: "hr"}.get(rn.status)

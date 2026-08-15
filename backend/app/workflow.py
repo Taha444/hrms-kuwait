@@ -129,7 +129,8 @@ CAT_ADMIN = "نماذج إدارية"
 def _simple(code: str, name: str, category: str, roles: list[str],
            produces_document: bool = False, requires_physical_signature: bool = True,
            is_confidential: bool = False, visible_to_employee: bool = False,
-           default_template_code: str | None = None) -> dict:
+           default_template_code: str | None = None,
+           validation_roles: tuple[str, ...] = ()) -> dict:
     """يبني نوع طلب بسلسلة موافقات خطّية بسيطة (مرحلة اعتماد لكل دور بالترتيب).
 
     تُستخدم لتغطية أنواع V1.3 الـ44 المتبقية (المسار الرئيسي المذكور في كل نموذج)
@@ -145,8 +146,14 @@ def _simple(code: str, name: str, category: str, roles: list[str],
     # AUTOMATION للخطوة النهائية إن كانت produces_document عبر النظام). الحقل اختياري
     # للتوافق مع الخطوات القديمة (kind="approval"/"hr_review"/"delegate_exit"/"pickup").
     chain = [
-        {"order": i, "label": f"اعتماد {ROLE_LABEL_AR.get(r, r)}", "role": r, "kind": "approval",
-         "step_type": "DECISION",
+        # V2.2 §13.3 (AC-03) — خطوة التحقق ليست قراًرا: من يتحقّق من صحة
+        # البيانات لا يحتاج صلاحية من يقرّر صرف المال، ومنحها له لأجل خطوته
+        # يمنحه القرار في كل الطلبات المالية.
+        {"order": i,
+         "label": (f"تحقّق {ROLE_LABEL_AR.get(r, r)}" if r in validation_roles
+                   else f"اعتماد {ROLE_LABEL_AR.get(r, r)}"),
+         "role": r, "kind": "approval",
+         "step_type": "VALIDATION" if r in validation_roles else "DECISION",
          "produces_document": produces_document and i == len(roles) - 1}
         for i, r in enumerate(roles)
     ]
@@ -317,8 +324,10 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
            ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-032"),
+    # AC-03 — خطوة HR هنا تحقّق تعاقدي لا قرار مالي: القرار للمحاسب والمدير
     _simple("REQDED", "اعتراض على خصم", CAT_FINANCIAL,
-           ["accountant", "hr", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
+           ["accountant", "hr", "company_manager"], validation_roles=("hr",),
+           requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-033"),
 
     # الشكاوى والتظلمات

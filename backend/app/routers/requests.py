@@ -423,7 +423,7 @@ def my_requests(user: models.User = Depends(get_current_user), db: Session = Dep
 @router.get("/inbox")
 def approval_inbox(company_id: int | None = None,
                    user: models.User = Depends(
-                       require_any_perm("approve_request", "process_delegate_tasks")),
+                       require_any_perm(*permissions.APPROVAL_PERMS, "process_delegate_tasks")),
                    db: Session = Depends(get_db)):
     """بانتظار موافقتي — طلبات مرحلتها الحالية موجّهة لهذا المستخدم."""
     cid = scope_company_id(user, company_id)
@@ -457,7 +457,7 @@ def get_request(req_id: int, user: models.User = Depends(get_current_user),
 @router.post("/{req_id}/decide")
 def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
            user: models.User = Depends(
-               require_any_perm("approve_request", "process_delegate_tasks")),
+               require_any_perm(*permissions.APPROVAL_PERMS, "process_delegate_tasks")),
            db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
     if req.status not in ("pending",):
@@ -468,13 +468,17 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     # واحد لكل الأنواع: من يعتمد إجازة يصل لاعتماد خصم وتظلّم وإنهاء خدمة.
     # الفحص هنا لأن المجال لا يُعرف إلا بعد قراءة نوع الطلب.
     from ..deps import get_user_perms
-    if not permissions.can_decide_category(user.role, get_user_perms(user, db),
-                                           rt.category if rt else None):
+    chain = workflow._chain(rt, req)
+    _stage_now = chain[req.current_stage] if req.current_stage < len(chain) else {}
+    # AC-03 — خطوة التحقق تُنجَز بـcomplete_validation؛ والقرار وحده يحتاج
+    # صلاحية مجاله. الخلط بينهما يمنح من يتحقّق سلطة من يقرّر.
+    if not permissions.can_complete_stage(user.role, get_user_perms(user, db),
+                                          rt.category if rt else None,
+                                          _stage_now.get("step_type")):
         raise HTTPException(status_code=403, detail=(
-            "لا تملك صلاحية القرار في هذه الفئة — "
+            "لا تملك صلاحية إتمام هذه الخطوة — "
             f"المطلوب: {permissions.decision_permission(rt.category if rt else None)}"
         ))
-    chain = workflow._chain(rt, req)
     # P0-#6 — منع stale action: current_stage غير صالح (بره النطاق) في حالة pending
     if req.current_stage < 0 or req.current_stage >= len(chain):
         raise HTTPException(status_code=409, detail=(
@@ -608,7 +612,7 @@ def resubmit_request(req_id: int, request: Request, data: dict | None = None,
 
 @router.post("/{req_id}/appointment")
 def set_appointment(req_id: int, data: schemas.AppointmentIn, request: Request,
-                    user: models.User = Depends(require_perm("approve_request")),
+                    user: models.User = Depends(require_any_perm(*permissions.APPROVAL_PERMS)),
                     db: Session = Depends(get_db)):
     """يحدد HR موعد مراجعة العامل للتوقيع (الحالة awaiting_signature)."""
     req = _get_req(db, user, req_id)
@@ -667,7 +671,7 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
 
 
 @router.post("/{req_id}/received")
-def mark_received(req_id: int, user: models.User = Depends(require_perm("approve_request")),
+def mark_received(req_id: int, user: models.User = Depends(require_any_perm(*permissions.APPROVAL_PERMS)),
                   db: Session = Depends(get_db)):
     """تسجيل استلام العامل للمستند (يُغلق طلب شهادة الراتب)."""
     req = _get_req(db, user, req_id)
@@ -816,8 +820,12 @@ def _get_req(db: Session, user: models.User, req_id: int) -> models.Request:
     from ..permissions import has_permission
     from ..deps import get_user_perms
     perms = get_user_perms(user, db)
+    # AC-03/AP-01 — "معالج الطلبات" لم يعد يُعرَّف بالصلاحية العامة المهجورة:
+    # نزعها من الأدوار كان يُخفي الطلب عن معتمِديه الفعليين (404) لأن كل من
+    # يعتمد صار يملك صلاحية مجاله لا الصلاحية العامة.
     is_handler = (user.role == "super_admin"
-                  or has_permission(user.role, perms, "approve_request")
+                  or any(has_permission(user.role, perms, x)
+                         for x in permissions.APPROVAL_PERMS)
                   or has_permission(user.role, perms, "process_delegate_tasks"))
     if not is_handler and not is_self:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
