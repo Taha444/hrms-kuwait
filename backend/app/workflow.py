@@ -618,9 +618,21 @@ def is_stage_approver(db: Session, req: models.Request, user: models.User,
 
 def may_override(db: Session, user: models.User,
                  rt: models.RequestType | None = None) -> bool:
-    """هل يملك صلاحية التجاوز الإداري؟ — الطلبات السرّية لا تُتجاوَز إطلاقًا."""
+    """هل يملك صلاحية التجاوز الإداري؟ — الطلبات السرّية لا تُتجاوَز إطلاقًا.
+
+    V2.2 §13.5 (AC-05): super_admin استثناء معكوس. has_permission تعيد له True
+    مطلًقا، فكان يملك التجاوز في كل لحظة ويعتمد أي مرحلة عمل بلا أن يطلبها أحد
+    ولا أن ينتبه إليها أحد — حساب تقني صار معتمًِدا تجارًيا بحكم الأمر الواقع.
+    يحتاج الآن نافذة Break-glass سارية: بسبب مكتوب ومدة تنتهي وحدها وسجل.
+
+    المنع الكامل ليس حًلا: حين يتعطّل الإسناد (موظف بلا فرع، معتمِد غادر) يقف
+    العمل ولا مخرج. فالتجاوز يبقى ممكًنا لكنه يصير حدًثا لا حالة دائمة.
+    """
     if rt is not None and rt.is_confidential:
         return False
+    if user.role == "super_admin":
+        from .break_glass import active_session
+        return active_session(db, user.id) is not None
     from .deps import get_user_perms
     from .permissions import has_permission
     return has_permission(user.role, get_user_perms(user, db), "override_approval")

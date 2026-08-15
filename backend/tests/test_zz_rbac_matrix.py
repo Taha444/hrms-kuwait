@@ -993,3 +993,65 @@ def test_ac15_workflow_operations_report(client):
     bad = client.get("/api/reports/workflow-operations", headers=rep,
                      params={"since": "not-a-date"})
     assert bad.status_code == 400
+
+
+def test_ac05_super_admin_needs_break_glass(client):
+    """AC-05 — Super Admin لا يتجاوز مرحلة عمل إلا بنافذة طارئة موثّقة.
+
+    ROOT CAUSE: has_permission تعيد True لـsuper_admin مطلًقا، فيملك
+    override_approval في كل لحظة ويعتمد أي مرحلة بلا أن يطلبها أحد ولا أن
+    ينتبه إليها أحد — حساب تقني صار معتمًِدا تجارًيا بحكم الأمر الواقع.
+
+    والمنع الكامل ليس حًلا: حين يتعطّل الإسناد يقف العمل ولا مخرج. فالتجاوز
+    يبقى ممكًنا لكنه يصير حدًثا: سبب ومدة وسجل.
+    """
+    from datetime import datetime, timedelta
+
+    from app import break_glass, models, workflow
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    made = []
+    try:
+        sa_user = db.scalar(select(models.User).where(models.User.role == "super_admin"))
+        assert sa_user, "لا super_admin في البذرة"
+        # بلا نافذة: لا تجاوز
+        assert not workflow.may_override(db, sa_user), \
+            "Super Admin يتجاوز بلا نافذة طارئة"
+
+        # سبب مبهم مرفوض
+        import pytest
+        with pytest.raises(ValueError):
+            break_glass.open_session(db, sa_user, "طارئ")
+
+        s = break_glass.open_session(db, sa_user, "المعتمِد غادر الشركة والطلب عالق")
+        db.commit(); made.append(s.id)
+        assert workflow.may_override(db, sa_user), "النافذة السارية لا تمنح التجاوز"
+
+        # منتهية ⇒ لا تجاوز. نافذة مفتوحة إلى الأبد صلاحية دائمة بثوب آخر
+        s.expires_at = datetime.now() - timedelta(minutes=1)
+        db.commit()
+        assert not workflow.may_override(db, sa_user), "نافذة منتهية ما زالت تمنح التجاوز"
+
+        # ومغلقة يدوًيا ⇒ لا تجاوز
+        s2 = break_glass.open_session(db, sa_user, "سبب آخر مفصّل بما يكفي")
+        db.commit(); made.append(s2.id)
+        assert workflow.may_override(db, sa_user)
+        s2.closed_at = datetime.now()
+        db.commit()
+        assert not workflow.may_override(db, sa_user), "نافذة مغلقة ما زالت تمنح التجاوز"
+
+        # والطلب السرّي لا يُتجاوَز ولو بنافذة
+        s3 = break_glass.open_session(db, sa_user, "حالة طارئة موثّقة بالتفصيل")
+        db.commit(); made.append(s3.id)
+        confidential = type("RT", (), {"is_confidential": True})()
+        assert not workflow.may_override(db, sa_user, confidential), \
+            "طلب سرّي جرى تجاوزه"
+    finally:
+        for sid in made:
+            row = db.get(models.BreakGlassSession, sid)
+            if row:
+                db.delete(row)
+        db.commit()
+        db.close()

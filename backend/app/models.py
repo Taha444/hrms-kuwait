@@ -1125,6 +1125,29 @@ class PolicyRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class BreakGlassSession(Base):
+    """V2.2 §13.5 (AC-05) — نافذة تجاوز طارئة لـSuper Admin، موقّتة وموثّقة.
+
+    ROOT CAUSE: ``has_permission`` تعيد True لـsuper_admin مطلًقا، فيملك
+    ``override_approval`` دائًما ويعتمد أي مرحلة عمل بلا أن يطلبها أحد ولا أن
+    ينتبه إليها أحد. الحساب التقني صار معتمًِدا تجارًيا بحكم الأمر الواقع.
+
+    القاعدة: التجاوز يبقى ممكًنا — منعه كلًيا يشلّ النظام حين يتعطّل الإسناد —
+    لكنه يصير حدًثا: بسبب مكتوب، ومدة تنتهي وحدها، وسجل يُراجَع.
+    نافذة مفتوحة إلى الأبد ليست تجاوًزا طارًئا بل صلاحية دائمة بثوب آخر.
+    """
+    __tablename__ = "break_glass_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+    reason: Mapped[str] = mapped_column(String(400))
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+
+
 # ===========================================================================
 # QA-26 — لا سجل تدقيق بلا فاعل ولا IP.
 #

@@ -20,8 +20,8 @@
     "updated": "2026-08-15"
   },
   "AC-05": {
-    "status": "fail",
-    "note": "AP-05 نظيف لكن AC-05 يحتاج Break-glass موثق — غير منفَّذ",
+    "status": "pass",
+    "note": "may_override يشترط نافذة Break-glass سارية لـsuper_admin + سجل قابل للمراجعة · دليل: test_ac05_super_admin_needs_break_glass (بلا نافذة/منتهية/مغلقة/سرّي = لا تجاوز)",
     "updated": "2026-08-15"
   },
   "AC-06": {
