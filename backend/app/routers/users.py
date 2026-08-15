@@ -690,3 +690,35 @@ def _get_scoped_user(db: Session, actor: models.User, user_id: int) -> models.Us
     if actor.id != target.id and not can_manage_role(actor.role, target.role):
         raise HTTPException(status_code=403, detail="لا يمكنك إدارة مستخدم بهذا المستوى")
     return target
+
+
+@router.post("/{user_id}/2fa/reset")
+def reset_user_2fa(user_id: int, request: Request, reason: str,
+                   user: models.User = Depends(require_super_admin),
+                   db: Session = Depends(get_db)):
+    """QA-30 — إعادة تعيين 2FA لمستخدم فقد جهازه ورموز الاسترداد مًعا.
+
+    رموز الاسترداد تغطي الحالة الشائعة، لكن من يفقدها هي أيًضا يبقى محبوًسا:
+    الدخول يستلزم رمًزا، وكل نقاط 2FA تستلزم جلسة تستلزم الدخول. المخرج
+    الأخير قرار إداري موثَّق لا تعديل يدوي في قاعدة البيانات.
+
+    السبب إلزامي: هذا إجراء يُضعف حماية حساب حسّاس، فيجب أن يُقرأ في التدقيق
+    بعد شهور ويُفهم لماذا اتُّخذ ومن اتخذه.
+    """
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب إعادة التعيين إلزامي")
+    target = db.get(models.User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    if not target.totp_confirmed and not target.totp_secret:
+        return {"ok": True, "already_disabled": True}
+
+    target.totp_secret = None
+    target.totp_confirmed = False
+    target.totp_recovery_hashes = None
+    audit(db, user, "totp_admin_reset", "user", target.id,
+          detail=f"{target.full_name or target.civil_id}: {reason.strip()}",
+          request=request, company_id=target.company_id)
+    db.commit()
+    # يُطلب منه التفعيل من جديد عند أول دخول لأن دوره يستوجبه
+    return {"ok": True, "reset": True, "must_enroll_again": True}

@@ -265,3 +265,69 @@ def test_manual_expiry_correction_syncs_permit(client):
                     db.delete(row)
         db.commit()
         db.close()
+
+
+def test_health_deep_reports_clock_and_migration_currency(client):
+    """الخريطة: التشخيصات التشغيلية تظهر في شاشة واحدة بدل التجربة والخطأ.
+
+    انحراف الساعة أبطل رموز 2FA صحيحة ولم يظهر في أي مكان؛ ورأس الترحيلات
+    كان يُعرض بلا مقارنة برأس الكود — فترحيل لم يُطبَّق يُكتشف بعطل لا بفحص.
+    """
+    r = client.get("/api/health/deep")
+    body = r.json()
+    checks = body.get("checks", {})
+
+    assert "clock" in checks, "انحراف الساعة غير معروض"
+    assert checks["clock"]["status"] in ("ok", "fail", "unknown")
+    if checks["clock"]["status"] == "fail":
+        assert checks["clock"].get("note"), "خلل الساعة بلا تفسير"
+
+    alembic = checks.get("alembic", {})
+    if alembic.get("status") != "disabled":
+        assert "code_head" in alembic or "code_head_error" in alembic, \
+            "لا مقارنة بين رأس القاعدة ورأس الكود"
+
+
+def test_admin_can_reset_2fa_with_reason(client):
+    """QA-30 — المخرج الأخير لمن فقد جهازه ورموزه، وقرار موثَّق لا تعديل يدوي."""
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    import pyotp
+
+    civil_id, password = "100000000004", "deleg123"
+    hdr = _headers(client, civil_id, password)
+    secret = client.post("/api/2fa/enroll", headers=hdr).json()["secret"]
+    client.post("/api/2fa/confirm", headers=hdr, json={"code": pyotp.TOTP(secret).now()})
+
+    db = SessionLocal()
+    try:
+        target = db.scalar(select(models.User).where(models.User.civil_id == civil_id))
+        target_id = target.id
+        assert target.totp_confirmed
+    finally:
+        db.close()
+
+    admin = _headers(client, "000000000000", "admin123")
+    # السبب إلزامي — إجراء يُضعف حماية حساب حسّاس
+    no_reason = client.post(f"/api/users/{target_id}/2fa/reset",
+                            params={"reason": "  "}, headers=admin)
+    assert no_reason.status_code == 400, no_reason.text
+
+    ok = client.post(f"/api/users/{target_id}/2fa/reset",
+                     params={"reason": "فقد الجهاز ورموز الاسترداد"}, headers=admin)
+    assert ok.status_code == 200, ok.text
+
+    # ويدخل الآن بلا رمز
+    back = client.post("/api/auth/login", json={"civil_id": civil_id, "password": password})
+    assert back.status_code == 200, back.text
+
+    db = SessionLocal()
+    try:
+        log = db.scalar(select(models.AuditLog).where(
+            models.AuditLog.action == "totp_admin_reset").order_by(models.AuditLog.id.desc()))
+        assert log is not None and log.user_id, "إعادة التعيين بلا فاعل في التدقيق"
+        assert "فقد الجهاز" in (log.detail or ""), "السبب لم يُحفظ"
+    finally:
+        db.close()
