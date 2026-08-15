@@ -265,6 +265,98 @@ LEGACY_REQUEST_ALIASES: dict[str, dict] = {
     "ADM-VIO-044": {"canonical": "WF-014", "note": "Discipline case — قد يتحول إلى WF-013"},
     "ADM-WARN-045": {"canonical": "WF-014", "subtype": "ISSUE_WARNING"},
     "ADM-MISS-047": {"canonical": "TASK-CONTEXTUAL", "note": "إشعار نقص مستندات داخل الحالة"},
+
+    # ------------------------------------------------------------------
+    # V2.2 §12 — ربط أكواد الكتالوج المبذور (REQ*/ADM*) بالمسارات الـcanonical.
+    #
+    # ROOT CAUSE: السجل كان يحمل 29 مساًرا و50 alias، لكن الـalias تربط أكواد
+    # V1.3 (REQ-LV-001) و V1.4 (leave) — لا أكواد الكتالوج المبذور فعلًا. فمن
+    # أصل 54 نوًعا نشًطا كان 5 فقط لها canonical، و4 مسارات من 29 مغطاة.
+    # أي أن البنية الـcanonical كانت موجودة ومنفصلة عمّا يستخدمه النظام.
+    #
+    # التصنيف هنا ثلاثي — والثالث هو مربط الفرس في "54 → 29":
+    #   canonical      : يقابل مساًرا من الـ29
+    #   subtype        : نوع فرعي داخل المسار نفسه (لا مسار مستقل)
+    #   internal_action: ليس "طلًبا" أصلًا بل إجراء إداري داخلي — لا يدخل
+    #                    كتالوج الإنشاء ولا يُحسب ضمن الـ29
+    # ------------------------------------------------------------------
+
+    # ── الحضور والاستئذان ─────────────────────────────────────────────
+    "REQPER": {"canonical": "WF-003", "subtype": "PERMISSION"},
+    "REQEXIT": {"canonical": "WF-003", "subtype": "EARLY_DEPARTURE"},
+    "REQLATE": {"canonical": "WF-004", "subtype": "LATE_JUSTIFICATION"},
+    "REQATT": {"canonical": "WF-004", "subtype": "ATTENDANCE_CORRECTION"},
+    "REQOT": {"canonical": "WF-017"},
+
+    # ── التغيير الوظيفي: مسار واحد بأنواع فرعية لا خمسة مسارات ────────
+    "REQSHIFT": {"canonical": "WF-018", "subtype": "SHIFT_CHANGE"},
+    "REQWLOC": {"canonical": "WF-018", "subtype": "LOCATION_ASSIGNMENT"},
+    "REQTRF": {"canonical": "WF-018", "subtype": "INTERNAL_TRANSFER"},
+    "REQTRFLIC": {"canonical": "WF-018", "subtype": "LICENSE_TRANSFER"},
+    "REQCON": {"canonical": "WF-018", "subtype": "CONTRACT_RENEWAL"},
+    "ADMACTUAL": {"canonical": "WF-018", "subtype": "ACTUAL_SALARY_OR_SITE"},
+
+    # ── الوثائق الحكومية ──────────────────────────────────────────────
+    "REQRESN": {"canonical": "WF-019"},
+    "REQRESE": {"canonical": "WF-020"},
+    "REQWP": {"canonical": "WF-021"},
+    "REQPASS": {"canonical": "WF-022"},
+    "REQCID": {"canonical": "WF-023"},
+
+    # ── البيانات الشخصية ──────────────────────────────────────────────
+    "REQDATA": {"canonical": "WF-007", "subtype": "PERSONAL_DATA"},
+    "REQCONTACT": {"canonical": "WF-007", "subtype": "CONTACT_DATA"},
+    "REQBANK": {"canonical": "WF-008"},
+
+    # ── الشهادات ──────────────────────────────────────────────────────
+    "REQCERTSAL": {"canonical": "WF-005"},
+    "REQCERTEMP": {"canonical": "WF-006", "subtype": "TO_WHOM_IT_MAY_CONCERN"},
+    "REQCERTEXP": {"canonical": "WF-006", "subtype": "EXPERIENCE"},
+
+    # ── المالية ───────────────────────────────────────────────────────
+    "REQADV": {"canonical": "WF-009"},
+    "REQEXP": {"canonical": "WF-010"},
+    "REQPAY": {"canonical": "WF-011"},
+    "REQDED": {"canonical": "WF-012"},
+    "REQALLOW": {"canonical": "WF-028", "subtype": "ALLOWANCE"},
+    "REQPROMO": {"canonical": "WF-028", "subtype": "PROMOTION_OR_RAISE"},
+
+    # ── الانضباط والتظلم ──────────────────────────────────────────────
+    "ADMDED": {"canonical": "WF-013"},
+    "ADMVIO": {"canonical": "WF-014", "subtype": "VIOLATION"},
+    "ADMWARN": {"canonical": "WF-014", "subtype": "WARNING"},
+    "REQWARN": {"canonical": "WF-015", "subtype": "WARNING_REPLY"},
+    "REQVIO": {"canonical": "WF-015", "subtype": "VIOLATION_OBJECTION"},
+    "REQGRV": {"canonical": "WF-016"},
+
+    # ── الخروج ────────────────────────────────────────────────────────
+    "REQRESIGN": {"canonical": "WF-024"},
+    "REQEOS": {"canonical": "WF-025"},
+    "REQCLR": {"canonical": "WF-026"},
+
+    # ── التدريب والعام ────────────────────────────────────────────────
+    "REQTRN": {"canonical": "WF-027"},
+    "REQGEN": {"canonical": "WF-029", "subtype": "GENERAL"},
+    "REQMIS": {"canonical": "WF-029", "subtype": "FIELD_MISSION"},
+    "REQGOV": {"canonical": "WF-029", "subtype": "GOV_TRANSACTION"},
+    "REQFILE": {"canonical": "WF-029", "subtype": "FILE_COPY"},
+    "REQDOC": {"canonical": "WF-029", "subtype": "DOCUMENT_UPLOAD"},
+    "REQSIG": {"canonical": "WF-029", "subtype": "SIGNATURE_CHANGE"},
+
+    # ── ليست طلبات: إجراءات إدارية داخلية تُنفَّذ من شاشاتها ──────────
+    # وجودها في كتالوج الطلبات هو نصف الفارق بين 54 و29. لا تُحذف —
+    # الطلبات التاريخية المبنية عليها تبقى مقروءة — لكنها تخرج من
+    # كتالوج الإنشاء لأن مكانها الطبيعي شاشة الموظف/الأرشيف لا "طلب جديد".
+    "ADMEMP": {"internal_action": True,
+               "reason": "إضافة موظف — تُنفَّذ من شاشة التعيين (EmployeeOnboarding)"},
+    "ADMTASK": {"internal_action": True,
+                "reason": "تكليف إداري — يُنشأ كمهمة لا كطلب"},
+    "ADMMISS": {"internal_action": True,
+                "reason": "إشعار نقص مستندات — إشعار لا طلب (انظر QA-12)"},
+    "ADMLIC": {"internal_action": True,
+               "reason": "تجديد مستند شركة/ترخيص — كيانه الشركة لا الموظف؛ مكانه الأرشيف"},
+    "ADMSIGN": {"internal_action": True,
+                "reason": "اعتماد وتوقيع إلكتروني — فعل داخل الحالة لا طلب مستقل"},
 }
 
 

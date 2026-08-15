@@ -187,11 +187,25 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         replacement = superseded_by(db, cid, rt.code)
         if creatable_only and replacement:
             continue
+        # V2.2 §12 — الإجراءات الإدارية الداخلية ليست طلبات: إضافة موظف تُنفَّذ
+        # من شاشة التعيين، وإشعار نقص المستندات إشعار لا طلب، وتجديد ترخيص
+        # الشركة كيانه الشركة لا الموظف. وجودها في "طلب جديد" نصف الفارق بين
+        # 54 و29. تبقى في الكتالوج الكامل فتُقرأ الطلبات التاريخية المبنية عليها.
+        if creatable_only and canonical_info.get("internal_action"):
+            continue
         if creatable_only:
-            identity = canonical_code or (rt.name or "").strip()
-            if identity and identity in seen_identity:
+            # الهوية مفتاحان لا واحد، والتكرار يُلغى بأيّهما:
+            #   (المسار، النوع الفرعي) — يجمع كودين مختلفين لنفس الخدمة
+            #   الاسم — يمسك صًفا قديًما في القاعدة بلا ربط canonical
+            # الاكتفاء بالأول يُعيد ظهور المكرر القديم (QA-08)، والاكتفاء
+            # بالمسار وحده يُخفي خدمات مختلفة حًقا (استئذان مقابل مغادرة
+            # مبكرة يشتركان في WF-003).
+            keys = {(canonical_code, canonical_info.get("subtype"))} if canonical_code else set()
+            if (rt.name or "").strip():
+                keys.add(rt.name.strip())
+            if keys & seen_identity:
                 continue
-            seen_identity.add(identity)
+            seen_identity |= keys
         # hide_legacy: يخفي الأنواع المُستبدَلة فعلًا فقط. سابقًا كان يخفي كل نوع
         # بلا canonical id — وهو 48 نوعًا من كتالوج V1.3 صالحة تمامًا — فيفرغ
         # القائمة من كل ما يمكن إنشاؤه ويترك المُستبدَل وحده معروضًا.

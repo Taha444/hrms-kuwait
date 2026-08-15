@@ -331,3 +331,65 @@ def test_admin_can_reset_2fa_with_reason(client):
         assert "فقد الجهاز" in (log.detail or ""), "السبب لم يُحفظ"
     finally:
         db.close()
+
+
+def test_v22_catalog_every_seeded_type_is_classified():
+    """V2.2 §12 (STR-04) — كل نوع مبذور له تصنيف: مسار canonical أو إجراء داخلي.
+
+    ROOT CAUSE: السجل كان يحمل 29 مساًرا و50 alias، لكن الـalias تربط أكواد
+    V1.3/V1.4 لا أكواد الكتالوج المبذور. فمن 54 نوًعا نشًطا كان 5 فقط لها
+    canonical، و4 مسارات من 29 مغطاة — بنية canonical موجودة ومنفصلة تماًما
+    عمّا يستخدمه النظام.
+    """
+    from app import v15_registry as V
+    from app.workflow import DEFAULT_REQUEST_TYPES
+
+    aliases = V.LEGACY_REQUEST_ALIASES
+    unclassified = []
+    canonical_used = set()
+    internal = []
+    for rt in DEFAULT_REQUEST_TYPES:
+        info = aliases.get(rt["code"]) or {}
+        if info.get("internal_action"):
+            internal.append(rt["code"])
+            assert info.get("reason"), f"{rt['code']} إجراء داخلي بلا سبب مكتوب"
+        elif info.get("canonical"):
+            canonical_used.add(info["canonical"])
+        else:
+            unclassified.append(rt["code"])
+
+    assert not unclassified, f"أنواع بلا تصنيف canonical: {unclassified}"
+    assert internal, "لا إجراءات داخلية مصنَّفة — التصنيف الثلاثي غير مطبَّق"
+
+    # كل canonical مُستخدَم يجب أن يكون موجوًدا في السجل فعلًا
+    unknown = canonical_used - set(V.CANONICAL_WORKFLOWS)
+    assert not unknown, f"مسارات غير معرّفة في السجل: {sorted(unknown)}"
+
+    # WF-002 (إجازة سفر) وحده بلا نوع مستقل — يُشتقّ من travel_required
+    missing = set(V.CANONICAL_WORKFLOWS) - canonical_used
+    assert missing <= {"WF-002"}, f"مسارات بلا أي نوع يغطيها: {sorted(missing)}"
+
+
+def test_v22_internal_actions_are_not_creatable(client):
+    """V2.2 §12 — الإجراءات الإدارية الداخلية تخرج من "طلب جديد" وتبقى للقراءة.
+
+    إضافة موظف تُنفَّذ من شاشة التعيين، وإشعار نقص المستندات إشعار لا طلب،
+    وتجديد ترخيص الشركة كيانه الشركة لا الموظف. وجودها في كتالوج الإنشاء هو
+    نصف الفارق بين 54 و29.
+    """
+    from app import v15_registry as V
+
+    hr = _headers(client, "100000000002", "hr12345")
+    creatable = client.get("/api/requests/types", headers=hr,
+                           params={"creatable_only": True})
+    assert creatable.status_code == 200, creatable.text
+    codes = {t["code"] for t in creatable.json()}
+
+    internal = {c for c, i in V.LEGACY_REQUEST_ALIASES.items()
+                if i.get("internal_action")}
+    leaked = codes & internal
+    assert not leaked, f"إجراءات داخلية ما زالت في كتالوج الإنشاء: {sorted(leaked)}"
+
+    # والكتالوج الكامل يبقى شامًلا لها — الطلبات التاريخية تُقرأ
+    full = {t["code"] for t in client.get("/api/requests/types", headers=hr).json()}
+    assert internal & full, "الكتالوج الكامل أخفى الإجراءات الداخلية أيًضا"

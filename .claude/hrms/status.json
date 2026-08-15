@@ -1,8 +1,8 @@
 {
   "AC-01": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fail",
+    "note": "الموظف يرى 25 لا 15-18 — يتبع STR-04",
+    "updated": "2026-08-15"
   },
   "AC-02": {
     "status": "pending",
@@ -20,9 +20,9 @@
     "updated": ""
   },
   "AC-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fail",
+    "note": "AP-05 نظيف لكن AC-05 يحتاج Break-glass موثق — غير منفَّذ",
+    "updated": "2026-08-15"
   },
   "AC-06": {
     "status": "pending",
@@ -60,9 +60,9 @@
     "updated": ""
   },
   "AC-13": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "backend/tests/test_z_r8_r9.py::test_retest_audit_always_has_actor_and_ip — فاعل+IP لكل سجل",
+    "updated": "2026-08-15"
   },
   "AC-14": {
     "status": "pending",
@@ -75,9 +75,9 @@
     "updated": ""
   },
   "RW-01": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "tests/test_zz_rbac_matrix.py::test_rbac_stage_approval_is_not_transitive",
+    "updated": "2026-08-15"
   },
   "RW-02": {
     "status": "pending",
@@ -265,29 +265,29 @@
     "updated": ""
   },
   "STR-01": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "LAYOUTS=9 في v15_registry",
+    "updated": "2026-08-15"
   },
   "STR-02": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "OD=25 RPT=6 SYS=2 في v15_registry",
+    "updated": "2026-08-15"
   },
   "STR-03": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "pass",
+    "note": "كل كود PRN له alias — تحقّق: LEGACY_PRN_ALIASES=84 يغطي كل أكواد DEFAULT_TEMPLATES (0 بلا alias)",
+    "updated": "2026-08-15"
   },
   "STR-04": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fail",
+    "note": "الكتالوج القابل للإنشاء 47 لا 29. أُنجز: تصنيف كل الـ54 (49 canonical + 5 إجراء داخلي) واستبعاد الداخلية. المتبقي: دمج الأنواع الفرعية في نوع واحد لكل مسار عبر meta.subtype_field",
+    "updated": "2026-08-15"
   },
   "STR-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fail",
+    "note": "AP-03 رصد حدوًدا داخل الكود — policy_rule غير موجود",
+    "updated": "2026-08-15"
   },
   "STR-06": {
     "status": "pending",
