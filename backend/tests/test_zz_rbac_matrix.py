@@ -2056,3 +2056,67 @@ def test_wf09_effect_is_applied_once_only(client):
     finally:
         db.rollback()
         db.close()
+
+
+def test_access_no_shared_default_password(client):
+    """كل كلمة مؤقّتة عشوائية ومختلفة — لا كلمة موحّدة لكل الحسابات.
+
+    ROOT CAUSE: ``settings.default_user_password`` كانت قيمة ثابتة مكتوبة في
+    المستودع (Kuwait@2024) تُستخدم عند إنشاء أي مستخدم وعند كل إعادة تعيين.
+    فمن يعرف قيمة واحدة يدخل بأي حساب أُنشئ أو أُعيد تعيينه ولم يغيّر صاحبه
+    كلمته بعد — وهي معروفة لكل من رأى الكود.
+
+    الاختبار يقيس ما يهمّ فعًلا: **هل تعمل الكلمة الموحّدة؟** لا "هل الثابت
+    موجود؟" — الأول واقع والثاني تفصيل تنفيذي.
+    """
+    from app import models
+    from app.config import settings
+    from app.database import SessionLocal
+    from app.security import generate_temp_password, verify_password
+    from sqlalchemy import select
+
+    admin = _headers(client, "000000000000", "admin123")
+
+    # 1) إنشاء حسابين بلا كلمة صريحة ⇒ كلمتان مختلفتان تُعرضان مرة واحدة
+    made = []
+    for i in (1, 2):
+        r = client.post("/api/users", headers=admin, json={
+            "civil_id": f"29900000{i:04d}", "full_name": f"حساب اختبار {i}",
+            "role": "company_owner", "company_id": 1,
+        })
+        assert r.status_code == 201, r.text
+        pw = r.json().get("temporary_password")
+        assert pw, "أُنشئ حساب بلا كلمة تُعرض لمنشئه — لا سبيل لاستخراجها لاحًقا"
+        made.append((r.json()["id"], pw))
+
+    assert made[0][1] != made[1][1], "حسابان بنفس الكلمة المؤقّتة"
+
+    # 2) الكلمة الموحّدة القديمة لا تفتح أًيا منهما
+    shared = getattr(settings, "default_user_password", "Kuwait@2024")
+    db = SessionLocal()
+    try:
+        for uid, pw in made:
+            u = db.get(models.User, uid)
+            assert verify_password(pw, u.password_hash), "الكلمة المعروضة لا تعمل"
+            assert not verify_password(shared, u.password_hash), \
+                "الكلمة الموحّدة ما زالت تفتح الحساب"
+            assert u.must_change_password, "الحساب لا يُلزم بتغيير الكلمة"
+    finally:
+        db.close()
+
+    # 3) إعادة التعيين تعطي كلمة جديدة مختلفة عن السابقة وعن كلمة غيره
+    uid, old_pw = made[0]
+    r = client.post("/api/auth/reset-password", headers=admin, json={"user_id": uid})
+    assert r.status_code == 200, r.text
+    new_pw = r.json()["temporary_password"]
+    assert new_pw and new_pw != old_pw, "إعادة التعيين أعادت نفس الكلمة"
+    assert new_pw != made[1][1]
+
+    r2 = client.post("/api/auth/reset-password", headers=admin, json={"user_id": uid})
+    assert r2.json()["temporary_password"] != new_pw, "إعادتان متتاليتان بنفس الكلمة"
+
+    # 4) المولّد نفسه لا يكرّر ويستوفي التنوّع
+    batch = {generate_temp_password() for _ in range(200)}
+    assert len(batch) == 200, "المولّد كرّر قيمة"
+    for pw in list(batch)[:20]:
+        assert len(pw) >= 12 and any(c.isdigit() for c in pw) and any(c.isupper() for c in pw)

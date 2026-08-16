@@ -29,8 +29,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
 
-    # كلمة المرور الافتراضية لأول دخول
-    default_user_password: str = "Kuwait@2024"
+    # لا كلمة مرور افتراضية. كانت هنا قيمة ثابتة تُمنح لكل حساب يُنشأ وكل
+    # حساب تُعاد كلمته؛ فمن يعرفها — وهي في المستودع — يدخل بأي منها.
+    # البديل: security.generate_temp_password() يولّد واحدة لكل شخص وكل مرة.
 
     # المجدول
     scheduler_enabled: bool = True

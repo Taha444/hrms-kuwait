@@ -31,7 +31,9 @@ log = logging.getLogger("hrms.seed_guard")
 def _seed_passwords() -> set[str]:
     from .seed import PW
 
-    return {*PW.values(), "admin123", "owner123"}
+    # "Kuwait@2024" كانت الافتراضية الموحّدة قبل إلغائها — قاعدة أُنشئت
+    # قبل ذلك قد تحمل حسابات ما زالت تقبلها.
+    return {*PW.values(), "admin123", "owner123", "Kuwait@2024"}
 
 
 def find_seed_accounts(db: Session) -> list[dict]:

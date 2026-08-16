@@ -8,6 +8,7 @@
 import hashlib
 import hmac
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -16,6 +17,31 @@ from .config import settings
 
 _PBKDF2_ROUNDS = 240_000
 _ALGO = "sha256"
+
+# حروف وأرقام بلا الملتبس منها: 0/O و1/l/I. الكلمة المؤقّتة تُقرأ من شاشة
+# وتُكتب بيد، وحرف ملتبس واحد يعني محاولة فاشلة تُقرّب الحساب من القفل.
+_PW_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+_PW_SYMBOLS = "!@#$%&*"
+
+
+def generate_temp_password(length: int = 12) -> str:
+    """كلمة مرور مؤقّتة عشوائية — مختلفة لكل شخص وكل مرة.
+
+    البديل الذي كان قائًما كلمة واحدة ثابتة في الإعدادات لكل مستخدم يُنشأ أو
+    تُعاد كلمته: من يعرفها يدخل بأي حساب لم يغيّرها صاحبه بعد، وهي مكتوبة في
+    المستودع فيعرفها كل من رأى الكود. العشوائية هنا ليست تحسيًنا بل شرط
+    أن تعني "كلمة مرور مؤقّتة" شيًئا.
+
+    ``secrets`` لا ``random``: الثاني مولّد قابل للتنبّؤ بمعرفة حالته.
+    """
+    pool = _PW_ALPHABET + _PW_SYMBOLS
+    while True:
+        pw = "".join(secrets.choice(pool) for _ in range(length))
+        # نضمن التنوّع صراحة بدل الاتّكال على الاحتمال — سياسات التعقيد
+        # ترفض كلمة خلت مصادفًة من رقم أو رمز.
+        if (any(c.isdigit() for c in pw) and any(c.islower() for c in pw)
+                and any(c.isupper() for c in pw) and any(c in _PW_SYMBOLS for c in pw)):
+            return pw
 
 
 def hash_password(password: str) -> str:

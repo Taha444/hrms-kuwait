@@ -123,6 +123,9 @@ class UserOut(BaseModel):
     scope_level: str = "company"
     scope_branch_id: int | None = None
     must_change_password: bool
+    # تُملأ مرة واحدة فقط في استجابة الإنشاء حين تُولَّد الكلمة تلقائًيا.
+    # لا تُقرأ من العمود — لا عمود لها: المحفوظ بصمة لا كلمة.
+    temporary_password: str | None = None
 
 
 class PermissionAssignIn(BaseModel):

@@ -23,6 +23,11 @@ export default function Users() {
   const [mxCatalog, setMxCatalog] = useState<any>({ pages: [], actions_ar: {} });
   const [matrix, setMatrix] = useState<any>(null); // {matrix, custom_pages}
   const [msg, setMsg] = useState("");
+  // الكلمة المؤقّتة تُعرض في نافذة عند موضع الزر لا في شريط أعلى الصفحة:
+  // الزر داخل صف في جدول طويل، والشريط يظهر خارج الشاشة فيبدو أن شيًئا
+  // لم يحدث. ونافذة تُغلق بقصد تمنع بقاء كلمة مرور معروضة على شاشة مهجورة.
+  const [pwInfo, setPwInfo] = useState<{ name: string; pw: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const [err, setErr] = useState("");
 
   const [branches, setBranches] = useState<any[]>([]);
@@ -62,13 +67,27 @@ export default function Users() {
 
   const create = async () => {
     setErr("");
-    try { await api.post("/users", form); setShowNew(false); load(); }
+    try {
+      const r = await api.post("/users", form);
+      setShowNew(false); load();
+      if (r.data?.temporary_password) {
+        setCopied(false);
+        setPwInfo({ name: r.data.full_name || form.civil_id, pw: r.data.temporary_password });
+      }
+    }
     catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
   const toggle = async (id: number) => { await api.post(`/users/${id}/toggle`); load(); };
-  const reset = async (id: number) => {
-    const r = await api.post("/auth/reset-password", { user_id: id });
-    setMsg(t("user_temp_pw", { pw: r.data.temporary_password }));
+  const reset = async (id: number, name: string) => {
+    setErr("");
+    try {
+      const r = await api.post("/auth/reset-password", { user_id: id });
+      setCopied(false);
+      setPwInfo({ name: r.data.full_name || name, pw: r.data.temporary_password });
+    } catch (e: any) {
+      // بلا هذا، فشل إعادة التعيين كان يمرّ بلا أي أثر على الشاشة
+      setErr(errMsg(e, t("error")));
+    }
   };
   const openPerms = async (u: any) => {
     setSel(u);
@@ -180,7 +199,7 @@ export default function Users() {
               </td>
               <td className="row">
                 <button className="ghost sm" onClick={() => openPerms(u)}>{t("user_perms")}</button>
-                <button className="ghost sm" onClick={() => reset(u.id)}>{t("user_password")}</button>
+                <button className="ghost sm" onClick={() => reset(u.id, u.full_name)}>{t("user_password")}</button>
                 {me?.role === "super_admin" && u.role !== "super_admin" && (
                   <button className="ghost sm" onClick={() => impersonate(u.id)}>{t("user_impersonate")}</button>
                 )}
@@ -289,6 +308,37 @@ export default function Users() {
                 </label>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {pwInfo && (
+        <div role="dialog" aria-modal="true"
+             style={{ position: "fixed", inset: 0, background: "rgba(11,59,84,0.5)",
+                     display: "grid", placeItems: "center", zIndex: 1500, padding: 20 }}>
+          <div style={{ background: "white", borderRadius: 12, padding: 24,
+                       maxWidth: 440, width: "100%" }}>
+            <h3 style={{ marginTop: 0 }}>{t("pw_once_title")}</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {t("pw_once_for", { name: pwInfo.name })}
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0" }}>
+              <code style={{ flex: 1, fontSize: 20, letterSpacing: 1, padding: "12px 14px",
+                            background: "var(--bg, #f4f6f8)", borderRadius: 8,
+                            direction: "ltr", textAlign: "center", userSelect: "all" }}>
+                {pwInfo.pw}
+              </code>
+              <button className="ghost" onClick={() => {
+                navigator.clipboard?.writeText(pwInfo.pw).then(() => setCopied(true),
+                                                               () => setCopied(false));
+              }}>{copied ? t("copied") : t("copy")}</button>
+            </div>
+            <div className="warn" style={{ fontSize: 13 }}>{t("pw_once_warning")}</div>
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => { setPwInfo(null); setCopied(false); }}>
+                {t("pw_once_saved")}
+              </button>
+            </div>
           </div>
         </div>
       )}

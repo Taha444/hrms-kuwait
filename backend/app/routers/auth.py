@@ -318,7 +318,10 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if actor.id != target.id and not can_manage_role(actor.role, target.role):
         raise HTTPException(status_code=403, detail="لا يمكنك إدارة مستخدم بهذا المستوى")
-    new_pw = data.new_password or settings.default_user_password
+    # ACCESS — كلمة مؤقّتة عشوائية لكل شخص، لا كلمة موحّدة من الإعدادات.
+    # الموحّدة كانت تعني أن معرفة قيمة واحدة تفتح كل حساب أُعيد تعيينه.
+    from ..security import generate_temp_password
+    new_pw = data.new_password or generate_temp_password()
     target.password_hash = hash_password(new_pw)
     target.must_change_password = True
     target.failed_attempts = 0
@@ -327,4 +330,7 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
     target.tokens_valid_after = datetime.now(timezone.utc)
     audit(db, actor, "reset_password", "user", target.id, request=request, company_id=target.company_id)
     db.commit()
-    return {"ok": True, "message": "تمت إعادة تعيين كلمة المرور", "temporary_password": new_pw}
+    # تُعاد مرة واحدة فقط — لا تُخزَّن ولا تُسترجَع لاحًقا، فالمحفوظ بصمتها.
+    return {"ok": True, "message": "تمت إعادة تعيين كلمة المرور",
+            "temporary_password": new_pw, "shown_once": True,
+            "user_id": target.id, "full_name": target.full_name}

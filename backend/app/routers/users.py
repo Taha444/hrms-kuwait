@@ -114,7 +114,10 @@ def create_user(data: schemas.UserIn, request: Request,
                 detail=f"هذا الموظف مربوط بحساب موجود بالفعل (المستخدم #{existing_link.id})",
             )
 
-    pw = data.password or settings.default_user_password
+    # ACCESS — كل حساب يُنشأ بكلمة مؤقّتة خاصّة به، تُعرض لمنشئه مرة واحدة.
+    from ..security import generate_temp_password
+    pw = data.password or generate_temp_password()
+    pw_generated = not data.password
     new_user = models.User(
         civil_id=data.civil_id, full_name=data.full_name, role=data.role,
         company_id=company_id, email=data.email, phone=data.phone,
@@ -126,7 +129,12 @@ def create_user(data: schemas.UserIn, request: Request,
     audit(db, user, "create_user", "user", new_user.id, request=request)
     db.commit()
     db.refresh(new_user)
-    return new_user
+    # الكلمة المولَّدة تُعرض لمنشئ الحساب مرة واحدة هنا. بدونها يُنشأ حساب
+    # لا يعرف أحد كلمته — ولا سبيل لاستخراجها لاحًقا لأن المحفوظ بصمتها.
+    out = schemas.UserOut.model_validate(new_user)
+    if pw_generated:
+        out.temporary_password = pw
+    return out
 
 
 @router.get("/orphaned")
