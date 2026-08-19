@@ -9,9 +9,26 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      /* بصمة Operon — تُحمَّل من سكربت خارجي يضع نفسه بـz-index أقصى
+         (2147483000)، فكانت ستطفو فوق كل نافذة حوار في النظام ونوافذ
+         الجولة التعليمية. نخفضها هنا تحت أدنى طبقة تفاعلية (999) فتبقى
+         ظاهرة على الصفحة ولا تعترض شيًئا فوقها.
+         وتُخفى عند الطباعة: المستندات الرسمية تُطبع من المتصفح. */
+      #operon-signature { z-index: 900 !important; }
+      @media print { #operon-signature { display: none !important; } }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- أسفل-اليمين: أسفل-اليسار مشغول بإشعار تحديث الـPWA
+         (insetInlineEnd في واجهة RTL). الذهب من لوحة الهوية لا البنفسجي
+         الافتراضي، فتبدو البصمة جزًءا من التصميم لا ملصًقا عليه. -->
+    <script src="/operon-signature.min.js" defer
+            data-position="bottom-right"
+            data-accent="#c9a227"
+            data-offset="16"
+            data-theme="auto"></script>
   </body>
 </html>
