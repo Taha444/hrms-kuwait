@@ -38,10 +38,15 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
     )).all()
     leaves = db.scalars(select(models.Leave).where(
         models.Leave.employee_id == emp.id).order_by(models.Leave.start_date.desc())).all()
+    # الأدوار المعفاة من الإنذار لا تُستعلَم أصًلا: بند الإنذارات يُخفى من
+    # ملفها، وسحب صفوف لن تُعرض عمل بلا غاية. المصدر واحد
+    # (permissions.may_receive_warning) يحكم المنع والإخفاء مًعا.
+    from ..permissions import may_receive_warning
+    warnable = may_receive_warning(user.role)
     warnings = db.scalars(select(models.EmployeeEvent).where(
         models.EmployeeEvent.employee_id == emp.id,
         models.EmployeeEvent.kind == "warning",
-    ).order_by(models.EmployeeEvent.created_at.desc())).all()
+    ).order_by(models.EmployeeEvent.created_at.desc())).all() if warnable else []
     _doc_type_names = {r.code: r.name for r in db.scalars(select(models.DocumentType)).all()}
     # P0-#14 — Leave Privacy: الموظف لا يرى start_date/end_date/days في My Profile.
     # HR والإدارة يرون كل شيء (لكن هذا endpoint خاص بـMy Profile فقط — الموظف نفسه).
@@ -59,6 +64,9 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
                    for l in leaves],
         "warnings": [{"id": w.id, "title": w.title, "detail": w.detail,
                       "date": (w.date or w.created_at.date())} for w in warnings],
+        # الواجهة تُخفي البند بناًء على هذا العلَم لا على قائمة أدوار مكرّرة
+        # عندها — ففحص واحد يحكم الخادم والشاشة.
+        "may_receive_warning": warnable,
     }
 
 

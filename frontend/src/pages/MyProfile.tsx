@@ -200,6 +200,7 @@ export default function MyProfile() {
         </div>
       </div>
 
+      {p.may_receive_warning !== false && (
       <div className="card" style={{ borderTop: "3px solid var(--warning)" }}>
         <h3>{t("my_warnings")}</h3>
         {p.warnings.map((w: any) => (
@@ -211,6 +212,7 @@ export default function MyProfile() {
         ))}
         {!p.warnings.length && <div className="muted">{t("my_no_warnings")}</div>}
       </div>
+      )}
     </div>
   );
 }

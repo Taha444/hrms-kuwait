@@ -134,7 +134,10 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         # QA §6: مرحلة "Authorized Approval" في إنهاء الخدمة — جهة ثالثة
                         # غير من حسب التسوية (المالية) وغير من فتح الحالة (HR).
                         "approve_termination",
-                        "manage_users", "submit_request"},
+                        # المدير يعتمد الطلبات ولا يرفعها — قرار تنظيمي:
+                        # سلطة الاعتماد وسلطة الطلب لا تجتمعان في يد واحدة.
+                        # طلباته الشخصية تُرفع نيابًة عنه من الشؤون القانونية.
+                        "manage_users"},
     # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
     # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
     # approve_request إلزامي (P0-01): المحاسب معتمِد فعلي في مراحل كثيرة (السلف/القروض
@@ -301,6 +304,17 @@ def can_manage_role(actor_role: str, target_role: str) -> bool:
     if actor_role == "super_admin":
         return True
     return role_level(actor_role) > role_level(target_role)
+
+
+#: أدوار لا تُوجَّه إليها إنذارات وظيفية. الإنذار أداة انضباط يوجّهها صاحب
+#: السلطة إلى من تحته؛ وتوجيهه إلى المدير يقلب التسلسل — ويجعل الشؤون
+#: القانونية، وهي تحت إدارته، طرًفا يؤدّبه.
+WARNING_EXEMPT_ROLES = {"company_manager", "company_owner", "super_admin"}
+
+
+def may_receive_warning(role: str) -> bool:
+    """هل يجوز توجيه إنذار لصاحب هذا الدور؟"""
+    return role not in WARNING_EXEMPT_ROLES
 
 
 def effective_permissions(role: str, assigned: set[str]) -> set[str]:

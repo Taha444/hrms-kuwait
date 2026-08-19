@@ -150,6 +150,11 @@ def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_emp
                   "contract_type", "contract_start_date", "contract_end_date"):
             if k in out:
                 out[k] = None
+    # هل يجوز توجيه إنذار لهذا الموظف؟ الواجهة تُخفي بند الإنذارات بناًء عليه،
+    # فلا تحمل نسخة ثانية من قائمة الأدوار المعفاة تنحرف عن قاعدة الخادم.
+    from ..permissions import may_receive_warning
+    holder = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+    out["may_receive_warning"] = may_receive_warning(holder.role) if holder else True
     return out
 
 
@@ -522,6 +527,15 @@ def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
     if kind not in EVENT_KINDS:
         raise HTTPException(status_code=400, detail="نوع حدث غير صالح")
     emp = _get_emp(db, user, emp_id)
+    # الإنذار لا يُوجَّه لمن هو فوق الشؤون القانونية في التسلسل. الفحص هنا على
+    # الخادم لا في الواجهة: إخفاء الزر لا يمنع طلًبا مباشًرا على المسار.
+    if kind in ("warning", "penalty"):
+        from ..permissions import may_receive_warning
+        holder = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+        if holder and not may_receive_warning(holder.role):
+            raise HTTPException(
+                status_code=403,
+                detail="لا يجوز توجيه إنذار أو جزاء لصاحب هذا الدور")
     ev = models.EmployeeEvent(company_id=emp.company_id, employee_id=emp.id, kind=kind,
                               title=title, detail=detail, amount=amount,
                               date=date_val or date.today(), created_by=user.id)

@@ -345,6 +345,16 @@ def submit_request(data: schemas.RequestIn, request: Request,
                    "الخاصة فقط."
         )
 
+    # الإنذار طلب يُوجَّه لموظف بعينه — ونفس قاعدة الإعفاء تحكمه هنا وفي
+    # تسجيل الحدث المباشر: permissions.may_receive_warning هو المصدر الواحد،
+    # فلا يُسدّ باب ويُترك الآخر.
+    if data.request_type_code in ("ADMWARN", "ADMVIO"):
+        holder = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+        if holder and not permissions.may_receive_warning(holder.role):
+            raise HTTPException(
+                status_code=403,
+                detail="لا يجوز توجيه إنذار أو جزاء لصاحب هذا الدور")
+
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")

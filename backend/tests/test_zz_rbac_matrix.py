@@ -2120,3 +2120,86 @@ def test_access_no_shared_default_password(client):
     assert len(batch) == 200, "المولّد كرّر قيمة"
     for pw in list(batch)[:20]:
         assert len(pw) >= 12 and any(c.isdigit() for c in pw) and any(c.isupper() for c in pw)
+
+
+def test_manager_approves_but_does_not_submit(client):
+    """المدير يعتمد الطلبات ولا يرفعها.
+
+    قرار تنظيمي: سلطة الاعتماد وسلطة الطلب لا تجتمعان في يد واحدة. المنع على
+    الخادم لا في الواجهة — إخفاء الزر لا يمنع POST مباًشرا على المسار.
+    """
+    mgr = _headers(client, "100000000001", "manager123")
+
+    me = client.get("/api/auth/me", headers=mgr).json()
+    assert "submit_request" not in me["permissions"], "المدير ما زال يملك رفع الطلبات"
+    # وسلطته كمعتمِد باقية — المنع عن الرفع لا عن الاعتماد
+    assert any(p.startswith("approve_") for p in me["permissions"])
+
+    r = _submit_leave(client, mgr)
+    assert r.status_code == 403, f"المدير رفع طلًبا: {r.status_code} {r.text[:160]}"
+
+
+def test_manager_is_not_a_warning_target(client):
+    """لا إنذار ولا جزاء يُوجَّه للمدير — لا عبر الحدث المباشر ولا عبر الطلب.
+
+    الإنذار أداة انضباط يوجّهها صاحب السلطة إلى من تحته؛ وتوجيهه للمدير يقلب
+    التسلسل، ويجعل الشؤون القانونية — وهي تحت إدارته — طرًفا يؤدّبه.
+
+    البابان يُفحصان لأن سدّ أحدهما وترك الآخر هو نفسه العطل: قاعدة واحدة
+    مكتوبة في مكانين تنحرف حتًما.
+    """
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    hr = _headers(client, "100000000002", "hr12345")
+
+    db = SessionLocal()
+    try:
+        mgr_user = db.scalar(select(models.User).where(
+            models.User.role == "company_manager", models.User.company_id == 1))
+        assert mgr_user and mgr_user.employee_id, "المدير غير مربوط بسجل موظف"
+        mgr_emp_id = mgr_user.employee_id
+        emp_user = db.scalar(select(models.User).where(
+            models.User.role == "employee", models.User.company_id == 1))
+        emp_id = emp_user.employee_id
+    finally:
+        db.close()
+
+    # 1) الحدث المباشر مرفوض للمدير ومقبول للموظف العادي
+    blocked = client.post(f"/api/employees/{mgr_emp_id}/events", headers=hr,
+                          params={"kind": "warning", "title": "اختبار"})
+    assert blocked.status_code == 403, f"وُجّه إنذار للمدير: {blocked.status_code}"
+
+    allowed = client.post(f"/api/employees/{emp_id}/events", headers=hr,
+                          params={"kind": "warning", "title": "اختبار"})
+    assert allowed.status_code == 200, f"تعذّر إنذار موظف عادي: {allowed.text[:160]}"
+
+    # الجزاء مثله — القاعدة على النوعين لا على "warning" وحدها
+    pen = client.post(f"/api/employees/{mgr_emp_id}/events", headers=hr,
+                      params={"kind": "penalty", "title": "اختبار"})
+    assert pen.status_code == 403, "وُجّع جزاء للمدير"
+
+    # والمكافأة تمرّ — الإعفاء من الانضباط لا من كل حدث
+    bonus = client.post(f"/api/employees/{mgr_emp_id}/events", headers=hr,
+                        params={"kind": "bonus", "title": "مكافأة"})
+    assert bonus.status_code == 200, f"مُنعت مكافأة المدير: {bonus.text[:160]}"
+
+    # 2) الباب الثاني: طلب ADMWARN باسم المدير
+    req = client.post("/api/requests", headers=hr, json={
+        "request_type_code": "ADMWARN", "employee_id": mgr_emp_id,
+        "payload_json": {"subject": "اختبار", "details": "اختبار"},
+    })
+    assert req.status_code == 403, f"أُنشئ طلب إنذار للمدير: {req.status_code}"
+
+    # 3) بند الإنذارات مخفيّ من ملفه، وظاهر لغيره
+    prof = client.get(f"/api/employees/{mgr_emp_id}", headers=hr)
+    assert prof.status_code == 200 and prof.json()["may_receive_warning"] is False
+    other = client.get(f"/api/employees/{emp_id}", headers=hr)
+    assert other.json()["may_receive_warning"] is True
+
+    # 4) وفي خدمته الذاتية أيًضا
+    mgr = _headers(client, "100000000001", "manager123")
+    my = client.get("/api/me/profile", headers=mgr)
+    assert my.status_code == 200 and my.json()["may_receive_warning"] is False
+    assert my.json()["warnings"] == []

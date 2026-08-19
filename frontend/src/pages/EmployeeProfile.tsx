@@ -243,9 +243,12 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const allowedTabs: Set<string> = Array.isArray(p.allowed_tabs)
     ? new Set<string>(p.allowed_tabs)
     : ALLOWED_BY_SCOPE[scope] || ALLOWED_BY_SCOPE.full;
-  const TABS = ALL_TABS.filter(([k]) => allowedTabs.has(k));
+  // بند الإنذارات يختفي لمن لا يجوز إنذاره (المدير ومن فوقه). العلَم يأتي من
+  // الخادم — نفس الفحص الذي يرفض الإنشاء — فلا تحمل الواجهة قائمة أدوار ثانية.
+  const warnable = p.may_receive_warning !== false;
+  const TABS = ALL_TABS.filter(([k]) => allowedTabs.has(k) && (k !== "warnings" || warnable));
   // لو التبويب النشط ما يظهرش لهذا الدور — نلقائيًا نروح لأول تبويب مسموح
-  if (tab && !allowedTabs.has(tab) && TABS[0]) {
+  if (tab && !TABS.some(([k]) => k === tab) && TABS[0]) {
     setTimeout(() => setTab(TABS[0][0]), 0);
   }
 

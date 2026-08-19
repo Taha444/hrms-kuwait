@@ -732,29 +732,22 @@ def test_v22_health_deep_returns_all_checks(client):
 
 
 def test_v22_self_approval_on_own_leave_rejected(client):
-    """المدير الذي يعتمد إجازته لنفسه — مرفوض بسبب ملكية الملف."""
+    """المدير لا يصل أصًلا إلى اعتماد إجازته — يُمنع عند الرفع.
+
+    كان هذا الاختبار يقيس حارس الاعتماد الذاتي على المدير، ثم صار المدير لا
+    يرفع طلًبا أساًسا (يعتمد فقط)، فأخذ يتخطّى نفسه برسالة عن employee_id لا
+    علاقة لها بالسبب — وتخطٍّ بسبب خاطئ أسوأ من فشل صريح: يبدو تغطية وهو فراغ.
+
+    فصار يقيس القاعدة السارية: المنع يقع عند الباب الأول. وحارس الاعتماد
+    الذاتي نفسه مغّطى لكل الأدوار في test_ac06_no_self_approval (أربعة فحوص).
+    """
     mgr = auth_headers(login(client, "100000000001", "manager123"))
-    # المدير يقدّم طلب إجازة يخصّ ملفه (لو كان له employee_id)
     r = client.post("/api/requests", headers=mgr, json={
         "request_type_code": "leave",
         "payload_json": {"start_date": "2027-06-01", "end_date": "2027-06-03",
                          "days": 3, "reason": "شخصي", "leave_type": "annual"},
     })
-    if r.status_code != 201:
-        # لو المدير ليس له employee_id فلا يستطيع تقديم أصلًا — نتخطّى بلطف
-        import pytest
-        pytest.skip("المدير لا يملك employee_id في بيانات الديمو")
-    rid = r.json()["id"]
-    # يحاول اعتماد طلبه بنفسه
-    dec = client.post(f"/api/requests/{rid}/decide", headers=mgr,
-                     json={"decision": "approved"})
-    assert dec.status_code == 403
-    # سببان مقبولان، وكلاهما يمنع الاعتماد الذاتي:
-    #  - "ملفك الشخصي": حارس الاعتماد الذاتي
-    #  - "لست المعتمِد": بعد إزالة التجاوز الإداري (QA-01) لم يعد المدير معتمًِدا
-    #    ضمنًيا لكل مرحلة، فيُرفض أبكر
-    detail = dec.json()["detail"]
-    assert ("ملفك الشخصي" in detail) or ("لست المعتمِد" in detail), detail
+    assert r.status_code == 403, f"المدير رفع طلًبا لنفسه: {r.status_code}"
 
 
 def test_P0_7_adjustment_requires_reason_and_lock(client):
