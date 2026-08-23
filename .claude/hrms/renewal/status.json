@@ -20,9 +20,9 @@
     "updated": ""
   },
   "RNW-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "REQUIRED_CONTRACT_DOCS = (DOC_CONTRACT_GOV,) والتوليد يُنتج العقد الحكومي وحده — لا عقد شركة يُولَّد في التجديد. الدليل: test_rnw05_08_10_11_contract_chain",
+    "updated": "2026-08-24"
   },
   "RNW-06": {
     "status": "done",
@@ -35,9 +35,9 @@
     "updated": "2026-08-24"
   },
   "RNW-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "Document.source_document_id (ترحيل p5h6i7j8k9l، مُتحقَّق على قاعدة نظيفة وقابل لإعادة التشغيل): الموقّعة تشير للمولّدة السارية وقت التوقيع، والنهائية تشير للموقّعة — سلسلة إثبات كاملة. فحص طفري: بقطع الربط يفشل. الدليل: test_rnw05_08_10_11_contract_chain",
+    "updated": "2026-08-24"
   },
   "RNW-09": {
     "status": "done",
@@ -45,14 +45,14 @@
     "updated": "2026-08-24"
   },
   "RNW-10": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "المندوب يُخطَر عند CONTRACTS_SIGNED وينزّل نسخة الموظف عبر /renewals/{id}/document/renewal_signed_gov (200). الدليل: test_rnw05_08_10_11_contract_chain",
+    "updated": "2026-08-24"
   },
   "RNW-11": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "حالة renewing + finalize يسجّل gov_reference_no والرسوم والإيصال ورقم الإقامة الجديد وتاريخه، ويعيدها في الاستجابة. الدليل: test_rnw05_08_10_11_contract_chain",
+    "updated": "2026-08-24"
   },
   "RNW-12": {
     "status": "open",

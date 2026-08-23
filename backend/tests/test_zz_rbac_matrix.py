@@ -2408,3 +2408,119 @@ def test_rnw06_generation_refuses_incomplete_employee(client):
         db.close()
     ok = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
     assert ok.status_code == 200, f"رُفض التوليد بعد اكتمال البيانات: {ok.text[:200]}"
+
+
+def test_rnw05_08_10_11_contract_chain(client):
+    """RNW-05/08/10/11 — سلسلة إثبات العقد من المولَّدة إلى ما قُدِّم للجهة.
+
+    ROOT CAUSE (RNW-08): النسخة الموقّعة كانت مرتبطة بالمعاملة فقط. لكن إعادة
+    التوليد تُنشئ إصداًرا جديًدا؛ فلو أعاد المندوب التوليد بعد إرسال العقد، لم
+    يعد أحد يعرف **أي نسخة وقّعها الموظف فعًلا** — وهو بالضبط السؤال الذي
+    يُطرح حين تعترض جهة رسمية على المستند، وحينها لا تنفع الذاكرة.
+
+    والاختبار يغطّي معه ثلاثة بنود كانت منفَّذة ولم تُقَس: أن التجديد يولّد
+    عقًدا حكومًيا فقط (RNW-05)، وأن المندوب ينزّل نسخة الموظف (RNW-10)،
+    وأن المرجع الحكومي والرسوم والإيصال تُسجَّل (RNW-11).
+    """
+    import io
+    from datetime import date, timedelta
+
+    from app import models, renewal as R
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    pro = _headers(client, "100000000003", "deleg123")
+
+    # RNW-05 — العقد المطلوب للانتقال هو الحكومي وحده، ولا عقد شركة يُولَّد
+    assert R.REQUIRED_CONTRACT_DOCS == (R.DOC_CONTRACT_GOV,), \
+        f"التجديد يطلب عقًدا غير الحكومي: {R.REQUIRED_CONTRACT_DOCS}"
+
+    db = SessionLocal()
+    try:
+        # قالب العقد مبذور في الترحيلات وحدها، وقاعدة الاختبار تُبنى بـcreate_all
+        # فلا تراه — وهو عيب تسليم حقيقي مسجَّل في FOUND_EXTRA.md لا تفصيل اختبار.
+        if not db.scalar(select(models.DocumentTemplate).where(
+                models.DocumentTemplate.code == "GOV-CONTRACT-RENEWAL")):
+            db.add(models.DocumentTemplate(
+                company_id=None, code="GOV-CONTRACT-RENEWAL", name="عقد حكومي",
+                body_html="<p>{{employee_name}} — {{civil_id}} — {{company_name}}</p>",
+                version=1, is_active=True))
+        emp = models.Employee(
+            company_id=1, name="موظف سلسلة العقد", civil_id="288010199999",
+            nationality="هندي", job_title="محاسب", status="active",
+            hire_date=date.today() - timedelta(days=500), basic_salary=500)
+        db.add(emp); db.flush()
+        db.add(models.Permit(company_id=1, employee_id=emp.id, kind="residency",
+                             status="active", number="RNW-CHAIN-01",
+                             expiry_date=date.today() + timedelta(days=20)))
+        db.commit()
+        emp_id = emp.id
+    finally:
+        db.close()
+
+    rid = client.post("/api/renewals", headers=pro,
+                      data={"employee_id": str(emp_id)}).json()["id"]
+
+    # العقد المولَّد ثم رفعه ثم توقيع الموظف
+    gen = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
+    assert gen.status_code == 200, gen.text[:200]
+
+    def _upload(kind, hdr):
+        return client.post(f"/api/renewals/{rid}/upload", headers=hdr,
+                           data={"doc_type": kind},
+                           files={"file": (f"{kind}.pdf", io.BytesIO(b"%PDF-1.4 x"), "application/pdf")})
+
+    assert _upload(R.DOC_CONTRACT_GOV, pro).status_code == 200
+    assert _upload(R.DOC_SIGNED_GOV, pro).status_code == 200
+
+    db = SessionLocal()
+    try:
+        generated = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee", models.Document.entity_id == emp_id,
+            models.Document.document_type_code == f"gov_contract_renewal_{rid}"))
+        signed = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rid,
+            models.Document.document_type_code == R.DOC_SIGNED_GOV))
+        assert generated and signed
+        # RNW-08 — الحلقة الأولى: الموقّعة تعرف أي نسخة وُقّعت
+        assert signed.source_document_id == generated.id, \
+            f"النسخة الموقّعة لا تشير إلى المولّدة: {signed.source_document_id}"
+    finally:
+        db.close()
+
+    # RNW-10 — المندوب ينزّل نسخة الموظف من داخل المعاملة
+    dl = client.get(f"/api/renewals/{rid}/document/{R.DOC_SIGNED_GOV}", headers=pro)
+    assert dl.status_code == 200, f"المندوب لا يستطيع تنزيل نسخة الموظف: {dl.status_code}"
+
+    # الحلقة الثانية: النهائية تشير إلى نسخة الموظف — وتُنزَّل أيًضا
+    assert _upload(R.DOC_CONTRACT_FINAL, pro).status_code == 200
+    dl_final = client.get(f"/api/renewals/{rid}/document/{R.DOC_CONTRACT_FINAL}", headers=pro)
+    assert dl_final.status_code == 200, "النسخة النهائية لا تُنزَّل"
+
+    db = SessionLocal()
+    try:
+        final = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rid,
+            models.Document.document_type_code == R.DOC_CONTRACT_FINAL))
+        signed = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rid,
+            models.Document.document_type_code == R.DOC_SIGNED_GOV))
+        assert final.source_document_id == signed.id, "النهائية لا تشير إلى نسخة الموظف"
+        # الثلاث محفوظة — النهائية لم تمسح ما قبلها
+        kept = db.scalars(select(models.Document.document_type_code).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rid)).all()
+        assert R.DOC_CONTRACT_GOV in kept and R.DOC_SIGNED_GOV in kept \
+            and R.DOC_CONTRACT_FINAL in kept, f"نسخة ضاعت: {kept}"
+    finally:
+        db.close()
+
+    # RNW-11 — المرجع الحكومي والرسوم والإيصال تُسجَّل
+    client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    fin = client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "MOI-2026-777", "fees_amount": "10.5",
+        "fees_receipt_no": "RCP-88", "new_permit_number": "RNW-CHAIN-02",
+        "new_expiry_date": (date.today() + timedelta(days=395)).isoformat()})
+    assert fin.status_code == 200, f"تعذّر تسجيل بيانات المعاملة الحكومية: {fin.text[:200]}"
+    body = fin.json()
+    assert body["gov_reference_no"] == "MOI-2026-777"
+    assert body["fees_receipt_no"] == "RCP-88"

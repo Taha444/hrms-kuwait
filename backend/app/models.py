@@ -504,6 +504,12 @@ class Document(Base):
     signature_version: Mapped[int | None] = mapped_column(Integer)
     # R8 §2 — Dynamic Custom Documents: يفعّل تنبيهات قبل الانتهاء لمستندات مخصّصة
     notify_on_expiry: Mapped[bool] = mapped_column(Boolean, default=False)
+    # RNW-08 — النسخة الموقّعة تشير إلى النسخة المولّدة التي وُقّعت بالضبط.
+    # الربط بالمعاملة وحدها لا يكفي: إعادة التوليد تُنشئ إصدارًا جديًدا، فلو
+    # أعاد المندوب التوليد بعد الإرسال لم يعد أحد يعرف أي نسخة وقّعها الموظف
+    # فعًلا — وهو سؤال يُطرح حين تعترض جهة رسمية على المستند.
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, index=True)
 
 
 class Task(Base):

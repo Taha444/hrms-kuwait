@@ -31,6 +31,20 @@ def _is_pro(user, perms):
             or has_permission(user.role, perms, "process_delegate_tasks"))
 
 
+def _generated_contract_doc(db, rn):
+    """النسخة المولّدة السارية من العقد الحكومي لهذه المعاملة.
+
+    تُستعمل لربط ما يوقّعه الموظف بما وُلّد له بالضبط — انظر RNW-08.
+    """
+    emp_id = rn.employee_id
+    return db.scalar(select(models.Document).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == emp_id,
+        models.Document.document_type_code == f"gov_contract_renewal_{rn.id}",
+        models.Document.is_current == True,  # noqa: E712
+    ))
+
+
 def _open_case_for_permit(db, permit_id: int):
     """المعاملة المفتوحة لهذه الإقامة إن وُجدت — المصدر الواحد للشرط.
 
@@ -53,7 +67,8 @@ def _get_renewal(db, user, rid) -> models.ResidencyRenewal:
 
 
 async def _save_doc(db, user, request, entity_type, entity_id, company_id,
-                    code, title, upload: UploadFile, expiry_date: date | None = None):
+                    code, title, upload: UploadFile, expiry_date: date | None = None,
+                    source_document_id: int | None = None):
     """يحفظ ملفًا كمستند بنُسخ (الأحدث is_current) — يُبقي القديم."""
     folder = os.path.join(settings.upload_dir, "renewals")
     fpath = unique_path(folder, upload.filename, prefix=f"{entity_type}_{entity_id}_{code}_")
@@ -68,7 +83,8 @@ async def _save_doc(db, user, request, entity_type, entity_id, company_id,
     doc = models.Document(company_id=company_id, entity_type=entity_type, entity_id=entity_id,
                           document_type_code=code, title=title, file_path=fpath,
                           mime=upload.content_type, expiry_date=expiry_date,
-                          version=ver, is_current=True, uploaded_by=user.id)
+                          version=ver, is_current=True, uploaded_by=user.id,
+                          source_document_id=source_document_id)
     db.add(doc)
     db.flush()  # حتى يراه فحص اكتمال المستندات مباشرةً
     audit(db, user, "renewal_upload", "renewal", entity_id, detail=code, request=request)
@@ -379,8 +395,11 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
             raise HTTPException(status_code=403, detail="خاص بالموظف صاحب الطلب")
         if rn.status != R.AWAITING_SIGNATURE:
             raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع الموقّع")
+        # RNW-08 — الربط بالنسخة المولّدة السارية وقت التوقيع، لا بالمعاملة وحدها
+        src = _generated_contract_doc(db, rn)
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
-                        "موقّع حكومي" if doc_kind == R.DOC_SIGNED_GOV else "موقّع داخلي", file)
+                        "موقّع حكومي" if doc_kind == R.DOC_SIGNED_GOV else "موقّع داخلي", file,
+                        source_document_id=(src.id if src else None))
         if all(_has(db, "renewal", rn.id, c) for c in R.REQUIRED_SIGNED_DOCS):
             rn.status = R.CONTRACTS_SIGNED
             _notify_stage(db, rn)
@@ -395,8 +414,15 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
             raise HTTPException(
                 status_code=409,
                 detail="النسخة النهائية تُرفع بعد رفع الموظف نسخته الموقّعة")
+        # النهائية تشير إلى نسخة الموظف: سلسلة إثبات كاملة من المولّدة إلى
+        # ما قُدّم للجهة الحكومية، كل حلقة تعرف سابقتها.
+        signed = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rn.id,
+            models.Document.document_type_code == R.DOC_SIGNED_GOV,
+            models.Document.is_current == True))  # noqa: E712
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
-                        "العقد النهائي — بتوقيع الطرفين", file)
+                        "العقد النهائي — بتوقيع الطرفين", file,
+                        source_document_id=(signed.id if signed else None))
 
     # المندوب يرفع إذن العمل الجديد (جاري التجديد → بانتظار البطاقة)
     elif doc_kind == R.DOC_WORK_PERMIT:
