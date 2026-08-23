@@ -387,6 +387,12 @@ export default function Renewals() {
                     )}
                   </>
                 )}
+                {/* RNW-09 — النسخة الثالثة: بتوقيع الطرفين. نسخة الموظف ليست
+                    النهائية، وهذه لا تمسحها — الثلاث تبقى قابلة للتنزيل. */}
+                {isPro && ["contracts_signed", "renewing"].includes(sel.status)
+                       && !hasDoc("renewal_contract_final") && (
+                  <UploadBtn docType="renewal_contract_final" label={t("rnw_upload_final")} />
+                )}
                 {/* المندوب: بدء التجديد */}
                 {isPro && sel.status === "contracts_signed" && (
                   <button onClick={setRenewing}>{t("rnw_set_renewing")}</button>

@@ -25,14 +25,14 @@
     "updated": ""
   },
   "RNW-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "GOV_CONTRACT_REQUIRED_FIELDS + حارس قبل التوليد يرفض 400 ويسمّي الحقل بالعربية. كان _fill_html يطبع '................' فيخرج عقد حكومي بمربّعات فارغة. الدليل: test_rnw06_generation_refuses_incomplete_employee (فحص طفري: بدون الحارس يمرّ 200)",
+    "updated": "2026-08-24"
   },
   "RNW-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "notify_from_template يُرجع Task لا رسالة، وقالب NTF-016 مبذور ومفعّل — العقد يصل حساب الموظف كمهمة تبقى مفتوحة حتى يُنجزها. الدليل: test_rnw07_employee_gets_a_real_task",
+    "updated": "2026-08-24"
   },
   "RNW-08": {
     "status": "open",
@@ -40,9 +40,9 @@
     "updated": ""
   },
   "RNW-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "DOC_CONTRACT_FINAL نسخة ثالثة متمايزة يرفعها المندوب بعد توقيع الطرفين، ولا تُغيّر الحالة ولا تمسح ما قبلها. ALL_CONTRACT_DOCS مجموعة واحدة تحكم التنزيل بدل جمع قائمتين يدوًيا. الدليل: test_rnw06_09_three_contract_versions",
+    "updated": "2026-08-24"
   },
   "RNW-10": {
     "status": "open",

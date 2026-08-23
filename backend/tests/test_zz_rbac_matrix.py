@@ -2280,3 +2280,131 @@ def test_rnw01_02_alert_becomes_case(client):
         assert n == 1, f"عدد المعاملات لهذه الإقامة {n}"
     finally:
         db.close()
+
+
+def test_rnw06_09_three_contract_versions(client):
+    """RNW-06/09 — ثلاث نسخ متمايزة للعقد، ولا توليد بحقل ناقص.
+
+    ROOT CAUSE (RNW-06): مالئ القوالب يستبدل أي حقل مفقود بـ"................"،
+    فيخرج **عقد حكومي بمربّعات فارغة** يوقّعه الموظف ويُقدَّم لجهة رسمية. الفشل
+    صامت: المستند يبدو سليًما ولا شيء يقول إن نصفه ناقص.
+
+    ROOT CAUSE (RNW-09): كان للعقد نسختان فقط — المولّدة وموقّعة الموظف. ونسخة
+    الموظف **ليست النهائية**: تنقصها توقيع صاحب الشركة. فلم يكن في النظام مكان
+    يحفظ ما قُدّم فعًلا للجهة الحكومية، ولا سبيل لإثباته لاحًقا.
+
+    الثلاث تبقى محفوظة: النهائية لا تمسح موقّعة الموظف، وموقّعة الموظف لا تمسح
+    المولّدة. دمجها في حقل واحد يفقد القدرة على الإثبات.
+    """
+    from app import renewal as R
+
+    # 1) النسخ الثلاث معرَّفة ومتمايزة
+    kinds = {R.DOC_CONTRACT_GOV, R.DOC_SIGNED_GOV, R.DOC_CONTRACT_FINAL}
+    assert len(kinds) == 3, "نسختان تحملان نفس الكود"
+    for k in kinds:
+        assert k in R.ALL_CONTRACT_DOCS, f"{k} خارج مجموعة نسخ العقد — لن تُنزَّل"
+
+    # 2) الحقول الإلزامية معلَنة بأسماء عربية تُعرض للمندوب
+    assert R.GOV_CONTRACT_REQUIRED_FIELDS, "لا حقول إلزامية معلَنة"
+    for key, label in R.GOV_CONTRACT_REQUIRED_FIELDS.items():
+        assert label and not label.isascii(), f"اسم الحقل {key} غير معرَّب"
+
+    # 3) الحارس يقيس ما يهمّ: قيمة فارغة أو فراغات تُعدّ ناقصة
+    for bad in ("", "   ", None):
+        ctx = {k: "قيمة" for k in R.GOV_CONTRACT_REQUIRED_FIELDS}
+        ctx["civil_id"] = bad
+        missing = [lbl for k, lbl in R.GOV_CONTRACT_REQUIRED_FIELDS.items()
+                   if not str(ctx.get(k) or "").strip()]
+        assert missing == ["الرقم المدني"], f"لم يُكتشف النقص عند {bad!r}: {missing}"
+
+
+def test_rnw07_employee_gets_a_real_task(client):
+    """RNW-07 — العقد يصل حساب الموظف كمهمة حقيقية لا كإشعار عابر.
+
+    الفارق ليس شكلًيا: الإشعار يُقرأ ويُنسى، والمهمة تبقى مفتوحة حتى يُنجزها
+    صاحبها — وهي الضمانة الوحيدة أن الموظف لن يتجاهل توقيع عقد إقامته حتى
+    تنتهي. ``notify_from_template`` يُرجع Task لا رسالة، وهذا ما يُقاس هنا.
+    """
+    import inspect
+
+    from app import notifications
+
+    sig = inspect.signature(notifications.notify_from_template)
+    assert "Task" in str(sig.return_annotation), \
+        f"إشعار المرحلة لا يُنشئ مهمة: {sig.return_annotation}"
+
+    # قالب توقيع العقد موجود ومفعّل — بدونه يسقط الإشعار بصمت
+    from app.database import SessionLocal
+    from app import models
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        tpl = db.scalar(select(models.NotificationTemplate).where(
+            models.NotificationTemplate.code == "NTF-016"))
+        assert tpl is not None, "قالب NTF-016 (توقيع عقد التجديد) غير مبذور"
+        assert tpl.is_active, "قالب NTF-016 معطّل — المهمة لن تصل الموظف"
+    finally:
+        db.close()
+
+
+def test_rnw06_generation_refuses_incomplete_employee(client):
+    """RNW-06 — التوليد يرفض ويسمّي الناقص، لا يطبع مربّعات فارغة.
+
+    اختبار من طرف إلى طرف عبر المسار الحقيقي: موظف بلا رقم مدني، ومعاملة
+    تجديد قائمة، ثم طلب توليد العقد. المطلوب رفض يذكر «الرقم المدني» بالاسم —
+    فالمندوب يعرف أين يذهب — لا مستند يبدو سليًما ونصفه نقاط.
+    """
+    from datetime import date, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    pro = _headers(client, "100000000003", "deleg123")
+
+    db = SessionLocal()
+    try:
+        # قالب العقد لازم للوصول إلى فحص الحقول — بدونه يُرفض بـ404 لسبب آخر
+        tpl = db.scalar(select(models.DocumentTemplate).where(
+            models.DocumentTemplate.code == "GOV-CONTRACT-RENEWAL"))
+        if not tpl:
+            db.add(models.DocumentTemplate(
+                company_id=None, code="GOV-CONTRACT-RENEWAL", name="عقد حكومي",
+                body_html="<p>{{employee_name}} — {{civil_id}}</p>",
+                version=1, is_active=True))
+
+        emp = models.Employee(
+            company_id=1, name="موظف ناقص البيانات", civil_id=None,
+            nationality="مصري", job_title="فني", status="active",
+            hire_date=date.today() - timedelta(days=400), basic_salary=400,
+        )
+        db.add(emp)
+        db.flush()
+        permit = models.Permit(
+            company_id=1, employee_id=emp.id, kind="residency", status="active",
+            number="RNW-INCOMPLETE", expiry_date=date.today() + timedelta(days=15))
+        db.add(permit)
+        db.commit()
+        emp_id, permit_id = emp.id, permit.id
+    finally:
+        db.close()
+
+    started = client.post("/api/renewals", headers=pro,
+                          data={"employee_id": str(emp_id), "permit_id": str(permit_id)})
+    assert started.status_code == 201, started.text
+    rid = started.json()["id"]
+
+    gen = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
+    assert gen.status_code == 400, f"وُلّد عقد ببيانات ناقصة: {gen.status_code}"
+    assert "الرقم المدني" in gen.text, f"الرفض لا يسمّي الحقل الناقص: {gen.text[:200]}"
+
+    # وبعد إكمال البيانات يمرّ — الحارس يمنع النقص لا التوليد نفسه
+    db = SessionLocal()
+    try:
+        db.get(models.Employee, emp_id).civil_id = "299010112345"
+        db.commit()
+    finally:
+        db.close()
+    ok = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
+    assert ok.status_code == 200, f"رُفض التوليد بعد اكتمال البيانات: {ok.text[:200]}"

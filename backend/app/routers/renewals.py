@@ -273,7 +273,7 @@ def download_renewal_document(rid: int, doc_type: str,
             and user.employee_id != rn.employee_id and user.role not in ("super_admin", "company_owner"):
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
 
-    if doc_type in R.CONTRACT_DOCS + R.SIGNED_DOCS:
+    if doc_type in R.ALL_CONTRACT_DOCS:
         entity_type, entity_id = "renewal", rn.id
     elif doc_type in (R.DOC_WORK_PERMIT, R.DOC_CIVIL_CARD):
         entity_type, entity_id = "employee", rn.employee_id
@@ -384,6 +384,19 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         if all(_has(db, "renewal", rn.id, c) for c in R.REQUIRED_SIGNED_DOCS):
             rn.status = R.CONTRACTS_SIGNED
             _notify_stage(db, rn)
+
+    # RNW-09 — النسخة الثالثة: العقد بتوقيع الطرفين. يرفعها المندوب بعد توقيع
+    # صاحب الشركة خارج النظام، أثناء الإجراءات الحكومية. لا تُغيّر الحالة —
+    # نسخة الموظف ليست نهائية، وهذه لا تمسح ما قبلها.
+    elif doc_kind == R.DOC_CONTRACT_FINAL:
+        if not is_pro:
+            raise HTTPException(status_code=403, detail="النسخة النهائية يرفعها المندوب")
+        if rn.status not in (R.CONTRACTS_SIGNED, R.RENEWING):
+            raise HTTPException(
+                status_code=409,
+                detail="النسخة النهائية تُرفع بعد رفع الموظف نسخته الموقّعة")
+        await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
+                        "العقد النهائي — بتوقيع الطرفين", file)
 
     # المندوب يرفع إذن العمل الجديد (جاري التجديد → بانتظار البطاقة)
     elif doc_kind == R.DOC_WORK_PERMIT:
@@ -570,6 +583,17 @@ def generate_gov_contract(rid: int, request: Request,
         "old_permit_expiry": (permit.expiry_date.isoformat() if permit and permit.expiry_date else ""),
         "company_file_number": (company.file_number if company else "") or "",
     })
+    # RNW-06 — لا توليد بحقل ناقص. _fill_html يستبدل المفقود بـ"................"
+    # فينتج عقد حكومي بمربّعات فارغة يوقّعه الموظف ويُقدَّم لجهة رسمية. نرفض
+    # ونسمّي الناقص بالعربية ليعرف المندوب أين يذهب ليصلحه.
+    missing = [label for key, label in R.GOV_CONTRACT_REQUIRED_FIELDS.items()
+               if not str(ctx.get(key) or "").strip()]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=("تعذّر توليد العقد الحكومي — بيانات ناقصة في ملف الموظف أو الشركة: "
+                    + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
+
     reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id, tpl.version or 1)
     ctx["ref_no"] = reference_no
 
