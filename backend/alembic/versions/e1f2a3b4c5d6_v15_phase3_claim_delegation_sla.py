@@ -7,6 +7,7 @@ Create Date: 2026-07-12 00:00:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from app.migration_ops import add_column  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 
@@ -18,12 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # 1) توسيع جدول tasks بحقول claim + SLA
-    op.add_column("tasks", sa.Column("claimed_by_user_id", sa.Integer(),
+    add_column("tasks", sa.Column("claimed_by_user_id", sa.Integer(),
                                      sa.ForeignKey("users.id"), nullable=True))
-    op.add_column("tasks", sa.Column("claimed_at", sa.DateTime(), nullable=True))
-    op.add_column("tasks", sa.Column("sla_due_at", sa.DateTime(), nullable=True))
-    op.add_column("tasks", sa.Column("escalated_at", sa.DateTime(), nullable=True))
-    op.add_column("tasks", sa.Column("escalation_task_id", sa.Integer(),
+    add_column("tasks", sa.Column("claimed_at", sa.DateTime(), nullable=True))
+    add_column("tasks", sa.Column("sla_due_at", sa.DateTime(), nullable=True))
+    add_column("tasks", sa.Column("escalated_at", sa.DateTime(), nullable=True))
+    add_column("tasks", sa.Column("escalation_task_id", sa.Integer(),
                                      sa.ForeignKey("tasks.id"), nullable=True))
     op.create_index("ix_tasks_claimed_by_user_id", "tasks", ["claimed_by_user_id"])
     op.create_index("ix_tasks_sla_due_at", "tasks", ["sla_due_at"])

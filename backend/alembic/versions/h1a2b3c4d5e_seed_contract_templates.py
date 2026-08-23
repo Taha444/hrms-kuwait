@@ -183,7 +183,7 @@ def upgrade() -> None:
                 INSERT INTO document_templates
                     (company_id, code, name, name_en, category, body_html, is_active, version, created_at)
                 VALUES
-                    (NULL, :code, :name, :name_en, :category, :body_html, TRUE, 1, NOW())
+                    (NULL, :code, :name, :name_en, :category, :body_html, TRUE, 1, CURRENT_TIMESTAMP)
             """),
             seed,
         )

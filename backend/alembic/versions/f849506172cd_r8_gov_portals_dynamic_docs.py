@@ -45,13 +45,13 @@ def upgrade() -> None:
     # Seed default government portals (يقدر Admin يعدّل/يمسح بعدين)
     op.execute("""
         INSERT INTO government_portals (name_ar, name_en, description_ar, url, category, sort_order, is_active, created_at, updated_at) VALUES
-        ('بوابة مدني (PACI)', 'PACI Portal', 'الهيئة العامة للمعلومات المدنية — طلبات البطاقة المدنية والتحديث', 'https://www.paci.gov.kw/', 'civil_id', 10, true, NOW(), NOW()),
-        ('ساحل — الخدمات الحكومية', 'Sahel Portal', 'بوابة ساحل الحكومية الشاملة', 'https://sahel.gov.kw/', 'other', 5, true, NOW(), NOW()),
-        ('وزارة التجارة والصناعة', 'MOCI Portal', 'رخص تجارية، سجل تجاري، أذونات تعديل', 'https://www.moci.gov.kw/', 'moci', 20, true, NOW(), NOW()),
-        ('هيئة القوى العاملة (PAM)', 'Public Authority of Manpower', 'إذن العمل، ملفات الشركات، تحويل العمالة', 'https://www.pam.gov.kw/', 'work_permits', 30, true, NOW(), NOW()),
-        ('الإدارة العامة للإقامة', 'Directorate General of Residency', 'تجديد الإقامات، تأشيرات، استعلام', 'https://moi.gov.kw/', 'residency', 40, true, NOW(), NOW()),
-        ('البلدية', 'Kuwait Municipality', 'تراخيص المحلات والفروع', 'https://www.baladia.gov.kw/', 'municipality', 50, true, NOW(), NOW()),
-        ('المؤسسة العامة للتأمينات الاجتماعية', 'PIFSS', 'اشتراكات التأمينات والتقاعد', 'https://www.pifss.gov.kw/', 'insurance', 60, true, NOW(), NOW())
+        ('بوابة مدني (PACI)', 'PACI Portal', 'الهيئة العامة للمعلومات المدنية — طلبات البطاقة المدنية والتحديث', 'https://www.paci.gov.kw/', 'civil_id', 10, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('ساحل — الخدمات الحكومية', 'Sahel Portal', 'بوابة ساحل الحكومية الشاملة', 'https://sahel.gov.kw/', 'other', 5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('وزارة التجارة والصناعة', 'MOCI Portal', 'رخص تجارية، سجل تجاري، أذونات تعديل', 'https://www.moci.gov.kw/', 'moci', 20, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('هيئة القوى العاملة (PAM)', 'Public Authority of Manpower', 'إذن العمل، ملفات الشركات، تحويل العمالة', 'https://www.pam.gov.kw/', 'work_permits', 30, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('الإدارة العامة للإقامة', 'Directorate General of Residency', 'تجديد الإقامات، تأشيرات، استعلام', 'https://moi.gov.kw/', 'residency', 40, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('البلدية', 'Kuwait Municipality', 'تراخيص المحلات والفروع', 'https://www.baladia.gov.kw/', 'municipality', 50, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('المؤسسة العامة للتأمينات الاجتماعية', 'PIFSS', 'اشتراكات التأمينات والتقاعد', 'https://www.pifss.gov.kw/', 'insurance', 60, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     """)
 
 

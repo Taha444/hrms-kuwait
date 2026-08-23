@@ -16,6 +16,7 @@ Create Date: 2026-08-02
 from typing import Sequence, Union
 
 from alembic import op
+from app.migration_ops import add_column  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 
@@ -27,19 +28,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # الأعمدة الجديدة
-    op.add_column("documents", sa.Column("is_issued", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.add_column("documents", sa.Column("reference_no", sa.String(60), nullable=True))
-    op.add_column("documents", sa.Column("template_version", sa.Integer(), nullable=True))
-    op.add_column("documents", sa.Column("checksum_sha256", sa.String(64), nullable=True))
-    op.add_column("documents", sa.Column("generated_at", sa.DateTime(), nullable=True))
-    op.add_column("documents", sa.Column("generated_by", sa.Integer(),
+    add_column("documents", sa.Column("is_issued", sa.Boolean(), nullable=False, server_default=sa.false()))
+    add_column("documents", sa.Column("reference_no", sa.String(60), nullable=True))
+    add_column("documents", sa.Column("template_version", sa.Integer(), nullable=True))
+    add_column("documents", sa.Column("checksum_sha256", sa.String(64), nullable=True))
+    add_column("documents", sa.Column("generated_at", sa.DateTime(), nullable=True))
+    add_column("documents", sa.Column("generated_by", sa.Integer(),
                                          sa.ForeignKey("users.id"), nullable=True))
-    op.add_column("documents", sa.Column("signature_version", sa.Integer(), nullable=True))
+    add_column("documents", sa.Column("signature_version", sa.Integer(), nullable=True))
     op.create_index("ix_documents_is_issued", "documents", ["is_issued"])
     op.create_index("ux_documents_reference_no", "documents", ["reference_no"], unique=True)
 
     # عداد نسخة القالب — يُختم على المستند المُولّد
-    op.add_column("document_templates",
+    add_column("document_templates",
                   sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
 
     # تنظيف مستندات المعاينة القديمة (اللي كانت تتخزّن بالغلط من Preview)

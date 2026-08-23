@@ -181,7 +181,7 @@ def upgrade() -> None:
                     (company_id, code, name, name_en, category, body_html,
                      is_active, version, created_at)
                 VALUES
-                    (NULL, :c, :name, :name_en, 'عقود', :body, TRUE, 1, NOW())
+                    (NULL, :c, :name, :name_en, 'عقود', :body, TRUE, 1, CURRENT_TIMESTAMP)
             """), {"c": code, "name": name, "name_en": name_en, "body": body})
 
 

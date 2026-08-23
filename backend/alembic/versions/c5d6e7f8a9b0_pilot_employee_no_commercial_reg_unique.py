@@ -7,6 +7,7 @@ Create Date: 2026-07-21 00:00:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from app.migration_ops import create_unique  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 
@@ -20,7 +21,7 @@ def upgrade() -> None:
     # PILOT-P0-6 — رقم وظيفي مرئي، فريد على مستوى النظام
     op.add_column("employees", sa.Column("employee_no", sa.String(length=30), nullable=True))
     op.create_index("ix_employees_employee_no", "employees", ["employee_no"])
-    op.create_unique_constraint("uq_employees_employee_no", "employees", ["employee_no"])
+    create_unique("uq_employees_employee_no", "employees", ["employee_no"])
 
     # PILOT-P0-11 — منع تكرار السجل التجاري بين شركتين (كان قابل للتكرار قبل الفحص)
     # ملاحظة: NULL لا يعتبر متعارضًا في المؤشرات الفريدة، لذا الشركات بلا سجل تجاري

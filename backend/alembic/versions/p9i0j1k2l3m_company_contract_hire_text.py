@@ -129,7 +129,7 @@ def upgrade() -> None:
             INSERT INTO document_templates
                 (company_id, code, name, name_en, category, body_html,
                  is_active, version, created_at)
-            VALUES (NULL, :c, :name, :name_en, 'عقود', :body, TRUE, 1, NOW())
+            VALUES (NULL, :c, :name, :name_en, 'عقود', :body, TRUE, 1, CURRENT_TIMESTAMP)
         """), {"c": code, "name": "عقد العمل — بين الشركة والعامل",
                "name_en": "Company-Employee Employment Contract", "body": _BODY})
 

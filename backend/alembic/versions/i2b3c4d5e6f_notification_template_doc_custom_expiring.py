@@ -48,7 +48,7 @@ def upgrade() -> None:
              body_text, is_active, created_at)
         VALUES
             (:code, :name, 'documents', 'doc_expiring', 'in_app', 24,
-             :body, TRUE, NOW())
+             :body, TRUE, CURRENT_TIMESTAMP)
     """), {"code": _TEMPLATE_CODE, "name": _TEMPLATE_NAME, "body": _TEMPLATE_BODY})
 
 

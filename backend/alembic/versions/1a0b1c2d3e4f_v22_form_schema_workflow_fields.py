@@ -7,6 +7,7 @@ Create Date: 2026-07-22 00:45:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from app.migration_ops import add_column  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 
@@ -17,12 +18,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("request_types", sa.Column("form_schema_json", sa.JSON(), nullable=True))
-    op.add_column("requests", sa.Column("needs_info_note", sa.Text(), nullable=True))
-    op.add_column("requests", sa.Column("cancelled_by_user_id", sa.Integer(),
+    add_column("request_types", sa.Column("form_schema_json", sa.JSON(), nullable=True))
+    add_column("requests", sa.Column("needs_info_note", sa.Text(), nullable=True))
+    add_column("requests", sa.Column("cancelled_by_user_id", sa.Integer(),
                                         sa.ForeignKey("users.id"), nullable=True))
-    op.add_column("requests", sa.Column("cancelled_at", sa.DateTime(), nullable=True))
-    op.add_column("requests", sa.Column("cancel_reason", sa.String(length=300), nullable=True))
+    add_column("requests", sa.Column("cancelled_at", sa.DateTime(), nullable=True))
+    add_column("requests", sa.Column("cancel_reason", sa.String(length=300), nullable=True))
 
 
 def downgrade() -> None:

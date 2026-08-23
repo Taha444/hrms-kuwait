@@ -48,7 +48,7 @@ def upgrade() -> None:
         conn.execute(
             text("""
                 INSERT INTO feature_flags (key, company_id, value, updated_at)
-                VALUES (:k, NULL, 'on', NOW())
+                VALUES (:k, NULL, 'on', CURRENT_TIMESTAMP)
             """),
             {"k": key},
         )

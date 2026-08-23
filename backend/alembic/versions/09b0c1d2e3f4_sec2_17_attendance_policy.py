@@ -7,6 +7,7 @@ Create Date: 2026-07-22 00:30:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from app.migration_ops import add_column  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 
@@ -17,13 +18,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("employees", sa.Column("attendance_exempt", sa.Boolean(),
+    add_column("employees", sa.Column("attendance_exempt", sa.Boolean(),
                                          nullable=False, server_default=sa.false()))
-    op.add_column("employees", sa.Column("attendance_exempt_reason", sa.String(length=200),
+    add_column("employees", sa.Column("attendance_exempt_reason", sa.String(length=200),
                                          nullable=True))
-    op.add_column("employees", sa.Column("attendance_exempt_approved_by", sa.Integer(),
+    add_column("employees", sa.Column("attendance_exempt_approved_by", sa.Integer(),
                                          sa.ForeignKey("users.id"), nullable=True))
-    op.add_column("employees", sa.Column("attendance_exempt_approved_at", sa.DateTime(),
+    add_column("employees", sa.Column("attendance_exempt_approved_at", sa.DateTime(),
                                          nullable=True))
 
 

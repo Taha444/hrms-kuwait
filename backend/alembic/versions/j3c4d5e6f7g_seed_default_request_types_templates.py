@@ -58,10 +58,10 @@ def upgrade() -> None:
             INSERT INTO request_types
                 (company_id, code, name, category, requires_physical_signature,
                  produces_document, approval_chain_json, template_html,
-                 visible_to_employee, default_template_code, is_active, created_at)
+                 visible_to_employee, default_template_code, is_active)
             VALUES
                 (NULL, :code, :name, :category, :req_sig, :produces, :chain, :tpl_html,
-                 :visible, :default_tpl, TRUE, NOW())
+                 :visible, :default_tpl, TRUE)
         """), {
             "code": rt["code"],
             "name": rt["name"],
@@ -92,7 +92,7 @@ def upgrade() -> None:
                  is_active, version, created_at)
             VALUES
                 (NULL, :code, :name, :name_en, :category, :body_html,
-                 TRUE, 1, NOW())
+                 TRUE, 1, CURRENT_TIMESTAMP)
         """), {"code": code, "name": name, "name_en": name_en,
                "category": category, "body_html": body})
         inserted_tpl += 1

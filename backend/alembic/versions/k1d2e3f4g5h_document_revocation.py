@@ -8,6 +8,7 @@ Revision ID: k1d2e3f4g5h
 Revises: j0c1d2e3f4g
 """
 from alembic import op
+from app.migration_ops import add_column  # يعمل على SQLite وPostgreSQL
 import sqlalchemy as sa
 
 revision = "k1d2e3f4g5h"
@@ -27,7 +28,7 @@ def upgrade() -> None:
     have = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("request_documents")}
     for name, factory in COLS:
         if name not in have:
-            op.add_column("request_documents", factory())
+            add_column("request_documents", factory())
 
 
 def downgrade() -> None:
