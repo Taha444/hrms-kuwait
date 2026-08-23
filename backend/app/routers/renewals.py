@@ -31,6 +31,19 @@ def _is_pro(user, perms):
             or has_permission(user.role, perms, "process_delegate_tasks"))
 
 
+def _open_case_for_permit(db, permit_id: int):
+    """المعاملة المفتوحة لهذه الإقامة إن وُجدت — المصدر الواحد للشرط.
+
+    كان الشرط مكتوًبا مرتين بصيغتين مختلفتين: حارس الإنشاء يقيس على
+    ``permit_id`` وقائمة "تستحق ولم يُفتح لها ملف" تقيس على ``employee_id``.
+    فموظف له إقامتان يظهر تنبيهه مخفًيا بينما الإنشاء يسمح — وهو نفس النمط
+    الذي نتجنّبه: قاعدة واحدة في مكانين تنحرف.
+    """
+    return db.scalar(select(models.ResidencyRenewal).where(
+        models.ResidencyRenewal.permit_id == permit_id,
+        models.ResidencyRenewal.status.notin_([R.REJECTED, R.COMPLETED])))
+
+
 def _get_renewal(db, user, rid) -> models.ResidencyRenewal:
     rn = db.get(models.ResidencyRenewal, rid)
     if not rn:
@@ -152,11 +165,13 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
         raise HTTPException(status_code=400, detail="سبب التجديد المبكر إلزامي")
 
     # منع تكرار معاملة مفتوحة لنفس الإقامة
-    open_exists = db.scalar(select(models.ResidencyRenewal.id).where(
-        models.ResidencyRenewal.permit_id == permit.id,
-        models.ResidencyRenewal.status.notin_([R.REJECTED, R.COMPLETED])))
+    open_exists = _open_case_for_permit(db, permit.id)
     if open_exists:
-        raise HTTPException(status_code=409, detail="توجد معاملة تجديد مفتوحة لهذه الإقامة")
+        # الضغط مرتين على "بدء المعاملة" لا ينشئ اثنتين — نعيد القائمة برقمها
+        # بدل رسالة خطأ عمياء، فالواجهة تفتحها بدل أن تُظهر فشًلا للمستخدم.
+        raise HTTPException(
+            status_code=409,
+            detail=f"توجد معاملة تجديد مفتوحة لهذه الإقامة (رقم {open_exists.id})")
 
     status = R.PENDING_MANAGER if rtype == "early" else R.AWAITING_CONTRACTS
     rn = models.ResidencyRenewal(
@@ -650,16 +665,22 @@ def permits_due_without_case(user: models.User = Depends(get_current_user),
 
     out = []
     for p in db.scalars(q.order_by(models.Permit.expiry_date)).all():
-        open_case = db.scalar(select(models.ResidencyRenewal.id).where(
-            models.ResidencyRenewal.employee_id == p.employee_id,
-            models.ResidencyRenewal.status.notin_(("completed", "rejected", "cancelled")),
-        ))
-        if open_case:
+        if _open_case_for_permit(db, p.id):
             continue
         emp = db.get(models.Employee, p.employee_id)
+        # RNW-01 — المواصفة تطلب اسم الموظف والشركة والفرع. الفرع كان ناقًصا،
+        # والمندوب يحتاجه ليعرف أين يذهب قبل أن يبدأ.
+        branch = db.get(models.Branch, emp.branch_id) if emp and emp.branch_id else None
+        company = db.get(models.Company, p.company_id)
         out.append({
             "permit_id": p.id, "employee_id": p.employee_id,
             "employee_name": emp.name if emp else None,
+            "employee_no": emp.employee_no if emp else None,
+            "job_title": emp.job_title if emp else None,
+            "company_id": p.company_id,
+            "company_name": company.name if company else None,
+            "branch_id": emp.branch_id if emp else None,
+            "branch_name": branch.name if branch else None,
             "number": p.number, "expiry_date": p.expiry_date,
             "days_left": (p.expiry_date - today).days,
         })

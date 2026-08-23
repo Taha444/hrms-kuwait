@@ -1,0 +1,122 @@
+{
+  "RNW-01": {
+    "status": "done",
+    "note": "بطاقة التنبيه صارت زر md-row له onClick يفتح لوحة تفصيل (اسم/رقم وظيفي/وظيفة/شركة/فرع/رقم إقامة/تاريخ/أيام متبقية). كانت <tr> بلا معالِج = تجاهل صامت. ومن لا يملك الصلاحية يرى سبب المنع لا فراغًا. الدليل: test_rnw01_02_alert_becomes_case",
+    "updated": "2026-08-24"
+  },
+  "RNW-02": {
+    "status": "done",
+    "note": "زر «بدء معاملة التجديد» يمرّر employee_id و permit_id صراحة (كان createMine يرسل reason/notes فقط فيفتح للمستخدم نفسه). التنبيه ينتقل للمجموعة الأخرى فورًا، والضغط مرتين يرجع 409 بذكر رقم المعاملة القائمة. الدليل: test_rnw01_02_alert_becomes_case",
+    "updated": "2026-08-24"
+  },
+  "RNW-03": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-04": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-05": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-06": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-07": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-08": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-09": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-10": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-11": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-12": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-13": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-14": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-15": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-16": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-17": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-18": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-19": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-20": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-21": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-22": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-23": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  },
+  "RNW-24": {
+    "status": "open",
+    "note": "",
+    "updated": ""
+  }
+}

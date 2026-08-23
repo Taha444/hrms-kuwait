@@ -48,6 +48,11 @@ export default function Renewals() {
   // الملفات المبدوءة، ومركز العمليات يعرض الإقامات المقتربة من الانتهاء —
   // فرأى المستخدم "حالة حرجة" هناك وفراًغا هنا وقرأه عطًلا.
   const [duePermits, setDuePermits] = useState<any[]>([]);
+  // RNW-01 — التنبيه المختار. البطاقات في «تستحق ولم يُفتح لها ملف» كانت
+  // صفوف جدول بلا onClick، فالضغط لا يرسل طلًبا ولا يفتح شيًئا — تجاهل صامت.
+  // اختياره منفصل عن اختيار المعاملة لأنهما نوعان مختلفان: الأول تنبيه محسوب
+  // بلا سجل، والثاني معاملة لها رقم.
+  const [selDue, setSelDue] = useState<any>(null);
 
   const load = () => {
     api.get("/renewals/due/permits").then((r) => setDuePermits(r.data)).catch(() => setDuePermits([]));
@@ -71,6 +76,22 @@ export default function Renewals() {
     try { await fn(); if (ok) setMsg(ok); await load(); }
     catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
+
+  // RNW-02 — تحويل التنبيه إلى معاملة. الفارق عن createMine أن هذا يمرّر
+  // employee_id و permit_id صراحة: بدونهما يقع الخادم على user.employee_id
+  // فيفتح ملًفا للمستخدم نفسه لا لصاحب البطاقة — وحساب بلا سجل موظف يُرفض
+  // برسالة "لم يُحدَّد الموظف"، وهو ما كان يحدث فعًلا.
+  const startCase = (d: any) => act(async () => {
+    const fd = new FormData();
+    fd.append("employee_id", String(d.employee_id));
+    fd.append("permit_id", String(d.permit_id));
+    if (reason) fd.append("reason", reason);
+    if (notes) fd.append("notes", notes);
+    const r = await api.post("/renewals", fd);
+    setReason(""); setNotes("");
+    setSelDue(null);      // التنبيه صار معاملة — ينتقل من مجموعة لأخرى
+    setSel(r.data);
+  }, t("rnw_case_started"));
 
   const createMine = () => act(async () => {
     const fd = new FormData();
@@ -185,7 +206,7 @@ export default function Renewals() {
           <div className="md-rows">
             {items.map((it) => (
               <button key={it.id} className={`md-row ${sel?.id === it.id ? "active" : ""}`}
-                onClick={() => setSel(it)}>
+                onClick={() => { setSelDue(null); setSel(it); }}>
                 <span className="r-name">{it.employee_name} <span className={`pill ${ST_PILL[it.status] || "neutral"}`} style={{ marginInlineStart: 6 }}>{t(`rnw_st_${it.status}`)}</span></span>
                 <span className="r-sub">{t(`rnw_type_${it.renewal_type}`)} · #{it.id}</span>
               </button>
@@ -195,25 +216,75 @@ export default function Renewals() {
             {duePermits.length > 0 && (
               <div className="card" style={{ marginTop: 12, borderTop: "3px solid var(--warning)" }}>
                 <h4 style={{ marginTop: 0 }}>{t("rnw_due_no_case", { n: duePermits.length })}</h4>
-                <table><tbody>
+                <div className="md-rows">
                   {duePermits.map((d: any) => (
-                    <tr key={d.permit_id}>
-                      <td>{d.employee_name || `#${d.employee_id}`}</td>
-                      <td className="muted">{d.number || "—"}</td>
-                      <td>{d.expiry_date}</td>
-                      <td className={d.days_left < 0 ? "pill expired" : "pill warning"}>
-                        {d.days_left < 0 ? t("rnw_expired") : t("rnw_days_remaining", { n: d.days_left })}
-                      </td>
-                    </tr>
+                    <button key={d.permit_id}
+                      className={`md-row ${selDue?.permit_id === d.permit_id ? "active" : ""}`}
+                      onClick={() => { setSel(null); setSelDue(d); setErr(""); setMsg(""); }}>
+                      <span className="r-name">
+                        {d.employee_name || `#${d.employee_id}`}
+                        <span className={`pill ${d.days_left < 0 ? "expired" : "warning"}`}
+                              style={{ marginInlineStart: 6 }}>
+                          {d.days_left < 0 ? t("rnw_expired") : t("rnw_days_remaining", { n: d.days_left })}
+                        </span>
+                      </span>
+                      <span className="r-sub">
+                        {d.number || "—"} · {d.expiry_date}
+                        {d.branch_name ? ` · ${d.branch_name}` : ""}
+                      </span>
+                    </button>
                   ))}
-                </tbody></table>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         <div className="md-detail">
-          {!sel ? <div className="md-empty">{t("rnw_select")}</div> : (
+          {selDue ? (
+            /* RNW-01 — لوحة التنبيه: بيانات كافية للقرار ثم إجراء واحد واضح.
+               ليست معاملة بعد، فلا Timeline ولا مراحل — فقط ما يلزم للبدء. */
+            <div className="card">
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0 }}>{selDue.employee_name || `#${selDue.employee_id}`}</h3>
+                <span className={`pill ${selDue.days_left < 0 ? "expired" : "warning"}`}>
+                  {selDue.days_left < 0 ? t("rnw_expired")
+                                        : t("rnw_days_remaining", { n: selDue.days_left })}
+                </span>
+              </div>
+              <p className="muted" style={{ marginTop: 6 }}>{t("rnw_no_case_yet")}</p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr",
+                           gap: "6px 12px", fontSize: 14, marginTop: 12 }}>
+                <span><b>{t("rnw_f_employee_no")}:</b></span><span>{selDue.employee_no || "—"}</span>
+                <span><b>{t("rnw_f_job")}:</b></span><span>{selDue.job_title || "—"}</span>
+                <span><b>{t("rnw_f_company")}:</b></span><span>{selDue.company_name || "—"}</span>
+                <span><b>{t("rnw_f_branch")}:</b></span><span>{selDue.branch_name || "—"}</span>
+                <span><b>{t("rnw_f_permit_no")}:</b></span><code>{selDue.number || "—"}</code>
+                <span><b>{t("rnw_f_expiry")}:</b></span><span>{selDue.expiry_date}</span>
+              </div>
+
+              {isPro ? (
+                <>
+                  {/* التجديد المبكر يلزمه سبب — الخادم يرفض بدونه، فنطلبه هنا
+                      بدل أن يكتشف المستخدم الرفض بعد الضغط. */}
+                  {selDue.days_left > 30 && (
+                    <input style={{ marginTop: 12 }} value={reason}
+                           onChange={(e) => setReason(e.target.value)}
+                           placeholder={t("rnw_early_reason_ph")} />
+                  )}
+                  <button style={{ marginTop: 12 }} onClick={() => startCase(selDue)}>
+                    {t("rnw_start_case")}
+                  </button>
+                </>
+              ) : (
+                /* لا تجاهل صامت: من لا يملك الصلاحية يُخبَر بالسبب ومن يفعلها */
+                <div className="warn" style={{ marginTop: 12, fontSize: 13 }}>
+                  {t("rnw_start_denied")}
+                </div>
+              )}
+            </div>
+          ) : !sel ? <div className="md-empty">{t("rnw_select")}</div> : (
             <div className="card">
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <h3 style={{ margin: 0 }}>{sel.employee_name}</h3>

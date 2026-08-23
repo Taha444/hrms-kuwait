@@ -1,0 +1,128 @@
+{
+  "name": "Residency Renewal Case Management Workflow",
+  "principle": "معاملة تُدار، وليست تنبيه انتهاء ولا قائمة مراجعة",
+  "artifacts": {
+    "GOV_CONTRACT_GENERATED": {"v": 1, "by": "system", "desc": "العقد الحكومي المولّد من النظام، بلا توقيع"},
+    "GOV_CONTRACT_EMPLOYEE_SIGNED": {"v": 2, "by": "employee", "desc": "النسخة بعد طباعة الموظف وتوقيعه يدويا ورفعها"},
+    "GOV_CONTRACT_FINAL": {"v": 3, "by": "pro", "desc": "النسخة النهائية موقّعة من الطرفين"},
+    "NEW_WORK_PERMIT": {"by": "pro", "desc": "إذن العمل الجديد"},
+    "NEW_RESIDENCY": {"by": "pro", "desc": "مستند الإقامة الجديد بتاريخ الانتهاء الجديد"},
+    "NEW_CIVIL_ID": {"by": "pro", "optional": true},
+    "FEE_RECEIPT": {"by": "pro", "optional": true}
+  },
+  "states": [
+    {"code": "EXPIRY_DETECTED", "actor": "system", "is_case": false,
+     "desc": "تنبيه محسوب من تاريخ انتهاء المستند — لا يوجد ملف معاملة بعد",
+     "next": ["RENEWAL_STARTED", "CANCELLED"],
+     "exit": "ظهور في Renewals و Operations Center و PRO Dashboard بنفس البيانات · مهمة واحدة للمندوب بلا تكرار · اسم الموظف والشركة والفرع وتاريخ الانتهاء والأيام المتبقية والحالة ظاهرة · زر بدء المعاملة متاح ويعمل"},
+
+    {"code": "RENEWAL_STARTED", "actor": "pro", "is_case": true,
+     "desc": "المندوب ضغط بدء المعاملة — تحوّل التنبيه إلى معاملة لها رقم",
+     "next": ["CONTRACT_GENERATED", "CANCELLED"],
+     "exit": "سجل renewal_case أُنشئ بـ case_no · مرتبط بالموظف والشركة والفرع والمندوب والإقامة الحالية · started_at مسجّل · Timeline بدأ · التنبيه لم يعد يظهر في مجموعة «لم يُفتح لها ملف»"},
+
+    {"code": "CONTRACT_GENERATED", "actor": "pro", "is_case": true,
+     "desc": "توليد العقد الحكومي تلقائيا من بيانات النظام",
+     "next": ["CONTRACT_REVIEWED", "BLOCKED_MISSING_DATA"],
+     "exit": "Government Contract فقط — لا Company Employment Contract · الحقول مملوءة من مصادرها لا من إدخال يدوي · Preview واضح للمندوب · حقل ناقص يوقف التوليد ويسمّيه"},
+
+    {"code": "CONTRACT_REVIEWED", "actor": "pro", "is_case": true,
+     "desc": "المندوب راجع البيانات وأكّد صحتها",
+     "next": ["SENT_TO_EMPLOYEE", "CONTRACT_GENERATED"],
+     "exit": "المراجعة إجراء مسجّل باسم ووقت · لا يُطلب من المندوب تعديل يدوي إن كانت البيانات صحيحة · الرجوع للتوليد ممكن عند اكتشاف خطأ في المصدر"},
+
+    {"code": "SENT_TO_EMPLOYEE", "actor": "pro", "is_case": true,
+     "desc": "العقد انتقل لحساب الموظف",
+     "next": ["AWAITING_EMPLOYEE_SIGNATURE"],
+     "exit": "Task حقيقية في حساب الموظف + Notification · العقد مرئي وقابل للتنزيل والطباعة من حسابه · مرتبط بنفس المعاملة"},
+
+    {"code": "AWAITING_EMPLOYEE_SIGNATURE", "actor": "employee", "is_case": true,
+     "desc": "بانتظار طباعة الموظف وتوقيعه يدويا ورفع النسخة",
+     "next": ["EMPLOYEE_SIGNED_UPLOADED", "BLOCKED_MISSING_DATA"],
+     "exit": "فتح الموظف وتنزيله مسجّلان في Timeline · رفع النسخة الموقّعة مرتبط بـ renewal_case و employee و contract — ليس مستندا عشوائيا · تذكير عند اقتراب الانتهاء"},
+
+    {"code": "EMPLOYEE_SIGNED_UPLOADED", "actor": "employee", "is_case": true,
+     "desc": "الموظف رفع النسخة الموقّعة",
+     "next": ["RETURNED_TO_PRO"],
+     "exit": "Artifact جديد بنوع GOV_CONTRACT_EMPLOYEE_SIGNED · النسخة الأصلية المولّدة محفوظة ولم تُستبدل · مهمة الموظف اكتملت وأُغلقت"},
+
+    {"code": "RETURNED_TO_PRO", "actor": "pro", "is_case": true,
+     "desc": "الإجراء عاد للمندوب مع النسخة الموقّعة من الموظف",
+     "next": ["GOVERNMENT_PROCESSING"],
+     "exit": "Action جديد للمندوب · يقدر يعرض وينزّل ويطبع نسخة الموظف · توقيع صاحب الشركة/المخوّل يتم خارج النظام"},
+
+    {"code": "GOVERNMENT_PROCESSING", "actor": "pro", "is_case": true,
+     "desc": "جاري التجديد لدى الجهات الحكومية",
+     "next": ["FINAL_PACKAGE_UPLOADED", "REJECTED_BY_AUTHORITY", "BLOCKED_MISSING_DATA"],
+     "exit": "الحالة ظاهرة بوضوح في كل الشاشات · تسجيل اختياري: Government Reference · الرسوم · رقم الإيصال · ملاحظات · مراجع حكومية جديدة · لا يُشترط أن تكون كلها إلزامية إلا لو تطلبها العمل"},
+
+    {"code": "FINAL_PACKAGE_UPLOADED", "actor": "pro", "is_case": true,
+     "desc": "رفع الحزمة النهائية",
+     "next": ["OCR_PROCESSED", "BLOCKED_MISSING_DATA"],
+     "exit": "العقد النهائي موقّع من الطرفين مرفوع كنسخة ثالثة مستقلة · إذن العمل الجديد · مستند الإقامة الجديد · المدنية الجديدة إن كانت جزءا من المعاملة · الإيصال إن مطلوب · الأنواع الثلاثة للعقد متمايزة ومرتبطة بنفس المعاملة"},
+
+    {"code": "OCR_PROCESSED", "actor": "system", "is_case": true,
+     "desc": "استخراج البيانات من المستندات النهائية",
+     "next": ["DATA_CONFIRMED", "BLOCKED_MISSING_DATA"],
+     "exit": "محاولة استخراج: تاريخ الانتهاء الجديد · رقم المستند · رقم إذن العمل · بيانات الإقامة · التواريخ · ممنوع Silent Update · النتيجة تُعرض للمراجعة لا تُطبَّق"},
+
+    {"code": "DATA_CONFIRMED", "actor": "pro", "is_case": true,
+     "desc": "مراجعة واعتماد البيانات المستخرجة",
+     "next": ["DOCUMENTS_UPDATED"],
+     "exit": "كل قيمة معتمدة مسجّل معها المصدر: OCR أم إدخال يدوي · Confidence ضعيف أو حقل أساسي ناقص يطلب تأكيدا أو إدخالا · لا إغلاق ببيانات ناقصة"},
+
+    {"code": "DOCUMENTS_UPDATED", "actor": "system", "is_case": true,
+     "desc": "حفظ المستندات في ملف الموظف مع الإصدارات",
+     "next": ["FINAL_VERIFICATION"],
+     "exit": "كل مستند تحت نوعه الصحيح في Employee Documents · الجديدة Current · القديمة History قابلة للعرض والتنزيل ولم تُحذف · الربط بالمعاملة محفوظ"},
+
+    {"code": "FINAL_VERIFICATION", "actor": "hr", "is_case": true,
+     "desc": "مراجعة نهائية للتحقق لا لإعادة العمل",
+     "next": ["COMPLETED", "BLOCKED_MISSING_DATA"],
+     "exit": "المستندات النهائية موجودة · البيانات الجديدة صحيحة · تاريخ الانتهاء الجديد صحيح · النسخ الجديدة Current والقديمة History · ملف الموظف محدَّث"},
+
+    {"code": "COMPLETED", "actor": "system", "is_case": true, "terminal": true,
+     "desc": "إغلاق المعاملة ونشر الأثر",
+     "exit": "المعاملة Completed · مهمة المندوب مغلقة · مهام الموظف مغلقة · تنبيه الانتهاء القديم مغلق · Operations Center لم يعد يعتبرها حرجة · Renewals لم تعد تعرضها مستحقة · Expiry Engine يعتمد التاريخ الجديد · لا Alert جديد لنفس النسخة القديمة · الموظف يتلقى Notification فقط لا Task"},
+
+    {"code": "BLOCKED_MISSING_DATA", "actor": "any", "is_case": true, "exception": true,
+     "desc": "نقص يمنع التقدم", "next": ["*"],
+     "exit": "النظام يسمّي الناقص بالضبط · المعاملة لا تُغلق · العودة للمرحلة المناسبة ممكنة"},
+    {"code": "REJECTED_BY_AUTHORITY", "actor": "pro", "is_case": true, "exception": true,
+     "desc": "رفض من الجهة الحكومية", "next": ["GOVERNMENT_PROCESSING", "CANCELLED"],
+     "exit": "سبب مسجّل · إمكانية إعادة المحاولة بنفس المعاملة"},
+    {"code": "CANCELLED", "actor": "pro_or_hr", "is_case": true, "exception": true, "terminal": true,
+     "desc": "إلغاء بقرار",
+     "exit": "سبب إلزامي · المهام تُغلق · التنبيه يعود للظهور إن كانت الإقامة ما زالت مستحقة"},
+    {"code": "EXPIRED_NOT_RENEWED", "actor": "system", "is_case": true, "exception": true,
+     "desc": "انتهت الإقامة والمعاملة لم تكتمل", "next": ["*"],
+     "exit": "تصعيد ظاهر · لا يُخفى · المعاملة تبقى قابلة للاستكمال"}
+  ],
+
+  "acceptance": [
+    {"id": "RNW-01", "sev": "blocker", "text": "الضغط على أي بطاقة في «تستحق التجديد ولم يُفتح لها ملف» يفتح شاشة تفصيل قابلة للتصرف — لا تجاهل صامت"},
+    {"id": "RNW-02", "sev": "blocker", "text": "زر «بدء معاملة التجديد» موجود ويعمل ويحوّل التنبيه إلى معاملة لها case_no"},
+    {"id": "RNW-03", "sev": "blocker", "text": "الإقامة داخل نافذة التجديد تظهر في Renewals و Operations Center و PRO Dashboard بنفس الأرقام والحالة"},
+    {"id": "RNW-04", "sev": "high", "text": "مهمة واحدة نشطة لكل إقامة — تشغيل الفحص اليومي مرتين لا ينشئ تكرارا"},
+    {"id": "RNW-05", "sev": "blocker", "text": "التجديد يولّد Government Contract فقط — لا Company Employment Contract جديد"},
+    {"id": "RNW-06", "sev": "high", "text": "حقول العقد مملوءة من مصادرها في النظام لا بإدخال يدوي، وحقل ناقص يوقف التوليد ويسمّيه"},
+    {"id": "RNW-07", "sev": "blocker", "text": "العقد يصل لحساب الموظف كـ Task حقيقية، وهو يقدر يعرضه وينزّله ويطبعه"},
+    {"id": "RNW-08", "sev": "blocker", "text": "النسخة الموقّعة المرفوعة من الموظف مرتبطة بنفس المعاملة والعقد — ليست مستندا عشوائيا"},
+    {"id": "RNW-09", "sev": "blocker", "text": "النظام يميّز ثلاث نسخ للعقد: المولّدة، الموقّعة من الموظف، النهائية بتوقيع الطرفين — والثلاثة محفوظة"},
+    {"id": "RNW-10", "sev": "high", "text": "المندوب يستلم Action بعد رفع الموظف، ويقدر يعرض وينزّل ويطبع نسخة الموظف"},
+    {"id": "RNW-11", "sev": "high", "text": "حالة «جاري التجديد» ظاهرة، وتسجيل المرجع الحكومي والرسوم والإيصال متاح"},
+    {"id": "RNW-12", "sev": "blocker", "text": "OCR لا يعمل تحديثا صامتا — القيم تُعرض للمراجعة قبل الاعتماد"},
+    {"id": "RNW-13", "sev": "blocker", "text": "Confidence ضعيف أو حقل أساسي ناقص يطلب تأكيدا أو إدخالا يدويا ولا يقفل المعاملة"},
+    {"id": "RNW-14", "sev": "blocker", "text": "المستندات الجديدة تُحفظ في Employee Documents تحت أنواعها الصحيحة كـ Current"},
+    {"id": "RNW-15", "sev": "blocker", "text": "النسخ القديمة لا تُحذف — تتحول History وتبقى قابلة للعرض والتنزيل"},
+    {"id": "RNW-16", "sev": "blocker", "text": "تاريخ الانتهاء الجديد يُطبَّق في: Employee Profile · Renewals · Operations Center · PRO Dashboard · Expiry Engine · Alerts — بلا شاشة متأخرة"},
+    {"id": "RNW-17", "sev": "blocker", "text": "الإغلاق مشروط بفحص اكتمال: العقد النهائي · التوقيعات · إذن العمل · مستند الإقامة · التاريخ الجديد المؤكد · تحديث المستندات والإصدارات"},
+    {"id": "RNW-18", "sev": "high", "text": "عند نقص إلزامي: النظام يسمّي الناقص بالضبط ولا يقفل"},
+    {"id": "RNW-19", "sev": "high", "text": "بعد الإغلاق: مهام المندوب والموظف مغلقة · التنبيه القديم مغلق · لا Alert جديد لنفس النسخة القديمة"},
+    {"id": "RNW-20", "sev": "medium", "text": "الموظف يتلقى Notification بالاكتمال — لا Task جديدة"},
+    {"id": "RNW-21", "sev": "high", "text": "Timeline يعرض القصة كاملة من التنبيه للمستند النهائي، وكل حدث فيه Actor و Role و Timestamp و Renewal ID والمرجع المرتبط"},
+    {"id": "RNW-22", "sev": "high", "text": "المندوب يرى الشركات والفروع المسندة له فقط، ولا يرى بيانات الراتب"},
+    {"id": "RNW-23", "sev": "blocker", "text": "النظام لا يولّد مستندا حكوميا بشعار حكومي — يحفظ الملف الحقيقي المرفوع مع مرجعه وبصمته"},
+    {"id": "RNW-24", "sev": "high", "text": "المعاملة تعمل على الشركتين GUF و MUF بنفس السلوك"}
+  ]
+}

@@ -2203,3 +2203,80 @@ def test_manager_is_not_a_warning_target(client):
     my = client.get("/api/me/profile", headers=mgr)
     assert my.status_code == 200 and my.json()["may_receive_warning"] is False
     assert my.json()["warnings"] == []
+
+
+def test_rnw01_02_alert_becomes_case(client):
+    """RNW-01/02 — التنبيه يفتح، ويتحوّل معامًلة برقم، ومرّتين لا تنشئان اثنتين.
+
+    ROOT CAUSE: شاشة التجديدات تعرض مجموعتين مختلفتي المصدر — معاملات حقيقية،
+    وتنبيهات محسوبة من تاريخ الانتهاء. الأولى بطاقاتها أزرار لها onClick،
+    والثانية صفوف جدول بلا أي معالِج. فالضغط على تنبيه لا يرسل طلًبا ولا يفتح
+    شيًئا: **تجاهل صامت**، والمندوب يظنّ النظام معطًلا بينما الإقامة تنتهي.
+
+    وتحته عطل أعمق: المسار الوحيد للإنشاء في الواجهة كان يرسل reason و notes
+    فقط، فيقع الخادم على user.employee_id — أي يفتح ملًفا **للمستخدم نفسه** لا
+    لصاحب البطاقة. وحساب إداري بلا سجل موظف يُرفض بـ"لم يُحدَّد الموظف".
+
+    الاختبار يقيس السلوك من طرف الخادم: هل تحمل بطاقة التنبيه ما يكفي للقرار،
+    وهل يوجد مسار يحوّلها معاملة، وهل يصمد أمام الضغط المزدوج.
+    """
+    from datetime import date, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import func, select
+
+    pro = _headers(client, "100000000003", "deleg123")
+
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(models.Employee).where(
+            models.Employee.company_id == 1, models.Employee.status == "active"))
+        permit = models.Permit(
+            company_id=1, employee_id=emp.id, kind="residency", status="active",
+            number="RNW-TEST-01", expiry_date=date.today() + timedelta(days=20),
+        )
+        db.add(permit)
+        db.commit()
+        permit_id, emp_id = permit.id, emp.id
+    finally:
+        db.close()
+
+    # 1) التنبيه يظهر ومعه ما يكفي للقرار — الفرع كان ناقًصا والمواصفة تطلبه
+    due = client.get("/api/renewals/due/permits", headers=pro)
+    assert due.status_code == 200, due.text
+    card = next((d for d in due.json() if d["permit_id"] == permit_id), None)
+    assert card is not None, "الإقامة المستحقة لا تظهر في التنبيهات"
+    for field in ("employee_name", "company_name", "branch_name", "number",
+                  "expiry_date", "days_left"):
+        assert field in card, f"بطاقة التنبيه بلا {field}"
+    assert card["employee_name"], "البطاقة بلا اسم موظف"
+
+    # 2) التحويل إلى معاملة يحتاج تمرير الموظف والإقامة صراحة
+    started = client.post("/api/renewals", headers=pro,
+                          data={"employee_id": str(emp_id), "permit_id": str(permit_id)})
+    assert started.status_code == 201, f"تعذّر بدء المعاملة: {started.text[:200]}"
+    case = started.json()
+    assert case["id"], "المعاملة بلا رقم"
+    assert case["employee_id"] == emp_id, "فُتحت المعاملة لموظف آخر"
+
+    # 3) التنبيه ينتقل من مجموعة لأخرى فورًا
+    due2 = client.get("/api/renewals/due/permits", headers=pro)
+    assert not any(d["permit_id"] == permit_id for d in due2.json()), \
+        "التنبيه ما زال معروًضا بعد فتح ملفه"
+    listed = client.get("/api/renewals", headers=pro).json()
+    assert any(r["id"] == case["id"] for r in listed), "المعاملة لا تظهر في القائمة"
+
+    # 4) الضغط مرتين لا ينشئ معاملتين — ويسمّي القائمة بدل رفض أعمى
+    again = client.post("/api/renewals", headers=pro,
+                        data={"employee_id": str(emp_id), "permit_id": str(permit_id)})
+    assert again.status_code == 409, f"أُنشئت معاملة ثانية: {again.status_code}"
+    assert str(case["id"]) in again.text, "الرفض لا يدلّ على المعاملة القائمة"
+
+    db = SessionLocal()
+    try:
+        n = db.scalar(select(func.count(models.ResidencyRenewal.id)).where(
+            models.ResidencyRenewal.permit_id == permit_id))
+        assert n == 1, f"عدد المعاملات لهذه الإقامة {n}"
+    finally:
+        db.close()
