@@ -2763,3 +2763,118 @@ def test_rnw16_17_19_propagation_and_closure(client):
     due = client.get("/api/renewals/due/permits", headers=pro).json()
     assert not any(d["permit_id"] == old_pid for d in due), \
         "الإقامة المجدَّدة ما زالت تُعرض كمستحقّة للتجديد"
+
+
+def test_rnw03_14_15_23_documents_and_screens(client):
+    """RNW-03/14/15/23 — المستندات تخرج من المعاملة، والشاشات تتفق.
+
+    ROOT CAUSE (RNW-14): إذن العمل والبطاقة يُحفظان في ملف الموظف عند رفعهما،
+    لكن **العقد النهائي يبقى محبوًسا داخل المعاملة**. فمن يفتح ملف الموظف بعد
+    سنة لا يجد العقد الذي قُدّم للجهة الحكومية — وهو أهمّ ما في التجديد.
+
+    ROOT CAUSE (RNW-23): الملف المرفوع كان يُحفظ **بلا بصمة**. النظام لا يولّد
+    مستنًدا حكومًيا بشعار حكومي، بل يحفظ الملف الحقيقي الصادر عن الجهة — وبلا
+    بصمة يكون ذلك إيداًعا بلا إثبات: لا سبيل لقول إن المعروض هو نفسه المرفوع.
+    """
+    import hashlib
+    import io
+    from datetime import date, timedelta
+
+    from app import models, renewal as R
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    pro = _headers(client, "100000000003", "deleg123")
+    hr = _headers(client, "100000000002", "hr12345")
+
+    db = SessionLocal()
+    try:
+        emp = models.Employee(
+            company_id=1, name="موظف المستندات", civil_id="255010155555",
+            nationality="سوري", job_title="نجار", status="active",
+            hire_date=date.today() - timedelta(days=800), basic_salary=380)
+        db.add(emp); db.flush()
+        db.add(models.Permit(company_id=1, employee_id=emp.id, kind="residency",
+                             status="active", number="RNW-DOC-OLD",
+                             expiry_date=date.today() + timedelta(days=10)))
+        db.commit()
+        emp_id = emp.id
+    finally:
+        db.close()
+
+    rid = client.post("/api/renewals", headers=pro,
+                      data={"employee_id": str(emp_id)}).json()["id"]
+
+    FINAL_BYTES = b"%PDF-1.4 official-final-contract"
+    def _upload(kind, payload=b"%PDF-1.4 x"):
+        return client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                           data={"doc_type": kind},
+                           files={"file": (f"{kind}.pdf", io.BytesIO(payload),
+                                           "application/pdf")})
+
+    _upload(R.DOC_CONTRACT_GOV)
+    _upload(R.DOC_SIGNED_GOV)
+    client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    _upload(R.DOC_CONTRACT_FINAL, FINAL_BYTES)
+    _upload(R.DOC_WORK_PERMIT)
+
+    # RNW-23 — الملف المرفوع محفوظ ببصمته الحقيقية
+    db = SessionLocal()
+    try:
+        final = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal", models.Document.entity_id == rid,
+            models.Document.document_type_code == R.DOC_CONTRACT_FINAL))
+        assert final.checksum_sha256 == hashlib.sha256(FINAL_BYTES).hexdigest(), \
+            "الملف المرفوع بلا بصمة صحيحة — حفظ بلا إثبات"
+        # ولم يُولَّد مستند بديل يحمل شعاًرا: المحفوظ هو ما رُفع
+        with open(final.file_path, "rb") as f:
+            assert f.read() == FINAL_BYTES, "الملف المحفوظ ليس هو المرفوع"
+    finally:
+        db.close()
+
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "MOI-DOC-1", "fees_amount": "20",
+        "fees_receipt_no": "R-20", "new_permit_number": "RNW-DOC-NEW",
+        "new_expiry_date": (date.today() + timedelta(days=410)).isoformat()})
+    _upload(R.DOC_CIVIL_CARD)
+    done = client.post(f"/api/renewals/{rid}/hr-verify", headers=hr, data={"note": "تم"})
+    assert done.status_code == 200, done.text[:200]
+
+    # RNW-14 — العقد النهائي صار في ملف الموظف تحت نوعه، وكـCurrent
+    db = SessionLocal()
+    try:
+        filed = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == emp_id,
+            models.Document.document_type_code == "gov_contract",
+            models.Document.is_current == True))  # noqa: E712
+        assert filed is not None, "العقد النهائي ما زال محبوًسا داخل المعاملة"
+        assert filed.source_document_id, "النسخة المودَعة بلا رابط إلى نسخة المعاملة"
+        assert filed.checksum_sha256 == hashlib.sha256(FINAL_BYTES).hexdigest()
+        # ملف واحد مفهرس في مكانين — لا نسختان تتباعدان
+        src = db.get(models.Document, filed.source_document_id)
+        assert filed.file_path == src.file_path
+        # إذن العمل والبطاقة في ملف الموظف تحت أنواعهما
+        for code in (R.DOC_WORK_PERMIT, R.DOC_CIVIL_CARD):
+            assert db.scalar(select(models.Document).where(
+                models.Document.entity_type == "employee",
+                models.Document.entity_id == emp_id,
+                models.Document.document_type_code == code)) is not None, f"{code} غائب"
+    finally:
+        db.close()
+
+    # RNW-15 — النسخ القديمة تبقى معروضة وقابلة للتنزيل
+    hist = client.get("/api/documents/history", headers=pro,
+                      params={"entity_type": "renewal", "entity_id": rid})
+    assert hist.status_code == 200 and hist.json(), "لا سجلّ نسخ للمعاملة"
+    any_doc = hist.json()[0]
+    dl = client.get(f"/api/documents/{any_doc['id']}/download", headers=pro)
+    assert dl.status_code == 200, f"نسخة محفوظة لا تُنزَّل: {dl.status_code}"
+
+    # RNW-03 — الشاشات الثلاث تتفق على نفس المعاملة
+    listed = client.get("/api/renewals", headers=pro).json()
+    row = next((r for r in listed if r["id"] == rid), None)
+    assert row and row["status"] == R.COMPLETED
+    due = client.get("/api/renewals/due/permits", headers=pro).json()
+    assert not any(d.get("number") == "RNW-DOC-OLD" for d in due), \
+        "الإقامة المجدَّدة ما زالت معروضة كمستحقّة — الشاشات غير متفقة"

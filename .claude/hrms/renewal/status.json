@@ -10,9 +10,9 @@
     "updated": "2026-08-24"
   },
   "RNW-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الشاشات تقرأ من مصدرين واحدين: قائمة المعاملات من residency_renewals وقائمة المستحقّة من Permit المفلترة بـ_open_case_for_permit. بعد الاكتمال تظهر المعاملة completed وتختفي الإقامة القديمة من المستحقّة. الدليل: نفس الاختبار",
+    "updated": "2026-08-26"
   },
   "RNW-04": {
     "status": "open",
@@ -65,14 +65,14 @@
     "updated": "2026-08-26"
   },
   "RNW-14": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "_file_documents_to_employee يودع العقد النهائي في ملف الموظف تحت gov_contract كـCurrent عند الاكتمال — كان يبقى محبوسًا في المعاملة. لا نسخ للملف: صفّ جديد بنفس المسار والبصمة و source_document_id إلى نسخة المعاملة. إذن العمل والبطاقة محفوظان أصلًا في ملف الموظف. الدليل: test_rnw03_14_15_23_documents_and_screens",
+    "updated": "2026-08-26"
   },
   "RNW-15": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "GET /documents/history يُرجع كل الإصدارات و GET /documents/{id}/download ينزّل نسخة بعينها (QA-28)، وكلاهما عام يغطّي مستندات التجديد. الإيداع في ملف الموظف ينزّل السابق إلى is_current=False ولا يحذفه. مُقاس على مستند تجديد حقيقي. الدليل: نفس الاختبار",
+    "updated": "2026-08-26"
   },
   "RNW-16": {
     "status": "done",
@@ -110,9 +110,9 @@
     "updated": ""
   },
   "RNW-23": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "_save_doc يحسب sha256 للملف المرفوع كما رُفع. لا شعار حكومي في التوليد (pdf_export بلا logo)، والمحفوظ هو بايتات الملف الأصلي — الاختبار يقارن المحتوى والبصمة. فحص طفري: بإلغاء البصمة يفشل. الدليل: نفس الاختبار",
+    "updated": "2026-08-26"
   },
   "RNW-24": {
     "status": "open",

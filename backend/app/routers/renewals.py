@@ -112,10 +112,18 @@ async def _save_doc(db, user, request, entity_type, entity_id, company_id,
                     code, title, upload: UploadFile, expiry_date: date | None = None,
                     source_document_id: int | None = None):
     """يحفظ ملفًا كمستند بنُسخ (الأحدث is_current) — يُبقي القديم."""
+    import hashlib
+
     folder = os.path.join(settings.upload_dir, "renewals")
     fpath = unique_path(folder, upload.filename, prefix=f"{entity_type}_{entity_id}_{code}_")
+    payload = await read_limited(upload)
     with open(fpath, "wb") as f:
-        f.write(await read_limited(upload))
+        f.write(payload)
+    # RNW-23 — بصمة الملف كما رُفع. النظام لا يولّد مستنًدا حكومًيا بشعار
+    # حكومي؛ يحفظ الملف الحقيقي الصادر عن الجهة. والبصمة هي ما يثبت لاحًقا
+    # أن الملف المعروض هو نفسه المرفوع ولم يُستبدل — بلا هذا فحفظه إيداع
+    # بلا إثبات.
+    checksum = hashlib.sha256(payload).hexdigest()
     prev = db.scalars(select(models.Document).where(
         models.Document.entity_type == entity_type, models.Document.entity_id == entity_id,
         models.Document.document_type_code == code, models.Document.is_current == True)).all()  # noqa: E712
@@ -126,7 +134,8 @@ async def _save_doc(db, user, request, entity_type, entity_id, company_id,
                           document_type_code=code, title=title, file_path=fpath,
                           mime=upload.content_type, expiry_date=expiry_date,
                           version=ver, is_current=True, uploaded_by=user.id,
-                          source_document_id=source_document_id)
+                          source_document_id=source_document_id,
+                          checksum_sha256=checksum)
     db.add(doc)
     db.flush()  # حتى يراه فحص اكتمال المستندات مباشرةً
     audit(db, user, "renewal_upload", "renewal", entity_id, detail=code, request=request)
@@ -538,6 +547,55 @@ def _closure_blockers(db, rn) -> list[str]:
     return missing
 
 
+#: ما يُودَع في ملف الموظف عند الاكتمال، وتحت أي نوع.
+#: إذن العمل والبطاقة يُحفظان في ملف الموظف عند رفعهما أصًلا؛ الناقص كان
+#: العقد النهائي — يبقى محبوًسا داخل المعاملة، فمن يفتح ملف الموظف بعد سنة
+#: لا يجد العقد الذي قُدّم للجهة الحكومية.
+FILED_TO_EMPLOYEE = {R.DOC_CONTRACT_FINAL: "gov_contract"}
+
+
+def _file_documents_to_employee(db, rn, user) -> list[str]:
+    """RNW-14 — يودع مستندات المعاملة النهائية في ملف الموظف تحت أنواعها.
+
+    لا يُنسخ الملف: الصفّ الجديد يشير إلى نفس المسار ونفس البصمة، ويحمل
+    ``source_document_id`` إلى نسخة المعاملة. فالمستند واحد، مفهرس في مكانين،
+    ولا تنشأ نسختان تتباعدان.
+    """
+    filed = []
+    for kind, employee_code in FILED_TO_EMPLOYEE.items():
+        src = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "renewal",
+            models.Document.entity_id == rn.id,
+            models.Document.document_type_code == kind,
+            models.Document.is_current == True))  # noqa: E712
+        if not src:
+            continue
+        already = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == rn.employee_id,
+            models.Document.source_document_id == src.id))
+        if already:
+            continue
+        prev = db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == rn.employee_id,
+            models.Document.document_type_code == employee_code,
+            models.Document.is_current == True)).all()  # noqa: E712
+        for d in prev:
+            d.is_current = False  # RNW-15 — تصير History ولا تُحذف
+        db.add(models.Document(
+            company_id=rn.company_id, entity_type="employee", entity_id=rn.employee_id,
+            document_type_code=employee_code,
+            title=f"العقد الحكومي النهائي — تجديد #{rn.id}",
+            file_path=src.file_path, mime=src.mime,
+            version=max((d.version for d in prev), default=0) + 1,
+            is_current=True, uploaded_by=user.id,
+            source_document_id=src.id, checksum_sha256=src.checksum_sha256,
+        ))
+        filed.append(employee_code)
+    return filed
+
+
 def _close_renewal_tasks(db, rn) -> int:
     """RNW-19 — يغلق مهام المعاملة المفتوحة عند اكتمالها.
 
@@ -748,6 +806,7 @@ def hr_verify_renewal(rid: int, request: Request,
     )
     db.add(new_permit)
 
+    _file_documents_to_employee(db, rn, user)  # RNW-14 — لا يبقى محبوًسا في المعاملة
     closed = _close_renewal_tasks(db, rn)  # RNW-19
     _notify_stage(db, rn)
     audit(db, user, "hr_verify_renewal", "residency_renewal", rn.id, request=request,
