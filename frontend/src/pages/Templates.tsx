@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { openAndPrint } from "../printDoc";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -82,8 +83,7 @@ export default function Templates() {
           margin:0 0 16px;font-family:sans-serif;text-align:center;font-weight:600;">
           ⚠ معاينة فقط — Preview Only — ليست مستندًا رسميًا
           </div>`;
-        w.document.write(banner + r.data.html);
-        w.document.close(); w.focus();
+        openAndPrint(banner + r.data.html, false);  // معاينة — لا تُطبع تلقائًيا
       }
       setMsg("معاينة فقط — لم يُحفظ أي مستند.");
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
@@ -96,8 +96,9 @@ export default function Templates() {
     try {
       const r = await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
       setLastGenerated(r.data);
-      const w = window.open("", "_blank");
-      if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
+      if (!openAndPrint(r.data.html)) {
+        setErr("مانع النوافذ المنبثقة منع فتح المستند — اسمح بالنوافذ لهذا الموقع.");
+      }
       setMsg(`✓ تم إصدار المستند — رقم مرجعي: ${r.data.reference_no}`);
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { openAndPrint } from "../printDoc";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 import { permitKindAr } from "../labels";
@@ -286,11 +287,10 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
         setContractsGenerated([...contractsGenerated, label]);
       } else {
         const r = await api.post(`/employees/${savedEmp.id}/${endpoint}`);
-        const w = window.open("", "_blank");
-        if (w) {
-          w.document.open();
-          w.document.write(r.data.html);
-          w.document.close();
+        if (!openAndPrint(r.data.html)) {
+          setErr(isEn
+            ? "Pop-up blocker prevented opening the contract. Allow pop-ups and retry."
+            : "مانع النوافذ المنبثقة منع فتح العقد — اسمح بالنوافذ لهذا الموقع ثم أعد المحاولة.");
         }
         const label = kind === "gov"
           ? (isEn ? "Government contract" : "العقد الحكومي")

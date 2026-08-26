@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { openAndPrint } from "../printDoc";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -126,8 +127,9 @@ export default function Renewals() {
   // R8 §3 — توليد العقد الحكومي (يفتح نافذة جديدة بالـHTML للطباعة مباشرة)
   const generateGovContract = () => act(async () => {
     const r = await api.post(`/renewals/${sel.id}/gov-contract/generate`);
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(r.data.html); w.document.close(); w.focus(); }
+    if (!openAndPrint(r.data.html)) {
+      setErr("مانع النوافذ المنبثقة منع فتح العقد — اسمح بالنوافذ لهذا الموقع ثم أعد المحاولة.");
+    }
   }, "✓ تم توليد العقد الحكومي — اطبعه ووقّعه ثم ارفع النسخة الموقّعة");
 
   // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)

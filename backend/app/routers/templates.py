@@ -579,7 +579,7 @@ td,th {{ border:1px solid #999; padding:6px 8px; font-size:13px; vertical-align:
 .noprint {{ position:fixed; top:12px; left:12px; }}
 @media print {{ .noprint {{ display:none; }} }}
 </style></head><body>
-<button class="noprint" onclick="window.print()">🖨️ طباعة</button>
+<div class="noprint" style="font:13px/1.6 system-ui;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;padding:8px 12px">للطباعة: Ctrl+P &nbsp;·&nbsp; For printing: Ctrl+P</div>
 <div class="doc">
 <div class="header-row">
 <div class="company-block">{company_name}<div class="en">{company_name_en}</div></div>

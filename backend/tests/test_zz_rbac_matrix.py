@@ -3025,3 +3025,35 @@ def test_seed_guard_boot_scan_is_bounded(client):
         assert len(full) >= len(privileged), "المسح الشامل أضيق من فحص الإقلاع"
     finally:
         db.close()
+
+
+def test_printable_document_has_no_inline_script(client):
+    """المستند المطبوع بلا معالِج مضمَّن — تحجبه سياسة الأمان فيبدو معطًَّلا.
+
+    ROOT CAUSE: غلاف الطباعة كان يضع زًرا بـonclick="window.print()". والمستند
+    يُفتح في نافذة about:blank عبر document.write، وهي **ترث سياسة أمان
+    المحتوى للصفحة الأم**: script-src 'self' بلا unsafe-inline — وهو إعداد
+    صحيح لا نريد تخفيفه. فيُحجب المعالِج: الزر يبدو سليًما، والضغط عليه لا
+    يفعل شيًئا، وبلا أي رسالة. المستخدم يقف أمام زر لا يعمل ولا يعرف لماذا.
+
+    الطباعة تُستدعى الآن من الواجهة (printDoc.ts) — كود مُحمَّل كحزمة تسمح بها
+    السياسة. وهذا الاختبار يمنع عودة المعالِج المضمَّن إلى الغلاف.
+    """
+    import re
+
+    from app.routers import templates as tpl_mod
+    from pathlib import Path
+
+    src = Path(tpl_mod.__file__).read_text(encoding="utf-8")
+    i = src.index("def _wrap_printable")
+    wrapper = src[i:i + 6000]
+
+    for handler in ("onclick=", "onload=", "onerror=", "<script"):
+        assert handler not in wrapper, (
+            f"غلاف الطباعة يحوي {handler!r} — تحجبه CSP فيفشل صامًتا")
+
+    # وسياسة الأمان نفسها ما زالت صارمة: المشكلة تُحلّ بلا تخفيفها
+    from app.main import _CSP
+    assert "script-src 'self'" in _CSP
+    assert "unsafe-inline" not in re.search(r"script-src[^;]*", _CSP).group(0), \
+        "خُفِّفت سياسة السكربتات — الإصلاح كان يجب أن يكون في المستند لا في السياسة"
