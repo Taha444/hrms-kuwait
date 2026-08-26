@@ -31,6 +31,48 @@ def _is_pro(user, perms):
             or has_permission(user.role, perms, "process_delegate_tasks"))
 
 
+# RNW-12 — أنواع المستندات التي يُقرأ منها. القراءة **اقتراح** يُخزَّن في
+# extracted_data_json ولا يُطبَّق: تاريخ انتهاء خاطئ يعني تنبيه تجديد خاطئ،
+# ويعني موظًفا تنتهي إقامته والنظام يحسبها سارية.
+OCR_DOC_TYPES = {
+    R.DOC_WORK_PERMIT: "work_permit",
+    R.DOC_CIVIL_CARD: "civil_id",
+}
+
+#: الحقول التي لا تُغلق المعاملة بدونها (RNW-13)
+ESSENTIAL_FIELDS = {
+    "new_expiry_date": "تاريخ الانتهاء الجديد",
+    "new_permit_number": "رقم الإقامة الجديد",
+}
+
+
+def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
+    """يقرأ آخر مستند مرفوع من هذا النوع ويحفظ الاقتراح — ولا يطبّقه.
+
+    الفشل يُحفَظ بسببه الظاهر: العطل الموثَّق سابًقا لم يكن أن القراءة فشلت، بل
+    أن النظام **مضى كأن شيًئا لم يحدث**. الاقتراح الفاشل يبقى مخزًَّنا بثقة صفر
+    وسببٍ مكتوب، فتعرضه شاشة المراجعة وتطلب إدخالًا يدوًيا بدل الصمت.
+    """
+    ocr_code = OCR_DOC_TYPES.get(doc_kind)
+    if not ocr_code:
+        return
+    doc = db.scalar(select(models.Document).where(
+        models.Document.entity_type == entity_type,
+        models.Document.entity_id == entity_id,
+        models.Document.document_type_code == doc_kind,
+        models.Document.is_current == True,  # noqa: E712
+    ))
+    if not doc or not doc.file_path:
+        return
+    from .. import ocr as ocr_engine
+    try:
+        data = ocr_engine.extract(ocr_code, doc.file_path)
+    except Exception as exc:  # noqa: BLE001 — فشل القراءة لا يُسقط رفع المستند
+        data = {"_provider": "error", "_confidence": 0.0,
+                "_note": f"تعذّرت قراءة المستند: {type(exc).__name__}"}
+    doc.extracted_data_json = data
+
+
 def _generated_contract_doc(db, rn):
     """النسخة المولّدة السارية من العقد الحكومي لهذه المعاملة.
 
@@ -432,6 +474,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
             raise HTTPException(status_code=409, detail="عيّن الحالة (جاري التجديد) أولًا")
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_WORK_PERMIT, "إذن العمل الجديد", file)
+        _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
         rn.status = R.AWAITING_CIVIL_CARD
         _notify_stage(db, rn)
 
@@ -444,6 +487,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_CIVIL_CARD, "البطاقة المدنية الجديدة", file)
         # R4-A — بدل التنقّل المباشر لـCOMPLETED، نمرّ عبر PENDING_HR_VERIFY
+        _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
         rn.status = R.PENDING_HR_VERIFY
         _notify_stage(db, rn)
     else:
@@ -451,6 +495,76 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
 
     db.commit()
     return _serialize(db, rn)
+
+
+# ==============================================================================
+# RNW-12/13 — مراجعة ما قرأه النظام قبل اعتماده
+# ==============================================================================
+#: عتبة الثقة التي دونها يلزم تأكيد صريح. ليست رقًما تعسفًيا: قارئ البطاقة
+#: يبدأ من 0.5 ويزيد 0.08 لكل حقل يُستخرج، فما دون 0.7 يعني أن أقلّ من ثلاثة
+#: حقول قُرئت — أي أن الصورة رديئة ولا يُبنى على قراءتها.
+LOW_CONFIDENCE = 0.7
+
+#: ما يهمّ التجديد من كل مستند
+OCR_FIELDS_OF_INTEREST = {
+    R.DOC_WORK_PERMIT: ("expiry_date", "doc_number"),
+    R.DOC_CIVIL_CARD: ("civil_id", "expiry_date"),
+}
+
+
+@router.get("/{rid}/extracted")
+def extracted_values(rid: int, user: models.User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """RNW-12 — القيم التي قرأها النظام، معروضة للمراجعة قبل الاعتماد.
+
+    لا تُطبَّق شيًئا. تُخرِج لكل حقل: قيمته المقترحة ودرجة ثقته والمستند الذي
+    قُرئ منه وحالته. والحقل الذي فشل استخراجه **يظهر فارًغا مع سبب** ولا يُخفى
+    — إخفاؤه هو ما جعل عطًلا سابًقا يمرّ صامًتا.
+    """
+    rn = _get_renewal(db, user, rid)
+    perms = get_user_perms(user, db)
+    if not _is_pro(user, perms) and user.role not in ("super_admin", "company_owner", "hr"):
+        raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
+
+    rows = []
+    for doc_kind, fields in OCR_FIELDS_OF_INTEREST.items():
+        doc = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == rn.employee_id,
+            models.Document.document_type_code == doc_kind,
+            models.Document.is_current == True,  # noqa: E712
+        ))
+        if not doc:
+            continue
+        data = doc.extracted_data_json or {}
+        conf = float(data.get("_confidence") or 0.0)
+        for field in fields:
+            value = data.get(field)
+            if not value:
+                status, needs = "failed", True
+            elif conf < LOW_CONFIDENCE:
+                status, needs = "low_confidence", True
+            else:
+                status, needs = "high_confidence", False
+            rows.append({
+                "document_kind": doc_kind, "document_id": doc.id,
+                "field": field, "value": value,
+                "confidence": conf, "status": status,
+                "needs_confirmation": needs,
+                "note": data.get("_note"),
+                "provider": data.get("_provider"),
+            })
+
+    confirmed = rn.confirmed_data_json or {}
+    missing = [label for key, label in ESSENTIAL_FIELDS.items()
+               if not (getattr(rn, key, None) or confirmed.get(key, {}).get("value"))]
+    return {
+        "renewal_id": rn.id,
+        "fields": rows,
+        "confirmed": confirmed,
+        "missing_essential": missing,
+        "can_close": not missing,
+    }
 
 
 # ==============================================================================
@@ -497,6 +611,36 @@ def finalize_renewal(rid: int, request: Request,
     rn.new_expiry_date = new_expiry_date
     rn.finalized_at = datetime.utcnow()
     rn.finalized_by = user.id
+
+    # RNW-12 — سجلّ المصدر: القيمة المعتمَدة تُقارَن بما قرأه النظام، فيُعرف
+    # أهي قراءة آلية قُبِلت كما هي، أم تصحيح بشري لها، أم إدخال يدوي محض.
+    # التمييز مهمّ: "صُحِّحت" تعني أن القارئ أخطأ وتستحقّ متابعة، و"يدوي"
+    # تعني أنه لم يقرأ شيًئا أصلًا.
+    proposals = {}
+    for doc_kind in OCR_FIELDS_OF_INTEREST:
+        d = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == rn.employee_id,
+            models.Document.document_type_code == doc_kind,
+            models.Document.is_current == True))  # noqa: E712
+        if d and d.extracted_data_json:
+            proposals[doc_kind] = d.extracted_data_json
+
+    def _provenance(field: str, value):
+        for kind, data in proposals.items():
+            proposed = data.get("expiry_date" if field == "new_expiry_date" else field)
+            if proposed:
+                same = str(proposed)[:10] == str(value)[:10]
+                return {"value": str(value), "source": "ocr" if same else "corrected",
+                        "confidence": data.get("_confidence"),
+                        "document_kind": kind, "ocr_value": str(proposed)}
+        return {"value": str(value), "source": "manual", "confidence": None}
+
+    record = {k: _provenance(k, getattr(rn, k)) for k in ESSENTIAL_FIELDS}
+    for entry in record.values():
+        entry["confirmed_by"] = user.id
+        entry["confirmed_at"] = datetime.utcnow().isoformat()
+    rn.confirmed_data_json = record
     # لو الحالة awaiting_civil_card بالفعل، نُبقيها (المندوب أكمل بيانات متأخّرة)
     if rn.status != R.AWAITING_CIVIL_CARD:
         rn.status = R.AWAITING_CIVIL_CARD

@@ -2524,3 +2524,121 @@ def test_rnw05_08_10_11_contract_chain(client):
     body = fin.json()
     assert body["gov_reference_no"] == "MOI-2026-777"
     assert body["fees_receipt_no"] == "RCP-88"
+
+
+def test_rnw12_13_ocr_proposes_never_applies(client):
+    """RNW-12/13 — القراءة اقتراح يُراجَع، لا تحديث صامت.
+
+    ROOT CAUSE: محرّك OCR كان موجوًدا في النظام (app/ocr.py بدرجات ثقة
+    وتشخيص) لكنّ مسار التجديد **لا يستدعيه إطلاًقا**. فالمندوب يرفع الإقامة
+    الجديدة ويكتب تاريخ انتهائها بيده، والنظام لا يقرأ ولا يقارن.
+
+    والقاعدة التي تحكم البديل ليست "شغّل OCR" بل **لا تطبّق ما قرأته**:
+    تاريخ انتهاء خاطئ يعني تنبيه تجديد خاطئ، ويعني موظًفا تنتهي إقامته
+    والنظام يحسبها سارية — وهو أسوأ من ألا يقرأ شيًئا.
+
+    والفشل يجب أن **يظهر**: عطل موثَّق سابًقا رجع فيه confidence=0.0 و
+    "MRZ غير مكتملة" بلا تاريخ، ومضى النظام كأن شيًئا لم يحدث.
+    """
+    import io
+    from datetime import date, timedelta
+
+    from app import models, renewal as R
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    pro = _headers(client, "100000000003", "deleg123")
+
+    db = SessionLocal()
+    try:
+        emp = models.Employee(
+            company_id=1, name="موظف قراءة المستند", civil_id="277010177777",
+            nationality="فلبيني", job_title="فني", status="active",
+            hire_date=date.today() - timedelta(days=600), basic_salary=450)
+        db.add(emp); db.flush()
+        db.add(models.Permit(company_id=1, employee_id=emp.id, kind="residency",
+                             status="active", number="RNW-OCR-01",
+                             expiry_date=date.today() + timedelta(days=18)))
+        db.commit()
+        emp_id = emp.id
+        old_expiry = None
+    finally:
+        db.close()
+
+    rid = client.post("/api/renewals", headers=pro,
+                      data={"employee_id": str(emp_id)}).json()["id"]
+
+    def _upload(kind, hdr=pro):
+        return client.post(f"/api/renewals/{rid}/upload", headers=hdr,
+                           data={"doc_type": kind},
+                           files={"file": (f"{kind}.png", io.BytesIO(b"\x89PNG\r\n\x1a\n junk"),
+                                           "image/png")})
+
+    assert _upload(R.DOC_CONTRACT_GOV).status_code == 200
+    assert _upload(R.DOC_SIGNED_GOV).status_code == 200
+    client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    assert _upload(R.DOC_WORK_PERMIT).status_code == 200
+
+    # 1) القراءة جرت وحُفظ اقتراحها — حتى حين تفشل
+    db = SessionLocal()
+    try:
+        doc = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == emp_id,
+            models.Document.document_type_code == R.DOC_WORK_PERMIT))
+        assert doc is not None
+        assert doc.extracted_data_json is not None, \
+            "لم تُستدعَ القراءة عند الرفع — المستند مرّ بلا معالجة"
+        assert "_confidence" in doc.extracted_data_json, "الاقتراح بلا درجة ثقة"
+        # ملف غير صالح ⇒ فشل مُعلَن لا صمت
+        assert doc.extracted_data_json.get("_note") or \
+            doc.extracted_data_json.get("_confidence") == 0.0, \
+            "فشل القراءة مرّ بلا سبب ظاهر"
+    finally:
+        db.close()
+
+    # 2) لا تحديث صامت: ملف الموظف لم يتغيّر بفعل القراءة
+    db = SessionLocal()
+    try:
+        emp = db.get(models.Employee, emp_id)
+        assert emp.civil_id == "277010177777", "القراءة عدّلت ملف الموظف بصمت"
+    finally:
+        db.close()
+
+    # 3) شاشة المراجعة تعرض الحقول وحالتها، وتمنع الإغلاق قبل الاكتمال
+    rev = client.get(f"/api/renewals/{rid}/extracted", headers=pro)
+    assert rev.status_code == 200, rev.text[:200]
+    body = rev.json()
+    assert body["fields"], "شاشة المراجعة فارغة رغم وجود مستند مقروء"
+    for row in body["fields"]:
+        assert set(("field", "value", "confidence", "status", "document_id")) <= set(row)
+        # الحقل الفاشل يظهر ولا يُخفى
+        if row["value"] is None:
+            assert row["status"] == "failed" and row["needs_confirmation"]
+    assert body["missing_essential"], "المعاملة تبدو قابلة للإغلاق بلا بيانات"
+    assert body["can_close"] is False
+
+    # 4) بعد الاعتماد اليدوي: القيمة محفوظة بمصدرها
+    new_exp = (date.today() + timedelta(days=380)).isoformat()
+    fin = client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "MOI-OCR-1", "fees_amount": "12",
+        "fees_receipt_no": "R-1", "new_permit_number": "RNW-OCR-02",
+        "new_expiry_date": new_exp})
+    assert fin.status_code == 200, fin.text[:200]
+
+    db = SessionLocal()
+    try:
+        rn = db.get(models.ResidencyRenewal, rid)
+        rec = rn.confirmed_data_json
+        assert rec, "لم يُحفَظ مصدر القيم المعتمَدة"
+        for key in ("new_expiry_date", "new_permit_number"):
+            assert rec[key]["source"] in ("ocr", "corrected", "manual")
+            assert rec[key]["confirmed_by"] and rec[key]["confirmed_at"]
+        # القراءة فشلت ⇒ المصدر إدخال يدوي، لا "ocr"
+        assert rec["new_expiry_date"]["source"] == "manual", \
+            f"نُسبت القيمة للقارئ وهو لم يقرأ: {rec['new_expiry_date']}"
+    finally:
+        db.close()
+
+    after = client.get(f"/api/renewals/{rid}/extracted", headers=pro).json()
+    assert after["can_close"] is True, "الإغلاق ما زال ممنوًعا بعد اكتمال البيانات"

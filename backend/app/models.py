@@ -316,6 +316,10 @@ class ResidencyRenewal(Base):
     hr_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     hr_verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     hr_verification_note: Mapped[str | None] = mapped_column(Text)
+    # RNW-12 — مصدر كل قيمة معتمَدة: هل قرأها النظام أم أدخلها إنسان، وبأي
+    # ثقة، ومن أي مستند، ومن أكّدها ومتى. بعد سنة حين يُسأل عن تاريخ انتهاء
+    # في ملف موظف، هذا هو الفرق بين جواب مكتوب وتخمين.
+    confirmed_data_json: Mapped[dict | None] = mapped_column(JSON)
 
 
 class Department(Base):

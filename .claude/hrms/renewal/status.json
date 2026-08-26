@@ -55,14 +55,14 @@
     "updated": "2026-08-24"
   },
   "RNW-12": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "_ocr_proposal يُستدعى عند رفع إذن العمل والبطاقة ويحفظ القراءة في extracted_data_json — اقتراح لا تطبيق. GET /renewals/{id}/extracted يعرض الحقل والقيمة والثقة والمستند والحالة، والفاشل يظهر بسببه ولا يُخفى. confirmed_data_json يحفظ مصدر كل قيمة (ocr/corrected/manual) ومن أكّدها ومتى. فحص طفري: بتعطيل القراءة يفشل الاختبار. الدليل: test_rnw12_13_ocr_proposes_never_applies",
+    "updated": "2026-08-26"
   },
   "RNW-13": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "LOW_CONFIDENCE=0.7 يميّز الثقة الضعيفة ويطلب تأكيًدا، والفشل يعطي status=failed مع طلب إدخال. ESSENTIAL_FIELDS (تاريخ الانتهاء الجديد + رقم الإقامة) تمنع الإغلاق: can_close=false و missing_essential يسمّي الناقص. الدليل: نفس الاختبار",
+    "updated": "2026-08-26"
   },
   "RNW-14": {
     "status": "open",
