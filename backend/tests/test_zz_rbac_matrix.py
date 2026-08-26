@@ -2878,3 +2878,150 @@ def test_rnw03_14_15_23_documents_and_screens(client):
     due = client.get("/api/renewals/due/permits", headers=pro).json()
     assert not any(d.get("number") == "RNW-DOC-OLD" for d in due), \
         "الإقامة المجدَّدة ما زالت معروضة كمستحقّة — الشاشات غير متفقة"
+
+
+def test_seed_guard_neutralizes_without_bricking_boot(client, monkeypatch):
+    """الحارس يُبطل الخطر بنفسه بدل أن يعطّل النظام.
+
+    ROOT CAUSE: الحارس كان يرفع RuntimeError فيموت الإقلاع. بدا ذلك صواًبا —
+    خطأ مستحيل التجاهل. لكن التشغيل الفعلي على منصّة استضافة كشف عكسه: النشر
+    يدخل **حلقة انهيار**، والمخرج الوحيد أمام المشغّل أن يضبط
+    ALLOW_SEED_ACCOUNTS=true ويتركها. فينتهي الحارس إلى إنتاج الباب المفتوح
+    الذي بُني ليمنعه — هزيمة ذاتية لا صرامة.
+
+    والإبطال الذاتي أقوى: الباب يُغلق **فوًرا وتلقائًيا**، بلا اعتماد على أن
+    يقرأ أحد سجًلا أو يلاحظ انهياًرا. والحساب يبقى فعّاًلا فيستعيده صاحبه
+    بالمسار الطبيعي.
+    """
+    from app import models, seed_guard
+    from app.config import settings
+    from app.database import SessionLocal
+    from app.security import verify_password
+    from sqlalchemy import select
+
+    monkeypatch.setattr(type(settings), "is_production", property(lambda self: True))
+    monkeypatch.delenv("ALLOW_SEED_ACCOUNTS", raising=False)
+    monkeypatch.delenv("SEED_GUARD_MODE", raising=False)
+
+    # الاختبار يُبطل كلمات مرور في قاعدة مشتركة — نلتقط الحالة ونعيدها بعده،
+    # وإلا أفسد كل اختبار يلي ويسجّل الدخول بحساب بذرة.
+    snap = SessionLocal()
+    try:
+        saved = {u.id: (u.password_hash, u.must_change_password, u.tokens_valid_after)
+                 for u in snap.scalars(select(models.User)).all()}
+    finally:
+        snap.close()
+
+    db = SessionLocal()
+    try:
+        before = seed_guard.find_seed_accounts(db, privileged_only=True)
+        assert before, "قاعدة الاختبار مبذورة — يجب أن تُكتشف حسابات بذرة"
+        target = before[0]["id"]
+
+        # 1) لا يمنع الإقلاع
+        hits = seed_guard.enforce(db)
+        assert hits, "لم يُبلَّغ عمّا أُبطل"
+    finally:
+        db.close()
+
+    db = SessionLocal()
+    try:
+        # 2) الباب أُغلق على الأدوار الخطرة. الموظفون العاديون خارج فحص
+        #    الإقلاع عمًدا (تكلفة PBKDF2) ويعالجهم المسح الشامل عند التسليم.
+        assert not seed_guard.find_seed_accounts(db, privileged_only=True),             "كلمات بذرة ما زالت تعمل على حساب إداري"
+
+        user = db.get(models.User, target)
+        assert user.is_active, "الحساب عُطِّل — صاحبه لا يستطيع استعادته بنفسه"
+        assert user.must_change_password, "لم يُطلَب تغيير الكلمة"
+        for pw in ("admin123", "owner123", "Kuwait@2024"):
+            assert not verify_password(pw, user.password_hash), f"{pw} ما زالت تعمل"
+
+        # 3) الإبطال لا يكون صامًتا
+        alarm = db.scalars(select(models.Task).where(
+            models.Task.type == "security", models.Task.severity == "critical")).all()
+        assert alarm, "أُبطلت كلمات المرور بلا تنبيه — يبدو عطًلا غامًضا لصاحبها"
+    finally:
+        db.close()
+        restore = SessionLocal()
+        try:
+            for uid, (h, must, toks) in saved.items():
+                u = restore.get(models.User, uid)
+                if u:
+                    u.password_hash, u.must_change_password, u.tokens_valid_after = h, must, toks
+            restore.commit()
+        finally:
+            restore.close()
+
+
+def test_seed_guard_block_mode_still_available(monkeypatch):
+    """من يريد المنع الصارم يطلبه صراحًة بـSEED_GUARD_MODE=block."""
+    import pytest
+
+    from app import seed_guard
+    from app.config import settings
+    from app.database import SessionLocal
+
+    monkeypatch.setattr(type(settings), "is_production", property(lambda self: True))
+    monkeypatch.delenv("ALLOW_SEED_ACCOUNTS", raising=False)
+    monkeypatch.setenv("SEED_GUARD_MODE", "block")
+
+    from app import models
+    from app.security import hash_password
+
+    db = SessionLocal()
+    try:
+        # حساب خاص بهذا الاختبار — لا يعتمد على ما تركه اختبار آخر
+        probe = models.User(
+            # دور إداري: فحص الإقلاع لا يمسّ الموظفين العاديين
+            civil_id="999000999000", full_name="فحص وضع المنع", role="hr",
+            company_id=1, password_hash=hash_password("admin123"), is_active=True)
+        db.add(probe)
+        db.commit()
+        with pytest.raises(RuntimeError, match="رفض الإقلاع"):
+            seed_guard.enforce(db)
+        db.rollback()
+        db.delete(db.get(models.User, probe.id))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_seed_guard_boot_scan_is_bounded(client):
+    """فحص الإقلاع محدود التكلفة — وإلا صار هو سبب الانهيار.
+
+    ROOT CAUSE: الفحص كان يجرّب كل كلمة بذرة على **كل** مستخدم. PBKDF2 بـ240
+    ألف دورة وملح فريد لكل كلمة يعني ~0.6 ثانية للمستخدم الواحد — أي أربع
+    دقائق على قاعدة بأربعمئة موظف، **في كل إقلاع، وعلى قاعدة نظيفة أيًضا**:
+    النظافة لا تُعرف إلا بعد فحص الجميع. فينهار النشر بمهلة المنصّة لسبب هو
+    الحارس نفسه لا ما يبحث عنه.
+
+    التضييق مبدئي لا اعتباطي: حساب مالك أو مدير بكلمة منشورة يفتح النظام
+    كلّه، وحساب موظف يفتح ملفه هو. الأول يُفحص في كل إقلاع، والثاني يكفيه
+    المسح الشامل عند التسليم.
+    """
+    from app import models, seed_guard
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    db = SessionLocal()
+    try:
+        # الفحص الموسَّع لا يمسّ الموظفين العاديين
+        privileged = seed_guard.find_seed_accounts(db, privileged_only=True)
+        roles = {h["role"] for h in privileged}
+        assert "employee" not in roles, "فحص الإقلاع يشمل الموظفين — تكلفة بلا مقابل"
+
+        # والسقف يُحترم
+        capped = seed_guard.find_seed_accounts(db, privileged_only=True, max_users=2)
+        assert len(capped) <= 2, f"السقف لم يُحترم: {len(capped)}"
+
+        # والأخطر أوًلا: super_admin/company_owner قبل ما دونهما
+        if len(privileged) >= 2:
+            first = privileged[0]["role"]
+            assert first in ("super_admin", "company_owner", "company_manager"), \
+                f"الترتيب لا يضع الأخطر أوًلا: {first}"
+
+        # والمسح الشامل يبقى متاًحا للمعالجة — يشمل ما استثناه الإقلاع
+        full = seed_guard.find_seed_accounts(db)
+        assert len(full) >= len(privileged), "المسح الشامل أضيق من فحص الإقلاع"
+    finally:
+        db.close()
