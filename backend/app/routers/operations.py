@@ -12,6 +12,7 @@ from .. import models
 from ..database import get_db
 from ..deps import get_current_user, get_user_perms, scope_company_id
 from ..permissions import has_permission
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
@@ -48,7 +49,7 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
                       user: models.User = Depends(require_operations), db: Session = Depends(get_db)):
     """كل العناصر التي تتطلّب إجراءً: إقامات/تراخيص قرب الانتهاء، طلبات معلّقة، مهام مفتوحة."""
     cid = scope_company_id(user, company_id)
-    today = date.today()
+    today = kuwait_today()
 
     emp_map = {e.id: e for e in db.scalars(
         select(models.Employee).where(*( [models.Employee.company_id == cid] if cid is not None else []))).all()}

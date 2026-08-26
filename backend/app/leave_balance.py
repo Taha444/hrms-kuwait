@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 DEFAULT_ANNUAL_LEAVE_DAYS = 30.0
 
@@ -36,7 +37,7 @@ def service_years(emp: models.Employee, as_of: date | None = None) -> float:
     """
     if not emp.hire_date:
         return 0.0
-    end = as_of or date.today()
+    end = as_of or kuwait_today()
     if emp.termination_date:
         end = min(end, emp.termination_date)
     from .eos import service_breakdown

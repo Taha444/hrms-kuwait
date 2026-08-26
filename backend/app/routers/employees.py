@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from ..clock import today as kuwait_today
 from .. import eos as eos_engine
 from .. import leave_balance as leave_balance_service
 from .. import models, schemas
@@ -215,7 +216,7 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
                 detail="نمط 'بدون حضور' يتطلب إعفاًء صريًحا مع سبب موثّق")
 
     # R3-C — التقاط snapshot قبل + تسجيل التغييرات الحرجة في جدول التاريخ
-    eff = effective_date or date.today()
+    eff = effective_date or kuwait_today()
     for k, v in payload.items():
         old = getattr(emp, k, None)
         if k in CRITICAL_FIELDS and old != v:
@@ -538,7 +539,7 @@ def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
                 detail="لا يجوز توجيه إنذار أو جزاء لصاحب هذا الدور")
     ev = models.EmployeeEvent(company_id=emp.company_id, employee_id=emp.id, kind=kind,
                               title=title, detail=detail, amount=amount,
-                              date=date_val or date.today(), created_by=user.id)
+                              date=date_val or kuwait_today(), created_by=user.id)
     db.add(ev)
     db.flush()
     audit(db, user, f"employee_{kind}", "employee", emp.id, detail=title, request=request)
@@ -765,7 +766,7 @@ def execute_termination(emp_id: int, request: Request = None,
     end_date = settlement.pop("_end_date", None)
     reason = settlement.pop("_reason", "termination")
     emp.status = "terminated"
-    emp.termination_date = date.fromisoformat(end_date) if end_date else date.today()
+    emp.termination_date = date.fromisoformat(end_date) if end_date else kuwait_today()
     emp.termination_reason = reason
     emp.eos_settlement_json = json.dumps(settlement, ensure_ascii=False)
     emp.pending_termination_json = None

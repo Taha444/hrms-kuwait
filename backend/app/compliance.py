@@ -15,11 +15,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 
 def license_compliance(db: Session, company_id: int | None, today: date | None = None) -> dict:
     """(الإجمالي، السارية، المنتهية) — للتراخيص النشطة وحدها."""
-    today = today or date.today()
+    today = today or kuwait_today()
 
     def _count(*conds) -> int:
         q = select(func.count()).select_from(models.License).where(

@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ def expiry_severity(days_left: int) -> str:
 
 def daily_scan(db: Session) -> dict:
     """يفحص الإقامات/الجوازات/التراخيص/المستندات ويولّد مهامًا للمستلِمين."""
-    today = date.today()
+    today = kuwait_today()
     created = 0
 
     companies = {c.id: c for c in db.scalars(select(models.Company)).all()}
@@ -433,7 +434,7 @@ def digest_scan(db: Session) -> dict:
     from datetime import datetime, timezone, date
     from collections import defaultdict
 
-    today = date.today().isoformat()
+    today = kuwait_today().isoformat()
     now = datetime.now(timezone.utc)
 
     open_tasks = db.scalars(

@@ -20,6 +20,7 @@ from ..deps import assert_same_company, audit, get_current_user, require_perm, s
 from ..qr import haversine_m
 from ..safe_files import read_limited
 from .. import qr_token
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -280,7 +281,7 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
     from ..deps import resolve_scope
     scope = resolve_scope(user, db)
     cid = scope_company_id(user, company_id)
-    today = date.today()
+    today = kuwait_today()
     try:
         y, m = (int(p) for p in month.split("-")) if month else (today.year, today.month)
     except Exception:

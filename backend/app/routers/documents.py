@@ -16,6 +16,7 @@ from ..deps import assert_same_company, audit, require_perm
 from .. import ocr
 from ..notifications import create_task, notify_roles
 from ..safe_files import read_limited, unique_path
+from ..clock import today as kuwait_today
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def _sync_permit_from_document(db: Session, doc: models.Document) -> None:
         models.Permit.employee_id == doc.entity_id,
         models.Permit.kind == kind,
     ).order_by(models.Permit.expiry_date.desc()))
-    today = date.today()
+    today = kuwait_today()
     status = "active" if doc.expiry_date >= today else "expired"
     if permit:
         # لا نتراجع بتاريخ أقدم: رفع نسخة قديمة للأرشفة يجب ألا يُبطل السارية

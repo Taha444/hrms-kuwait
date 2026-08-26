@@ -3255,3 +3255,57 @@ def test_pro08_09_archive_fields_and_license_labels(client):
     expired = [i for i in items if i["status"] == "expired"]
     assert expired, "مستند منتهٍ لا يظهر بحالته"
     assert expired[0]["days_left"] < 0
+
+
+def test_expiry_math_uses_kuwait_clock_everywhere(client):
+    """كل حساب أيام يقرأ ساعة واحدة — ساعة الكويت.
+
+    ROOT CAUSE: كل موضع يحسب أيًاما متبقية كان يستدعي ``date.today()`` وهي
+    تقرأ **توقيت الخادم**، بينما المجدول مضبوط على ``Asia/Kuwait`` صراحة.
+    فالنظام يحمل ساعتين: واحدة تقرّر متى يُرسَل التنبيه، وأخرى تقرّر كم
+    يوًما تبقّى.
+
+    على خادم UTC — وهو الشائع في الاستضافة وبيئتنا منه — الفارق ثلاث ساعات:
+    بين منتصف الليل والثالثة فجًرا بتوقيت الكويت يكون الخادم في اليوم
+    السابق، فيقول التنبيه «ستة أيام» وتقول اللوحة «سبعة». وهذا بالضبط ما
+    أبلغ عنه المستخدم في أول بلاغ عن شاشة التجديد.
+    """
+    import ast
+    from datetime import date, datetime, timedelta, timezone
+    from pathlib import Path
+
+    from app.clock import KUWAIT_TZ, days_until, today as kuwait_today
+
+    # 1) الساعة صحيحة: الكويت UTC+3 ثابًتا
+    assert KUWAIT_TZ.utcoffset(None) == timedelta(hours=3)
+    assert kuwait_today() == datetime.now(KUWAIT_TZ).date()
+
+    # 2) الفارق حقيقي وليس نظرًيا: 00:30 بالكويت = اليوم السابق بـUTC
+    at_kuwait = datetime(2026, 8, 27, 0, 30, tzinfo=KUWAIT_TZ)
+    at_utc = at_kuwait.astimezone(timezone.utc)
+    assert at_utc.date() != at_kuwait.date(), "المحاكاة لا تعبر منتصف الليل"
+    expiry = date(2026, 9, 2)
+    assert (expiry - at_utc.date()).days - (expiry - at_kuwait.date()).days == 1
+
+    # 3) ولا موضع في منطق الأعمال يقرأ ساعة الخادم بعد الآن
+    root = Path(__file__).resolve().parents[1] / "app"
+    allowed = {"clock.py", "seed.py", "seed_guard.py"}
+    offenders = []
+    for path in root.rglob("*.py"):
+        if path.name in allowed or "__pycache__" in path.as_posix():
+            continue
+        src = path.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(src)):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "today"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "date"):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, (
+        "مواضع ما زالت تقرأ توقيت الخادم بدل ساعة الكويت: " + ", ".join(offenders))
+
+    # 4) والدالة المشتركة تحسب صحيًحا وتحتمل الفراغ
+    assert days_until(None) is None
+    assert days_until(kuwait_today()) == 0
+    assert days_until(kuwait_today() + timedelta(days=5)) == 5
+    assert days_until(kuwait_today() - timedelta(days=3)) == -3

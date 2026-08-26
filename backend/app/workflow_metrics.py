@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 
 def _hours(a: datetime | None, b: datetime | None) -> float | None:
@@ -38,8 +39,8 @@ def _avg(values: list[float]) -> float | None:
 def workflow_operations(db: Session, company_id: int | None,
                         since: date | None = None, until: date | None = None) -> dict:
     """تقرير تشغيلي: أزمنة الخطوات، الإرجاع، الرفض، خرق SLA، نسبة الأتمتة."""
-    since = since or (date.today() - timedelta(days=90))
-    until = until or date.today()
+    since = since or (kuwait_today() - timedelta(days=90))
+    until = until or kuwait_today()
     start = datetime.combine(since, datetime.min.time())
     end = datetime.combine(until, datetime.max.time())
 

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..database import get_db
 from ..deps import assert_same_company, audit, require_perm, scope_company_id
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/signatories", tags=["signatories"])
 
@@ -189,7 +190,7 @@ def resolve_authorized_signatory(db: Session, company_id: int, doc_code: str,
                                  category: str | None = None,
                                  as_of: date | None = None) -> models.AuthorizedSignatory | None:
     """يعيد المخوّل الأنسب لطباعة مستند برمز doc_code داخل الشركة (أو None)."""
-    d = as_of or date.today()
+    d = as_of or kuwait_today()
     rows = db.scalars(select(models.AuthorizedSignatory).where(
         models.AuthorizedSignatory.company_id == company_id,
         models.AuthorizedSignatory.is_active.is_(True),

@@ -16,6 +16,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 PAYROLL_DAY_DIVISOR = 30
 OVERTIME_RATE = 1.25
@@ -76,7 +77,7 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             # حضوًرا وسقط قبل أن يُفحص
             present_dates = {r.check_in_at.date() for r in recs
                              if (r.status or "").lower() != "absent"}
-            today = date.today()
+            today = kuwait_today()
             # QA-04 — قصّ الفترة على مدة التوظيف الفعلية:
             #   [hire_date, termination_date ?? اليوم]
             period_start = date(year, month, 1)

@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 
 def _as_date(v: Any) -> date | None:
@@ -159,7 +160,7 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
         return True, f"{label}: القيم المطلوبة مطابقة للحالي — لا تغيير"
 
     eff = _as_date(payload.get("effective_date") or payload.get("effective_from"))
-    note_eff = f" (تاريخ السريان المعلن: {eff.isoformat()})" if eff and eff > date.today() else ""
+    note_eff = f" (تاريخ السريان المعلن: {eff.isoformat()})" if eff and eff > kuwait_today() else ""
 
     db.add(models.AuditLog(
         company_id=req.company_id, user_id=None,

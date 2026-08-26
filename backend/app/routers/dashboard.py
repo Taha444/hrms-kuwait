@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..database import get_db
 from ..deps import get_current_user, scope_company_id
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 def dashboard(company_id: int | None = None,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
-    today = date.today()
+    today = kuwait_today()
     soon = today + timedelta(days=90)
 
     def count(model, *conds):

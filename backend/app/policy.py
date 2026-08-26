@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+from .clock import today as kuwait_today
 
 # المفاتيح المعروفة وقيمها الاحتياطية. القيم مأخوذة مما كان في الكود فعلًا،
 # فالسلوك لا يتغيّر بمجرد إدخال الجدول — يتغيّر فقط حين تُعتمَد قاعدة جديدة.
@@ -52,7 +53,7 @@ def get(db: Session, company_id: int | None, key: str,
     """يعيد {value, version, source} للمفتاح — قاعدة الشركة ثم العامة ثم الافتراضي."""
     if key not in DEFAULTS:
         raise KeyError(f"مفتاح سياسة غير معروف: {key}")
-    on_date = on_date or date.today()
+    on_date = on_date or kuwait_today()
 
     for scope, cid in (("company", company_id), ("global", None)):
         if scope == "company" and company_id is None:

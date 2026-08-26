@@ -11,6 +11,7 @@ from .. import models
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
 from ..notifications import create_task
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/pro", tags=["pro"])
 
@@ -47,7 +48,7 @@ def list_permits(company_id: int | None = None, kind: str | None = None,
         q = q.where(models.Permit.status == status)
     permits = db.scalars(q).all()
     emp_map = {e.id: e for e in db.scalars(select(models.Employee)).all()}
-    today = date.today()
+    today = kuwait_today()
     out = []
     for p in permits:
         emp = emp_map.get(p.employee_id)
@@ -180,7 +181,7 @@ def government_overview(company_id: int | None = None,
     if cid is not None:
         q = q.where(models.License.company_id == cid)
     licenses = db.scalars(q).all()
-    today = date.today()
+    today = kuwait_today()
     groups: dict[str, list] = {}
     for lic in licenses:
         authority = lic.issuing_authority or "غير محدّد"

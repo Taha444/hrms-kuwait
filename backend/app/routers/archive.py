@@ -20,6 +20,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
 from ..safe_files import read_limited, unique_path
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/archive", tags=["archive"])
 
@@ -71,9 +72,9 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
             # الحالة تُشتقّ من تاريخ الانتهاء لا تُخزَّن: حقل محفوظ يحتاج من
             # يحدّثه كل يوم، والاشتقاق صحيح دائًما بلا مهمة دورية.
             "company_id": d.company_id,
-            "status": ("expired" if d.expiry_date and d.expiry_date < date.today()
+            "status": ("expired" if d.expiry_date and d.expiry_date < kuwait_today()
                        else "valid" if d.expiry_date else "no_expiry"),
-            "days_left": ((d.expiry_date - date.today()).days if d.expiry_date else None),
+            "days_left": ((d.expiry_date - kuwait_today()).days if d.expiry_date else None),
             "has_versions": (d.version or 1) > 1,
         }
         # metadata مضافة للمستندات المخصّصة

@@ -25,6 +25,7 @@ from ..deps import (
     scope_company_id,
 )
 from ..permissions import CROSS_COMPANY_ROLES
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -320,7 +321,7 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "company_name": company.name if company else "",
         "company_name_en": (company.name_en or "") if company else "",
         "commercial_reg": (company.commercial_reg or "") if company else "",
-        "date_today": date.today().isoformat(),
+        "date_today": kuwait_today().isoformat(),
         "ref_no": f"{emp.company_id}-{emp.id}-{datetime.now():%Y%m%d}",
         # P0-#11 — قيم افتراضية من قانون العمل الكويتي (قابلة للـoverride عبر extras):
         "probation_days": "100",
@@ -330,9 +331,9 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         # ── حقول نموذج PAM الحرفي (الترحيل v5o6p7q8r9s) ──────────────────────
         # النموذج الرسمي يذكر اليوم والتاريخ صراحًة في صدر العقد
         "contract_date": (emp.hire_date.strftime("%d/%m/%Y") if emp.hire_date
-                          else date.today().strftime("%d/%m/%Y")),
-        "day_name_ar": _DAY_AR[(emp.hire_date or date.today()).weekday()],
-        "day_name_en": _DAY_EN[(emp.hire_date or date.today()).weekday()],
+                          else kuwait_today().strftime("%d/%m/%Y")),
+        "day_name_ar": _DAY_AR[(emp.hire_date or kuwait_today()).weekday()],
+        "day_name_en": _DAY_EN[(emp.hire_date or kuwait_today()).weekday()],
         # ممثل الشركة في التوقيع — يقع على الشركة لا على الموظف. الحقول غير
         # موجودة في النموذج بعد، فنقرأها بأمان: العقد يُطبع بخانة فارغة تُملأ
         # يدويًا بدل أن يفشل التوليد كله.

@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .database import SessionLocal
 from .notifications import daily_scan, digest_scan, sla_scan
+from .clock import today as kuwait_today
 
 logger = logging.getLogger("hrms.scheduler")
 _scheduler: BackgroundScheduler | None = None
@@ -34,7 +35,7 @@ def _alert_job_failure(job: str, exc: Exception) -> None:
                 title=f"فشل مهمة مجدولة: {job}",
                 detail=(f"{type(exc).__name__}: {exc}"[:400] +
                         " — النظام لا يولّد تنبيهاته حتى تُعالَج."),
-                dedup_key=f"job_fail:{job}:{date.today().isoformat()}",
+                dedup_key=f"job_fail:{job}:{kuwait_today().isoformat()}",
             )
         db.commit()
     except Exception:  # noqa: BLE001 — التنبيه لا يُسقط المجدوِل

@@ -170,7 +170,7 @@ def get_user_perms(user: models.User, db: Session) -> set[str]:
     rows = db.scalars(
         select(models.UserPermission).where(models.UserPermission.user_id == user.id)
     ).all()
-    today = date.today()
+    today = kuwait_today()
     assigned = {r.perm_code for r in rows if not (r.expires_at and r.expires_at < today)}
     return assigned
 
@@ -273,6 +273,7 @@ def scope_company_id(user: models.User, requested: int | None = None) -> int | N
 
 
 from dataclasses import dataclass
+from .clock import today as kuwait_today
 
 # مستويات نطاق البيانات الأربعة (Scope) — تُفرَض على الخادم
 SCOPE_LEVELS = ("company", "branch", "multi", "self")

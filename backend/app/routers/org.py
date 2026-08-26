@@ -12,6 +12,7 @@ from ..database import get_db
 from ..deps import (assert_same_company, audit, get_current_user, require_perm,
                     resolve_scope, scope_company_id)
 from ..qr import current_code, seconds_remaining
+from ..clock import today as kuwait_today
 
 router = APIRouter(tags=["org"])
 
@@ -112,7 +113,7 @@ def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
     bids = resolve_scope(user, db).branch_ids
     if bids is not None and branch_id not in bids:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
-    today = date.today()
+    today = kuwait_today()
     emp_ids = select(models.Employee.id).where(models.Employee.branch_id == branch_id,
                                                models.Employee.status == "active")
 

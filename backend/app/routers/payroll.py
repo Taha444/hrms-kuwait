@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .. import models, payroll as payroll_engine
 from ..database import get_db
 from ..deps import audit, require_perm, require_super_admin, scope_company_id
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
 
@@ -71,7 +72,7 @@ def run(period: str, request: Request, company_id: int | None = None, force_futu
     cid = _company(user, company_id)
 
     # منع الشهر المستقبلي بدون استثناء صريح
-    today = date.today()
+    today = kuwait_today()
     if (y, m) > (today.year, today.month) and not force_future:
         raise HTTPException(status_code=400,
                             detail="لا يمكن تشغيل مسيّر لشهر مستقبلي دون تأكيد صريح (force_future)")

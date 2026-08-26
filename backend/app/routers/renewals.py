@@ -21,6 +21,7 @@ from ..notifications import (create_task, notify_employee_self, notify_from_temp
                              notify_roles, users_by_role)
 from ..permissions import has_permission
 from ..safe_files import read_limited, unique_path
+from ..clock import today as kuwait_today
 
 router = APIRouter(prefix="/renewals", tags=["renewals"])
 
@@ -224,7 +225,7 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
                                     models.Permit.status == "active").order_by(models.Permit.expiry_date))
     if not permit or not permit.expiry_date:
         raise HTTPException(status_code=400, detail="لا توجد إقامة سارية بتاريخ انتهاء لهذا الموظف")
-    days_left = (permit.expiry_date - date.today()).days
+    days_left = (permit.expiry_date - kuwait_today()).days
     rtype = R.classify(days_left)
     if rtype is None:
         raise HTTPException(status_code=400,
@@ -788,7 +789,7 @@ def finalize_renewal(rid: int, request: Request,
         raise HTTPException(status_code=400, detail="الرقم المرجعي الحكومي إلزامي")
     if fees_amount < 0:
         raise HTTPException(status_code=400, detail="قيمة الرسوم لا يمكن أن تكون سالبة")
-    if new_expiry_date <= date.today():
+    if new_expiry_date <= kuwait_today():
         raise HTTPException(status_code=400,
                           detail="تاريخ انتهاء الإقامة الجديد يجب أن يكون في المستقبل")
 
@@ -876,7 +877,7 @@ def hr_verify_renewal(rid: int, request: Request,
     new_permit = models.Permit(
         company_id=rn.company_id, employee_id=rn.employee_id,
         kind="residency", number=rn.new_permit_number,
-        start_date=date.today(), expiry_date=rn.new_expiry_date,
+        start_date=kuwait_today(), expiry_date=rn.new_expiry_date,
         status="active",
     )
     db.add(new_permit)
@@ -1038,7 +1039,7 @@ def permits_due_without_case(user: models.User = Depends(get_current_user),
     """
     from datetime import timedelta
 
-    today = date.today()
+    today = kuwait_today()
     soon = today + timedelta(days=90)
     q = select(models.Permit).where(
         models.Permit.kind == "residency",

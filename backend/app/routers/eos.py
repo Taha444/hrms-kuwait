@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..clock import today as kuwait_today
 from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
@@ -55,7 +56,7 @@ def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None
     if not emp.hire_date:
         raise HTTPException(status_code=400, detail="تاريخ التعيين غير مُسجّل")
     company = db.get(models.Company, emp.company_id)
-    end = as_of or date.today()
+    end = as_of or kuwait_today()
     _, _, _, _, decimal_years = eos_engine.service_breakdown(emp.hire_date, end)
     per_year = float(company.annual_leave_days or 30)
     accrued = round(per_year * decimal_years, 2)
