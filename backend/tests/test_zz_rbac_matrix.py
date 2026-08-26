@@ -3206,3 +3206,52 @@ def test_rnw04_20_21_22_24_timeline_scope_and_dedup(client):
     # والعزل قائم: مندوب الشركة الأولى لا يرى معاملة الثانية
     assert client.get(f"/api/renewals/{r2.json()['id']}/timeline",
                       headers=pro).status_code == 404, "خرق عزل الشركات"
+
+
+def test_pro08_09_archive_fields_and_license_labels(client):
+    """PRO-08/09 — الأرشيف يحمل ما تطلبه المواصفة، والتسميات تميّز الرقمين.
+
+    ROOT CAUSE (PRO-08): «نسبة التراخيص السارية» في اللوحة و«تراخيص قرب
+    الانتهاء» في مركز العمليات كانتا تحملان تسمية متطابقة تقريًبا لرقمين
+    يجيبان **سؤالين مختلفين**: الأولى نسبة التزام على كل التراخيص، والثانية
+    ما يحتاج انتباًها خلال 90 يوًما. الرقمان صحيحان، والتسمية هي ما جعلهما
+    يبدوان متناقضين — وهو نفس نمط QA-05 بين التجديدات ومركز العمليات.
+
+    ROOT CAUSE (PRO-09): قائمة الأرشيف تعيد النوع والتاريخ والنسخة، وتنقصها
+    الشركة والحالة — فمن يفتح الأرشيف لا يعرف أي مستند منتهٍ إلا بحساب
+    التواريخ بنفسه.
+    """
+    from datetime import date, timedelta
+
+    from app import models
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    hr = _headers(client, "100000000002", "hr12345")
+
+    db = SessionLocal()
+    try:
+        db.add(models.Document(
+            company_id=1, entity_type="company", entity_id=1,
+            document_type_code="commercial_license", title="ترخيص اختبار الأرشيف",
+            file_path="/tmp/x.pdf", version=1, is_current=True,
+            expiry_date=date.today() - timedelta(days=5)))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/archive/company", headers=hr, params={"company_id": 1})
+    assert r.status_code == 200, r.text[:200]
+    body = r.json()
+    items = body.get("documents") or body.get("docs") or []
+    assert items, f"الأرشيف فارغ رغم وجود مستند — المفاتيح: {list(body)}"
+
+    for item in items:
+        for field in ("company_id", "status", "days_left", "has_versions"):
+            assert field in item, f"حقل {field} ناقص في الأرشيف"
+        assert item["status"] in ("valid", "expired", "no_expiry")
+
+    # المنتهي يُعرَّف منتهًيا بلا حساب من القارئ
+    expired = [i for i in items if i["status"] == "expired"]
+    assert expired, "مستند منتهٍ لا يظهر بحالته"
+    assert expired[0]["days_left"] < 0

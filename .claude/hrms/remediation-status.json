@@ -90,24 +90,24 @@
     "updated": ""
   },
   "ACCESS-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "users.py:95 يرفض إنشاء حساب موظف بلا employee_id برسالة صريحة",
+    "updated": "2026-08-27"
   },
   "ACCESS-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "selfservice.py يعمل على user.employee_id — أي حساب إداري مربوط بموظف يرى ملفه",
+    "updated": "2026-08-27"
   },
   "ACCESS-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "employees.py:141,251 يُصفّي الهوية والعقد والإجازات للمحاسب على الخادم",
+    "updated": "2026-08-27"
   },
   "ACCESS-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "employees.py:148,334 يُصفّي الراتب وبيانات التوظيف للمندوب",
+    "updated": "2026-08-27"
   },
   "ACCESS-05": {
     "status": "verified",
@@ -115,54 +115,54 @@
     "updated": "2026-08-15"
   },
   "ACCESS-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "employees.py:400 يستثني تبويب eos ممّن لا يملك calculate_eos — لا تبويب فارغ",
+    "updated": "2026-08-27"
   },
   "ACCESS-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "company_owner يملك view_employee والرابط مشروط به في App.tsx:157 — البلاغ سبق منح الصلاحية",
+    "updated": "2026-08-27"
   },
   "ACCESS-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "main.py:346 يقيس انحراف الساعة ويعرضه في /health/deep، و2FA له رموز استرداد",
+    "updated": "2026-08-27"
   },
   "ACCESS-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "auth.tsx:117 مؤقّت خمول يقرأ idle_logout_minutes من الخادم",
+    "updated": "2026-08-27"
   },
   "ACCESS-10": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "seed_guard يُبطل كلمات البذرة تلقائيًّا على بيئة منشورة، و remediate_seed_accounts للمعالجة الشاملة",
+    "updated": "2026-08-27"
   },
   "ACCESS-11": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "auth.py:34 _rate_limit + MAX_FAILED=5 يقفل الحساب مؤقتًا",
+    "updated": "2026-08-27"
   },
   "ACCESS-12": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "permissions.effective_permissions مصدر واحد يغذّي /auth/me والحرّاس، والواجهة تبني قوائمها منه",
+    "updated": "2026-08-27"
   },
   "ACCESS-13": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "hr يملك edit_employee. و edit_actual_salary محجوب عنه عمدًا — فصل واجبات: الراتب الفعلي للمحاسب لا للموارد البشرية",
+    "updated": "2026-08-27"
   },
   "ACCESS-14": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "App.tsx:424 صفحة 404 صريحة و Guarded يمنع التحميل الدائم",
+    "updated": "2026-08-27"
   },
   "ACCESS-15": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "لا توجد Quick Actions في الواجهة — كل الأزرار مشروطة بـcan() المبني على صلاحيات الخادم",
+    "updated": "2026-08-27"
   },
   "ATT-01": {
     "status": "open",
@@ -260,54 +260,54 @@
     "updated": ""
   },
   "PRO-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "ocr.py:280 يعالج residency و work_permit و civil_id بنفس القارئ — كان يسقط لـnull provider بثقة 0.0. وRNW-12 يعرض الفشل بسببه بدل الصمت",
+    "updated": "2026-08-27"
   },
   "PRO-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "C:/Program Files/Git/api/renewals يرجع 200 بمعاملة فعلية، و/renewals/due/permits يرجع 4 مستحقة — مُقاس على قاعدة حية",
+    "updated": "2026-08-27"
   },
   "PRO-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "dashboard.py:73+ يقرأ من Permit وهو المصدر الواحد نفسه الذي يغذّي التجديدات. مُقاس: expired=2 expiring_30=2 لا صفر",
+    "updated": "2026-08-27"
   },
   "PRO-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "مسار التجديد كامل 24/24 من كيت التجديد — تنبيه→معاملة→عقد بثلاث نسخ→OCR→نشر→إغلاق→Timeline",
+    "updated": "2026-08-27"
   },
   "PRO-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "App.tsx:498 مسار /pro صار Navigate إلى /renewals — الصفحة القديمة أُزيلت ولا ملف لها",
+    "updated": "2026-08-27"
   },
   "PRO-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "daily_scan يُنبّه على انتهاء المستندات بـdedup_key=permit_expiring:{id}:{bucket} — RNW-04 مُقاس: تشغيلان لا يكرّران",
+    "updated": "2026-08-27"
   },
   "PRO-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "count_open_gov_tasks مصدر واحد يغذّي اللوحة (dashboard.py:129) ومركز العمليات (operations.py:96) — لا اختلاف ممكن",
+    "updated": "2026-08-27"
   },
   "PRO-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "الرقمان صحيحان عن سؤالين: اللوحة نسبة التزام على كل التراخيص، ومركز العمليات ما ينتهي خلال 90 يومًا. التسمية الموحّدة هي ما أوهم بالتناقض — فُصلت: 'نسبة التراخيص السارية' و'تراخيص تنتهي خلال 90 يومًا'",
+    "updated": "2026-08-27"
   },
   "PRO-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "archive.py يعيد company_id والحالة (مشتقّة من تاريخ الانتهاء لا مخزَّنة) و days_left و has_versions مع النوع والرقم والجهة والمندوب والملاحظات. سجلّ النسخ عبر /documents/history. الدليل: test_pro08_09_archive_fields_and_license_labels",
+    "updated": "2026-08-27"
   },
   "PRO-10": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "renewals.py يصنّف early/normal عبر R.classify(days_left) ويفرض سبًبا للمبكر، ومساره يمرّ بالمدير وHR",
+    "updated": "2026-08-27"
   },
   "DOC-01": {
     "status": "open",

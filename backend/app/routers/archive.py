@@ -67,6 +67,14 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
             "version": d.version, "created_at": d.created_at,
             "notify_on_expiry": bool(d.notify_on_expiry),
             "is_custom": (d.document_type_code or "").startswith("custom:"),
+            # PRO-09 — المواصفة تطلب الشركة والحالة مع كل مستند أرشيف.
+            # الحالة تُشتقّ من تاريخ الانتهاء لا تُخزَّن: حقل محفوظ يحتاج من
+            # يحدّثه كل يوم، والاشتقاق صحيح دائًما بلا مهمة دورية.
+            "company_id": d.company_id,
+            "status": ("expired" if d.expiry_date and d.expiry_date < date.today()
+                       else "valid" if d.expiry_date else "no_expiry"),
+            "days_left": ((d.expiry_date - date.today()).days if d.expiry_date else None),
+            "has_versions": (d.version or 1) > 1,
         }
         # metadata مضافة للمستندات المخصّصة
         if item["is_custom"] and d.extracted_data_json:
