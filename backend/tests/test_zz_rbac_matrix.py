@@ -2642,3 +2642,124 @@ def test_rnw12_13_ocr_proposes_never_applies(client):
 
     after = client.get(f"/api/renewals/{rid}/extracted", headers=pro).json()
     assert after["can_close"] is True, "الإغلاق ما زال ممنوًعا بعد اكتمال البيانات"
+
+
+def test_rnw16_17_19_propagation_and_closure(client):
+    """RNW-16/17/19 — الإغلاق مشروط، والأثر ينتشر، والمهام تُغلق.
+
+    ROOT CAUSE (RNW-17): التحقق النهائي كان يرفض بـ«بيانات المعاملة الحكومية
+    ناقصة» — رسالة يقف أمامها المندوب ولا يعرف أين يذهب، ولا تفحص المستندات
+    أصًلا. فمعاملة بلا إذن عمل كانت تُغلق ما دامت الحقول الثلاثة مملوءة.
+
+    ROOT CAUSE (RNW-19): مهام المعاملة تبقى مفتوحة بعد اكتمالها، فيرى المندوب
+    والموظف مطلوًبا منهما إجراء لا وجود له — وصندوق مهام يمتلئ بما انتهى يفقد
+    معناه.
+
+    RNW-16 يُقاس بالمصدر لا بالشاشات: التاريخ الجديد يعيش في صفّ Permit واحد
+    تقرأ منه كل الشاشات، والقديم يصير renewed فيخرج من كل استعلام يشترط active.
+    """
+    import io
+    from datetime import date, timedelta
+
+    from app import models, renewal as R
+    from app.database import SessionLocal
+    from sqlalchemy import select
+
+    pro = _headers(client, "100000000003", "deleg123")
+    hr = _headers(client, "100000000002", "hr12345")
+
+    db = SessionLocal()
+    try:
+        emp = models.Employee(
+            company_id=1, name="موظف الإغلاق", civil_id="266010166666",
+            nationality="مصري", job_title="سائق", status="active",
+            hire_date=date.today() - timedelta(days=700), basic_salary=350)
+        db.add(emp); db.flush()
+        old_permit = models.Permit(
+            company_id=1, employee_id=emp.id, kind="residency", status="active",
+            number="RNW-CLOSE-OLD", expiry_date=date.today() + timedelta(days=12))
+        db.add(old_permit); db.commit()
+        emp_id, old_pid = emp.id, old_permit.id
+    finally:
+        db.close()
+
+    rid = client.post("/api/renewals", headers=pro,
+                      data={"employee_id": str(emp_id)}).json()["id"]
+
+    def _upload(kind):
+        return client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                           data={"doc_type": kind},
+                           files={"file": (f"{kind}.pdf", io.BytesIO(b"%PDF-1.4 z"),
+                                           "application/pdf")})
+
+    # 1) الفحص يسمّي الناقص من أول لحظة
+    chk = client.get(f"/api/renewals/{rid}/closure-check", headers=pro)
+    assert chk.status_code == 200
+    assert chk.json()["can_close"] is False
+    named = chk.json()["missing"]
+    assert any("إذن العمل" in m for m in named), f"لم يُسمَّ إذن العمل: {named}"
+    assert any("تاريخ الانتهاء" in m for m in named), f"لم يُسمَّ التاريخ: {named}"
+
+    _upload(R.DOC_CONTRACT_GOV)
+    _upload(R.DOC_SIGNED_GOV)
+    client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    _upload(R.DOC_WORK_PERMIT)
+
+    new_exp = date.today() + timedelta(days=400)
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "MOI-CLOSE-1", "fees_amount": "15",
+        "fees_receipt_no": "R-9", "new_permit_number": "RNW-CLOSE-NEW",
+        "new_expiry_date": new_exp.isoformat()})
+
+    # مهمة مفتوحة على المعاملة قبل الإغلاق
+    db = SessionLocal()
+    try:
+        db.add(models.Task(company_id=1, type="renew_residency", status="open",
+                           title="متابعة تجديد", related_entity_type="renewal",
+                           related_entity_id=rid))
+        db.commit()
+    finally:
+        db.close()
+
+    _upload(R.DOC_CIVIL_CARD)
+
+    # 2) الآن يكتمل، والإغلاق يمرّ
+    assert client.get(f"/api/renewals/{rid}/closure-check", headers=pro).json()["can_close"] is True
+    done = client.post(f"/api/renewals/{rid}/hr-verify", headers=hr,
+                       data={"note": "روجعت المستندات"})
+    assert done.status_code == 200, f"تعذّر الإغلاق رغم الاكتمال: {done.text[:200]}"
+
+    db = SessionLocal()
+    try:
+        rn = db.get(models.ResidencyRenewal, rid)
+        assert rn.status == R.COMPLETED
+
+        # RNW-16 — مصدر واحد: القديم renewed والجديد active بالتاريخ المعتمد
+        old = db.get(models.Permit, old_pid)
+        assert old.status == "renewed", f"الإقامة القديمة ما زالت {old.status}"
+        new = db.scalar(select(models.Permit).where(
+            models.Permit.employee_id == emp_id, models.Permit.status == "active",
+            models.Permit.kind == "residency"))
+        assert new and new.expiry_date == new_exp, "التاريخ الجديد لم يُطبَّق على الإقامة"
+        assert new.number == "RNW-CLOSE-NEW"
+
+        # RNW-19 — المهام أُغلقت
+        still_open = db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "renewal",
+            models.Task.related_entity_id == rid,
+            models.Task.status.in_(("open", "in_progress")))).all()
+        # ما يبقى مفتوًحا هو إشعار الاكتمال وحده — رسالة "انتهت المعاملة" لا
+        # إجراء مطلوب. أما مهام العمل (متابعة التجديد، التوقيع) فتُغلق.
+        # ملاحظة: عرض الإشعارات كمهام بأزرار إنجاز عيب مستقلّ مسجَّل في كيت
+        # المعالجة (TASK-02) وخارج نطاق هذا البند.
+        leftover = [x for x in still_open if x.type != "request_update"]
+        assert not leftover, (
+            f"{len(leftover)} مهمة عمل ما زالت مفتوحة بعد الاكتمال: "
+            + ", ".join(x.title for x in leftover))
+    finally:
+        db.close()
+
+    # 3) لا تنبيه جديد على الإقامة المجدَّدة — تخرج من قائمة المستحقّة
+    due = client.get("/api/renewals/due/permits", headers=pro).json()
+    assert not any(d["permit_id"] == old_pid for d in due), \
+        "الإقامة المجدَّدة ما زالت تُعرض كمستحقّة للتجديد"

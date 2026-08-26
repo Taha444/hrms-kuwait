@@ -512,6 +512,61 @@ OCR_FIELDS_OF_INTEREST = {
 }
 
 
+def _closure_blockers(db, rn) -> list[str]:
+    """RNW-17/18 — ما ينقص لإغلاق المعاملة، مسمًّى بالضبط.
+
+    «بيانات ناقصة» ليست رسالة: المندوب يقف أمامها ولا يعرف أين يذهب. القائمة
+    هنا تسمّي المستند أو الحقل باسمه، فالإغلاق يُرفض ويُشرح في آنٍ واحد.
+    """
+    missing = []
+    for key, label in ESSENTIAL_FIELDS.items():
+        if not getattr(rn, key, None):
+            missing.append(label)
+    if not rn.gov_reference_no:
+        missing.append("الرقم المرجعي للمعاملة الحكومية")
+
+    required_docs = {
+        R.DOC_CONTRACT_GOV: "العقد الحكومي",
+        R.DOC_SIGNED_GOV: "العقد موقًَّعا من الموظف",
+        R.DOC_WORK_PERMIT: "إذن العمل الجديد",
+    }
+    for kind, label in required_docs.items():
+        entity = "employee" if kind == R.DOC_WORK_PERMIT else "renewal"
+        entity_id = rn.employee_id if kind == R.DOC_WORK_PERMIT else rn.id
+        if not _has(db, entity, entity_id, kind):
+            missing.append(label)
+    return missing
+
+
+def _close_renewal_tasks(db, rn) -> int:
+    """RNW-19 — يغلق مهام المعاملة المفتوحة عند اكتمالها.
+
+    كانت تبقى مفتوحة في صندوق المهام بعد انتهاء التجديد، فيرى المندوب والموظف
+    مطلوًبا منهما إجراء لا وجود له — وصندوق مهام يمتلئ بما انتهى يفقد معناه.
+    """
+    open_tasks = db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "renewal",
+        models.Task.related_entity_id == rn.id,
+        models.Task.status.in_(("open", "in_progress")),
+    )).all()
+    for task in open_tasks:
+        task.status = "dismissed"
+        task.completed_at = datetime.utcnow()
+    return len(open_tasks)
+
+
+@router.get("/{rid}/closure-check")
+def closure_check(rid: int, user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """RNW-17 — هل تكتمل شروط الإغلاق؟ وما الناقص إن لم تكتمل."""
+    rn = _get_renewal(db, user, rid)
+    perms = get_user_perms(user, db)
+    if not _is_pro(user, perms) and user.role not in ("super_admin", "company_owner", "hr"):
+        raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
+    missing = _closure_blockers(db, rn)
+    return {"renewal_id": rn.id, "can_close": not missing, "missing": missing}
+
+
 @router.get("/{rid}/extracted")
 def extracted_values(rid: int, user: models.User = Depends(get_current_user),
                      db: Session = Depends(get_db)):
@@ -668,10 +723,12 @@ def hr_verify_renewal(rid: int, request: Request,
                           detail="التحقق من إتمام معاملة التجديد لـHR/الإدارة العليا فقط")
     if rn.status != R.PENDING_HR_VERIFY:
         raise HTTPException(status_code=409, detail="المعاملة ليست في مرحلة تحقق HR")
-    if not rn.gov_reference_no or not rn.new_permit_number or not rn.new_expiry_date:
-        raise HTTPException(status_code=400,
-                          detail="بيانات المعاملة الحكومية ناقصة — لا يمكن التحقق")
-
+    # RNW-17/18 — الإغلاق مشروط بفحص اكتمال يسمّي الناقص، لا بضغطة «تم»
+    blockers = _closure_blockers(db, rn)
+    if blockers:
+        raise HTTPException(
+            status_code=400,
+            detail="لا يمكن إغلاق المعاملة — الناقص: " + "، ".join(blockers))
     rn.hr_verified_at = datetime.utcnow()
     rn.hr_verified_by = user.id
     rn.hr_verification_note = (note or "").strip() or None
@@ -691,6 +748,7 @@ def hr_verify_renewal(rid: int, request: Request,
     )
     db.add(new_permit)
 
+    closed = _close_renewal_tasks(db, rn)  # RNW-19
     _notify_stage(db, rn)
     audit(db, user, "hr_verify_renewal", "residency_renewal", rn.id, request=request,
           detail=f"verified→{rn.new_permit_number} exp {rn.new_expiry_date}",
