@@ -115,7 +115,7 @@ def get_current_user(
     from .audit_context import set_actor
     set_actor(
         user.id,
-        request.client.host if request.client else None,
+        client_ip(request),
         (request.headers.get("user-agent") or "")[:400] or None,
     )
 
@@ -350,6 +350,43 @@ def assert_same_company(user: models.User, entity_company_id: int | None,
         raise HTTPException(status_code=404, detail="غير موجود")  # 404 لإخفاء الوجود
 
 
+def client_ip(request) -> str | None:
+    """عنوان الزائر الحقيقي خلف وكيل الاستضافة.
+
+    ROOT CAUSE: كان التدقيق يسجّل ``request.client.host``، وهو خلف وكيل
+    (Railway وغيرها) عنوان **الوكيل الداخلي** لا الزائر: كل السطور تخرج من
+    نطاق 100.64.0.0/10 المحجوز للشبكات المشتركة. فسجل التدقيق يبدو ممتلًئا
+    بعناوين مختلفة وهي كلها موازِنات حِمل — ولا يجيب عن السؤال الذي وُجد
+    لأجله: من دخل ومن أين.
+
+    العنوان الحقيقي في ``X-Forwarded-For``، وأولها هو الزائر والباقي وكلاء.
+    ولا يُقرأ إلا حين يأتي الطلب من **وكيل داخلي فعًلا**: الترويسة يكتبها من
+    شاء، فقراءتها من طلب مباشر تسمح لأي أحد بانتحال أي عنوان في سجلّك.
+    """
+    if request is None:
+        return None
+    peer = request.client.host if request.client else None
+    if peer and _is_internal(peer):
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            first = fwd.split(",")[0].strip()
+            if first:
+                return first[:50]
+    return peer
+
+
+def _is_internal(ip: str) -> bool:
+    """هل هذا عنوان شبكة داخلية (وكيل) لا زائر؟"""
+    import ipaddress
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    # 100.64.0.0/10 = CGNAT وهو ما تستعمله Railway وأمثالها لوكلائها
+    return (addr.is_private or addr.is_loopback
+            or addr in ipaddress.ip_network("100.64.0.0/10"))
+
+
 def audit(db: Session, user: models.User | None, action: str, entity_type: str | None = None,
           entity_id: int | None = None, detail: str | None = None, request: Request | None = None,
           company_id: int | None = None, before: dict | None = None, after: dict | None = None,
@@ -378,7 +415,7 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
         entity_type=entity_type,
         entity_id=entity_id,
         detail=detail,
-        ip=(request.client.host if request and request.client else None),
+        ip=client_ip(request),
         user_agent=ua,
         original_user_id=original_uid,
         correlation_id=correlation_id,

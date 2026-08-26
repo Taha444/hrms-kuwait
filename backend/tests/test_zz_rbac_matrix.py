@@ -3309,3 +3309,66 @@ def test_expiry_math_uses_kuwait_clock_everywhere(client):
     assert days_until(kuwait_today()) == 0
     assert days_until(kuwait_today() + timedelta(days=5)) == 5
     assert days_until(kuwait_today() - timedelta(days=3)) == -3
+
+
+def test_client_ip_resolves_real_visitor_behind_proxy(client):
+    """سجل التدقيق يحفظ عنوان الزائر لا عنوان الوكيل.
+
+    ROOT CAUSE: التدقيق كان يسجّل ``request.client.host``. وخلف وكيل
+    استضافة — Railway وأمثالها — هذا **عنوان الوكيل الداخلي** لا الزائر:
+    كل السطور تخرج من نطاق 100.64.0.0/10 المحجوز للشبكات المشتركة.
+
+    فيبدو السجل ممتلًئا بعناوين مختلفة وهي كلها موازِنات حِمل، **ولا يجيب
+    عن السؤال الذي وُجد لأجله**: حين يُسأل «هل دخل أحد بهذا الحساب قبل
+    إغلاق الثغرة ومن أين؟» لا يعطي إلا عناوين داخلية بلا معنى.
+
+    وأخطر منه أن حدّ محاولات الدخول كان يُحسب على العنوان نفسه: فيتقاسم
+    كل الزوّار عدّاًدا واحًدا — مهاجم واحد يقفل الدخول عن الجميع، أو يتخفّى
+    بين ألف طلب مشروع.
+
+    والقراءة مشروطة: الترويسة يكتبها من شاء، فلا تُقرأ إلا حين يأتي الطلب
+    من وكيل داخلي فعًلا — وإلا سمحنا لأي أحد بانتحال أي عنوان في السجل.
+    """
+    from types import SimpleNamespace
+
+    from app.deps import _is_internal, client_ip
+
+    def _req(peer, forwarded=None):
+        return SimpleNamespace(
+            client=SimpleNamespace(host=peer) if peer else None,
+            headers={"x-forwarded-for": forwarded} if forwarded else {})
+
+    # 1) نطاق الوكيل يُعرَف
+    for internal in ("100.64.0.6", "10.0.0.3", "172.16.5.1", "192.168.1.9", "127.0.0.1"):
+        assert _is_internal(internal), f"{internal} لم يُعرَف كعنوان داخلي"
+    for public in ("41.238.10.5", "8.8.8.8", "212.77.192.10"):
+        assert not _is_internal(public), f"{public} عُدّ داخلًيا خطأ"
+
+    # 2) خلف الوكيل: يُقرأ الزائر الحقيقي، وأولُ عنوان في السلسلة هو هو
+    assert client_ip(_req("100.64.0.6", "212.77.192.10")) == "212.77.192.10"
+    assert client_ip(_req("100.64.0.6", "212.77.192.10, 100.64.0.6")) == "212.77.192.10"
+
+    # 3) طلب مباشر: الترويسة **لا تُصدَّق** — وإلا انتحل أي أحد أي عنوان
+    assert client_ip(_req("212.77.192.10", "1.2.3.4")) == "212.77.192.10", \
+        "صُدّقت ترويسة من طلب مباشر — ثغرة انتحال في سجل التدقيق"
+
+    # 4) حالات فارغة لا تُسقط شيًئا
+    assert client_ip(None) is None
+    assert client_ip(_req(None)) is None
+    assert client_ip(_req("100.64.0.6")) == "100.64.0.6"
+
+    # 5) ولا موضع يسجّل العنوان مباشرة بعد الآن
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app"
+    offenders = []
+    for path in root.rglob("*.py"):
+        if path.name in ("deps.py", "main.py") or "__pycache__" in path.as_posix():
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Attribute) and node.attr == "host"
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "client"):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, "مواضع تقرأ عنوان الوكيل مباشرة: " + ", ".join(offenders)

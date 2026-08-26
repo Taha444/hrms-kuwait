@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import audit, get_current_user, get_user_perms, require_perm
+from ..deps import audit, get_current_user, get_user_perms, require_perm, client_ip
 from .. import permissions
 from ..permissions import effective_permissions
 from ..security import (
@@ -51,7 +51,9 @@ def _perm_list(user: models.User, db: Session) -> list[str]:
 
 @router.post("/login", response_model=schemas.TokenOut)
 def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)):
-    _rate_limit(request.client.host if request.client else "?")
+    # خلف وكيل، ``request.client.host`` عنوان الوكيل: فيتقاسم كل الزوّار
+    # عدّاًدا واحًدا — مهاجم واحد يقفل الدخول عن الجميع، أو يتخفّى بينهم.
+    _rate_limit(client_ip(request) or "?")
     user = db.scalar(select(models.User).where(models.User.civil_id == data.civil_id))
     now = datetime.now(timezone.utc)
     if not user:
