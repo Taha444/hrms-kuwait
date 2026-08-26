@@ -13,6 +13,7 @@
     python -m app.remediate_seed_accounts              # فحص فقط — لا يغيّر شيًئا
     python -m app.remediate_seed_accounts --apply      # يدوّر كلمات المرور
     python -m app.remediate_seed_accounts --apply --deactivate-qa
+    python -m app.remediate_seed_accounts --user 000000000000 --apply
 
 كلمة المرور الجديدة تُطبع **مرة واحدة** في مخرجات هذا الأمر. لا تُحفظ في أي
 سجل ولا تُرسَل في أي قناة، وتُطلب من صاحبها بتغييرها عند أول دخول
@@ -49,9 +50,36 @@ def _rotate(db, user) -> str:
 def main() -> int:
     apply_changes = "--apply" in sys.argv
     deactivate_qa = "--deactivate-qa" in sys.argv
+    target = None
+    if "--user" in sys.argv:
+        i = sys.argv.index("--user")
+        if i + 1 < len(sys.argv):
+            target = sys.argv[i + 1].strip()
 
     db = SessionLocal()
     try:
+        # --user: تدوير كلمة مرور حساب بعينه. لازم بعد المعالجة: حين لا يعود
+        # أي حساب يقبل كلمة بذرة، لا يجد الفحص شيًئا — ومن فقد الكلمة المطبوعة
+        # يبقى خارج النظام بلا سبيل. هذا هو السبيل.
+        if target:
+            user = db.scalar(select(models.User).where(models.User.civil_id == target))
+            if not user:
+                print(f"✘ لا حساب بالرقم المدني {target}")
+                return 1
+            if not apply_changes:
+                print(f"سيُدوَّر: {user.civil_id} ({user.role}) {user.full_name or ''}")
+                print("أعد التشغيل مع --apply للتنفيذ.")
+                return 0
+            pw = _rotate(db, user)
+            user.is_active = True          # حساب معطَّل بالخطأ يعود
+            user.status = "active"
+            db.commit()
+            print("=" * 62)
+            print(f"  {user.civil_id:<16}{user.role:<18}{pw}")
+            print("=" * 62)
+            print("تُعرض مرة واحدة. سيُطلب تغييرها عند أول دخول.")
+            return 0
+
         hits = seed_guard.find_seed_accounts(db)
         if not hits:
             print("✔ لا حساب يقبل كلمة مرور بذرة — لا شيء للمعالجة.")
