@@ -85,3 +85,50 @@ def test_migration_chain_is_rerunnable(fresh_db):
     proc = _upgrade_fresh(fresh_db)
     assert proc.returncode == 0, (
         "إعادة تشغيل السلسلة كسرت قاعدة مطبَّقة:\n" + (proc.stderr or proc.stdout)[-1200:])
+
+
+def test_gov_contract_text_has_no_scan_typos(fresh_db):
+    """نصّ العقد الحكومي بلا آثار مسح ضوئي.
+
+    ROOT CAUSE: النصّ أُدخل بمسح ضوئي لنموذج الهيئة العامة للقوى العاملة،
+    فحمل آثار القراءة الآلية — «تسععرى» بدل «تسري»، «تخت المحكمة» بدل
+    «تختص»، «باللاتين العربية» بدل «باللغتين». والمستند يُطبع ويُقدَّم لجهة
+    رسمية بهذه الأخطاء، فتُقرأ على أنها إهمال في إعداد عقد قانوني.
+
+    الاختبار يقرأ ما وصل القاعدة فعًلا بعد السلسلة كاملة — لا ما في ملف
+    الترحيل — لأن التنصيب هو ما يراه العميل.
+    """
+    import importlib.util
+    import re
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "_fixmig",
+        Path(__file__).resolve().parents[1] / "alembic" / "versions"
+        / "r7j8k9l0m1n_fix_gov_contract_typos.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_fixmig"] = mod
+    spec.loader.exec_module(mod)
+
+    c = sqlite3.connect(fresh_db)
+    try:
+        row = c.execute("select body_html from document_templates "
+                        "where code='GOV-CONTRACT-RENEWAL'").fetchone()
+        assert row and row[0], "قالب العقد الحكومي غير مبذور"
+        flat = re.sub(r"\s+", " ", row[0])
+
+        remaining = [w for w, _ in mod.TYPOS if w in flat]
+        assert not remaining, f"أخطاء مسح ما زالت في النصّ المنشور: {remaining}"
+
+        # وعيّنة من الصيغ الصحيحة موجودة فعًلا — لا حذف بلا استبدال
+        for good in ("تسري أحكام", "القطاع الأهلي", "تختص المحكمة",
+                     "باللغتين العربية", "بنصوص اللغة العربية", "ثلاث نسخ"):
+            assert good in flat, f"الصيغة الصحيحة غائبة: {good}"
+
+        # والبنود القانونية لم تُمَسّ — التصحيح إملائي لا صياغي
+        for legal in ("رقم 6 لسنة 2010", "رقم 46 لسنة 1987", "رقم 1 لسنة 1999"):
+            assert legal in flat, f"مرجع قانوني تغيّر أو ضاع: {legal}"
+    finally:
+        c.close()
