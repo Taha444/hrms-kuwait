@@ -1,93 +1,93 @@
 {
   "API-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "GET /api/employees يعمل على الشركتين — مُقاس في اختبارات RBAC عبر كل الأدوار",
+    "updated": "2026-08-27"
   },
   "API-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "superseded_by يرفض الأكواد القديمة على الخادم، والكتالوج المعروض يُبنى من نفس الدالة فلا تظهر للمستخدم",
+    "updated": "2026-08-27"
   },
   "WF-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "is_stage_approver مصدر واحد بلا تجاوز إداري — يستدعيه مسار القرار وصندوق المهام معًا (workflow.py:640)",
+    "updated": "2026-08-27"
   },
   "WF-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "سلاسل الاعتماد تحمل مرحلة branch_supervisor صراحة (workflow.py:183)",
+    "updated": "2026-08-27"
   },
   "WF-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "مرحلة المندوب مشروطة بـtravel_required عبر conditional when (workflow.py:191)",
+    "updated": "2026-08-27"
   },
   "WF-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "_apply_attendance_correction يطبّق الأثر قبل الاكتمال، وفشله يعطي apply_failed لا completed",
+    "updated": "2026-08-27"
   },
   "WF-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "مخطّط REQLV يحمل start_date/end_date وconditional.require، والواجهة تبنيه من الخادم",
+    "updated": "2026-08-27"
   },
   "WF-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "محرّك مسارات كامل: approval_chain_json و_chain و resolve_stage_approvers و can_decide — لا Approve/Reject عامّان",
+    "updated": "2026-08-27"
   },
   "WF-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "lifecycle_status منفصل عن status عن حالة المستند (models.py:694)",
+    "updated": "2026-08-27"
   },
   "WF-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "ROLE_LABEL_AR يعطي branch_supervisor اسم 'المسؤول المباشر' في كل موضع",
+    "updated": "2026-08-27"
   },
   "WF-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "request_effects.FIELD_EFFECTS يطبّق الأثر على سبعة أنواع + الإجازة والحضور — الاختبار يمرّر الطلب بمساره الحقيقي",
+    "updated": "2026-08-27"
   },
   "CAT-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "LEGACY_REQUEST_ALIASES + superseded_by يرفض POST على كود مُستبدَل",
+    "updated": "2026-08-27"
   },
   "CAT-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "38 مخطًَّطا في form_schemas.py — لا نموذج عام Date/Amount/Details",
+    "updated": "2026-08-27"
   },
   "CAT-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "REQATT له مخطّطه الخاص: attendance_date وcorrection_type وأوقات الحضور — بلا Amount",
+    "updated": "2026-08-27"
   },
   "CAT-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "components/PayloadView.tsx يعرض الحقول بتسمياتها من مخطّط الخادم لا خريطة ثانية تنحرف",
+    "updated": "2026-08-27"
   },
   "CAT-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "صفحتان منفصلتان: Requests للطلبات وTasks للإجراءات، والموظف الإداري يرى الاثنتين",
+    "updated": "2026-08-27"
   },
   "CAT-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "selfservice.py:51 يخفي start_date/end_date/days عن الموظف في ملفه",
+    "updated": "2026-08-27"
   },
   "CAT-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "CANONICAL_WORKFLOWS = 29 مسارًا في v15_registry، والكتالوج مبني عليها",
+    "updated": "2026-08-27"
   },
   "ACCESS-01": {
     "status": "fixed",
@@ -165,19 +165,19 @@
     "updated": "2026-08-27"
   },
   "ATT-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "hr يملك manage_attendance — مراجعة الحضور متاحة له",
+    "updated": "2026-08-27"
   },
   "ATT-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "branch_supervisor يملك view_attendance ويُمنع من manage_attendance عمًدا (permissions.py:163): يراجع ولا يعدّل — فصل واجبات لا عطل",
+    "updated": "2026-08-27"
   },
   "ATT-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "قائمة الحضور تُبنى من الموظفين النشطين في نطاق المستخدم؛ الفارق كان موظًفا معفًى من الحضور (attendance_exempt)",
+    "updated": "2026-08-27"
   },
   "ATT-04": {
     "status": "verified",
@@ -190,9 +190,9 @@
     "updated": "2026-08-15"
   },
   "ATT-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "attendance_exempt + attendance_exempt_reason إلزاميان مع attendance_mode='none' (models.py:397)",
+    "updated": "2026-08-27"
   },
   "ATT-07": {
     "status": "fixed",
@@ -200,64 +200,64 @@
     "updated": "2026-08-16"
   },
   "PAY-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "دورة كاملة: run→approve→finalize→lock، ولا يخرج المسيّر finalized مباشرة (payroll.py:63-193)",
+    "updated": "2026-08-27"
   },
   "PAY-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "run يمرّ بـ_company(user, company_id) ويرفض 400 بلا شركة محدّدة",
+    "updated": "2026-08-27"
   },
   "PAY-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "approve منفصل عن run بفاعلين مختلفين (prepared_by/approved_by)، والتكرار محمي بحالة المسيّر",
+    "updated": "2026-08-27"
   },
   "PAY-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "lock و reopen و adjustment نقاط قائمة (payroll.py:193-255)",
+    "updated": "2026-08-27"
   },
   "PAY-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "كشف الراتب يفصّل الأساسي والبدلات والخصومات والسلف — breakdown كامل",
+    "updated": "2026-08-27"
   },
   "PAY-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "non_payroll يستبعد الإسناد الثانوي من المسيّر (payroll.py:35)",
+    "updated": "2026-08-27"
   },
   "PAY-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "المسيّر يشترط status=='active' فيستبعد المؤرشفين",
+    "updated": "2026-08-27"
   },
   "PAY-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "Preview بلا شهر يرجع رسالة صريحة لا صمًتا",
+    "updated": "2026-08-27"
   },
   "PAY-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "الأيام المستقبلية لا تُعدَّل — force_future يتطلب تصريًحا صريًحا",
+    "updated": "2026-08-27"
   },
   "EOS-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "eos.py يبني حالات (cases) بمسار: إنشاء→حساب→اعتماد→إخلاء طرف→إقرار — لا تنفيذ مباشر",
+    "updated": "2026-08-27"
   },
   "EOS-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "C:/Program Files/Git/eos/cases و/eos/for-employee يعملان على بيانات حقيقية لا حاسبة عرض",
+    "updated": "2026-08-27"
   },
   "EOS-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "رصيد الإجازات مصدره leave_balance ويُقيَّد في leave_ledger — نفس المصدر في الملف وفي التسوية",
+    "updated": "2026-08-27"
   },
   "PRO-01": {
     "status": "fixed",
@@ -310,129 +310,129 @@
     "updated": "2026-08-27"
   },
   "DOC-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "preview_template لا يُنشئ مستنًدا: is_issued يبقى False ولا reference_no — الإصدار حصًرا عبر /generate",
+    "updated": "2026-08-27"
   },
   "DOC-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "كل مستند مُصدَر يحمل reference_no و template_version و checksum_sha256 و generated_at/by",
+    "updated": "2026-08-27"
   },
   "DOC-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "شهادة الراتب تُملأ من _resolve_authoritative_data بتسميات بشرية، وحقل ناقص يوقف التوليد ويسمّيه (RNW-06)",
+    "updated": "2026-08-27"
   },
   "DOC-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "PayloadView وdocument type_label يعرضان الاسم البشري لا الكود، وis_current يمنع التكرار",
+    "updated": "2026-08-27"
   },
   "DOC-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "/documents/history + /documents/{id}/download في الخادم، وEmployeeProfile.tsx:207 يعرضهما للمستخدم",
+    "updated": "2026-08-27"
   },
   "DOC-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "أرشيف الشركة يرفض 400 برسالة 'اختر شركة' بدل صفحة بيضاء عند All Companies",
+    "updated": "2026-08-27"
   },
   "DOC-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "pdf_export يُنتج PDF عربي حقيقي (reportlab + arabic-reshaper + python-bidi) ببصمة ورقم مرجعي",
+    "updated": "2026-08-27"
   },
   "DOC-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "v15_registry: LAYOUTS=9 و CANONICAL_DOCUMENTS=25 و REPORTS=6 و SYSTEM_RECORDS=2 — مُتحقَّق في /health/deep",
+    "updated": "2026-08-27"
   },
   "DOC-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "القوالب لها version وsanitize للـHTML، والتوليد من placeholders مسموحة لا HTML حر",
+    "updated": "2026-08-27"
   },
   "SIG-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "pending_signature_path: الجديد ينتظر موافقة HR والقديم يبقى نشًطا (models.py:99)",
+    "updated": "2026-08-27"
   },
   "SIG-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "REQSIG معرَّف في الكتالوج بمخطّطه، ومسار طلبه يمرّ بحارس الصلاحيات الصحيح",
+    "updated": "2026-08-27"
   },
   "SIG-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "حدّ الحجم مصدره واحد في الخادم، والرسالة تعكسه",
+    "updated": "2026-08-27"
   },
   "SIG-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "حذف التوقيع يمسح المسار والإصدار مًعا فلا حالة متناقضة",
+    "updated": "2026-08-27"
   },
   "SIG-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "signature_version + المخوّلون بالتوقيع مسجَّلون على مستوى المستخدم",
+    "updated": "2026-08-27"
   },
   "SIG-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "التوقيع مربوط بمرحلة الاعتماد عبر requires_physical_signature في تعريف النوع",
+    "updated": "2026-08-27"
   },
   "SIG-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "التحقق من صلاحية الموقّع قبل الإصدار عبر signature_version على المستند",
+    "updated": "2026-08-27"
   },
   "SIG-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "إعادة فتح المستند تُبطل توقيعه — revoked/revocation_note في verify.py",
+    "updated": "2026-08-27"
   },
   "TASK-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "dedup_key يمنع التكرار، و_close_open_tasks يغلق المهام بعد القرار",
+    "updated": "2026-08-27"
   },
   "TASK-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "is_notification في الخادم و kind في /tasks/my، والواجهة تخفي أزرار الإنجاز عن الإشعارات (Tasks.tsx:77)",
+    "updated": "2026-08-27"
   },
   "TASK-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "delivery_attempts و last_delivery_error و last_delivery_at على Task — التسليم مُتتبَّع لا مفترض",
+    "updated": "2026-08-27"
   },
   "TASK-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "C:/Program Files/Git/tasks/my مقصور على assignee_user_id — لا يرى أحد مهام غيره",
+    "updated": "2026-08-27"
   },
   "AUDIT-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "audit() يأخذ request ويسجّل user_id و ip و user_agent و correlation_id",
+    "updated": "2026-08-27"
   },
   "AUDIT-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "AuditLog يحمل before_json/after_json وcorrelation_id مع الفاعل والوقت والكيان",
+    "updated": "2026-08-27"
   },
   "AUDIT-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "utils/datetime.ts يعرض بتوقيت Asia/Kuwait والتخزين UTC",
+    "updated": "2026-08-27"
   },
   "UX-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "i18n.tsx يغطّي كل نصوص الواجهة بالعربية والإنجليزية، والقيم التقنية تُترجم عبر ROLE_LABEL_AR ومخطّطات الحقول",
+    "updated": "2026-08-27"
   },
   "UX-02": {
     "status": "verified",
@@ -445,68 +445,68 @@
     "updated": "2026-08-15"
   },
   "UX-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "employee_no عمود فريد مفهرس (models.py:358) ويُعرض في ملف الموظف (EmployeeProfile.tsx:283) وفي بطاقة التنبيه",
+    "updated": "2026-08-27"
   },
   "UX-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "القوائم تُعاد بعد كل إنشاء عبر load() — لا حاجة لتحديث يدوي",
+    "updated": "2026-08-27"
   },
   "UX-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "RoleTour + tourScripts.ts: سبعة أدوار وثنائي اللغة (83 زوج نص). حكمي السابق بغيابه كان خاطًئا — بحثت عن tutorial ولم أبحث عن tour",
+    "updated": "2026-08-27"
   },
   "UX-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "RTL افتراضي مع dir=rtl، وتبديل اللغة يغطّي الواجهة كاملة، والتواريخ بتوقيت الكويت",
+    "updated": "2026-08-27"
   },
   "DATA-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "قيد فريد uq_companies_commercial_reg (ترحيل c5d6e7f8a9b0) — لا شركتان بنفس السجل",
+    "updated": "2026-08-27"
   },
   "DATA-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "إنشاء الموظف يتحقّق من الرقم المدني والشركة والفرع في معاملة واحدة قبل الحفظ",
+    "updated": "2026-08-27"
   },
   "DATA-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "routers/exports.py + openpyxl للتصدير CSV/XLSX بالحدّ الأدنى الضروري حسب الدور",
+    "updated": "2026-08-27"
   },
   "DATA-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "LEGACY_REQUEST_ALIASES=100 و LEGACY_PRN_ALIASES=84 تربط أكواد النظام القديم بالكتالوج الجديد",
+    "updated": "2026-08-27"
   },
   "OPS-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "C:/Program Files/Git/api/manifest يعرض version وcommit وbuild_time وmigration_version — مُتحقَّق على البيئة المنشورة",
+    "updated": "2026-08-27"
   },
   "OPS-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "components/PWAUpdater.tsx يُعلم المستخدم بوجود نسخة جديدة بدل إبقائه على build قديم",
+    "updated": "2026-08-27"
   },
   "OPS-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "alembic upgrade head يعمل على قاعدة فارغة (مُثبَت باختبار test_zzz_migration_chain)، وserve.py يختار منفًذا متاًحا، و/health/deep يفحص القاعدة والتخزين والمجدول",
+    "updated": "2026-08-27"
   },
   "OPS-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "seed_guard يُبطل حسابات البذرة تلقائًيا على بيئة منشورة، و remediate_seed_accounts --deactivate-qa ينظّف حسابات الاختبار",
+    "updated": "2026-08-27"
   },
   "OPS-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "535 اختباًرا آلًيا تُشغَّل قبل كل إيداع، منها اختبار تنصيب يبني قاعدة من الصفر",
+    "updated": "2026-08-27"
   }
 }
