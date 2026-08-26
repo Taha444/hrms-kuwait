@@ -3,6 +3,7 @@ import { openAndPrint } from "../printDoc";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // معاملات تجديد الإقامة (DEMO-001/002) — قائمة + تفاصيل بأفعال حسب الدور والحالة.
 const ST_PILL: Record<string, string> = {
@@ -33,6 +34,9 @@ export default function Renewals() {
   const { user, can } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
+  // RNW-21 — قصة المعاملة. تُجلب عند اختيارها لا مع القائمة: القائمة تُحدَّث
+  // كل بضع ثوانٍ، وجلب قصة كل معاملة معها استعلام لا يقرؤه أحد.
+  const [timeline, setTimeline] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [reason, setReason] = useState("");
@@ -208,7 +212,12 @@ export default function Renewals() {
           <div className="md-rows">
             {items.map((it) => (
               <button key={it.id} className={`md-row ${sel?.id === it.id ? "active" : ""}`}
-                onClick={() => { setSelDue(null); setSel(it); }}>
+                onClick={() => {
+                  setSelDue(null); setSel(it);
+                  api.get(`/renewals/${it.id}/timeline`)
+                     .then((r) => setTimeline(r.data.events || []))
+                     .catch(() => setTimeline([]));
+                }}>
                 <span className="r-name">{it.employee_name} <span className={`pill ${ST_PILL[it.status] || "neutral"}`} style={{ marginInlineStart: 6 }}>{t(`rnw_st_${it.status}`)}</span></span>
                 <span className="r-sub">{t(`rnw_type_${it.renewal_type}`)} · #{it.id}</span>
               </button>
@@ -323,6 +332,37 @@ export default function Renewals() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* RNW-21 — القصة: من التنبيه إلى المستند النهائي. تُقرأ من
+                  سجل التدقيق، فكل حدث بفاعله الحقيقي ودوره ووقته. */}
+              {timeline.length > 0 && (
+                <details style={{ margin: "10px 0" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                    {t("rnw_timeline")} ({timeline.length})
+                  </summary>
+                  <div className="steps" style={{ marginTop: 8 }}>
+                    {timeline.map((ev: any, i: number) => (
+                      <div className="step done" key={i}>
+                        <div className="rail">
+                          <div className="node">•</div>
+                          {i < timeline.length - 1 && <div className="connector" />}
+                        </div>
+                        <div>
+                          <b>{ev.label}</b>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {ev.actor || t("rnw_tl_system")}
+                            {ev.actor_role ? ` · ${ev.actor_role}` : ""}
+                            {ev.at ? ` · ${fmtKuwaitDateTime(ev.at, lang)}` : ""}
+                          </div>
+                          {ev.reference && (
+                            <div className="muted" style={{ fontSize: 11 }}>{ev.reference}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
 
               {/* المستندات */}

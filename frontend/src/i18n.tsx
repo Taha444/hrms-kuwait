@@ -63,6 +63,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   // QA-05 — إقامات تستحق التجديد بلا ملف مفتوح
   rnw_upload_final: { ar: "رفع العقد النهائي (بتوقيع الطرفين)",
                       en: "Upload final contract (both signatures)" },
+  rnw_timeline: { ar: "سِجلّ المعاملة", en: "Case timeline" },
+  rnw_tl_system: { ar: "النظام", en: "System" },
   rnw_case_started: { ar: "بدأت معاملة التجديد", en: "Renewal case started" },
   rnw_no_case_yet: { ar: "تنبيه انتهاء — لم يُفتح لهذه الإقامة ملف معاملة بعد",
                      en: "Expiry alert — no renewal case opened for this residency yet" },

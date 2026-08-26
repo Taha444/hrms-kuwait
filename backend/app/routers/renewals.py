@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, permissions, renewal as R
+from ..permissions import ROLE_LABEL_AR
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, get_user_perms
@@ -611,6 +612,80 @@ def _close_renewal_tasks(db, rn) -> int:
         task.status = "dismissed"
         task.completed_at = datetime.utcnow()
     return len(open_tasks)
+
+
+#: الحدث في سجل التدقيق ← اسمه في القصة. الترجمة هنا لا في الواجهة:
+#: القصة تُقرأ من الـAPI أيًضا (تصدير، تقرير، تدقيق خارجي)، فلو عاشت
+#: الأسماء في الواجهة وحدها لخرجت الأحداث بأكوادها التقنية لكل قارئ آخر.
+TIMELINE_LABELS = {
+    "create_renewal": "بدأت معاملة التجديد",
+    "generate_gov_contract": "وُلّد العقد الحكومي",
+    "renewal_upload": "رُفع مستند",
+    "renewal_approved": "اعتُمدت المرحلة",
+    "renewal_rejected": "رُفضت المعاملة",
+    "renewal_renewing": "بدأت الإجراءات الحكومية",
+    "finalize_renewal": "سُجّلت بيانات المعاملة الحكومية",
+    "hr_verify_renewal": "التحقق النهائي واكتمال المعاملة",
+}
+
+
+@router.get("/{rid}/timeline")
+def renewal_timeline(rid: int, user: models.User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """RNW-21 — قصة المعاملة كاملة من التنبيه إلى المستند النهائي.
+
+    ROOT CAUSE: كل حدث كان يُسجَّل في سجل التدقيق منذ البداية — الفاعل ووقته
+    والكيان — لكن **لم يكن ثمّة ما يعرضه كقصة**. فمن يفتح معاملة مكتملة يرى
+    حالتها الأخيرة ولا يعرف كيف وصلت إليها: من بدأها، ومن اعتمد، ومتى رُفع
+    كل مستند. والسؤال يُطرح بعد شهور حين تُراجَع معاملة أو يُعترض عليها.
+
+    تُبنى من ``AuditLog`` لا من جدول جديد: البيانات موجودة، وجدول ثانٍ يعني
+    مصدرين لقصة واحدة — وأحدهما سينحرف.
+    """
+    rn = _get_renewal(db, user, rid)
+    perms = get_user_perms(user, db)
+    if not _is_pro(user, perms) and user.employee_id != rn.employee_id             and user.role not in ("super_admin", "company_owner", "hr"):
+        raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
+
+    rows = db.scalars(select(models.AuditLog).where(
+        models.AuditLog.entity_type.in_(("renewal", "residency_renewal")),
+        models.AuditLog.entity_id == rn.id,
+    ).order_by(models.AuditLog.created_at)).all()
+
+    users = {}
+    events = []
+
+    # الحدث الأول ليس في السجل: التنبيه سبق المعاملة ولا فاعل له.
+    permit = db.get(models.Permit, rn.permit_id) if rn.permit_id else None
+    events.append({
+        "action": "expiry_detected",
+        "label": "اكتُشف قرب انتهاء الإقامة",
+        "actor": None, "actor_role": "النظام",
+        "at": rn.created_at, "renewal_id": rn.id,
+        "reference": (permit.number if permit else None),
+    })
+
+    for row in rows:
+        actor = users.get(row.user_id)
+        if actor is None and row.user_id:
+            actor = users[row.user_id] = db.get(models.User, row.user_id)
+        events.append({
+            "action": row.action,
+            "label": TIMELINE_LABELS.get(row.action, row.action),
+            "actor": (actor.full_name if actor else None),
+            "actor_role": (ROLE_LABEL_AR.get(actor.role, actor.role) if actor else "النظام"),
+            "at": row.created_at,
+            "renewal_id": rn.id,
+            "reference": row.detail,
+        })
+
+    return {
+        "renewal_id": rn.id,
+        "employee_id": rn.employee_id,
+        "company_id": rn.company_id,
+        "status": rn.status,
+        "events": events,
+    }
 
 
 @router.get("/{rid}/closure-check")

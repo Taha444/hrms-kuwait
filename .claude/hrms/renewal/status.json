@@ -15,9 +15,9 @@
     "updated": "2026-08-26"
   },
   "RNW-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "dedup_key = permit_expiring:{permit_id}:{bucket} — مربوط بالإقامة والنافذة كما تطلب المواصفة. مُقاس: تشغيل daily_scan مرتين لا يزيد عدد المهام. الدليل: نفس الاختبار",
+    "updated": "2026-08-27"
   },
   "RNW-05": {
     "status": "done",
@@ -95,19 +95,19 @@
     "updated": "2026-08-26"
   },
   "RNW-20": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "بعد الاكتمال لا مهمة مفتوحة على الموظف مرتبطة بالمعاملة — _close_renewal_tasks يغلقها، وإشعار الاكتمال يذهب للمندوب وHR. الدليل: نفس الاختبار",
+    "updated": "2026-08-27"
   },
   "RNW-21": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "GET /renewals/{id}/timeline يبني القصة من AuditLog — لا جدول جديد فلا مصدران ينحرفان. تبدأ بحدث اكتشاف الانتهاء ثم كل حدث بفاعله ودوره العربي ووقته ومرجعه، مرتّبة زمنيًّا، وتُعرض في لوحة المعاملة. فحص طفري: بعرض الكود التقني بدل الاسم يفشل. الدليل: test_rnw04_20_21_22_24_timeline_scope_and_dedup",
+    "updated": "2026-08-27"
   },
   "RNW-22": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "GET /employees/{id} يُصفّي basic_salary و actual_salary للمندوب (deps مسار delegate)، والعزل يمنعه من رؤية معاملة شركة أخرى (404). الدليل: نفس الاختبار",
+    "updated": "2026-08-27"
   },
   "RNW-23": {
     "status": "done",
@@ -115,8 +115,8 @@
     "updated": "2026-08-26"
   },
   "RNW-24": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "المعاملة تُنشأ وتُبنى قصتها على GUF و MUF بنفس السلوك، ومندوب الأولى يُمنع من الثانية بـ404. الدليل: نفس الاختبار",
+    "updated": "2026-08-27"
   }
 }

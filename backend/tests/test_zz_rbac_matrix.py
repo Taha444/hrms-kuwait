@@ -3057,3 +3057,152 @@ def test_printable_document_has_no_inline_script(client):
     assert "script-src 'self'" in _CSP
     assert "unsafe-inline" not in re.search(r"script-src[^;]*", _CSP).group(0), \
         "خُفِّفت سياسة السكربتات — الإصلاح كان يجب أن يكون في المستند لا في السياسة"
+
+
+def test_rnw04_20_21_22_24_timeline_scope_and_dedup(client):
+    """RNW-04/20/21/22/24 — القصة كاملة، والنطاق محفوظ، والفحص لا يكرّر.
+
+    ROOT CAUSE (RNW-21): كل حدث كان يُسجَّل في سجل التدقيق منذ البداية —
+    الفاعل ووقته والكيان — لكن **لم يكن ثمّة ما يعرضه كقصة**. فمن يفتح
+    معاملة مكتملة يرى حالتها الأخيرة ولا يعرف كيف وصلت إليها: من بدأها،
+    ومن اعتمد، ومتى رُفع كل مستند. والسؤال يُطرح بعد شهور حين تُراجَع
+    معاملة أو يُعترض عليها — وحينها لا تنفع الذاكرة.
+
+    والأربعة الأخرى كانت منفَّذة ولم تُقَس.
+    """
+    import io
+    from datetime import date, timedelta
+
+    from app import models, renewal as R
+    from app.database import SessionLocal
+    from app.notifications import daily_scan
+    from sqlalchemy import func, select
+
+    pro = _headers(client, "100000000003", "deleg123")
+    hr = _headers(client, "100000000002", "hr12345")
+
+    db = SessionLocal()
+    try:
+        emp = models.Employee(
+            company_id=1, name="موظف القصة", civil_id="244010144444",
+            nationality="هندي", job_title="كهربائي", status="active",
+            hire_date=date.today() - timedelta(days=900), basic_salary=420)
+        db.add(emp); db.flush()
+        db.add(models.Permit(company_id=1, employee_id=emp.id, kind="residency",
+                             status="active", number="RNW-STORY-01",
+                             expiry_date=date.today() + timedelta(days=14)))
+        db.commit()
+        emp_id = emp.id
+    finally:
+        db.close()
+
+    # RNW-04 — الفحص اليومي مرتين لا ينشئ مهاًما مكرّرة
+    db = SessionLocal()
+    try:
+        def _permit_tasks():
+            return db.scalar(select(func.count(models.Task.id)).where(
+                models.Task.related_entity_type == "permit"))
+        daily_scan(db); db.commit()
+        first = _permit_tasks()
+        daily_scan(db); db.commit()
+        second = _permit_tasks()
+        assert second == first, (
+            f"الفحص اليومي مرتين أنشأ {second - first} مهمة مكرّرة")
+        assert first > 0, "الفحص لم ينشئ أي مهمة — القياس بلا معنى"
+    finally:
+        db.close()
+
+    rid = client.post("/api/renewals", headers=pro,
+                      data={"employee_id": str(emp_id)}).json()["id"]
+
+    def _upload(kind):
+        return client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                           data={"doc_type": kind},
+                           files={"file": (f"{kind}.pdf", io.BytesIO(b"%PDF-1.4 s"),
+                                           "application/pdf")})
+
+    _upload(R.DOC_CONTRACT_GOV); _upload(R.DOC_SIGNED_GOV)
+    client.post(f"/api/renewals/{rid}/renewing", headers=pro)
+    _upload(R.DOC_WORK_PERMIT)
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        "gov_reference_no": "MOI-STORY", "fees_amount": "18",
+        "fees_receipt_no": "R-77", "new_permit_number": "RNW-STORY-02",
+        "new_expiry_date": (date.today() + timedelta(days=390)).isoformat()})
+    _upload(R.DOC_CIVIL_CARD)
+    assert client.post(f"/api/renewals/{rid}/hr-verify", headers=hr,
+                       data={"note": "تم"}).status_code == 200
+
+    # RNW-21 — القصة كاملة، وكل حدث بفاعله ودوره ووقته ومرجعه
+    tl = client.get(f"/api/renewals/{rid}/timeline", headers=pro)
+    assert tl.status_code == 200, tl.text[:200]
+    events = tl.json()["events"]
+    assert len(events) >= 6, f"القصة ناقصة: {len(events)} حدث فقط"
+
+    for ev in events:
+        for field in ("action", "label", "actor_role", "at", "renewal_id"):
+            assert field in ev, f"حدث بلا {field}: {ev}"
+        assert ev["renewal_id"] == rid
+        assert ev["label"] != ev["action"], f"حدث معروض بكوده التقني: {ev['action']}"
+
+    actions = [e["action"] for e in events]
+    assert actions[0] == "expiry_detected", "القصة لا تبدأ من التنبيه"
+    for must in ("create_renewal", "renewal_upload", "finalize_renewal",
+                 "hr_verify_renewal"):
+        assert must in actions, f"حدث غائب من القصة: {must}"
+
+    # الأحداث مرتّبة زمنًيا — قصة لا قائمة
+    times = [e["at"] for e in events if e["at"]]
+    assert times == sorted(times), "الأحداث غير مرتّبة زمنًيا"
+
+    # وفيها فاعل بشري باسمه ودوره، لا "النظام" وحده
+    human = [e for e in events if e["actor"]]
+    assert human, "لا فاعل بشري في القصة"
+    assert any(e["actor_role"] and not e["actor_role"].isascii() for e in human), \
+        "الدور معروض بكوده التقني لا باسمه العربي"
+
+    # RNW-20 — الموظف يتلقّى إشعاًرا بالاكتمال لا مهمة تطلب إجراء
+    db = SessionLocal()
+    try:
+        emp_user = db.scalar(select(models.User).where(models.User.employee_id == emp_id))
+        if emp_user:
+            open_for_emp = db.scalars(select(models.Task).where(
+                models.Task.assignee_user_id == emp_user.id,
+                models.Task.related_entity_type == "renewal",
+                models.Task.related_entity_id == rid,
+                models.Task.status.in_(("open", "in_progress")))).all()
+            assert not open_for_emp, (
+                "الموظف لديه مهمة مفتوحة بعد الاكتمال — لم يعد مطلوًبا منه شيء")
+    finally:
+        db.close()
+
+    # RNW-22 — المندوب لا يرى الراتب في ملف الموظف
+    prof = client.get(f"/api/employees/{emp_id}", headers=pro)
+    assert prof.status_code == 200
+    for money in ("basic_salary", "actual_salary"):
+        assert prof.json().get(money) is None, f"المندوب يرى {money}"
+
+    # RNW-24 — نفس السلوك على الشركة الثانية
+    pro2 = _headers(client, "200000000003", "deleg123")
+    db = SessionLocal()
+    try:
+        e2 = models.Employee(
+            company_id=2, name="موظف الشركة الثانية", civil_id="233010133333",
+            nationality="مصري", job_title="سائق", status="active",
+            hire_date=date.today() - timedelta(days=500), basic_salary=390)
+        db.add(e2); db.flush()
+        db.add(models.Permit(company_id=2, employee_id=e2.id, kind="residency",
+                             status="active", number="MUF-RNW-01",
+                             expiry_date=date.today() + timedelta(days=16)))
+        db.commit()
+        e2_id = e2.id
+    finally:
+        db.close()
+
+    r2 = client.post("/api/renewals", headers=pro2, data={"employee_id": str(e2_id)})
+    assert r2.status_code == 201, f"المعاملة لا تعمل على الشركة الثانية: {r2.text[:160]}"
+    tl2 = client.get(f"/api/renewals/{r2.json()['id']}/timeline", headers=pro2)
+    assert tl2.status_code == 200 and tl2.json()["events"], "لا قصة على الشركة الثانية"
+
+    # والعزل قائم: مندوب الشركة الأولى لا يرى معاملة الثانية
+    assert client.get(f"/api/renewals/{r2.json()['id']}/timeline",
+                      headers=pro).status_code == 404, "خرق عزل الشركات"
