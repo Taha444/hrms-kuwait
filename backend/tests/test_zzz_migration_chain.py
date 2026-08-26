@@ -130,5 +130,14 @@ def test_gov_contract_text_has_no_scan_typos(fresh_db):
         # والبنود القانونية لم تُمَسّ — التصحيح إملائي لا صياغي
         for legal in ("رقم 6 لسنة 2010", "رقم 46 لسنة 1987", "رقم 1 لسنة 1999"):
             assert legal in flat, f"مرجع قانوني تغيّر أو ضاع: {legal}"
+
+        # لا نقاط حول خانات يملؤها النظام: في النموذج الورقي هي مواضع كتابة
+        # باليد، وحين يملأها النظام تصير «لا يوجد.........» — خانة نصفها
+        # مطبوع ونصفها مهمل.
+        assert "................{{special_condition" not in flat,             "نقاط الكتابة اليدوية ما زالت حول خانة يملؤها النظام"
+        assert "..... {{annual_leave_days}}" not in flat
+
+        # ولا تكرار في تذييل التحقق
+        assert flat.count("Verification Code") <= 1 or "QR</div>" not in flat
     finally:
         c.close()

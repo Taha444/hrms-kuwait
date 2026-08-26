@@ -101,7 +101,7 @@ _AR_PAGE1 = """
 الجنسية   :    {{nationality}}<br/>
 رقم الجواز :     {{passport_number}}<br/>
 رقم مدني :     {{civil_id}}<br/>
-<strong>" طرف ثانى "</strong></p>
+<strong>" طرف ثانٍ "</strong></p>
 
 <p><strong>تمهيد</strong><br/>
 يمتلك الطرف الأول منشأة باسم  شركة {{company_name}} ويرغب في التعاقد مع الطرف    الثاني
@@ -119,7 +119,7 @@ _AR_PAGE1 = """
 إنهاء العقد خلال تلك الفترة دون إخطار .</p>
 
 <p style="text-align:center"><strong>البند الرابع</strong><br/><strong>" قيمة الأجر "</strong></p>
-<p>يتقاضى الطرف الثانى عن تنفيذ هذا العقد أجرًا مقداره {{basic_salary}} دينار يدفع فى نهاية كل شهر<br/>
+<p>يتقاضى الطرف الثاني عن تنفيذ هذا العقد أجرًا مقداره {{basic_salary}} دينار يدفع فى نهاية كل شهر<br/>
 ولا يجوز للطرف الأول تخفيض الأجر أثناء سريان هذا العقد ، ولا يجوز نقل الطرف الثاني إلى
 الأجر اليومي دون موافقته .</p>
 
@@ -204,8 +204,8 @@ therewith. The third copy shall be deposited at the Public Authority for Manpowe
 # ── الكتلة العربية — الصفحة الثانية ──────────────────────────────────────────
 _AR_PAGE2 = """
 <div class="contract-ar" dir="rtl" style="text-align:right; page-break-before:always">
-<p style="text-align:center"><strong>البند السابع</strong><br/><strong>" الأجازة السنوية "</strong></p>
-<p>للطرف الثاني الحق في أجازة سنوية مدفوعة الأجر مدتها ..... {{annual_leave_days}} .... يوما ،
+<p style="text-align:center"><strong>البند السابع</strong><br/><strong>" الإجازة السنوية "</strong></p>
+<p>للطرف الثاني الحق في إجازة سنوية مدفوعة الأجر مدتها {{annual_leave_days}} يومًا ،
 ولا يستحقها عن السنة الأولى إلا بعد انقضاء مدة تسعة أشهر تحسب من تاريخ نفاذ العقد .</p>
 
 <p style="text-align:center"><strong>البند الثامن</strong><br/><strong>" عدد ساعات العمل "</strong></p>
@@ -230,9 +230,9 @@ _AR_PAGE2 = """
 بالمخالفة لأحكام القانون ، ما لم يكن فيه ميزة أفضل للعامل .</p>
 
 <p style="text-align:center"><strong>البند الثالث عشر</strong><br/><strong>شروط خاصة</strong></p>
-<p>1- ................{{special_condition_1}}.... .........<br/>
-2- ...............{{special_condition_2}}..............<br/>
-3- ...............{{special_condition_3}} .............</p>
+<p>1- {{special_condition_1}}<br/>
+2- {{special_condition_2}}<br/>
+3- {{special_condition_3}}</p>
 
 <p style="text-align:center"><strong>البند الرابع عشر</strong><br/><strong>" المحكمة المختصة "</strong></p>
 <p>تختص المحكمة الكلية ودوائرها العمالية طبقًا لأحكام القانون رقم 46 لسنة 1987 ، بنظر كافة
@@ -248,9 +248,9 @@ _AR_PAGE2 = """
 
 <table style="width:100%; margin-top:40px; border:none">
   <tr>
-    <td style="border:none; text-align:right"><strong>الطرف الاول</strong><br/><br/>
+    <td style="border:none; text-align:right"><strong>الطرف الأول</strong><br/><br/>
       {{company_signature}}</td>
-    <td style="border:none; text-align:left"><strong>الطرف الثانى</strong><br/><br/>
+    <td style="border:none; text-align:left"><strong>الطرف الثاني</strong><br/><br/>
       {{employee_signature}}</td>
   </tr>
 </table>

@@ -594,6 +594,6 @@ td,th {{ border:1px solid #999; padding:6px 8px; font-size:13px; vertical-align:
 </tr></table>
 {info_grid}
 {body}
-<div class="footer">رمز التحقق / Verification Code: {ref_no} — Verification Code / QR</div>
+<div class="footer">رمز التحقق / Verification Code: {ref_no}</div>
 </div>
 </body></html>"""
