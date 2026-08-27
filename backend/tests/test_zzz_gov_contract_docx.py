@@ -348,3 +348,68 @@ def test_official_spelling_is_left_exactly_as_received():
         assert word in txt, (
             f"«{word}» صُحِّحت — والقرار المسجَّل هو إبقاء النصّ كما ورد"
         )
+
+
+# ---------------------------------------------------------------------------
+# المسار الكامل: ما يصل يد المندوب فعًلا
+# ---------------------------------------------------------------------------
+def test_the_delivered_file_carries_the_authority_logo():
+    """شعار الهيئة يصل الملف المُسلَّم — لا يُعاد بناء العقد في صفحة.
+
+    كان المخرَج صفحة HTML بترويسة الشركة: شعار الهيئة يختفي، والعمودان
+    يصيران سطوًرا، والصفحات الثلاث تصير ستًّا. والصورة داخل الملف هي الدليل
+    الوحيد على أن المُسلَّم هو نموذج الهيئة لا تقليًدا له.
+    """
+    original = zipfile.ZipFile(io.BytesIO(G.official_bytes()))
+    logo_name = next(n for n in original.namelist() if n.startswith("word/media/"))
+    logo_hash = hashlib.sha256(original.read(logo_name)).hexdigest()
+
+    delivered = zipfile.ZipFile(io.BytesIO(G.fill(VALUES, definite=True)))
+    assert logo_name in delivered.namelist(), "شعار الهيئة غائب عن الملف المُسلَّم"
+    assert hashlib.sha256(delivered.read(logo_name)).hexdigest() == logo_hash, (
+        "الشعار تغيّر — الملف لم يعد نموذج الهيئة"
+    )
+
+
+def test_renewal_endpoint_returns_a_downloadable_official_file(client):
+    """التوليد من الواجهة يُنتج مستنًدا يُنزَّل، لا HTML يُعاد بناؤه.
+
+    الواجهة كانت تقرأ ``r.data.html`` وتفتحه في نافذة طباعة — فحتى لو
+    ولّد الخادم النموذج الرسمي، ما يراه المستخدم صفحة أخرى. الفجوة بين
+    ما يُولَّد وما يُسلَّم هي ما يجعل الإصلاح يبدو ناجًحا وهو غير واصل.
+    """
+    from .conftest import auth_headers, login
+
+    tok = login(client, "100000000003", "deleg123")     # مندوب
+    due = client.get("/api/renewals/due/permits", headers=auth_headers(tok))
+    if due.status_code != 200 or not due.json():
+        pytest.skip("لا إقامات مستحقّة في بيانات الاختبار")
+    item = due.json()[0]
+    started = client.post("/api/renewals", headers=auth_headers(tok),
+                          data={"employee_id": str(item["employee_id"]),
+                                "permit_id": str(item["permit_id"])})
+    if started.status_code != 201:
+        pytest.skip(f"تعذّر فتح معاملة: {started.text[:120]}")
+    rid = started.json()["id"]
+
+    gen = client.post(f"/api/renewals/{rid}/gov-contract/generate",
+                      headers=auth_headers(tok))
+    assert gen.status_code == 200, gen.text
+    body = gen.json()
+    assert "html" not in body, (
+        "ما زال يُعاد HTML — الواجهة ستبني العقد بنفسها وتفقد الشعار والتخطيط"
+    )
+    assert body["format"] in ("pdf", "docx")
+    assert body.get("document_id"), "لا مستند يُنزَّل"
+
+    dl = client.get(f"/api/documents/{body['document_id']}/download",
+                    headers=auth_headers(tok))
+    assert dl.status_code == 200, dl.text
+    assert dl.content[:2] == b"PK" or dl.content[:4] == b"%PDF", (
+        "المُنزَّل ليس ملف وورد ولا PDF"
+    )
+    if dl.content[:2] == b"PK":
+        z = zipfile.ZipFile(io.BytesIO(dl.content))
+        assert any(n.startswith("word/media/") for n in z.namelist()), (
+            "الملف المُنزَّل بلا شعار الهيئة"
+        )

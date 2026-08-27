@@ -977,15 +977,13 @@ def generate_gov_contract(rid: int, request: Request,
         models.DocumentTemplate.code == "GOV-CONTRACT-RENEWAL",
         models.DocumentTemplate.is_active == True,  # noqa: E712
     ))
-    if not tpl:
-        raise HTTPException(status_code=404, detail=(
-            "قالب العقد الحكومي (GOV-CONTRACT-RENEWAL) غير موجود. "
-            "لإضافته: /templates → إنشاء قالب جديد بكود GOV-CONTRACT-RENEWAL "
-            "وضع نص وزارة الداخلية الرسمي مع placeholders {{employee_name}}، "
-            "{{civil_id}}، {{passport_number}}، {{nationality}}، {{job_title}}، "
-            "{{company_name}}، {{company_name_en}}، {{commercial_reg}}، "
-            "{{basic_salary}}، {{date_today}}، {{ref_no}}."
-        ))
+    # GC-01 — القالب لم يعد شرًطا للتوليد: مصدر العقد ملف الهيئة الرسمي
+    # وبصمته، لا صفّ HTML في القاعدة. وكان اشتراطه يوقف التوليد برسالة
+    # تطلب لصق «نص وزارة الداخلية» في قالب — وهي تعليمات بطلت، وتدعو من
+    # يقرأها إلى بناء عقد رسمي بيده.
+    #
+    # ويبقى الصفّ إن وُجد مرجًعا لرقم الإصدار وحده، فيُحفظ ترقيم المستندات
+    # الصادرة كما هو.
 
     # حقول العقد الحكومي — كلها authoritative (لا يعدّلها المستخدم)
     ctx = _resolve_authoritative_data(db, emp, extras={})
@@ -1009,7 +1007,8 @@ def generate_gov_contract(rid: int, request: Request,
             detail=("تعذّر توليد العقد الحكومي — بيانات ناقصة في ملف الموظف أو الشركة: "
                     + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
 
-    reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id, tpl.version or 1)
+    reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id,
+                                          (tpl.version if tpl else 1) or 1)
     ctx["ref_no"] = reference_no
 
     # GC-01/GC-02 — العقد يُولَّد من نموذج الهيئة الرسمي نفسه، لا من قالب
@@ -1047,7 +1046,7 @@ def generate_gov_contract(rid: int, request: Request,
         file_path=fpath, mime=mime,
         version=next_version, is_current=True, uploaded_by=user.id,
         is_issued=True, reference_no=reference_no,
-        template_version=tpl.version or 1, checksum_sha256=checksum,
+        template_version=(tpl.version if tpl else 1) or 1, checksum_sha256=checksum,
         generated_at=datetime.utcnow(), generated_by=user.id,
     )
     db.add(doc)

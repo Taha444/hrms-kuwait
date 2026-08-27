@@ -50,9 +50,9 @@
     "updated": ""
   },
   "GC-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "test_no_sample_values_survive_in_the_output يرفض 0000/Butchery/فلبيني/wensday/al asima/320/التواريخ العيّنة/ONE YEARS · 593 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-05": {
     "status": "open",
@@ -85,9 +85,9 @@
     "updated": ""
   },
   "GC-11": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "قرار المالك: لا تصحيح — النصّ كما ورد. حارس حرفيّ يقارن 1859 عنصًرا ويرفض أي اختلاف خارج مواضع التعبئة + حارس يؤكّد بقاء الأخطاء · تعطيل الحارس بتصحيح واحد يُسقطه · 593 خضراء",
+    "updated": "2026-08-27"
   },
   "AWS-01": {
     "status": "done",

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { openAndPrint } from "../printDoc";
-import api, { errMsg } from "../api";
+import api, { downloadFile, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { fmtKuwaitDateTime } from "../utils/datetime";
@@ -128,13 +127,15 @@ export default function Renewals() {
 
   const setRenewing = () => act(() => api.post(`/renewals/${sel.id}/renewing`));
 
-  // R8 §3 — توليد العقد الحكومي (يفتح نافذة جديدة بالـHTML للطباعة مباشرة)
+  // GC-01 — العقد ملف بتخطيط الهيئة الرسمي (شعارها وعموداها وصفحاته
+  // الثلاث)، لا صفحة HTML تُبنى في المتصفح. فيُنزَّل كما وُلِّد: أي إعادة
+  // بناء له في نافذة طباعة تفقد الشعار والتخطيط — وهي المشكلة الأصلية.
   const generateGovContract = () => act(async () => {
     const r = await api.post(`/renewals/${sel.id}/gov-contract/generate`);
-    if (!openAndPrint(r.data.html)) {
-      setErr("مانع النوافذ المنبثقة منع فتح العقد — اسمح بالنوافذ لهذا الموقع ثم أعد المحاولة.");
-    }
-  }, "✓ تم توليد العقد الحكومي — اطبعه ووقّعه ثم ارفع النسخة الموقّعة");
+    const ext = r.data.format || "pdf";
+    await downloadFile(`/documents/${r.data.document_id}/download`, {},
+                       `العقد-الحكومي-${r.data.reference_no || sel.id}.${ext}`.replace(/\//g, "-"));
+  }, "✓ تم توليد العقد الحكومي بنموذج الهيئة — اطبعه ووقّعه ثم ارفع النسخة الموقّعة");
 
   // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)
   const [gov, setGov] = useState({
