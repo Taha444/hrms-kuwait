@@ -15,7 +15,19 @@
          الجولة التعليمية. نخفضها هنا تحت أدنى طبقة تفاعلية (999) فتبقى
          ظاهرة على الصفحة ولا تعترض شيًئا فوقها.
          وتُخفى عند الطباعة: المستندات الرسمية تُطبع من المتصفح. */
-      #operon-signature { z-index: 900 !important; }
+      /* الموضع منطقي لا ثابت: inset-inline-end يعني اليسار في العربية
+         واليمين في الإنجليزية — أي أن البصمة تقع دائًما في نهاية اتجاه
+         القراءة، بعيًدا عن حيث تبدأ العين. والسكربت يكتب left/right مباشرة
+         في النمط المضمَّن، فنُبطلهما أوًلا ثم نضع المنطقي بعدهما.
+         و dir يتبدّل مع اللغة (i18n.tsx:703) فتنتقل البصمة بلا إعادة تحميل. */
+      #operon-signature {
+        z-index: 900 !important;
+        left: auto !important;
+        right: auto !important;
+        inset-inline-end: 16px !important;
+        /* فوق شريط تحديث الـPWA: كلاهما في نفس الزاوية، والتراكب يخفي أحدهما */
+        bottom: 76px !important;
+      }
       @media print { #operon-signature { display: none !important; } }
     </style>
   </head>
@@ -26,6 +38,7 @@
          (insetInlineEnd في واجهة RTL). الذهب من لوحة الهوية لا البنفسجي
          الافتراضي، فتبدو البصمة جزًءا من التصميم لا ملصًقا عليه. -->
     <script src="/operon-signature.min.js" defer
+            data-url="https://operon-site.web.app/"
             data-position="bottom-right"
             data-accent="#c9a227"
             data-offset="16"
