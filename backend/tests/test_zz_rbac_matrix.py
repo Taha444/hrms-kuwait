@@ -2403,7 +2403,15 @@ def test_rnw06_generation_refuses_incomplete_employee(client):
     # وبعد إكمال البيانات يمرّ — الحارس يمنع النقص لا التوليد نفسه
     db = SessionLocal()
     try:
-        db.get(models.Employee, emp_id).civil_id = "299010112345"
+        e = db.get(models.Employee, emp_id)
+        e.civil_id = "299010112345"
+        # GC-03 — النموذج الرسمي عمودان: ما ينقص العمود الإنجليزي يوقف
+        # التوليد كما يوقفه نقص العربي.
+        e.name_en = "Test Employee"
+        e.passport_number = "P9900001"
+        if e.branch_id:
+            b = db.get(models.Branch, e.branch_id)
+            b.governorate, b.governorate_en = "العاصمة", "Al-Asimah"
         db.commit()
     finally:
         db.close()
@@ -2449,7 +2457,10 @@ def test_rnw05_08_10_11_contract_chain(client):
         emp = models.Employee(
             company_id=1, name="موظف سلسلة العقد", civil_id="288010199999",
             nationality="هندي", job_title="محاسب", status="active",
-            hire_date=date.today() - timedelta(days=500), basic_salary=500)
+            hire_date=date.today() - timedelta(days=500), basic_salary=500,
+            # GC-03 — النموذج الرسمي عمودان؛ العمود الإنجليزي يطلبهما
+            name_en="Contract Chain Employee", nationality_en="Indian",
+            job_title_en="Accountant", passport_number="P8800002")
         db.add(emp); db.flush()
         db.add(models.Permit(company_id=1, employee_id=emp.id, kind="residency",
                              status="active", number="RNW-CHAIN-01",

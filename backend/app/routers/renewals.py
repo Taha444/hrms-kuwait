@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import models, permissions, renewal as R
+from .. import gov_contract_docx, models, permissions, renewal as R
 from ..permissions import ROLE_LABEL_AR
 from ..config import settings
 from ..database import get_db
@@ -74,6 +74,54 @@ def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
         data = {"_provider": "error", "_confidence": 0.0,
                 "_note": f"تعذّرت قراءة المستند: {type(exc).__name__}"}
     doc.extracted_data_json = data
+
+
+
+def _gov_contract_context(db: Session, emp: models.Employee,
+                          company: models.Company | None,
+                          rn: models.ResidencyRenewal) -> dict:
+    """حقول النموذج الرسمي التي لا يوفّرها سياق القوالب العام.
+
+    كلها من مصدر السلطة في القاعدة، ولا شيء منها من payload الطلب: العقد
+    يُقدَّم لجهة رسمية، ومن يستطيع تحرير أجره في نموذج يستطيع تزويره.
+    """
+    from ..clock import today as kuwait_today
+
+    # GC-06 — رقم الإقامة الفعلي لا كود المستند الداخلي. الكود يُطبع في
+    # خانة رسمية فيبدو رقم إقامة وهو معرّف داخلي لا يعرفه أحد خارج النظام.
+    residence = db.scalar(select(models.Permit).where(
+        models.Permit.employee_id == emp.id,
+        models.Permit.kind == "residency",
+    ).order_by(models.Permit.expiry_date.desc()))
+
+    # إدارة العمل المختصّة تتبع محافظة مقرّ العمل. وموظف بلا فرع محدَّد
+    # يتبع مقرّ الشركة — فيُؤخذ من أول فرع لها يحمل محافظة. اشتقاق من
+    # بيانات الشركة لا قيمة مخترعة: العقد يُقدَّم للإدارة المسمّاة فيه.
+    branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
+    if branch is None or not branch.governorate:
+        branch = db.scalar(select(models.Branch).where(
+            models.Branch.company_id == emp.company_id,
+            models.Branch.governorate.isnot(None),
+        ).order_by(models.Branch.id)) or branch
+    today = kuwait_today()
+    start = rn.new_expiry_date if getattr(rn, "new_expiry_date", None) else today
+
+    # GC-05 — الأجر من الراتب المعتمد في النظام لا من payload الطلب
+    wage = emp.basic_salary
+    return {
+        "residence_no": (residence.number if residence else "") or "",
+        "company_rep_name": (company.representative_name if company else "") or "",
+        "company_rep_name_en": (company.representative_name_en if company else "") or "",
+        "company_civil_id": (company.representative_civil_id if company else "") or "",
+        "labour_dept": (branch.governorate if branch else "") or "",
+        "labour_dept_en": (branch.governorate_en if branch else "") or "",
+        "wage": ("" if wage is None else str(wage)),
+        "contract_date": today.strftime("%d/%m/%Y"),
+        "contract_start_date": start.strftime("%d/%m/%Y"),
+        "day_name_en": today.strftime("%A"),
+        "contract_term_ar": "سنة",
+        "contract_term_en": "ONE YEAR",
+    }
 
 
 def _generated_contract_doc(db, rn):
@@ -946,6 +994,7 @@ def generate_gov_contract(rid: int, request: Request,
         "old_permit_expiry": (permit.expiry_date.isoformat() if permit and permit.expiry_date else ""),
         "company_file_number": (company.file_number if company else "") or "",
     })
+    ctx.update(_gov_contract_context(db, emp, company, rn))
     # RNW-06 — لا توليد بحقل ناقص. _fill_html يستبدل المفقود بـ"................"
     # فينتج عقد حكومي بمربّعات فارغة يوقّعه الموظف ويُقدَّم لجهة رسمية. نرفض
     # ونسمّي الناقص بالعربية ليعرف المندوب أين يذهب ليصلحه.
@@ -960,24 +1009,15 @@ def generate_gov_contract(rid: int, request: Request,
     reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id, tpl.version or 1)
     ctx["ref_no"] = reference_no
 
-    rendered = _fill_html(tpl, ctx)
-
-    # R9 §5 — لو طُلب PDF نُنتج ملف PDF ثنائي بدل HTML
-    if (format or "").lower() == "pdf":
-        from ..pdf_export import render_html_contract_pdf
-        pdf_bytes = render_html_contract_pdf(
-            rendered,
-            title=f"العقد الحكومي — تجديد إقامة {emp.name}",
-            subtitle=(db.get(models.Company, rn.company_id).name if rn.company_id else ""),
-            reference_no=reference_no,
-        )
-        mime = "application/pdf"
-        ext = "pdf"
-        content_bytes = pdf_bytes
-    else:
-        mime = "text/html"
-        ext = "html"
-        content_bytes = rendered.encode("utf-8")
+    # GC-01/GC-02 — العقد يُولَّد من نموذج الهيئة الرسمي نفسه، لا من قالب
+    # HTML يقلّده. القالب في القاعدة يبقى مرجًعا للنسخة ورقم الإصدار،
+    # والمحتوى يأتي من ملف الوورد ببصمته الأصلية.
+    content_bytes, ext, mime, docx_missing = gov_contract_docx.generate(ctx)
+    if docx_missing:
+        raise HTTPException(
+            status_code=400,
+            detail=("تعذّر توليد العقد الحكومي — بيانات ناقصة: "
+                    + "، ".join(docx_missing) + ". أكملها ثم أعد التوليد."))
     checksum = hashlib.sha256(content_bytes).hexdigest()
 
     # احفظ كـissued document على الموظف مربوط بالتجديد
@@ -1013,10 +1053,15 @@ def generate_gov_contract(rid: int, request: Request,
           detail=f"gov contract → {reference_no} ({ext})", request=request, company_id=rn.company_id)
     db.commit()
 
-    if (format or "").lower() == "pdf":
-        return file_response(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
+    # GC-01 — لم يعد هناك «html» يُعاد للواجهة: العقد ملف بتخطيط الهيئة
+    # (PDF، أو docx إن غاب LibreOffice عن البيئة) يُنزَّل لا يُعرض في صفحة.
+    # وإعادة HTML مقلّد كانت هي المشكلة الأصلية.
+    if (format or "").lower() in ("pdf", "file", "download"):
+        return file_response(fpath, filename=f"{safe_ref}.{ext}", media_type=mime)
     return {
-        "ok": True, "html": rendered,
+        "ok": True,
+        "format": ext,
+        "download_url": f"/api/renewals/{rn.id}/gov-contract?format=file",
         "document_id": doc.id, "reference_no": reference_no,
         "checksum_sha256": checksum,
         "note": "اطبع العقد → الموظف يوقّعه → ارفع النسخة الموقّعة عبر upload بـdoc_type=renewal_signed_gov",

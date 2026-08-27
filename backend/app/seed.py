@@ -386,7 +386,11 @@ def build_company(db, cfg) -> dict:
         name=cfg["name"], name_en=cfg["name_en"], commercial_reg=cfg["reg"],
         abbreviation=cfg.get("abbr"),
         entity_type=cfg["entity"], eos_day_divisor=cfg["divisor"], eos_max_months=18,
-        alert_lead_days=cfg["lead"])
+        alert_lead_days=cfg["lead"],
+        # GC-03 — يطلبها نموذج العقد الحكومي في خانة «الطرف الأول»
+        representative_name=cfg.get("rep_name", "عبدالله ناصر المطيري"),
+        representative_name_en=cfg.get("rep_name_en", "Abdullah Nasser Al-Mutairi"),
+        representative_civil_id=cfg.get("rep_civil_id", "270010112345"))
     db.add(company)
     db.flush()
 
@@ -402,7 +406,9 @@ def build_company(db, cfg) -> dict:
         b = models.Branch(company_id=company.id, name=name, code=bcode,
                           latitude=lat, longitude=lng,
                           geofence_radius_m=120, qr_secret=secrets.token_hex(16),
-                          kiosk_key=secrets.token_urlsafe(24), address=name)
+                          kiosk_key=secrets.token_urlsafe(24), address=name,
+                          # GC-03 — المحافظة تحدّد إدارة العمل في ترويسة العقد
+                          governorate="العاصمة", governorate_en="Al-Asimah")
         db.add(b)
         branches.append(b)
     db.flush()
@@ -480,7 +486,12 @@ def build_company(db, cfg) -> dict:
                             status="active", license_id=license_.id, branch_id=branch.id,
                             shift_id=shift.id, attendance_mode=mode, annual_leave_balance=30,
                             attendance_exempt=is_exempt,
-                            attendance_exempt_reason=exempt_reason)
+                            attendance_exempt_reason=exempt_reason,
+                            # GC-03 — العمود الإنجليزي من النموذج الرسمي يطلبهما
+                            name_en=cfg.get("emp_names_en", {}).get(name) or f"Employee {i + 1}",
+                            nationality_en=("Kuwaiti" if nat == "كويتي" else "Non-Kuwaiti"),
+                            job_title_en=job,
+                            passport_number=f"P{p}{i + 1:04d}")
         db.add(e)
         emps.append(e)
     db.flush()

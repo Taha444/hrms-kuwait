@@ -44,6 +44,13 @@ class Company(Base):
     entity_type: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), default="active")  # active/inactive/archived
     # سياسات مكافأة نهاية الخدمة
+    # GC-03 — النموذج الرسمي يطلب اسم ممثّل الشركة ورقمه المدني في خانة
+    # «الطرف الأول»، ولم يكن لهما مصدر في النظام: كان العقد يطبع اسم الشركة
+    # في خانة الاسم، والبطاقة المدنية فارغة. حقلان لا يُشتقّان من شيء —
+    # فمن يوقّع عن الشركة قرار إداري لا بيان محسوب.
+    representative_name: Mapped[str | None] = mapped_column(String(160))
+    representative_name_en: Mapped[str | None] = mapped_column(String(160))
+    representative_civil_id: Mapped[str | None] = mapped_column(String(20))
     eos_day_divisor: Mapped[int] = mapped_column(Integer, default=26)
     eos_max_months: Mapped[int] = mapped_column(Integer, default=18)
     alert_lead_days: Mapped[int] = mapped_column(Integer, default=30)
@@ -262,6 +269,11 @@ class Branch(Base):
     code: Mapped[str | None] = mapped_column(String(6))
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
+    # GC-03 — المحافظة تحدّد إدارة العمل المختصّة في ترويسة العقد
+    # («إدارة عمل العاصمة»). العنوان النصّي لا يكفي: الإدارة قائمة مغلقة
+    # لا تُستخرج من نصّ حر.
+    governorate: Mapped[str | None] = mapped_column(String(40))
+    governorate_en: Mapped[str | None] = mapped_column(String(40))
     geofence_radius_m: Mapped[int] = mapped_column(Integer, default=100)
     qr_secret: Mapped[str] = mapped_column(String(64))  # سرّ توليد رمز QR المتغيّر
     kiosk_key: Mapped[str | None] = mapped_column(String(64))  # مفتاح شاشة عرض QR (قابل للتدوير)

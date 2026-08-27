@@ -6,8 +6,14 @@ WORKDIR /app
 
 # tesseract-ocr + حزمة اللغة العربية: تُفعِّل قراءة MRZ للجواز والبطاقة المدنية
 # الكويتية (eng+ara) من الصورة مباشرة (app/ocr.py يكتشفهما تلقائيًا)
+#
+# GC-01/GC-09 — libreoffice-writer يحوّل نموذج الهيئة (docx) إلى PDF مع الحفاظ
+# على التخطيط والشعار والعمودين. والخطوط العربية إلزامية معه: بدونها يخرج
+# العقد بمربّعات فارغة مكان الحروف — والتوليد يبدو ناجًحا وهو غير صالح
+# للتقديم. ولهذا تُثبَّت هنا لا تُترك لافتراض أن الصورة تحملها.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev tesseract-ocr tesseract-ocr-ara tesseract-ocr-eng \
+    libreoffice-writer fonts-noto-core fonts-noto-extra fonts-amiri \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -95,9 +95,9 @@
     "updated": "2026-08-27"
   },
   "AWS-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "job_lock.py + models.JobRun + ترحيل t9l0m1n2o3p + 9 اختبارات في test_zzz_job_lock.py منها حارس المجدول · 574 خضراء",
+    "updated": "2026-08-27"
   },
   "AWS-03": {
     "status": "open",
