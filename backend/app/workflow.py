@@ -21,6 +21,7 @@ import os
 from datetime import date, datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
 from . import models
@@ -1599,7 +1600,11 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     if rt is not None and rt.default_template_code:
         tpl = db.scalar(select(models.DocumentTemplate).where(
             models.DocumentTemplate.code == rt.default_template_code,
-            models.DocumentTemplate.company_id.in_((None, req.company_id)),
+            # BKL-05 — نفس عيب ‏IN (NULL, x)‎: القوالب العامة
+            # company_id = NULL فلا يطابقها الشرط، ويُقال «لا قالب»
+            # بينما القالب موجود.
+            sa_or(models.DocumentTemplate.company_id.is_(None),
+                  models.DocumentTemplate.company_id == req.company_id),
         ).order_by(models.DocumentTemplate.company_id.isnot(None).desc()))
         if tpl:
             doc.template_code = tpl.code

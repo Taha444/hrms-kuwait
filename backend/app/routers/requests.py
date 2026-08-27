@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
 from .. import request_actions
@@ -137,7 +138,13 @@ def superseded_by(db: Session, company_id: int | None, code: str) -> str | None:
     replacement = db.scalar(select(models.RequestType).where(
         models.RequestType.code == canonical,
         models.RequestType.is_active == True,  # noqa: E712
-        models.RequestType.company_id.in_((None, company_id)),
+        # BKL-05 — ‏IN (NULL, x)‎ لا يطابق صًفا فيه NULL أبًدا في SQL:
+        # المقارنة بـNULL تعطي UNKNOWN لا TRUE. والأنواع العامة كلها
+        # company_id = NULL، فكان هذا الشرط يستبعد كل بديل عامّ —
+        # فتُرجع الدالة None دائًما، ومنع الأنواع المهجورة لا يعمل
+        # إطلاًقا وهو يبدو مكتوًبا وصحيًحا.
+        sa_or(models.RequestType.company_id.is_(None),
+              models.RequestType.company_id == company_id),
     ))
     return canonical if replacement else None
 
