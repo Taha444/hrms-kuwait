@@ -55,3 +55,41 @@ def test_skip_link_uses_clip_pattern():
         "الرابط أداة من يتنقّل بلوحة المفاتيح وحدها؛ "
         "إخفاؤه عند التركيز يجعله عديم الفائدة"
     )
+
+
+def test_viewport_locked_against_horizontal_scroll():
+    """الشاشة لا تتحرّك أفقيًّا مهما أخطأ عنصر في عرضه.
+
+    إصلاح المصدر واحًدا واحًدا ضروري لكنه لا يكفي: أي عنصر عريض يُضاف
+    لاحًقا يعيد الشريط. القفل هنا سقف للصنف كله.
+
+    والموضع جزء من الشرط: ``overflow-x`` على ``body`` ينتشر إلى الشاشة
+    نفسها فلا يمسّ مرجع العناصر الثابتة. وضعُه على ``.app`` يجعلها الحاوية
+    المرجعية لكل ``fixed`` بداخلها — فتُقاس النوافذ الحوارية على طول
+    المستند لا على الشاشة. مُختبَر في المتصفح، ولهذا يُثبَّت هنا.
+    """
+    css = (SRC / "styles.css").read_text(encoding="utf-8")
+    m = re.search(r"(?m)^body {(.*?)}", css, re.S)   # لا "html, body" المجاورة
+    assert m, "قاعدة body غير موجودة"
+    body = m.group(1)
+    assert "overflow-x: hidden" in body, (
+        "قفل التمرير الأفقي مفقود من قاعدة body"
+    )
+    app = css[css.index(".app {"):]
+    app = app[:app.index("}")]
+    assert "overflow" not in app, (
+        "لا تضع قفل التمرير على .app — يصير الحاوية المرجعية لكل fixed "
+        "بداخله، فتُقاس النوافذ الحوارية على طول المستند لا على الشاشة"
+    )
+
+
+def test_wide_containers_keep_their_own_scroll():
+    """ما يُفترض به أن يكون عريًضا يتمرّر داخل صندوقه — القفل لا يخفيه."""
+    css = (SRC / "styles.css").read_text(encoding="utf-8")
+    for box in (".table-wrap", ".att-wrap"):
+        rule = css[css.index(box + " {"):]
+        rule = rule[:rule.index("}")]
+        assert "overflow-x: auto" in rule, (
+            f"{box} يحمل محتوى عريًضا مقصوًدا؛ بلا overflow-x: auto "
+            "يقصّه قفل الشاشة بدل أن يمرّره"
+        )
