@@ -15,18 +15,30 @@
          الجولة التعليمية. نخفضها هنا تحت أدنى طبقة تفاعلية (999) فتبقى
          ظاهرة على الصفحة ولا تعترض شيًئا فوقها.
          وتُخفى عند الطباعة: المستندات الرسمية تُطبع من المتصفح. */
-      /* الموضع منطقي لا ثابت: inset-inline-end يعني اليسار في العربية
-         واليمين في الإنجليزية — أي أن البصمة تقع دائًما في نهاية اتجاه
-         القراءة، بعيًدا عن حيث تبدأ العين. والسكربت يكتب left/right مباشرة
-         في النمط المضمَّن، فنُبطلهما أوًلا ثم نضع المنطقي بعدهما.
-         و dir يتبدّل مع اللغة (i18n.tsx:703) فتنتقل البصمة بلا إعادة تحميل. */
+      /* البصمة: موضعها محسوب لا عشوائي.
+         - inset-inline-end يعني اليسار في العربية واليمين في الإنجليزية،
+           أي نهاية اتجاه القراءة وبعيًدا عن الشريط الجانبي في الحالتين.
+         - 26px هو padding المحتوى نفسه (styles.css:206)، فتقف البصمة على
+           نفس شبكة البطاقات لا على رقم مخترع — وهذا وحده الفرق بين
+           «موضوعة» و«مركونة».
+         - هادئة حتى تُقصَد: نصف شفافية تكتمل عند المرور، فتُرى ولا تنافس
+           محتوى الصفحة على الانتباه. */
       #operon-signature {
         z-index: 900 !important;
         left: auto !important;
         right: auto !important;
-        inset-inline-end: 16px !important;
-        /* فوق شريط تحديث الـPWA: كلاهما في نفس الزاوية، والتراكب يخفي أحدهما */
-        bottom: 76px !important;
+        inset-inline-end: 26px !important;
+        bottom: 26px !important;
+        opacity: .55;
+        transition: opacity .25s ease;
+      }
+      #operon-signature:hover { opacity: 1; }
+      /* الجوّال: نفس إيقاع الحافة المصغَّر (styles.css:412) */
+      @media (max-width: 900px) {
+        #operon-signature {
+          inset-inline-end: 18px !important;
+          bottom: 18px !important;
+        }
       }
       @media print { #operon-signature { display: none !important; } }
     </style>

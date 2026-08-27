@@ -33,7 +33,7 @@ export default function PWAUpdater() {
   return (
     <div style={{
       // bottom مرفوع فوق بصمة Operon (تقف عند 76px في نفس الزاوية المنطقية)
-      position: "fixed", bottom: 128, insetInlineEnd: 20, zIndex: 999,
+      position: "fixed", bottom: 84, insetInlineEnd: 26, zIndex: 999,
       background: "#0e5a54", color: "white", padding: "14px 18px",
       borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
       maxWidth: 340, fontSize: 14,
