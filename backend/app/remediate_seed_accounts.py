@@ -80,7 +80,8 @@ def main() -> int:
             print("تُعرض مرة واحدة. سيُطلب تغييرها عند أول دخول.")
             return 0
 
-        hits = seed_guard.find_seed_accounts(db)
+        print("جارٍ فحص كل الحسابات — قد يستغرق دقائق على قاعدة كبيرة…", flush=True)
+        hits = seed_guard.find_seed_accounts(db, progress=True)
         if not hits:
             print("✔ لا حساب يقبل كلمة مرور بذرة — لا شيء للمعالجة.")
             return 0

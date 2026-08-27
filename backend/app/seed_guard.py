@@ -40,7 +40,8 @@ def _seed_passwords() -> set[str]:
 
 
 def find_seed_accounts(db: Session, privileged_only: bool = False,
-                       max_users: int | None = None) -> list[dict]:
+                       max_users: int | None = None,
+                       progress: bool = False) -> list[dict]:
     """الحسابات التي ما زالت تقبل كلمة مرور بذرة.
 
     **تكلفة الفحص مقصودة ولا مفرّ منها.** التجزئة PBKDF2 بـ240 ألف دورة والملح
@@ -73,7 +74,13 @@ def find_seed_accounts(db: Session, privileged_only: bool = False,
         users = users[:max_users]
 
     hits = []
-    for user in users:
+        # مؤشّر تقدّم للمسح الشامل: التجزئة تكلّف ~0.6 ثانية للمستخدم، فمسح
+    # خمسمئة موظف خمس دقائق. صمت خمس دقائق في طرفية يُقرأ تعلًيقا، فيُقطع
+    # المسح قبل تمامه ويُظنّ أن البيئة نظيفة.
+    total = len(users)
+    for idx, user in enumerate(users, 1):
+        if progress and total > 30 and idx % 25 == 0:
+            print(f"  … فُحص {idx}/{total} — وُجد {len(hits)}", flush=True)
         if not user.password_hash:
             continue
         for pw in candidates:
