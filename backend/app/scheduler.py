@@ -48,8 +48,13 @@ def _alert_job_failure(job: str, exc: Exception) -> None:
 def _run_daily_scan():
     db = SessionLocal()
     try:
-        result = daily_scan(db)
-        logger.info("daily_scan: %s", result)
+        # AWS-02 — مرة واحدة عبر كل النسخ. التخطّي ليس عطًلا: نسخة
+        # أخرى نفّذت هذه الجولة.
+        with run_once(db, "daily_scan", daily_key("daily_scan")) as granted:
+            if not granted:
+                return
+            result = daily_scan(db)
+            logger.info("daily_scan: %s", result)
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل المسح اليومي")
         _alert_job_failure("daily_scan", exc)
@@ -61,9 +66,14 @@ def _run_sla_scan():
     """يفحص المهام المفتوحة كل ساعة ويصعّد أي مهمة تجاوزت مهلة SLA الخاصة بقالبها."""
     db = SessionLocal()
     try:
-        result = sla_scan(db)
-        if result.get("escalated"):
-            logger.info("sla_scan: %s", result)
+        # AWS-02 — مرة واحدة عبر كل النسخ. التخطّي ليس عطًلا: نسخة
+        # أخرى نفّذت هذه الجولة.
+        with run_once(db, "sla_scan", hourly_key("sla_scan")) as granted:
+            if not granted:
+                return
+            result = sla_scan(db)
+            if result.get("escalated"):
+                logger.info("sla_scan: %s", result)
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل مسح SLA")
         _alert_job_failure("sla_scan", exc)
@@ -75,8 +85,13 @@ def _run_digest():
     """V2.2 §20 — Digest يومي 8 صباحًا: ملخص المهام لكل مستخدم بدل إشعارات متكررة."""
     db = SessionLocal()
     try:
-        result = digest_scan(db)
-        logger.info("digest_scan: %s", result)
+        # AWS-02 — مرة واحدة عبر كل النسخ. التخطّي ليس عطًلا: نسخة
+        # أخرى نفّذت هذه الجولة.
+        with run_once(db, "digest_scan", daily_key("digest_scan")) as granted:
+            if not granted:
+                return
+            result = digest_scan(db)
+            logger.info("digest_scan: %s", result)
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل digest اليومي")
         _alert_job_failure("digest_scan", exc)

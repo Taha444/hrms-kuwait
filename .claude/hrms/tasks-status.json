@@ -90,9 +90,9 @@
     "updated": ""
   },
   "AWS-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "طبقة storage.py + ترحيل 13 كتابة و38 قراءة + migrate_storage.py + 6 حرّاس في test_zzz_storage_layer.py · 565 اختباًرا خضراء · commit على main",
+    "updated": "2026-08-27"
   },
   "AWS-02": {
     "status": "open",

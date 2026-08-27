@@ -1068,6 +1068,30 @@ class NotificationPreference(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class JobRun(Base):
+    """جولة مهمة مجدولة — القفل والدليل في صفّ واحد.
+
+    المفتاح الأساسيّ مركّب ``(job, run_key)`` عمًدا: الإدراج عليه عملية
+    ذرّية، فمن نجح إدراجه ملك القفل ومن اصطدم بالتكرار يعرف أن غيره سبقه.
+    ولا حاجة لجدول أقفال منفصل عن سجلّ التنفيذ — فصلهما يخلق حالتين
+    تفترقان (قفل بلا سجلّ، أو سجلّ بلا قفل)، وهذا مصدر التكرار لا علاجه.
+    """
+
+    __tablename__ = "job_runs"
+
+    #: اسم المهمة: daily_scan · sla_scan · digest_scan
+    job: Mapped[str] = mapped_column(String(40), primary_key=True)
+    #: الجولة: اليوم للمهمة اليومية، واليوم+الساعة للساعية
+    run_key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    status: Mapped[str] = mapped_column(String(12), default="running")  # running|done|failed
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    #: من نفّذها — يظهر عند التحقيق في جولة عالقة
+    holder: Mapped[str | None] = mapped_column(String(80))
+    #: كم مرة استُردّت بعد تعلّقها. تكرار الاسترداد علامة عطل لا تزامن.
+    recovered: Mapped[int | None] = mapped_column(Integer, default=0)
+
+
 class RevokedToken(Base):
     """رمز أُبطل قبل انتهاء صلاحيته.
 
