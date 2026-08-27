@@ -109,9 +109,13 @@ app.add_middleware(
 _CSP = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; "
+    # خطوط جوجل: index.html يطلب Tajawal و IBM Plex Sans Arabic، وسياسة
+    # 'self' وحدها كانت تحجبهما — فالنظام يمنع خطوطه هو. النتيجة واجهة عربية
+    # بخط بديل تختلف مقاساته، وتخطيط يُحسب على خط لم يصل. المصدران محدَّدان
+    # بالاسم لا بـ* — إذن لخادمَي خطوط معروفين، لا فتح للسياسة كلها.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
+    "font-src 'self' data: https://fonts.gstatic.com; "
     "connect-src 'self'; "
     "media-src 'self' blob:; "
     "worker-src 'self' blob:; "

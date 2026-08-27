@@ -3372,3 +3372,45 @@ def test_client_ip_resolves_real_visitor_behind_proxy(client):
                     and node.value.attr == "client"):
                 offenders.append(f"{path.name}:{node.lineno}")
     assert not offenders, "مواضع تقرأ عنوان الوكيل مباشرة: " + ", ".join(offenders)
+
+
+def test_csp_allows_the_fonts_the_app_itself_requests(client):
+    """السياسة لا تحجب موارد يطلبها النظام نفسه.
+
+    ROOT CAUSE: index.html يطلب Tajawal و IBM Plex Sans Arabic من خطوط
+    جوجل، بينما CSP تقول ``style-src 'self'`` و ``font-src 'self' data:``.
+    فالنظام **يمنع خطوطه هو**: الورقة تُحجب، والخطوط لا تصل، وتُرسم الواجهة
+    العربية بخط بديل مقاساته مختلفة — وأي تخطيط حُسب على الخط الأصلي يزيح.
+
+    والفشل صامت للمستخدم: لا رسالة، فقط شكل مختلف قليًلا. ولا يظهر إلا في
+    console المتصفح، وهو آخر ما ينظر إليه من يستعمل النظام.
+
+    والاختبار يقيس الاتجاهين: أن المصدرَين مسموحان، وأن السياسة **لم
+    تُفتَح** — script-src يبقى بلا unsafe-inline، والسماح باسم المضيف لا
+    بـ* فهو إذن لخادمَي خطوط معروفين لا فتح للسياسة كلها.
+    """
+    import re
+    from pathlib import Path
+
+    from app.main import _CSP
+
+    index = (Path(__file__).resolve().parents[2] / "frontend" / "index.html")
+    html = index.read_text(encoding="utf-8")
+
+    style_src = re.search(r"style-src[^;]*", _CSP).group(0)
+    font_src = re.search(r"font-src[^;]*", _CSP).group(0)
+    script_src = re.search(r"script-src[^;]*", _CSP).group(0)
+
+    # 1) ما تطلبه الصفحة مسموح
+    if "fonts.googleapis.com" in html:
+        assert "https://fonts.googleapis.com" in style_src, \
+            "الصفحة تطلب خطوط جوجل والسياسة تحجبها — خط بديل وتخطيط مزاح"
+    if "fonts.gstatic.com" in html:
+        assert "https://fonts.gstatic.com" in font_src, \
+            "ملفات الخطوط محجوبة رغم السماح بورقتها"
+
+    # 2) ولم تُفتح السياسة في الطريق
+    assert "unsafe-inline" not in script_src, "خُفِّفت سياسة السكربتات"
+    assert "*" not in style_src and "*" not in font_src, \
+        "سُمح بأي مصدر بدل مضيف بعينه"
+    assert "object-src 'none'" in _CSP and "frame-ancestors 'self'" in _CSP
