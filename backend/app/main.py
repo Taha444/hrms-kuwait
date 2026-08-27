@@ -243,6 +243,16 @@ def health_deep():
     # 3) Scheduler
     results["checks"]["scheduler"] = {"status": "ok" if settings.scheduler_enabled else "disabled"}
 
+    # GC-09 — جاهزية إخراج العقد الحكومي. لا تُسقط الفحص: النظام يعمل
+    # بلا LibreOffice ويسلّم docx. لكنها تُعرَض لأن الحال الأسوأ — أداة
+    # موجودة بلا خطوط عربية — يُنتج عقًدا بمربّعات فارغة يبدو توليده ناجًحا،
+    # ولا يُكتشف إلا حين يفتح موظف الهيئة الورقة.
+    try:
+        from .gov_contract_docx import environment_report
+        results["checks"]["gov_contract"] = environment_report()
+    except Exception as e:
+        results["checks"]["gov_contract"] = {"status": "unknown", "error": str(e)[:200]}
+
     # 4) Registry counts
     try:
         results["checks"]["registry"] = {"status": "ok", **v15_summary()}

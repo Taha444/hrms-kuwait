@@ -152,7 +152,7 @@ def test_pdf_conversion_degrades_without_libreoffice():
     والبديل — إسقاط التوليد كلّه — يمنع المندوب من عمله بسبب حزمة ناقصة
     على الخادم.
     """
-    content, ext, mime, missing = G.generate({src: "x" for _, src, _, _ in G.FIELD_SOURCES}
+    content, ext, mime, missing, _snap = G.generate({src: "x" for _, src, _, _ in G.FIELD_SOURCES}
                                              | {"contract_date": "01/01/2026"})
     assert not missing
     assert ext in ("pdf", "docx")

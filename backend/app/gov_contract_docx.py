@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 import io
 import re
 import shutil
@@ -412,22 +413,93 @@ def build_values(ctx: dict) -> tuple[dict[str, str], list[str]]:
     return values, missing
 
 
-def generate(ctx: dict) -> tuple[bytes, str, str, list[str]]:
-    """يولّد العقد. يعيد (المحتوى، الامتداد، نوع المحتوى، الناقص).
+def snapshot(ctx: dict, values: dict[str, str], definite: bool) -> dict:
+    """GC-10 — لقطة ما صدر به العقد، تُحفَظ مع المستند.
+
+    الملف نفسه ثابت ببصمته، لكن قراءة الرقم منه تستلزم فتحه. واللقطة
+    تجعل السؤال «بأي راتب صدر عقد الموظف في مارس؟» يُجاب من السجلّ لا من
+    تشريح ملف — وتكشف الفارق إن عُدِّل ملف الموظف بعدها.
+    """
+    return {
+        "fields": dict(values),
+        "wage_source": ctx.get("wage_source") or "",
+        "contract_term": "definite" if definite else "indefinite",
+        "template_sha256": OFFICIAL_SHA256,
+        "issued_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def generate(ctx: dict) -> tuple[bytes, str, str, list[str], dict]:
+    """يولّد العقد. يعيد (المحتوى، الامتداد، نوع المحتوى، الناقص، اللقطة).
 
     يحاول PDF أوًلا؛ وإن غاب LibreOffice عن البيئة يسلّم الـdocx — وهو
     التخطيط الرسمي نفسه — بدل أن يفشل التوليد كلّه لسبب بيئيّ.
     """
     values, missing = build_values(ctx)
     if missing:
-        return b"", "", "", missing
+        return b"", "", "", missing, {}
     # GC-07 — نوع العقد المسجَّل هو ما يقرّر أي فقرة تبقى. لا افتراض هنا:
     # الافتراض الصامت يُنتج عقًدا يقول غير ما اتُّفق عليه.
     definite = str(ctx.get("contract_type_raw") or "").strip().lower() != "indefinite"
     docx = fill(values, definite=definite)
+    snap = snapshot(ctx, values, definite)
     pdf = to_pdf(docx)
     if pdf:
-        return pdf, "pdf", "application/pdf", []
+        return pdf, "pdf", "application/pdf", [], snap
     return (docx, "docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            [])
+            [], snap)
+
+
+# ---------------------------------------------------------------------------
+# GC-09 — جاهزية البيئة لإخراج عربية سليمة
+# ---------------------------------------------------------------------------
+#: أسماء عائلات خطوط تدعم العربية. وجود واحدة يكفي.
+_ARABIC_FONT_HINTS = ("noto", "amiri", "kacst", "scheherazade", "dejavu",
+                      "arial", "tahoma", "times", "traditional")
+
+
+def environment_report() -> dict:
+    """هل تستطيع هذه البيئة إخراج العقد بعربية سليمة؟
+
+    السؤال ليس أكاديميًّا: بلا خطوط عربية على الخادم يُنتج LibreOffice ملًفا
+    **بمربّعات فارغة مكان الحروف** — والتوليد يعود بنجاح، والملف يُحفَظ،
+    وتُحسب بصمته، ويصل الموظف ليوقّعه. عطل لا يظهر إلا لمن يفتح الورقة.
+
+    فيُفحص هنا ويظهر في فحص الصحّة، بدل أن يُكتشف عند التقديم.
+    """
+    exe = soffice_path()
+    fonts: list[str] = []
+    for root in ("/usr/share/fonts", "/usr/local/share/fonts",
+                 str(Path.home() / ".fonts"), r"C:\Windows\Fonts"):
+        d = Path(root)
+        if not d.is_dir():
+            continue
+        try:
+            for f in d.rglob("*"):
+                if f.suffix.lower() in (".ttf", ".otf", ".ttc"):
+                    low = f.name.lower()
+                    if any(h in low for h in _ARABIC_FONT_HINTS):
+                        fonts.append(f.name)
+                        if len(fonts) >= 5:
+                            break
+        except OSError:
+            continue
+        if len(fonts) >= 5:
+            break
+
+    can_pdf = bool(exe)
+    return {
+        "libreoffice": exe or None,
+        "arabic_fonts_found": fonts[:5],
+        "can_render_pdf": can_pdf,
+        "status": ("ok" if can_pdf and fonts
+                   else "degraded" if can_pdf or fonts
+                   else "unavailable"),
+        # لا يُوصف الحال بـ«جاهز» ما لم يكن الاثنان معًا: LibreOffice بلا
+        # خطوط عربية أسوأ من غيابه — يُنتج ملًفا يبدو سليًما وهو غير مقروء.
+        "note": ("جاهز لإخراج PDF بعربية سليمة" if can_pdf and fonts else
+                 "LibreOffice موجود بلا خطوط عربية — العقد سيخرج بمربّعات فارغة"
+                 if can_pdf else
+                 "LibreOffice غير مثبَّت — يُسلَّم docx بالتخطيط الرسمي بدل PDF"),
+    }

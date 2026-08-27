@@ -77,6 +77,34 @@ def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
 
 
 
+
+#: حالات المسيّر التي يُعتدّ بأجرها. «prepared» ليست منها: مسيّر محضَّر لم
+#: يعتمده أحد بعد، والعقد يذكر الأجر بوصفه التزاًما لا اقتراًحا.
+APPROVED_PAYROLL_STATUSES = ("approved", "finalized", "locked")
+
+
+def _approved_wage(db: Session, emp: models.Employee) -> tuple[str, str]:
+    """GC-05 — الأجر من آخر مسيّر معتمد. يعيد (القيمة، مصدرها).
+
+    الفرق ليس شكليًّا: راتب الموظف في ملفه قيمة قابلة للتعديل في أي لحظة،
+    وأجر المسيّر المعتمد مرّ بمراجعة واعتماد وصار التزاًما محاسبيًّا. وعقد
+    يذكر رقًما لم يعتمده أحد يُوقَّع ويُقدَّم لجهة رسمية.
+
+    وحين لا يوجد مسيّر معتمد بعد — موظف جديد مثًلا — يُؤخذ من ملفه، وهو
+    مصدر سلطة أيًضا. الممنوع هو payload الطلب: من يستطيع تحرير أجره في
+    نموذج يستطيع تزويره.
+    """
+    runs = db.scalars(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == emp.company_id,
+        models.PayrollRun.status.in_(APPROVED_PAYROLL_STATUSES),
+    ).order_by(models.PayrollRun.period.desc())).all()
+    for run in runs:
+        for slip in ((run.totals_json or {}).get("payslips") or []):
+            if slip.get("employee_id") == emp.id and slip.get("basic_salary") is not None:
+                return str(slip["basic_salary"]), f"payroll:{run.period}"
+    return ("" if emp.basic_salary is None else str(emp.basic_salary)), "employee_master"
+
+
 def _gov_contract_context(db: Session, emp: models.Employee,
                           company: models.Company | None,
                           rn: models.ResidencyRenewal) -> dict:
@@ -106,8 +134,7 @@ def _gov_contract_context(db: Session, emp: models.Employee,
     today = kuwait_today()
     start = rn.new_expiry_date if getattr(rn, "new_expiry_date", None) else today
 
-    # GC-05 — الأجر من الراتب المعتمد في النظام لا من payload الطلب
-    wage = emp.basic_salary
+    wage, wage_source = _approved_wage(db, emp)
     return {
         "residence_no": (residence.number if residence else "") or "",
         "company_rep_name": (company.representative_name if company else "") or "",
@@ -115,7 +142,10 @@ def _gov_contract_context(db: Session, emp: models.Employee,
         "company_civil_id": (company.representative_civil_id if company else "") or "",
         "labour_dept": (branch.governorate if branch else "") or "",
         "labour_dept_en": (branch.governorate_en if branch else "") or "",
-        "wage": ("" if wage is None else str(wage)),
+        "wage": wage,
+        # يُدوَّن مصدر الأجر في سجلّ التوليد: من يراجع عقًدا بعد سنة يحتاج
+        # أن يعرف من أين جاء الرقم، لا أن يستنتجه.
+        "wage_source": wage_source,
         "contract_date": today.strftime("%d/%m/%Y"),
         "contract_start_date": start.strftime("%d/%m/%Y"),
         "day_name_en": today.strftime("%A"),
@@ -1014,7 +1044,7 @@ def generate_gov_contract(rid: int, request: Request,
     # GC-01/GC-02 — العقد يُولَّد من نموذج الهيئة الرسمي نفسه، لا من قالب
     # HTML يقلّده. القالب في القاعدة يبقى مرجًعا للنسخة ورقم الإصدار،
     # والمحتوى يأتي من ملف الوورد ببصمته الأصلية.
-    content_bytes, ext, mime, docx_missing = gov_contract_docx.generate(ctx)
+    content_bytes, ext, mime, docx_missing, snap = gov_contract_docx.generate(ctx)
     if docx_missing:
         raise HTTPException(
             status_code=400,
@@ -1048,6 +1078,10 @@ def generate_gov_contract(rid: int, request: Request,
         is_issued=True, reference_no=reference_no,
         template_version=(tpl.version if tpl else 1) or 1, checksum_sha256=checksum,
         generated_at=datetime.utcnow(), generated_by=user.id,
+        # GC-10 — لقطة القيم وقت الإصدار. الملف ثابت ببصمته، واللقطة تجعل
+        # «بأي راتب صدر هذا العقد؟» سؤاًلا يُجاب من السجلّ لا من فتح الملف،
+        # وتكشف الفارق إن عُدِّل ملف الموظف بعد الإصدار.
+        extracted_data_json=snap,
     )
     db.add(doc)
     db.flush()
