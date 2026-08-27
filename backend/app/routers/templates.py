@@ -284,7 +284,32 @@ def _residency_expiry(db: Session, emp: models.Employee) -> str:
         .where(models.Permit.employee_id == emp.id, models.Permit.kind == "residency")
         .order_by(models.Permit.expiry_date.desc())
     )
-    return p.expiry_date.isoformat() if p and p.expiry_date else ""
+    return _fmt_date(p.expiry_date) if p and p.expiry_date else ""
+
+
+
+def _fmt_date(d) -> str:
+    """التاريخ كما يُقرأ في الكويت: يوم/شهر/سنة.
+
+    FRM-03 — كان يُطبع ISO (``2023-05-16``) داخل جملة عربية. الصيغة صحيحة
+    تقنًيا وغريبة على قارئ المستند، ولا تطابق النموذج الرسمي للهيئة الذي
+    يكتبها dd/mm/yyyy. ومستند يُقدَّم لجهة رسمية يُقرأ بعُرفها لا بعُرف
+    قاعدة البيانات.
+    """
+    return d.strftime("%d/%m/%Y") if d else ""
+
+
+#: النصّ الإنجليزي يستعمل النسخة الإنجليزية إن وُجدت، وإلا العربية.
+#:
+#: FRM-03 — كانت الجملة الإنجليزية تحمل الاسم والمسمّى بالعربية
+#: («employed as مدير الشركة»)، وهو خليط لا يُقرأ في أيٍّ من اللغتين.
+#: والاحتياط للعربية مقصود: حذف الجملة كلها لغياب ترجمة أسوأ من عرضها
+#: بالاسم العربي — والمستند ثنائي اللغة أصًلا.
+#:
+#: وهي مفاتيح منفصلة عن ``*_en`` الصارمة عمًدا: تلك يعتمد عليها العقد
+#: الحكومي، وحقل ناقص فيها يجب أن يوقف التوليد لا أن يمتلئ بالعربية.
+def _display_en(en: str | None, ar: str | None) -> str:
+    return (en or "").strip() or (ar or "").strip()
 
 
 def _build_context(db: Session, emp: models.Employee) -> dict:
@@ -307,7 +332,7 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "employee_no": emp.employee_no or "",  # R1-B — الرقم الوظيفي الرسمي
         "civil_id": emp.civil_id or "",
         "passport_number": emp.passport_number or "",  # P0-#11 — نموذج PAM يحتاجه
-        "date_of_birth": emp.date_of_birth.isoformat() if emp.date_of_birth else "",
+        "date_of_birth": _fmt_date(emp.date_of_birth),
         "job_title": emp.job_title or "",
         "department": department.name if department else "",
         "nationality": emp.nationality or "",
@@ -322,7 +347,7 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         # النظام لا يسجّل بدلات منفصلة، فالبدل = الفرق بين الفعلي والأساسي.
         "allowances_total": f"{max((emp.actual_salary or emp.basic_salary or 0) - (emp.basic_salary or 0), 0):.3f}",
         "gross_salary": f"{(emp.actual_salary or emp.basic_salary or 0):.3f}",
-        "hire_date": emp.hire_date.isoformat() if emp.hire_date else "",
+        "hire_date": _fmt_date(emp.hire_date),
         "contract_type": contract_type_ar,  # backward compat (النص القديم)
         "contract_type_ar": contract_type_ar,
         "contract_type_en": contract_type_en,
@@ -333,7 +358,13 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "company_name": company.name if company else "",
         "company_name_en": (company.name_en or "") if company else "",
         "commercial_reg": (company.commercial_reg or "") if company else "",
-        "date_today": kuwait_today().isoformat(),
+        "date_today": _fmt_date(kuwait_today()),
+
+        # ── FRM-03 — النصّ الإنجليزي بأسماء إنجليزية ────────────────────────
+        "employee_name_display_en": _display_en(emp.name_en, emp.name),
+        "job_title_display_en": _display_en(emp.job_title_en, emp.job_title),
+        "company_name_display_en": _display_en(
+            company.name_en if company else "", company.name if company else ""),
 
         # ── FRM-01 — حقول الصيغ الخمس، كلٌّ من مصدره ────────────────────────
         # كانت تُطبع نوائب ورقية ([____] · [DD/MM/YYYY] · [Bank/Cash]) في

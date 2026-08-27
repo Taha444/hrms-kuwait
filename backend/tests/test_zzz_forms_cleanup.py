@@ -200,3 +200,92 @@ def test_no_repeated_prefix_in_output(rendered):
                                (r"د\.ك\s*د\.ك", "د.ك د.ك"),
                                (r"\bKWD\s+KWD\b", "KWD KWD")):
             assert not re.search(pattern, text), f"{code}: تكرار «{label}»"
+
+
+# ---------------------------------------------------------------------------
+# FRM-03 — بقيّة قائمة الفحص الثمانية
+# ---------------------------------------------------------------------------
+def test_dates_use_the_kuwaiti_convention(rendered):
+    """يوم/شهر/سنة لا ISO.
+
+    كان يُطبع ``2023-05-16`` داخل جملة عربية: صحيح تقنًيا، غريب على قارئ
+    المستند، ولا يطابق النموذج الرسمي للهيئة. ومستند يُقدَّم لجهة رسمية
+    يُقرأ بعُرفها لا بعُرف قاعدة البيانات.
+    """
+    for code, (text, _emp) in rendered.items():
+        iso = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text)
+        assert not iso, f"{code}: تواريخ ISO في المخرَج → {iso[:3]}"
+        assert re.search(r"\b\d{2}/\d{2}/\d{4}\b", text), (
+            f"{code}: لا تاريخ بصيغة يوم/شهر/سنة"
+        )
+
+
+def test_english_sentence_uses_english_names(rendered):
+    """«employed as مدير الشركة» خليط لا يُقرأ في أيٍّ من اللغتين."""
+    db = SessionLocal()
+    try:
+        emp = db.query(models.Employee).filter(
+            models.Employee.name_en.isnot(None),
+            models.Employee.job_title_en.isnot(None)).first()
+        assert emp is not None, "لا موظف بأسماء إنجليزية في البذرة"
+        company = db.get(models.Company, emp.company_id)
+        ctx = _resolve_authoritative_data(db, emp, extras={})
+        tpl = db.scalar(select(models.DocumentTemplate).where(
+            models.DocumentTemplate.code == "HRMS-PR-001"))
+        text = _text(_fill_html(tpl, ctx))
+        i = text.find("certifies")
+        assert i > 0, "الفقرة الإنجليزية غائبة"
+        english = text[i - 60:i + 220]
+        for arabic in (emp.name, emp.job_title, company.name):
+            assert arabic not in english, (
+                f"اسم عربي داخل الجملة الإنجليزية: {arabic!r}"
+            )
+        assert emp.name_en in english and emp.job_title_en in english
+    finally:
+        db.close()
+
+
+def test_seed_never_stores_arabic_in_an_english_column():
+    """حقل ``_en`` يحمل عربية أسوأ من فراغه.
+
+    يدّعي الإنجليزية وليس بها، ويمرّ من كل فحص يسأل «هل الحقل مملوء؟» —
+    وهذا ما فعلتْه بذرتي أوًلا.
+    """
+    db = SessionLocal()
+    try:
+        arabic = re.compile(r"[؀-ۿ]")
+        bad = []
+        for e in db.scalars(select(models.Employee)).all():
+            for col in ("name_en", "job_title_en", "nationality_en"):
+                v = getattr(e, col) or ""
+                if v and arabic.search(v):
+                    bad.append(f"{e.civil_id}.{col} = {v!r}")
+        assert not bad, "عربية في أعمدة إنجليزية:\n" + "\n".join(bad[:10])
+    finally:
+        db.close()
+
+
+def test_no_role_codes_or_approval_names_in_output(rendered):
+    """المستند نتيجة لا سجلّ إجراءات: لا رموز أدوار ولا مسار اعتماد."""
+    for code, (text, _emp) in rendered.items():
+        roles = re.findall(
+            r"\b(branch_supervisor|company_manager|company_owner|super_admin|"
+            r"delegate|accountant)\b", text)
+        assert not roles, f"{code}: رموز أدوار في المخرَج → {sorted(set(roles))}"
+        assert "Timeline" not in text and "سلسلة الاعتماد" not in text, (
+            f"{code}: مسار الاعتماد مطبوع في المستند"
+        )
+
+
+def test_titles_state_a_result_not_a_request():
+    """«شهادة راتب» لا «طلب شهادة راتب» — المستند نتيجة الطلب لا الطلب."""
+    db = SessionLocal()
+    try:
+        for code in FIVE:
+            tpl = db.scalar(select(models.DocumentTemplate).where(
+                models.DocumentTemplate.code == code))
+            assert not tpl.name.strip().startswith(("طلب", "Request")), (
+                f"{code}: العنوان {tpl.name!r} يصف طلًبا لا نتيجة"
+            )
+    finally:
+        db.close()

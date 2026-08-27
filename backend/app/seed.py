@@ -58,6 +58,27 @@ COMPANIES = [
 ]
 
 
+#: ترجمة المهن والجنسيات في بيانات العرض. لم تكن موجودة، فكانت البذرة
+#: تضع القيمة العربية في حقل ``_en`` — وهو أسوأ من تركه فارًغا: يدّعي
+#: الإنجليزية وليس بها، ويمرّ من كل فحص يسأل «هل الحقل مملوء؟».
+#: وما لا ترجمة له يبقى فارًغا ويظهر بالعربية في النصّ الإنجليزي — وهذا
+#: صادق: المستند ثنائي اللغة، وحذف الاسم لغياب ترجمته أسوأ من عرضه.
+JOB_TITLE_EN = {
+    "بائع": "Salesperson", "فني": "Technician",
+    "مشرف مبيعات": "Sales Supervisor", "محاسب": "Accountant",
+    "مستشار": "Consultant", "مدير فرع": "Branch Manager",
+    "عامل": "Worker", "سائق": "Driver", "مهندس موقع": "Site Engineer",
+    "مراقب سلامة": "Safety Officer", "مساح": "Surveyor",
+    "مدير مشروع": "Project Manager", "مدير الشركة": "General Manager",
+}
+
+NATIONALITY_EN = {
+    "مصري": "Egyptian", "هندي": "Indian", "سوري": "Syrian",
+    "سعودي": "Saudi", "بريطاني": "British", "كويتي": "Kuwaiti",
+    "فلبيني": "Filipino", "باكستاني": "Pakistani", "بنغالي": "Bangladeshi",
+}
+
+
 def _tpl(code: str, title_ar: str, title_en: str, body_ar: str, body_en: str,
         details: list[tuple[str, str]], signatures: list[tuple[str, str]],
         has_ack: bool = False) -> str:
@@ -97,7 +118,7 @@ DEFAULT_TEMPLATES = [
     ("HRMS-PR-001", "شهادة راتب", "Salary Certificate", "الشهادات والخطابات",
      _tpl("HRMS-PR-001", "شهادة راتب", "Salary Certificate",
           "تشهد {{company_name}} بأن السيد/السيدة {{employee_name}}، حامل الرقم المدني {{civil_id}}، يعمل لديها بوظيفة {{job_title}} منذ تاريخ {{hire_date}}، ويتقاضى راتبًا أساسيًا قدره {{basic_salary}} د.ك، وبدلات {{allowances_total}} د.ك، بإجمالي شهري {{gross_salary}} د.ك. صدرت هذه الشهادة بناءً على طلبه لتقديمها إلى {{target_entity}} دون أدنى مسؤولية على الشركة تجاه الغير.",
-          "{{company_name}} certifies that Mr./Ms. {{employee_name}}, Civil ID {{civil_id}}, has been employed as {{job_title}} since {{hire_date}} and receives a basic salary of KWD {{basic_salary}}, allowances of KWD {{allowances_total}}, totaling KWD {{gross_salary}} monthly. This certificate is issued upon request for submission to {{target_entity}} without liability to third parties.",
+          "{{company_name_display_en}} certifies that Mr./Ms. {{employee_name_display_en}}, Civil ID {{civil_id}}, has been employed as {{job_title_display_en}} since {{hire_date}} and receives a basic salary of KWD {{basic_salary}}, allowances of KWD {{allowances_total}}, totaling KWD {{gross_salary}} monthly. This certificate is issued upon request for submission to {{target_entity}} without liability to third parties.",
           [("الراتب الأساسي: {{basic_salary}} د.ك · البدلات: {{allowances_total}} د.ك", "Basic Salary / Allowances"), ("الإجمالي: {{gross_salary}} د.ك · الجهة الموجّه إليها: {{target_entity}}", "Total Salary / Addressed To")],
           [("Prepared by HR", "إعداد الموارد البشرية"), ("Manager Review", "مراجعة المدير"), ("Authorized Signatory", "المخول بالتوقيع")], has_ack=False)),
     ("HRMS-PR-002", "شهادة لمن يهمه الأمر", "To Whom It May Concern Certificate", "الشهادات والخطابات",
@@ -127,7 +148,7 @@ DEFAULT_TEMPLATES = [
     ("HRMS-PR-006", "بيان بيانات موظف", "Employee Data Statement", "الشهادات والخطابات",
      _tpl("HRMS-PR-006", "بيان بيانات موظف", "Employee Data Statement",
           "بيان بيانات الموظف/ة {{employee_name}} (رقم مدني {{civil_id}}، وظيفة {{job_title}}، تاريخ التعيين {{hire_date}}، نوع العقد {{contract_type}}) مستخرج من نظام الموارد البشرية ويعرض البيانات المسجلة وقت الإصدار. أي تعديل لاحق يخضع لسجل التدقيق والصلاحيات المعتمدة.",
-          "Employee data statement for {{employee_name}} (Civil ID {{civil_id}}, Job {{job_title}}, Hire Date {{hire_date}}, Contract {{contract_type}}) generated from the HRMS at issue time. Subsequent changes are subject to audit logs and approved permissions.",
+          "Employee data statement for {{employee_name_display_en}} (Civil ID {{civil_id}}, Job {{job_title_display_en}}, Hire Date {{hire_date}}, Contract {{contract_type}}) generated from the HRMS at issue time. Subsequent changes are subject to audit logs and approved permissions.",
           [("تاريخ التعيين: {{hire_date}} · نوع العقد: {{contract_type_ar}}", "Joining Date / Contract Type"), ("الراتب الرسمي: {{official_salary}} د.ك · الراتب الفعلي: {{actual_salary}} د.ك", "Official Salary / Actual Salary"), ("مكان العمل: {{work_location}}", "Work Location"), ("رقم الإقامة: {{residency_no}} · انتهاء الإقامة: {{residency_expiry}}", "Residency No. / Expiry")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-007", "شهادة مدة خدمة", "Length of Service Certificate", "الشهادات والخطابات",
@@ -139,13 +160,13 @@ DEFAULT_TEMPLATES = [
     ("HRMS-PR-008", "خطاب تحويل راتب للبنك", "Bank Salary Transfer Letter", "الشهادات والخطابات",
      _tpl("HRMS-PR-008", "خطاب تحويل راتب للبنك", "Bank Salary Transfer Letter",
           "السادة {{bank_name}} المحترمين، نفيدكم بأن الموظف/ة {{employee_name}} يعمل لدى {{company_name}} بوظيفة {{job_title}} منذ {{hire_date}} وبإجمالي راتب شهري {{gross_salary}} د.ك، وقد تقرر تحويل راتبه الشهري إلى الحساب رقم {{iban}} اعتبارًا من راتب شهر {{effective_month}}، وذلك دون التزام مالي إضافي على الشركة تجاه البنك.",
-          "Dear {{bank_name}}, we confirm that {{employee_name}} is employed by {{company_name}} as {{job_title}} since {{hire_date}} with a total monthly salary of KWD {{gross_salary}}. The monthly salary shall be transferred to account {{iban}} effective from payroll month {{effective_month}}, without additional liability on the company toward the bank.",
+          "Dear {{bank_name}}, we confirm that {{employee_name_display_en}} is employed by {{company_name_display_en}} as {{job_title_display_en}} since {{hire_date}} with a total monthly salary of KWD {{gross_salary}}. The monthly salary shall be transferred to account {{iban}} effective from payroll month {{effective_month}}, without additional liability on the company toward the bank.",
           [("اسم البنك: {{bank_name}}", "Bank Name"), ("رقم الحساب / الآيبان: {{bank_account_iban}}", "Account / IBAN"), ("راتب التحويل: {{basic_salary}} د.ك · تاريخ البدء: {{transfer_start_date}}", "Transfer Salary / Effective Date")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-009", "إفادة استمرارية راتب", "Salary Continuity Confirmation", "الشهادات والخطابات",
      _tpl("HRMS-PR-009", "إفادة استمرارية راتب", "Salary Continuity Confirmation",
           "تفيد {{company_name}} بأن الموظف/ة {{employee_name}} ما زال على رأس عمله، وأن راتبه يصرف وفق دورة الرواتب المعتمدة بالشركة، مع خضوع أي تغيير لاحق للقرارات والسياسات الداخلية.",
-          "{{company_name}} confirms that {{employee_name}} remains actively employed and receives salary according to the company payroll cycle. Any future change is subject to internal decisions and policies.",
+          "{{company_name_display_en}} confirms that {{employee_name_display_en}} remains actively employed and receives salary according to the company payroll cycle. Any future change is subject to internal decisions and policies.",
           [("دورة الصرف: {{payroll_cycle}} · طريقة الصرف: {{payment_method}}", "Payroll Cycle / Payment Method"), ("الحالة: {{employment_status}} · آخر راتب مصروف: {{last_payroll_month}}", "Status / Last Payroll Month")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-010", "خطاب موجه لجهة رسمية", "Official Entity Letter", "الشهادات والخطابات",
@@ -489,8 +510,8 @@ def build_company(db, cfg) -> dict:
                             attendance_exempt_reason=exempt_reason,
                             # GC-03 — العمود الإنجليزي من النموذج الرسمي يطلبهما
                             name_en=cfg.get("emp_names_en", {}).get(name) or f"Employee {i + 1}",
-                            nationality_en=("Kuwaiti" if nat == "كويتي" else "Non-Kuwaiti"),
-                            job_title_en=job,
+                            nationality_en=NATIONALITY_EN.get(nat, ""),
+                            job_title_en=JOB_TITLE_EN.get(job, ""),
                             passport_number=f"P{p}{i + 1:04d}")
         db.add(e)
         emps.append(e)
