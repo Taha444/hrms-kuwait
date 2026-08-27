@@ -451,3 +451,35 @@ video, canvas.cam, .cam { width: 100%; max-width: 340px; border-radius: 14px; ba
 /* QA-07 — جدول "تسمية: قيمة" لتفاصيل الطلب (بدل JSON خام) */
 table.kv { border-collapse: collapse; }
 table.kv td { padding: 3px 0; vertical-align: top; font-size: 13px; }
+
+/* ---------- رابط تخطّي التنقّل ---------- */
+/* كان يُخفى بـ left:-9999px، وهي حيلة تصلح في الإنجليزية وحدها: اتجاه
+   الفيض هناك يمين، فالصندوق خارج مساحة التمرير ولا أثر له. أما في العربية
+   فاتجاه الفيض يسار — فصار الرابط داخل مساحة التمرير، ومنح الصفحة 9999
+   بكسًلا من الفراغ يُكشف بأول تمرير لليسار. عيب لا يظهر إلا بالعربية،
+   ولهذا لم يُلحظ.
+
+   البديل هنا هو نمط clip المعياري: صندوق ببكسل واحد مقصوص بالكامل — يقرؤه
+   قارئ الشاشة ولا يضيف بكسًلا واحًدا إلى مساحة التمرير في أي اتجاه.
+
+   ويجب أن يبقى مرئيًّا عند التركيز: هو أداة من يتنقّل بلوحة المفاتيح
+   وحدها، وإخفاؤه عند التركيز يجعله عديم الفائدة. */
+.skip-link {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  width: auto; height: auto;
+  margin: 0; padding: 10px 16px;
+  overflow: visible;
+  clip-path: none;
+  inset-block-start: 8px; inset-inline-start: 8px;
+  z-index: 1000;
+  background: var(--petrol-800); color: #fff;
+  border-radius: 10px; font-weight: 600;
+  box-shadow: var(--shadow);
+}
