@@ -58,6 +58,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   tasks_info_only: { ar: "للعلم فقط", en: "For your information" },
   // QA-28 — النسخ السابقة من المستندات
   doc_prev_versions: { ar: "النسخ السابقة", en: "Previous versions" },
+  doc_uploaded_by: { ar: "رفعها", en: "Uploaded by" },
+  doc_size: { ar: "الحجم", en: "Size" },
   doc_uploaded_at: { ar: "تاريخ الرفع", en: "Uploaded" },
   doc_current: { ar: "الحالية", en: "Current" },
   // QA-05 — إقامات تستحق التجديد بلا ملف مفتوح

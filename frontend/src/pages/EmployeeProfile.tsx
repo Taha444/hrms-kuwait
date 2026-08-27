@@ -495,13 +495,22 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               {!versions.length ? <p className="muted">{t("att_no_records")}</p> : (
                 <table><thead><tr>
                   <th>{t("epf_col_version")}</th><th>{t("col_title")}</th>
-                  <th>{t("doc_uploaded_at")}</th><th>{t("pro_col_expiry")}</th><th></th>
+                  <th>{t("doc_uploaded_at")}</th>
+                  {/* ARC-01 — من رفعها وحجمها: نسخة قديمة بلا صاحب ولا حجم
+                      لا تُميَّز عن غيرها، ومن يفتّش يسأل أوًلا «من غيّرها؟» */}
+                  <th>{t("doc_uploaded_by")}</th><th>{t("doc_size")}</th>
+                  <th>{t("pro_col_expiry")}</th><th></th>
                 </tr></thead><tbody>
                   {versions.map((v: any) => (
                     <tr key={v.id}>
                       <td>v{v.version}{v.is_current && <span className="pill success" style={{ marginInlineStart: 6 }}>{t("doc_current")}</span>}</td>
                       <td>{v.title}</td>
                       <td>{v.created_at ? fmtKuwaitDate(v.created_at, lang) : "—"}</td>
+                      <td>{v.uploaded_by_name || "—"}</td>
+                      <td>{v.size_bytes == null ? "—"
+                           : v.size_bytes < 1024 ? `${v.size_bytes} B`
+                           : v.size_bytes < 1048576 ? `${(v.size_bytes / 1024).toFixed(0)} KB`
+                           : `${(v.size_bytes / 1048576).toFixed(1)} MB`}</td>
                       <td>{v.expiry_date || "—"}</td>
                       <td><button className="ghost sm" onClick={() => downloadVersion(v.id)}>{t("download")}</button></td>
                     </tr>

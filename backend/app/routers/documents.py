@@ -17,7 +17,7 @@ from .. import ocr
 from ..notifications import create_task, notify_roles
 from ..safe_files import read_limited, safe_filename, unique_path
 from ..clock import today as kuwait_today
-from ..storage import file_response, key_exists, save_bytes
+from ..storage import read_bytes, file_response, key_exists, save_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -308,9 +308,38 @@ def document_history(entity_type: str, entity_id: int, document_type_code: str |
     if document_type_code:
         q = q.where(models.Document.document_type_code == document_type_code)
     rows = db.scalars(q.order_by(models.Document.created_at.desc())).all()
+
+    # ARC-01 — من رفعه وحجمه: نسخة قديمة بلا صاحب ولا حجم لا تُميَّز عن
+    # غيرها. ومن يفتّش في إصدارات مستند رسمي يسأل أوًلا «من غيّره ومتى؟».
+    uploaders: dict[int, str] = {}
+
+    def _who(uid: int | None) -> str | None:
+        if not uid:
+            return None
+        if uid not in uploaders:
+            u = db.get(models.User, uid)
+            uploaders[uid] = (u.full_name if u else None) or f"#{uid}"
+        return uploaders[uid]
+
+    def _size(key: str | None) -> int | None:
+        # الحجم من التخزين لا من عمود محفوظ: عمود يُكتب مرة ويصير كذًبا
+        # حين يُستبدل الملف. والغياب يُعاد None لا صفًرا — الصفر رقم يُقرأ.
+        if not key:
+            return None
+        try:
+            return len(read_bytes(key))
+        except Exception:
+            return None
+
+    total = len(rows)
     return [{"id": d.id, "type": d.document_type_code, "title": d.title,
              "version": d.version, "is_current": d.is_current,
-             "expiry_date": d.expiry_date, "created_at": d.created_at} for d in rows]
+             "expiry_date": d.expiry_date, "created_at": d.created_at,
+             "uploaded_by_name": _who(d.uploaded_by),
+             "size_bytes": _size(d.file_path),
+             "mime": d.mime,
+             # عدد إصدارات هذا النوع — به تُخفى قائمة فارغة قبل فتحها
+             "version_count": total} for d in rows]
 
 
 @router.get("/{doc_id}/download")

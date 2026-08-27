@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api, { downloadFile, errMsg } from "../api";
+import DocumentVersions from "../components/DocumentVersions";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
@@ -178,6 +179,12 @@ export default function Archive() {
             {cur && <p className="muted" style={{ fontSize: 12 }}>{t("arch_added", { date: fmtKuwaitDate(cur.created_at, lang) })}{cur.expiry_date ? ` · ${t("arch_expires", { date: cur.expiry_date })}` : ""}</p>}
             <div className="row" style={{ marginTop: 8 }}>
               {cur && <button className="ghost sm" onClick={() => download(entityType, entityId, dt.code, dt.name)}><Icon name="doc" size={14} /> {t("arch_download")}</button>}
+              {/* ARC-01/ARC-02 — الحالي على وجه البطاقة، والتاريخ خلف زر.
+                  والمكوّن نفسه لأرشيف الشركة والفرع: نسختان منه تفترقان
+                  عند أول تعديل. */}
+              {cur && <DocumentVersions entityType={entityType} entityId={entityId}
+                                        documentTypeCode={dt.code}
+                                        currentVersion={cur.version} />}
               {can("upload_documents") && (
                 <label className="btn ghost sm" style={{ cursor: "pointer" }}>
                   {cur ? t("arch_replace") : t("arch_upload")}
@@ -503,6 +510,12 @@ function CustomDocsSection({ entityType, entityId, documents, onAdd, onReplace,
                    style={{ textDecoration: "none" }}>
                   <Icon name="doc" size={14} /> {isEn ? "Download" : "تنزيل"}
                 </a>
+                {/* ARC-01 — النسخ السابقة: الخادم يحتفظ بها والواجهة لم
+                    يكن فيها باب إليها. الزر يختفي تلقائيًّا عند الإصدار
+                    الأول، فلا تُفتح قائمة تُوهم بوجود تاريخ. */}
+                <DocumentVersions entityType={entityType} entityId={entityId}
+                                  documentTypeCode={d.type}
+                                  currentVersion={d.version} />
                 {can("upload_documents") && (
                   <label className="btn ghost sm" style={{ cursor: "pointer" }}>
                     {isEn ? "Replace" : "استبدال"}

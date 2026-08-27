@@ -1,8 +1,8 @@
 {
   "APP-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "request_actions.py يشتقّ allowed_actions من can_decide + can_complete_stage نفسيهما · الواجهة تعرض ولا تحسب · صندوق القرار حُرّر من الصلاحية المهجورة · 12 اختباًرا في test_zzz_approval_gate.py تغطّي قائمة الفحص الستّ · إعادة الشرط القديم تُسقط 4 منها · 616 خضراء",
+    "updated": "2026-08-27"
   },
   "FRM-01": {
     "status": "open",
