@@ -10,7 +10,7 @@ import { statusAr } from "../labels";
 export default function RequestDetail() {
   const { id } = useParams();
   const { user, can } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [req, setReq] = useState<any>(null);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
@@ -119,20 +119,28 @@ export default function RequestDetail() {
         <div className="field"><label htmlFor="rd-note">{t("rd_note_optional")}</label>
           <input id="rd-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
 
-        {/* P1-#19 — الأزرار تظهر فقط للموافق الحالي (backend authoritative via can_current_user_decide) */}
-        {req.status === "pending" && can("approve_request") && req.can_current_user_decide && (
+        {/* APP-01 — شريط الإجراءات يُبنى من ردّ الخادم. لا شرط دور ولا
+            صلاحية محسوبة هنا: كان الشرط ‏can("approve_request")‏ — وهي
+            صلاحية مهجورة — بينما يشترط الخادم صلاحية مجال الفئة. فمن يعتمد
+            الإجازات بـapprove_leave يقبله الخادم وتُخفي عنه الواجهة أزراره.
+            والأفعال وتسمياتها والقرار المقابل لكلٍّ منها كلها من الخادم:
+            ترجمة فعل إلى قرار في الواجهة قاعدة ثانية تنحرف. */}
+        {(req.allowed_actions || []).length > 0 && (
           <div className="row">
-            <button onClick={() => decide("approved")}>{t("rd_approve")}</button>
-            <button className="danger" onClick={() => decide("rejected")}>{t("rd_reject")}</button>
-            {req.current_stage < 2 && (
-              <button className="warn" onClick={() => decide("returned")}>{t("rd_return")}</button>
-            )}
+            {(req.allowed_actions || []).map((a: any) => (
+              <button key={a.action}
+                      className={a.decision === "rejected" ? "danger"
+                                 : a.decision === "returned" ? "warn" : ""}
+                      onClick={() => decide(a.decision)}>
+                {lang === "en" ? a.label_en : a.label_ar}
+              </button>
+            ))}
           </div>
         )}
-        {/* لو المستخدم عنده approve_request لكن مش الموافق الحالي — نبيّن السبب بدل الإخفاء الصامت */}
-        {req.status === "pending" && can("approve_request") && !req.can_current_user_decide && (
+        {/* ولمن لا أفعال له: السبب كما يقوله الخادم، بدل الإخفاء الصامت */}
+        {(req.allowed_actions || []).length === 0 && req.no_actions_reason && (
           <div className="muted" style={{ fontSize: 13, padding: 8 }}>
-            هذا الطلب ينتظر اعتماد جهة أخرى — لست الموافق الحالي في هذه المرحلة.
+            {req.no_actions_reason}
           </div>
         )}
 

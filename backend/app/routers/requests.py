@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import request_actions
 from .. import form_schemas, models, permissions, schemas, workflow
 from ..config import settings
 from ..database import get_db
@@ -917,6 +918,13 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         "created_at": req.created_at,
         # P1-#19 — الـUI تخفي أزرار الاعتماد لو false (بدل عرضها ومنع الـclick بـ403)
         "can_current_user_decide": can_current_user_decide,
+        # APP-01 — شريط الإجراءات يُبنى من هنا. الواجهة تعرض ما في القائمة
+        # ولا تحسب صلاحية: الحساب في مكانين ينحرف أحدهما عن الآخر، وهو
+        # سبب اختفاء الأزرار عن المعتمِد الفعليّ.
+        "allowed_actions": request_actions.allowed_actions(db, req, viewer),
+        # ولمن لا أفعال له: السبب بدل الصمت — من ينتظر دوره يحتاج أن يعرف
+        # أنه ينتظر لا أن يظنّ الشاشة معطَّلة.
+        "no_actions_reason": request_actions.why_not(db, req, viewer),
     }
     if full:
         approvals = db.scalars(select(models.RequestApproval).where(

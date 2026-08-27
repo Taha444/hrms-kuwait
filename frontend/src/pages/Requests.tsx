@@ -21,6 +21,8 @@ export default function Requests() {
   const [tab, setTab] = useState<"mine" | "inbox">("mine");
   const [mine, setMine] = useState<any[]>([]);
   const [inbox, setInbox] = useState<any[]>([]);
+  // يقرّرها الخادم: نجاح /requests/inbox يعني أنّ للمستخدم صندوق قرار
+  const [canApprove, setCanApprove] = useState(false);
   const [types, setTypes] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [onBehalfOf, setOnBehalfOf] = useState<number | "">("");
@@ -50,8 +52,13 @@ export default function Requests() {
     setState("loading");
     api.get("/requests/mine").then((r) => { setMine(r.data); setState("ok"); })
       .catch(() => setState("error"));
-    if (can("approve_request") || can("process_delegate_tasks"))
-      api.get("/requests/inbox").then((r) => setInbox(r.data)).catch(() => {});
+    // APP-01 — لا تحكم الواجهة على الصلاحية: نقطة الوصول نفسها محروسة
+    // بمجموعة صلاحيات القرار كاملة، فمن لا يملك شيًئا منها يُردّ بـ403.
+    // والشرط القديم كان approve_request العامة المهجورة، فمن يعتمد
+    // الإجازات بـapprove_leave لا يرى صندوقه أصًلا — أي لا يصل الطلب.
+    api.get("/requests/inbox")
+      .then((r) => { setInbox(r.data); setCanApprove(true); })
+      .catch(() => setCanApprove(false));
   };
   useEffect(() => {
     load();
@@ -223,7 +230,7 @@ export default function Requests() {
 
       <div className="row" style={{ marginBottom: 12 }}>
         <button className={tab === "mine" ? "" : "ghost"} onClick={() => setTab("mine")}>{t("my_requests")}</button>
-        {(can("approve_request") || can("process_delegate_tasks")) && (
+        {canApprove && (
           <button className={tab === "inbox" ? "" : "ghost"} onClick={() => setTab("inbox")}>
             {t("approval_inbox")} {inbox.length ? `(${inbox.length})` : ""}
           </button>

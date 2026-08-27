@@ -45,9 +45,9 @@
     "updated": "2026-08-27"
   },
   "GC-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "كل الحقول تُحلّ من مصادرها — test_every_field_source_resolves_from_the_database + خريطة FIELD_SOURCES تمنع وسًما بلا مصدر · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-04": {
     "status": "done",
@@ -55,14 +55,14 @@
     "updated": "2026-08-27"
   },
   "GC-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "_approved_wage من آخر مسيّر معتمد (approved/finalized/locked) لا من الملف ولا من payload · المصدر يُسمّى ويُحفظ في اللقطة · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "رقم الإقامة الفعلي من Permit kind=residency — أُصلح خطأ residence/residency · اختبار يقارنه بالرقم نفسه · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-07": {
     "status": "done",
@@ -70,19 +70,19 @@
     "updated": "2026-08-27"
   },
   "GC-08": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "build_values يوقف التوليد ويسمّي الناقص بالعربية · test_missing_required_field_names_itself_and_stops · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-09": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "environment_report في /health/deep — لا يُوصف بالجاهزية بلا LibreOffice وخطوط عربية معًا · Dockerfile يثبّتهما · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-10": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "snapshot تُحفظ في Document.extracted_data_json مع بصمة النموذج · test_snapshot_is_frozen_when_employee_data_changes_later · 604 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-11": {
     "status": "done",
