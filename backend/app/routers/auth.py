@@ -25,24 +25,49 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 MAX_FAILED = 5
 LOCK_MINUTES = 15
 
-# تحديد معدّل بسيط في الذاكرة لمنع القوة الغاشمة على الدخول (لكل IP)
+# تحديد معدّل في الذاكرة لإبطاء القوة الغاشمة على الدخول (لكل IP).
+#
+# **المحاولات الفاشلة وحدها تُحسب.** كان العدّاد يحسب الناجحة أيًضا، وخلف
+# وكيل يتقاسم مكتب كامل عنوانًا واحًدا: أحد عشر موظًفا يدخلون في دقيقة
+# صباًحا — كلهم بكلمات صحيحة — فيُمنع الحادي عشر. تحديد المعدّل يوجد ليبطئ
+# من يخمّن، لا من يعرف كلمته.
+#
+# وحماية الحساب المفرد قائمة على حدة: خمس محاولات فاشلة تقفله ربع ساعة
+# (MAX_FAILED/LOCK_MINUTES)، فلا يعتمد المنع على هذا العدّاد وحده.
 _RATE_WINDOW = 60          # ثانية
-_RATE_MAX = 10             # محاولات كحدّ أقصى في النافذة
-_login_hits: dict[str, list[float]] = {}
+_RATE_MAX = 10             # محاولات فاشلة كحدّ أقصى في النافذة
+_login_fails: dict[str, list[float]] = {}
 
 
-def _rate_limit(ip: str):
+def _rate_check(ip: str):
+    """يرفض إن تجاوز العنوان حصّته من الإخفاقات. لا يستهلك شيًئا بنفسه."""
     import time
 
     from ..config import settings
     if not settings.rate_limit_enabled:
         return
     now = time.time()
-    hits = [t for t in _login_hits.get(ip, []) if now - t < _RATE_WINDOW]
+    # تنظيف العناوين الخاملة: القاموس كان ينمو بلا حدّ، فكل عنوان زار
+    # /login مرة يبقى في الذاكرة إلى الأبد على خدمة تعمل شهوًرا.
+    if len(_login_fails) > 2000:
+        for k in [k for k, v in _login_fails.items()
+                  if not v or now - v[-1] > _RATE_WINDOW]:
+            _login_fails.pop(k, None)
+    hits = [t for t in _login_fails.get(ip, []) if now - t < _RATE_WINDOW]
+    _login_fails[ip] = hits
     if len(hits) >= _RATE_MAX:
         raise HTTPException(status_code=429, detail="محاولات كثيرة، انتظر دقيقة ثم أعد المحاولة")
-    hits.append(now)
-    _login_hits[ip] = hits
+
+
+def _rate_record_failure(ip: str):
+    """يقيّد إخفاًقا واحًدا على العنوان."""
+    import time
+
+    from ..config import settings
+    if not settings.rate_limit_enabled:
+        return
+    _login_fails.setdefault(ip, []).append(time.time())
+
 
 
 def _perm_list(user: models.User, db: Session) -> list[str]:
@@ -53,16 +78,20 @@ def _perm_list(user: models.User, db: Session) -> list[str]:
 def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)):
     # خلف وكيل، ``request.client.host`` عنوان الوكيل: فيتقاسم كل الزوّار
     # عدّاًدا واحًدا — مهاجم واحد يقفل الدخول عن الجميع، أو يتخفّى بينهم.
-    _rate_limit(client_ip(request) or "?")
+    ip = client_ip(request) or "?"
+    _rate_check(ip)
     user = db.scalar(select(models.User).where(models.User.civil_id == data.civil_id))
     now = datetime.now(timezone.utc)
     if not user:
+        _rate_record_failure(ip)   # وإلا كان تعداد الحسابات بلا تكلفة
         raise HTTPException(status_code=401, detail="الرقم المدني أو كلمة المرور غير صحيحة")
 
     if user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > now:
+        _rate_record_failure(ip)
         raise HTTPException(status_code=423, detail="الحساب مقفل مؤقتًا، حاول لاحقًا")
 
     if not user.is_active or user.status in ("inactive", "suspended"):
+        _rate_record_failure(ip)
         msg = "الحساب موقوف" if user.status == "suspended" else "الحساب غير مفعّل"
         raise HTTPException(status_code=403, detail=msg)
 
@@ -71,6 +100,7 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
         if user.failed_attempts >= MAX_FAILED:
             user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
             user.failed_attempts = 0
+        _rate_record_failure(ip)
         db.commit()
         raise HTTPException(status_code=401, detail="الرقم المدني أو كلمة المرور غير صحيحة")
 
@@ -90,6 +120,7 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
             audit(db, user, "totp_recovery_used", "user", user.id, request=request,
                   detail=f"remaining={len(user.totp_recovery_hashes or [])}")
         else:
+            _rate_record_failure(ip)
             audit(db, user, "totp_login_fail", "user", user.id, request=request)
             db.commit()
             raise HTTPException(status_code=401, detail="رمز التحقق الثنائي غير صحيح")
@@ -221,10 +252,16 @@ def select_company(company_id: int, request: Request,
 
     # For admin cross-company (super_admin/owner), company_id in response reflects
     # their selection but user.company_id in DB stays NULL (they can still see all).
+    # اختيار الشركة يحدث داخل جلسة قائمة، فيجب أن يحافظ على وسمها. والواجهة
+    # تمسح الشركة النشطة عند بدء الانتحال، فمُنتحَلٌ متعدّد الشركات يمرّ من
+    # هنا فوًرا — لا بعد نصف ساعة كما في التجديد. إسقاط الوسم هنا يعني أن
+    # كل انتحال لمالك شركات يفقد أثره من أول خطوة.
+    imp_id = getattr(request.state, "original_user_id", None)
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
-                                        active_company_id=company_id),
-        refresh_token=create_refresh_token(user.id),
+                                        active_company_id=company_id,
+                                        impersonator_id=imp_id),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name,
         company_id=company_id,  # informational — for UI display
@@ -250,9 +287,24 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
     enforce_idle_timeout(db, user)
     # R9 §16 — refresh لا يعيد active_company_id — على cross-company user يعيد الاختيار
     # (نتوقع أن التوكن يُستهلك عبر واجهة تسجل تلقائيًا اختيار الشركة الأخير من localStorage).
+    # وسم الانتحال يسري مع الجلسة كلها. بدون تمريره هنا يعيد التجديد جلسة
+    # نظيفة باسم المُنتحَل، فتُقيَّد كل الأفعال التالية عليه وحده ولا يبقى
+    # أثر لمن فعلها — وهو السؤال الوحيد الذي وُجد الانتحال ليجيبه. ولأن رمز
+    # الدخول يعيش 30 دقيقة والواجهة تجدّده تلقائيًّا، فكل جلسة انتحال تتجاوز
+    # نصف ساعة كانت تمرّ بهذا المسار حتًما.
+    imp_id = payload.get("impersonator_id")
+    if imp_id is not None:
+        # والصلاحية تُراجَع عند كل تجديد لا عند البداية فقط: من سُحبت منه
+        # الإدارة العليا أو عُطِّل حسابه لا تستمر جلسة انتحاله أسبوعين.
+        impersonator = db.get(models.User, int(imp_id))
+        if (not impersonator or not impersonator.is_active
+                or impersonator.role != "super_admin"):
+            raise HTTPException(status_code=401,
+                                detail="لم يعد المُنتحِل مخوًّلا — أعد تسجيل الدخول")
     return schemas.TokenOut(
-        access_token=create_access_token(user.id, user.role, user.company_id),
-        refresh_token=create_refresh_token(user.id),
+        access_token=create_access_token(user.id, user.role, user.company_id,
+                                         impersonator_id=imp_id),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),

@@ -88,8 +88,17 @@ def create_access_token(subject: int, role: str, company_id: int | None,
     )
 
 
-def create_refresh_token(subject: int) -> str:
-    return _create_token({"sub": str(subject)}, timedelta(days=settings.refresh_token_expire_days), "refresh")
+def create_refresh_token(subject: int, impersonator_id: int | None = None) -> str:
+    """رمز التجديد يحمل وسم الانتحال إن وُجد.
+
+    بدونه تُولَد من رمز تجديد جلسةِ انتحالٍ رموزُ دخول نظيفة، فتُقيَّد الأفعال
+    على المُنتحَل وحده ويضيع من فعلها حًقا — وهو السؤال الوحيد الذي وُجد
+    الانتحال ليجيبه. الوسم يسري مع الجلسة كلها لا مع أول رمز فيها.
+    """
+    claims: dict = {"sub": str(subject)}
+    if impersonator_id is not None:
+        claims["impersonator_id"] = impersonator_id
+    return _create_token(claims, timedelta(days=settings.refresh_token_expire_days), "refresh")
 
 
 def decode_token(token: str) -> dict:

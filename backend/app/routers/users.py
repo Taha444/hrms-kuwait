@@ -525,7 +525,9 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
     return {
         "access_token": create_access_token(target.id, target.role, target.company_id,
                                             impersonator_id=actor.id),
-        "refresh_token": create_refresh_token(target.id),
+        # الوسم في رمز التجديد أيًضا: بدونه يعود التجديد بجلسة نظيفة
+        # فيضيع من فعل الأفعال حًقا (انظر create_refresh_token)
+        "refresh_token": create_refresh_token(target.id, impersonator_id=actor.id),
         "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
     }
 
