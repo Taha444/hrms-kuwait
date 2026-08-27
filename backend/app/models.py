@@ -1068,6 +1068,35 @@ class NotificationPreference(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class RevokedToken(Base):
+    """رمز أُبطل قبل انتهاء صلاحيته.
+
+    JWT بطبيعته لا يُسترجع: من حمله ظلّ صالًحا حتى انقضاء مدّته مهما فعل
+    صاحبه. فكان «تسجيل الخروج» يمسح الرمز من المتصفح ولا يمسّ الرمز نفسه —
+    يبقى صالًحا نصف ساعة، ورمز التجديد أربعة عشر يوًما. والزرّ يقول إن
+    الجلسة انتهت وهي لم تنتهِ.
+
+    والبديل الأسهل — رفع ``tokens_valid_after`` — مرفوض عمًدا: يُخرج
+    المستخدم من كل أجهزته، وفي حالة الانتحال يعاقب المُنتحَل على فعل غيره
+    (انظر deps.py:48). الإبطال هنا **لرمز بعينه** لا لمستخدم.
+
+    والصفّ يُحذف بعد ``expires_at``: بعدها يرفض الرمزَ انتهاءُ مدّته نفسه،
+    فحفظه بلا معنى ونموّ الجدول بلا حدّ ثمن بلا مقابل.
+    """
+
+    __tablename__ = "revoked_tokens"
+
+    #: jti الرمز — المفتاح نفسه، فالإدراج المكرّر مستحيل والبحث فهرسيّ.
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    #: متى تنتهي صلاحية الرمز أصًلا — بعدها يُحذف الصفّ
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    revoked_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    #: logout | impersonate_end — يشرح السجل نفسه عند التفتيش
+    reason: Mapped[str | None] = mapped_column(String(40))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

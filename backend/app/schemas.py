@@ -55,6 +55,13 @@ class RefreshIn(BaseModel):
     refresh_token: str
 
 
+class LogoutIn(BaseModel):
+    """رمز التجديد اختياري: من لا يرسله يُبطل رمز دخوله وحده، ويبقى
+    التجديد صالًحا — فيجب إرساله دائًما من الواجهة."""
+
+    refresh_token: str | None = None
+
+
 class ChangePasswordIn(BaseModel):
     old_password: str
     new_password: str = Field(min_length=8)

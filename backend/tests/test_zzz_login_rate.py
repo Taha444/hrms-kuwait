@@ -75,3 +75,27 @@ def test_counter_does_not_grow_without_bound():
 
 def _limit() -> int:
     return auth_router._RATE_MAX
+
+
+@pytest.fixture(autouse=True)
+def _unlock_probed_accounts():
+    """يُعيد عدّاد الإخفاق والقفل بعد كل اختبار.
+
+    هذه الاختبارات تُخفق الدخول عمًدا، والإخفاق يقفل الحساب بعد خمس مرات.
+    فبلا إعادة الحالة تسقط كل اختبارات ما بعدها لسبب لا علاقة له بها —
+    وهو أسوأ نوع من الإخفاق: يشير إلى المكان الخطأ.
+    """
+    yield
+    from app import models
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from sqlalchemy import or_
+        for u in db.query(models.User).filter(or_(
+                models.User.failed_attempts > 0,
+                models.User.locked_until.isnot(None))).all():
+            u.failed_attempts = 0
+            u.locked_until = None
+        db.commit()
+    finally:
+        db.close()

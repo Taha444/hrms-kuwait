@@ -530,15 +530,22 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
         "refresh_token": create_refresh_token(target.id, impersonator_id=actor.id),
         "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
     }
-
-
 @router.post("/impersonate-end")
 def impersonate_end(request: Request,
+                    data: schemas.LogoutIn | None = None,
                     user: models.User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
-    """يسجّل انتهاء الانتحال (P1-04) — يُستدعى من الواجهة قبل استعادة رمز الإدارة العليا
-    الأصلي مباشرًة، ويحتاج claim خاص (impersonator_id) موجود فقط في رمز مُنتحَل فعًلا."""
+    """ينهي الانتحال فعًلا: يسجّله **ويُبطل رموزه**.
+
+    كان يكتب سطر تدقيق ولا يُبطل شيًئا — فتبقى رموز المُنتحَل صالحة بيد
+    الإدارة العليا بعد الضغط على «إنهاء الانتحال»: رمز دخول نصف ساعة،
+    ورمز تجديد أربعة عشر يوًما يجدّد نفسه. أي أن الانتحال لا ينتهي بإنهائه.
+
+    والإبطال لهذين الرمزين وحدهما، لا لجلسات المُنتحَل الحقيقي: هو لم يفعل
+    شيًئا يستحقّ إخراجه من أجهزته.
+    """
     from ..security import decode_token
+    from ..token_revocation import revoke_token
 
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     try:
@@ -550,9 +557,11 @@ def impersonate_end(request: Request,
         raise HTTPException(status_code=400, detail="هذا الرمز ليس رمز انتحال")
     actor = db.get(models.User, impersonator_id)
     audit(db, actor, "impersonate_end", "user", user.id, request=request, company_id=user.company_id)
+    revoke_token(db, token, "impersonate_end", user_id=user.id)
+    if data and data.refresh_token:
+        revoke_token(db, data.refresh_token, "impersonate_end", user_id=user.id)
     db.commit()
     return {"ok": True}
-
 
 @router.get("/{user_id}/permissions")
 def get_permissions(user_id: int, user: models.User = Depends(require_perm("manage_users")),

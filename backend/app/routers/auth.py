@@ -70,6 +70,16 @@ def _rate_record_failure(ip: str):
 
 
 
+
+
+#: تجزئة وهمية بنفس معامل الكلفة — تُحسب مرة واحدة عند التحميل لا في كل نداء.
+_DUMMY_HASH = hash_password("تسوية-الزمن-لا-قيمة-لها")
+
+
+def _dummy_verify(password: str) -> bool:
+    """يستهلك زمن التحقّق نفسه على رقم مدني غير موجود. يعيد False دائًما."""
+    verify_password(password, _DUMMY_HASH)
+    return False
 def _perm_list(user: models.User, db: Session) -> list[str]:
     return sorted(effective_permissions(user.role, get_user_perms(user, db)))
 
@@ -82,10 +92,34 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
     _rate_check(ip)
     user = db.scalar(select(models.User).where(models.User.civil_id == data.civil_id))
     now = datetime.now(timezone.utc)
-    if not user:
+
+    # ترتيب البوّابات مقصود: **لا تُكشف حالة حساب قبل إثبات معرفة كلمته.**
+    #
+    # كان الردّ 423 «مقفل» و403 «موقوف» يسبق فحص كلمة المرور، بينما يردّ 401
+    # لرقم غير موجود. فمن يجرّب أرقاًما مدنية بأي كلمة كان يعرف أيّها يخصّ
+    # حساًبا قائًما وأيّها مقفل — والأرقام المدنية الكويتية منظَّمة يسهل
+    # توليدها، فالتعداد كان يبني قائمة موظفي الشركة من الخارج.
+    #
+    # وتوحيد الردود وحده كان سيُعمي الموظف الشرعي: موقوفٌ يقرأ «الرقم أو
+    # كلمة المرور غير صحيحة» فيظنّ العطل في كلمته ويستنزف محاولاته حتى
+    # القفل. فالحلّ ليس إخفاء الحالة عن الجميع بل كشفها لمن أثبت أنه صاحبها.
+    # والزمن يكشف كما يكشف الردّ: حساب قائم يمرّ بـPBKDF2 (‏240 ألف دورة،
+    # نحو 64 مللي ثانية) ورقم غير موجود كان يردّ فوًرا. فرق يُقاس بساعة يد،
+    # فيبقى التعداد ممكًنا وإن توحّدت الرسائل. فحصٌ وهميّ يسوّي الزمنين.
+    password_ok = (verify_password(data.password, user.password_hash) if user
+                   else _dummy_verify(data.password))
+
+    if not user or not password_ok:
+        if user:
+            user.failed_attempts += 1
+            if user.failed_attempts >= MAX_FAILED:
+                user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
+                user.failed_attempts = 0
+            db.commit()
         _rate_record_failure(ip)   # وإلا كان تعداد الحسابات بلا تكلفة
         raise HTTPException(status_code=401, detail="الرقم المدني أو كلمة المرور غير صحيحة")
 
+    # من هنا فصاعًدا: الكلمة صحيحة، فصاحب الحساب يستحقّ سبب المنع بدقّة.
     if user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > now:
         _rate_record_failure(ip)
         raise HTTPException(status_code=423, detail="الحساب مقفل مؤقتًا، حاول لاحقًا")
@@ -94,15 +128,6 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
         _rate_record_failure(ip)
         msg = "الحساب موقوف" if user.status == "suspended" else "الحساب غير مفعّل"
         raise HTTPException(status_code=403, detail=msg)
-
-    if not verify_password(data.password, user.password_hash):
-        user.failed_attempts += 1
-        if user.failed_attempts >= MAX_FAILED:
-            user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
-            user.failed_attempts = 0
-        _rate_record_failure(ip)
-        db.commit()
-        raise HTTPException(status_code=401, detail="الرقم المدني أو كلمة المرور غير صحيحة")
 
     # V2.2 §9 — لو 2FA مفعّل، يجب تمرير رمز TOTP صحيح لتكتمل الجلسة.
     if user.totp_confirmed and user.totp_secret:
@@ -281,6 +306,13 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
+    # التجديد لا يمرّ بـget_current_user — يفكّ الرمز بنفسه. فبلا هذا الفحص
+    # ينجو رمز التجديد من الخروج ومن إنهاء الانتحال، وهو الأخطر: يولّد رموز
+    # دخول جديدة أربعة عشر يوًما. الفحص في مكانين لأن المسارين اثنان، لا
+    # لأن القاعدة اثنتان — كلاهما ينادي is_revoked نفسها.
+    from ..token_revocation import is_revoked
+    if is_revoked(db, payload):
+        raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     # QA-23 — التجديد نشاط أيًضا: بلا هذا الفحص يُحيي الخمولُ نفسه بصمت، إذ
     # تُجدِّد الواجهة التوكن دورًيا فلا تنتهي جلسة أبًدا مهما طال ترك الجهاز.
     from ..deps import enforce_idle_timeout
@@ -388,3 +420,30 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
     return {"ok": True, "message": "تمت إعادة تعيين كلمة المرور",
             "temporary_password": new_pw, "shown_once": True,
             "user_id": target.id, "full_name": target.full_name}
+
+
+@router.post("/logout")
+def logout(request: Request, data: schemas.LogoutIn | None = None,
+           user: models.User = Depends(get_current_user),
+           db: Session = Depends(get_db)):
+    """ينهي الجلسة على الخادم لا في المتصفح وحده.
+
+    كان الخروج يمسح الرموز من ``localStorage`` فقط، فيبقى رمز الدخول
+    صالًحا نصف ساعة ورمز التجديد أربعة عشر يوًما: من نسخ الرمز قبل الضغط،
+    أو بقي على جهاز مشترك، يظلّ داخل النظام. والزرّ يقول إن الجلسة انتهت
+    وهي لم تنتهِ.
+
+    ويُبطل هذا الرمزَين فقط — رمزَي هذا الجهاز — لا كل جلسات المستخدم:
+    من خرج من حاسوب المكتب لا يُفترض أن يخرج من هاتفه معه.
+    """
+    from ..token_revocation import revoke_token
+
+    access = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    revoked = revoke_token(db, access, "logout", user_id=user.id)
+    if data and data.refresh_token:
+        # رمز التجديد أخطر: يعيش أربعة عشر يوًما ويولّد رموز دخول جديدة.
+        # إبطال رمز الدخول وحده يترك الباب مفتوًحا أسبوعين.
+        revoke_token(db, data.refresh_token, "logout", user_id=user.id)
+    audit(db, user, "logout", "user", user.id, request=request)
+    db.commit()
+    return {"ok": True, "revoked": revoked}

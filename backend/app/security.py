@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -65,7 +66,11 @@ def verify_password(password: str, stored: str) -> bool:
 def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
     payload = data.copy()
     now = datetime.now(timezone.utc)
-    payload.update({"exp": now + expires_delta, "iat": now, "type": token_type})
+    # jti: مُعرّف فريد لكل رمز. هنا لا في كل دالة إصدار، فيستحيل أن يُصدر
+    # نوعٌ رموًزا بلا مُعرّف ولا يمكن إبطالها — وهو ما يجعل قائمة الإبطال
+    # قاعدة عامة لا استثناءً يُتذكّر.
+    payload.update({"exp": now + expires_delta, "iat": now,
+                    "type": token_type, "jti": uuid.uuid4().hex})
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 

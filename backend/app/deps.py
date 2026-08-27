@@ -80,6 +80,12 @@ def get_current_user(
     except Exception:
         raise cred_exc
 
+    # رمز أُبطل صراحًة (خروج / إنهاء انتحال) يُرفض ولو بقيت مدّته. بدون
+    # هذا الفحص كان الزرّان يكتبان في السجل ولا يُنهيان جلسة.
+    from .token_revocation import is_revoked
+    if is_revoked(db, payload):
+        raise cred_exc
+
     user = db.get(models.User, user_id)
     if not user or not user.is_active:
         raise cred_exc

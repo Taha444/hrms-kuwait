@@ -106,7 +106,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // يبقى () => void حتى يُمرَّر مباشرة لـonClick بلا أن يصل حدث الفأرة كوسيط
   const logout = () => endSession("/login");
 
-  const endSession = (to: string) => {
+  const endSession = async (to: string) => {
+    // الخروج يقع على الخادم أوًلا: مسحُ الرموز من المتصفح وحده يترك رمز
+    // الدخول صالًحا نصف ساعة ورمز التجديد أربعة عشر يوًما، فمن نسخ الرمز
+    // أو بقي على جهاز مشترك يظلّ داخل النظام. ويُرسَل رمز التجديد معه لأنه
+    // الأخطر: يولّد رموز دخول جديدة أسبوعين.
+    try {
+      await api.post("/auth/logout", {
+        refresh_token: localStorage.getItem("refresh_token"),
+      });
+    } catch {
+      // لا نحبس المستخدم داخل النظام لأن نداء الإبطال فشل (انقطاع شبكة،
+      // رمز منتهٍ). المسح المحلي يتمّ على كل حال.
+    }
     setTokens(null, null);
     localStorage.removeItem("active_company_id");
     setUser(null);
@@ -149,7 +161,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const stopImpersonating = async () => {
     // يسجّل impersonate_end بمعرفة المُنتحِل الفعلي (P1-04) قبل استعادة رمز الإدارة العليا —
     // بعد الاستعادة لا يعود الرمز الحالي يحمل claim الانتحال فيصبح استدعاؤه بلا معنى.
-    try { await api.post("/users/impersonate-end"); } catch { /* لا نمنع الخروج لو فشل التسجيل */ }
+    // مع رمز التجديد: إبطال رمز الدخول وحده يترك رمز انتحال يعيش أسبوعين
+    // ويجدّد نفسه، فلا ينتهي الانتحال بإنهائه.
+    try {
+      await api.post("/users/impersonate-end", {
+        refresh_token: localStorage.getItem("refresh_token"),
+      });
+    } catch { /* لا نمنع الخروج لو فشل التسجيل */ }
     const a = localStorage.getItem("imp_backup_access");
     const rf = localStorage.getItem("imp_backup_refresh");
     setTokens(a, rf || null);
