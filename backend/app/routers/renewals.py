@@ -22,6 +22,7 @@ from ..notifications import (create_task, notify_employee_self, notify_from_temp
 from ..permissions import has_permission
 from ..safe_files import read_limited, unique_path
 from ..clock import today as kuwait_today
+from ..storage import file_response, key_exists, save_at_key, save_bytes
 
 router = APIRouter(prefix="/renewals", tags=["renewals"])
 
@@ -116,11 +117,10 @@ async def _save_doc(db, user, request, entity_type, entity_id, company_id,
     """يحفظ ملفًا كمستند بنُسخ (الأحدث is_current) — يُبقي القديم."""
     import hashlib
 
-    folder = os.path.join(settings.upload_dir, "renewals")
-    fpath = unique_path(folder, upload.filename, prefix=f"{entity_type}_{entity_id}_{code}_")
+    # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
     payload = await read_limited(upload)
-    with open(fpath, "wb") as f:
-        f.write(payload)
+    fpath = save_bytes(payload, "renewals", upload.filename,
+                       prefix=f"{entity_type}_{entity_id}_{code}_")
     # RNW-23 — بصمة الملف كما رُفع. النظام لا يولّد مستنًدا حكومًيا بشعار
     # حكومي؛ يحفظ الملف الحقيقي الصادر عن الجهة. والبصمة هي ما يثبت لاحًقا
     # أن الملف المعروض هو نفسه المرفوع ولم يُستبدل — بلا هذا فحفظه إيداع
@@ -352,9 +352,9 @@ def download_renewal_document(rid: int, doc_type: str,
     doc = db.scalar(select(models.Document).where(
         models.Document.entity_type == entity_type, models.Document.entity_id == entity_id,
         models.Document.document_type_code == doc_type, models.Document.is_current == True))  # noqa: E712
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+    return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
 
@@ -981,12 +981,10 @@ def generate_gov_contract(rid: int, request: Request,
     checksum = hashlib.sha256(content_bytes).hexdigest()
 
     # احفظ كـissued document على الموظف مربوط بالتجديد
-    folder = os.path.join(settings.upload_dir, "gov_contracts")
-    os.makedirs(folder, exist_ok=True)
+    # AWS-01 — عبر طبقة التخزين. المفتاح محدَّد لأن الرقم المرجعي جزء
+    # من هويّة العقد الحكومي ويُطبع عليه.
     safe_ref = reference_no.replace("/", "_")
-    fpath = os.path.join(folder, f"{safe_ref}.{ext}")
-    with open(fpath, "wb") as f:
-        f.write(content_bytes)
+    fpath = save_at_key(content_bytes, f"gov_contracts/{safe_ref}.{ext}")
 
     # FIX — versioning: إعادة التوليد تأخذ version+1 وتُنزّل السابق (نسخة حالية واحدة فقط)
     doc_code = f"gov_contract_renewal_{rn.id}"
@@ -1016,7 +1014,7 @@ def generate_gov_contract(rid: int, request: Request,
     db.commit()
 
     if (format or "").lower() == "pdf":
-        return FileResponse(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
+        return file_response(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
     return {
         "ok": True, "html": rendered,
         "document_id": doc.id, "reference_no": reference_no,

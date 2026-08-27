@@ -24,6 +24,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import audit, get_current_user
 from ..safe_files import read_limited, unique_path
+from ..storage import delete_key, file_response, key_exists, read_bytes, save_bytes
 from sqlalchemy import select as _select
 from sqlalchemy.orm import Session
 
@@ -47,11 +48,11 @@ def _record_signature_version(db: Session, target: models.User, *, version: int,
     """
     import hashlib
     checksum = None
-    if file_path and os.path.exists(file_path):
+    if file_path and key_exists(file_path):
         try:
-            with open(file_path, "rb") as fh:
-                checksum = hashlib.sha256(fh.read()).hexdigest()
-        except OSError:
+            # AWS-01 — من المخزن لا من القرص
+            checksum = hashlib.sha256(read_bytes(file_path)).hexdigest()
+        except Exception:
             checksum = None
 
     # الفرع المرتبط بالمستخدم (لو له نطاق فرع صريح أو ملف موظف)
@@ -245,12 +246,12 @@ def get_my_signature_info(user: models.User = Depends(get_current_user)):
     """يعرض بيانات التوقيع الحالي (بدون الصورة نفسها) — تُنزَّل عبر /image.
     P1-#15 — يشمل version الحالي (يتحدد مع كل approve)."""
     return {
-        "has_signature": bool(user.signature_path and os.path.exists(user.signature_path)),
+        "has_signature": bool(user.signature_path and key_exists(user.signature_path)),
         "signature_version": user.signature_version,  # P1-#15
         "updated_at": user.signature_updated_at,
         # PILOT-P0-5 — إشارة لطلب استبدال معلّق (يظهر للمستخدم "بانتظار موافقة HR")
         "has_pending_replacement": bool(
-            user.pending_signature_path and os.path.exists(user.pending_signature_path)),
+            user.pending_signature_path and key_exists(user.pending_signature_path)),
         "pending_uploaded_at": user.pending_signature_uploaded_at,
         "pending_reason": user.pending_signature_reason,
     }
@@ -291,10 +292,10 @@ def get_my_signature_history(user: models.User = Depends(get_current_user),
 @router.get("/image")
 def get_my_signature_image(user: models.User = Depends(get_current_user)):
     """ينزّل صورة التوقيع الحالية للمستخدم — للعرض في بروفايله كمعاينة."""
-    if not user.signature_path or not os.path.exists(user.signature_path):
+    if not user.signature_path or not key_exists(user.signature_path):
         raise HTTPException(status_code=404, detail="لا يوجد توقيع محفوظ")
     # المعالجة تحفظ دائمًا PNG (لدعم الشفافية)
-    return FileResponse(user.signature_path, media_type="image/png")
+    return file_response(user.signature_path, media_type="image/png")
 
 
 @router.post("", status_code=201)
@@ -329,11 +330,10 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
         raise HTTPException(status_code=400,
                             detail=f"تعذّرت معالجة الصورة: {exc}")
 
-    folder = _signatures_folder()
+    # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
     # النتيجة دائمًا PNG (بغض النظر عن الإدخال) لدعم الشفافية
-    path = unique_path(folder, f"user_{user.id}.png", prefix=f"sig_u{user.id}_")
-    with open(path, "wb") as f:
-        f.write(processed)
+    path = save_bytes(processed, "signatures", f"user_{user.id}.png",
+                      prefix=f"sig_u{user.id}_")
 
     now = datetime.now(timezone.utc)
     # PILOT-P0-5: يفصل بين "أول رفع" و"استبدال يحتاج موافقة"
@@ -368,9 +368,9 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
               after={"signature_version": user.signature_version})
         db.commit()
         for old_path in (old, old_pending):
-            if old_path and os.path.exists(old_path) and old_path != path:
+            if old_path and key_exists(old_path) and old_path != path:
                 try:
-                    os.remove(old_path)
+                    delete_key(old_path)
                 except OSError:
                     pass
         return {"ok": True, "status": "active", "updated_at": now,
@@ -381,7 +381,7 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     if not (reason and reason.strip()):
         # نظّف الملف اللي كتبناه للتو (المستخدم يعيد الرفع مع سبب)
         try:
-            os.remove(path)
+            delete_key(path)
         except OSError:
             pass
         raise HTTPException(status_code=400,
@@ -403,9 +403,9 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     # P1-#15 — إشعار HR بالطلب (task واحدة لكل مستخدم — dedup)
     _create_pending_signature_task(db, user)
     db.commit()
-    if old_pending and os.path.exists(old_pending) and old_pending != path:
+    if old_pending and key_exists(old_pending) and old_pending != path:
         try:
-            os.remove(old_pending)
+            delete_key(old_pending)
         except OSError:
             pass
     return {"ok": True, "status": "pending_approval", "updated_at": now,
@@ -415,9 +415,9 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
 @router.get("/pending/image")
 def get_my_pending_signature_image(user: models.User = Depends(get_current_user)):
     """معاينة التوقيع المعلّق (للمستخدم نفسه فقط أثناء انتظار موافقة HR)."""
-    if not user.pending_signature_path or not os.path.exists(user.pending_signature_path):
+    if not user.pending_signature_path or not key_exists(user.pending_signature_path):
         raise HTTPException(status_code=404, detail="لا يوجد توقيع معلّق")
-    return FileResponse(user.pending_signature_path, media_type="image/png")
+    return file_response(user.pending_signature_path, media_type="image/png")
 
 
 # PROF-04 — حذف التوقيع أُزيل من الـAPI لا من الواجهة وحدها.
@@ -486,9 +486,9 @@ def get_pending_image_for_hr(target_user_id: int,
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if user.role != "super_admin" and target.company_id != user.company_id:
         raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
-    if not target.pending_signature_path or not os.path.exists(target.pending_signature_path):
+    if not target.pending_signature_path or not key_exists(target.pending_signature_path):
         raise HTTPException(status_code=404, detail="لا يوجد توقيع معلّق لهذا المستخدم")
-    return FileResponse(target.pending_signature_path, media_type="image/png")
+    return file_response(target.pending_signature_path, media_type="image/png")
 
 
 @hr_router.post("/{target_user_id}/approve")
@@ -531,9 +531,9 @@ def approve_replacement(target_user_id: int, request: Request,
     # P1-#15 — اقفل الـHR tasks المرتبطة بهذا الاستبدال
     _close_pending_signature_tasks(db, target.id, "approved")
     db.commit()
-    if old_active and os.path.exists(old_active) and old_active != target.signature_path:
+    if old_active and key_exists(old_active) and old_active != target.signature_path:
         try:
-            os.remove(old_active)
+            delete_key(old_active)
         except OSError:
             pass
     return {"ok": True}
@@ -566,9 +566,9 @@ def reject_replacement(target_user_id: int, request: Request, reason: str | None
                 "rejector_role": user.role, "rejection_reason": reason})
     _close_pending_signature_tasks(db, target.id, "rejected")
     db.commit()
-    if old_pending and os.path.exists(old_pending):
+    if old_pending and key_exists(old_pending):
         try:
-            os.remove(old_pending)
+            delete_key(old_pending)
         except OSError:
             pass
     return {"ok": True}

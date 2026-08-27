@@ -1,0 +1,215 @@
+{
+  "categories": {
+    "approval": "واجهة الاعتماد",
+    "forms": "الصيغ والنماذج",
+    "archive": "الأرشيف والإصدارات",
+    "contract": "العقد الحكومي",
+    "aws": "متطلبات AWS",
+    "backlog": "مؤجل — قبل التسليم"
+  },
+  "items": [
+    {
+      "id": "APP-01",
+      "cat": "approval",
+      "sev": "blocker",
+      "text": "المعتمد الحالي يرى اعتماد/رفض/إرجاع، وغير المعيّن لا يراها ولا ينفّذها بالرابط المباشر",
+      "skill": "hrms-approval-ui-gate"
+    },
+    {
+      "id": "FRM-01",
+      "cat": "forms",
+      "sev": "high",
+      "text": "حذف [____] و[Bank/Embassy/Other] من مخرجات الصيغ والنماذج",
+      "skill": "hrms-forms-templates-cleanup"
+    },
+    {
+      "id": "FRM-02",
+      "cat": "forms",
+      "sev": "high",
+      "text": "استخدام employee_no بدل DB ID في كل القوالب",
+      "skill": "hrms-forms-templates-cleanup"
+    },
+    {
+      "id": "FRM-03",
+      "cat": "forms",
+      "sev": "high",
+      "text": "مراجعة PR-001 و PR-006 و PR-008 و PR-009 و PR-032 بقائمة الفحص الثمانية",
+      "skill": "hrms-forms-templates-cleanup"
+    },
+    {
+      "id": "ARC-01",
+      "cat": "archive",
+      "sev": "high",
+      "text": "زر «النسخ السابقة» في الواجهة مع عرض وتنزيل أي إصدار قديم",
+      "skill": "hrms-archive-versions-ui"
+    },
+    {
+      "id": "ARC-02",
+      "cat": "archive",
+      "sev": "medium",
+      "text": "تطبيق النسخ السابقة على Company Archive و Branch Archive و Employee Documents",
+      "skill": "hrms-archive-versions-ui"
+    },
+    {
+      "id": "ARC-03",
+      "cat": "archive",
+      "sev": "medium",
+      "text": "عرض رسالة «اختر شركة لعرض أرشيفها» بدل الصفحة البيضاء عند All Companies",
+      "skill": "hrms-archive-versions-ui"
+    },
+    {
+      "id": "GC-01",
+      "cat": "contract",
+      "sev": "blocker",
+      "text": "القالب المستخدم هو ملف الوورد المرفق ببصمته الأصلية 2a9cf6e4c2098e03",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-02",
+      "cat": "contract",
+      "sev": "blocker",
+      "text": "التخطيط والشعار والبنود مطابقة للمرجع البصري في assets/reference-render",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-03",
+      "cat": "contract",
+      "sev": "blocker",
+      "text": "كل الحقول الـ21 مملوءة من مصادرها حسب field-map",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-04",
+      "cat": "contract",
+      "sev": "blocker",
+      "text": "لا أصفار ولا قيم عيّنة في المخرَج (Butchery · فلبيني · 320 · wensday · al asima)",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-05",
+      "cat": "contract",
+      "sev": "high",
+      "text": "الأجر من Payroll المعتمد لا من payload الطلب",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-06",
+      "cat": "contract",
+      "sev": "high",
+      "text": "حقل Residence يحمل رقم الإقامة الفعلي لا كود المستند",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-07",
+      "cat": "contract",
+      "sev": "high",
+      "text": "البند السادس بفقرة واحدة حسب قرار مالك العمل",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-08",
+      "cat": "contract",
+      "sev": "high",
+      "text": "حقل إلزامي ناقص يوقف التوليد ويسمّيه",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-09",
+      "cat": "contract",
+      "sev": "blocker",
+      "text": "العربية RTL سليمة والخطوط مضمّنة في الـ PDF على الخادم",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-10",
+      "cat": "contract",
+      "sev": "high",
+      "text": "Snapshot ثابت وقت الإصدار لا يتأثر بتغيّر بيانات الموظف",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "GC-11",
+      "cat": "contract",
+      "sev": "medium",
+      "text": "تنبيه العميل بالأخطاء الإملائية في متن القالب وأخذ قراره كتابة",
+      "skill": "hrms-gov-contract-template"
+    },
+    {
+      "id": "AWS-01",
+      "cat": "aws",
+      "sev": "blocker",
+      "text": "./uploads على تخزين دائم بـ IAM role وبلا Storage URL مكشوف",
+      "skill": "hrms-aws-migration-prereqs"
+    },
+    {
+      "id": "AWS-02",
+      "cat": "aws",
+      "sev": "blocker",
+      "text": "المهام المجدولة لا تعمل أكثر من مرة مع تعدد النسخ",
+      "skill": "hrms-aws-migration-prereqs"
+    },
+    {
+      "id": "AWS-03",
+      "cat": "aws",
+      "sev": "high",
+      "text": "ضبط NTP على الخادم من أول يوم",
+      "skill": "hrms-aws-migration-prereqs"
+    },
+    {
+      "id": "AWS-04",
+      "cat": "aws",
+      "sev": "high",
+      "text": "الأسرار في Secrets Manager لا في .env على القرص",
+      "skill": "hrms-aws-migration-prereqs"
+    },
+    {
+      "id": "BKL-01",
+      "cat": "backlog",
+      "sev": "medium",
+      "text": "تأكيد Impersonation fix بعد الـ Push",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-02",
+      "cat": "backlog",
+      "sev": "high",
+      "text": "Central Audit لقرارات approve/reject/return/resubmit",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-03",
+      "cat": "backlog",
+      "sev": "high",
+      "text": "المهام القديمة و SLA/digest duplicates",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-04",
+      "cat": "backlog",
+      "sev": "low",
+      "text": "إصلاح «طلب طلب»",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-05",
+      "cat": "backlog",
+      "sev": "medium",
+      "text": "أنواع (V1.3) لا تظهر لإنشاء طلبات جديدة",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-06",
+      "cat": "backlog",
+      "sev": "medium",
+      "text": "توحيد عداد المهام الحكومية للمندوب مع الفلتر",
+      "skill": "hrms-deferred-backlog"
+    },
+    {
+      "id": "BKL-07",
+      "cat": "backlog",
+      "sev": "blocker",
+      "text": "مسار تجديد الإقامة E2E كاملا — يبدأ بتجهيز حسابي Employee و Branch Supervisor",
+      "skill": "hrms-deferred-backlog"
+    }
+  ]
+}

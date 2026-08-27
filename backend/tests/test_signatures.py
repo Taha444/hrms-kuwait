@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """SIG-01 tests — upload/get/delete signature + PDF embedding."""
 import io
+from app.storage import key_exists, read_bytes
+import io
 import os
 import struct
 import zlib
@@ -120,13 +122,13 @@ def test_replace_signature_by_hr_deletes_old_file_directly(client):
         old_path = u.signature_path
     finally:
         db.close()
-    assert old_path and os.path.exists(old_path)
+    assert old_path and key_exists(old_path)
     png2 = _minimal_png(width=150, height=50)
     r = client.post("/api/me/signature", headers=hr,
                     files={"file": ("b.png", png2, "image/png")})
     # HR direct replace → status = active، الملف القديم انحذف
     assert r.json()["status"] == "active"
-    assert not os.path.exists(old_path)
+    assert not key_exists(old_path)
 
 
 def test_employee_signature_replacement_goes_to_pending_not_active(client):
@@ -145,7 +147,7 @@ def test_employee_signature_replacement_goes_to_pending_not_active(client):
         old_active = u.signature_path
     finally:
         db.close()
-    assert old_active and os.path.exists(old_active)
+    assert old_active and key_exists(old_active)
 
     # الاستبدال الثاني (نفس الموظف، عنده توقيع بالفعل) → pending
     # P1-#15 — reason إلزامي للاستبدال (query param)
@@ -155,7 +157,7 @@ def test_employee_signature_replacement_goes_to_pending_not_active(client):
                     files={"file": ("b.png", png2, "image/png")})
     assert r.json()["status"] == "pending_approval"
     # القديم لسه نشط
-    assert os.path.exists(old_active)
+    assert key_exists(old_active)
     info = client.get("/api/me/signature", headers=emp).json()
     assert info["has_signature"] is True
     assert info["has_pending_replacement"] is True
@@ -199,7 +201,7 @@ def test_hr_can_approve_pending_replacement(client):
     finally:
         db.close()
     # القديم اتحذف
-    assert not os.path.exists(old_active)
+    assert not key_exists(old_active)
 
 
 def test_signature_isolated_per_user(client):
@@ -241,7 +243,8 @@ def test_upload_isolates_signature_from_notebook_rings(client):
     db = SessionLocal()
     try:
         u = db.query(models.User).filter_by(civil_id="100000000101").one()
-        processed = Image.open(u.signature_path)
+        # المخزَّن مفتاح في المخزن لا مسار على القرص (AWS-01) — يُقرأ عبر الطبقة
+        processed = Image.open(io.BytesIO(read_bytes(u.signature_path)))
         # ارتفاع الصورة المعالَجة يجب أن يكون أقل بكثير من ارتفاع الصورة الأصلية
         # لأن الرنجات كانت في أعلى الصورة والتوقيع في المنتصف
         assert processed.height < 300, (
@@ -271,7 +274,7 @@ def test_upload_processes_photo_removes_background_saves_transparent_png(client)
     try:
         u = db.query(models.User).filter_by(civil_id="100000000101").one()
         assert u.signature_path.endswith(".png")
-        img = Image.open(u.signature_path)
+        img = Image.open(io.BytesIO(read_bytes(u.signature_path)))
         # التصميم يحفظ RGBA بشفافية
         assert img.mode == "RGBA"
         # الأبعاد أصغر من 400×300 (لأن الصورة اتقصت حول ink فقط)
@@ -332,8 +335,8 @@ def test_generated_pdf_embeds_signature_when_available(client):
         docs_no_sig = db.query(models.RequestDocument).filter_by(request_id=rid_no_sig).all()
     finally:
         db.close()
-    if docs_no_sig and docs_no_sig[0].file_path and os.path.exists(docs_no_sig[0].file_path):
-        size_no_sig = os.path.getsize(docs_no_sig[0].file_path)
+    if docs_no_sig and docs_no_sig[0].file_path and key_exists(docs_no_sig[0].file_path):
+        size_no_sig = len(read_bytes(docs_no_sig[0].file_path))
     else:
         size_no_sig = 0
 
@@ -353,7 +356,7 @@ def test_generated_pdf_embeds_signature_when_available(client):
         docs_with_sig = db.query(models.RequestDocument).filter_by(request_id=rid_with_sig).all()
     finally:
         db.close()
-    if docs_with_sig and docs_with_sig[0].file_path and os.path.exists(docs_with_sig[0].file_path):
-        size_with_sig = os.path.getsize(docs_with_sig[0].file_path)
+    if docs_with_sig and docs_with_sig[0].file_path and key_exists(docs_with_sig[0].file_path):
+        size_with_sig = len(read_bytes(docs_with_sig[0].file_path))
         # التحقق ليّن — بس نتأكد إن الـ PDF أُنتِج بنجاح
         assert size_with_sig > 1000

@@ -14,6 +14,7 @@ from ..database import get_db
 from ..deps import (assert_same_company, audit, get_current_user, require_any_perm,
                     require_perm, scope_company_id)
 from ..safe_files import read_limited, unique_path
+from ..storage import file_response, key_exists, save_bytes
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -655,10 +656,9 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
 
     if kind not in ("signed_scan", "exit_permit", "generated_pdf", "attachment"):
         raise HTTPException(status_code=400, detail="نوع مستند غير صالح")
-    folder = os.path.join(settings.upload_dir, "requests")
-    fpath = unique_path(folder, file.filename, prefix=f"req{req.id}_{kind}_")
-    with open(fpath, "wb") as f:
-        f.write(await read_limited(file))
+    # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
+    fpath = save_bytes(await read_limited(file), "requests", file.filename,
+                       prefix=f"req{req.id}_{kind}_")
     existing = db.scalars(select(models.RequestDocument).where(
         models.RequestDocument.request_id == req.id, models.RequestDocument.kind == kind)).all()
     db.add(models.RequestDocument(request_id=req.id, kind=kind, file_path=fpath,
@@ -700,7 +700,7 @@ def download_request_document(req_id: int, kind: str,
     doc = db.scalar(select(models.RequestDocument).where(
         models.RequestDocument.request_id == req.id, models.RequestDocument.kind == kind
     ).order_by(models.RequestDocument.version.desc()))
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="المستند غير موجود")
     if doc.file_path.endswith(".pdf"):
         media = "application/pdf"
@@ -708,7 +708,7 @@ def download_request_document(req_id: int, kind: str,
         media = "text/html"
     else:
         media = "application/octet-stream"
-    return FileResponse(doc.file_path, media_type=media,
+    return file_response(doc.file_path, media_type=media,
                         filename=os.path.basename(doc.file_path))
 
 
@@ -734,7 +734,7 @@ def mark_document_printed(req_id: int, kind: str, request: Request,
     doc = _latest_doc(db, req.id, kind)
     if doc.print_status not in ("ready_to_print", "printed"):
         raise HTTPException(status_code=409, detail="لا يمكن تسجيل الطباعة في هذه الحالة")
-    if not (doc.file_path and os.path.exists(doc.file_path)):
+    if not (doc.file_path and key_exists(doc.file_path)):
         raise HTTPException(status_code=409,
                             detail="ملف المستند غير موجود على القرص — لا يمكن تسجيل الطباعة")
     doc.print_status = "printed"
@@ -765,7 +765,7 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
     doc = _latest_doc(db, req.id, kind)
     if doc.print_status != "printed":
         raise HTTPException(status_code=409, detail="يجب تسجيل الطباعة أولًا قبل الأرشفة")
-    if not (doc.file_path and os.path.exists(doc.file_path)):
+    if not (doc.file_path and key_exists(doc.file_path)):
         raise HTTPException(status_code=409,
                             detail="ملف المستند غير موجود على القرص — لا يمكن تسجيل الأرشفة")
     doc.print_status = "filed"

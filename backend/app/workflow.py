@@ -27,6 +27,7 @@ from . import models
 from .config import settings
 from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
 from .permissions import ROLE_LABEL_AR
+from .storage import key_exists, save_at_key
 
 # إلغاء الطلب إجراء تشغيلي → المالك (اطلاع فقط) مستبعَد
 CANCEL_ROLES = {"super_admin", "company_manager"}
@@ -1522,7 +1523,7 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     emp_sig = None
     if emp and emp.id:
         emp_user = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
-        if emp_user and emp_user.signature_path and os.path.exists(emp_user.signature_path):
+        if emp_user and emp_user.signature_path and key_exists(emp_user.signature_path):
             emp_sig = emp_user.signature_path
     # SEC2-15: يُفضّل مخوّل من سجل المخوّلين بالتوقيع (Authorized Signatories) عن آخر
     # معتمِد، حتى يكون التوقيع من سلطة موثّقة رسميًا لا من أي معتمِد عابر.
@@ -1537,7 +1538,7 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
         )
         if auth_signer:
             signer_user = db.get(models.User, auth_signer.user_id)
-            if signer_user and signer_user.signature_path and os.path.exists(signer_user.signature_path):
+            if signer_user and signer_user.signature_path and key_exists(signer_user.signature_path):
                 company_sig = signer_user.signature_path
                 signer_label = auth_signer.title_ar
     except Exception:
@@ -1546,7 +1547,7 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
         last = approvals[-1]
         if last.approver_user_id:
             last_user = db.get(models.User, last.approver_user_id)
-            if last_user and last_user.signature_path and os.path.exists(last_user.signature_path):
+            if last_user and last_user.signature_path and key_exists(last_user.signature_path):
                 company_sig = last_user.signature_path
     # V2.2 §13.12 (AC-12) + RW-15/DOC-18 — دورة المستند مستقلة عن دورة الطلب.
     #
@@ -1583,11 +1584,10 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             )
         return doc
 
-    os.makedirs(settings.upload_dir, exist_ok=True)
+    # AWS-01 — عبر طبقة التخزين. المفتاح محدَّد لأنه يحمل رقم الطلب
+    # ونوعه ولحظة التوليد.
     fname = f"request_{req.id}_{kind}_{int(datetime.now().timestamp())}.pdf"
-    fpath = os.path.join(settings.upload_dir, fname)
-    with open(fpath, "wb") as f:
-        f.write(pdf_bytes)
+    fpath = save_at_key(pdf_bytes, f"generated/{fname}")
     doc.file_path = fpath
     doc.lifecycle_status = "GENERATED"  # V1.5 Phase 4: انتهى التوليد بنجاح
     # V2.2 §13 — Immutable Artifact: بصمة SHA256 ورقم مرجعي مقروء بشريًا

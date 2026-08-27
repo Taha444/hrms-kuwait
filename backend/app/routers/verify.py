@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..storage import delete_key, file_response, key_exists, read_bytes
 from .. import models, verification
 from ..database import get_db
 
@@ -37,9 +38,10 @@ def verify_document(code: str, db: Session = Depends(get_db)):
     # فرق جوهري لمن يحقّق في ورقة بين يديه.
     integrity = "UNKNOWN"
     if doc.checksum_sha256:
-        if doc.file_path and os.path.exists(doc.file_path):
-            with open(doc.file_path, "rb") as f:
-                actual = hashlib.sha256(f.read()).hexdigest()
+        if doc.file_path and key_exists(doc.file_path):
+            # AWS-01 — يُقرأ من المخزن لا من القرص: البصمة تُحسب على
+            # المحتوى الفعلي أينما كان، وهذا هو معنى التحقّق.
+            actual = hashlib.sha256(read_bytes(doc.file_path)).hexdigest()
             integrity = "VALID" if actual == doc.checksum_sha256 else "TAMPERED"
         else:
             integrity = "FILE_MISSING"

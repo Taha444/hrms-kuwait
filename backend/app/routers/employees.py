@@ -10,6 +10,7 @@ from ..clock import today as kuwait_today
 from .. import eos as eos_engine
 from .. import leave_balance as leave_balance_service
 from .. import models, schemas
+from ..storage import file_response, save_at_key
 from ..database import get_db
 from ..deps import (
     assert_same_company,
@@ -1096,12 +1097,10 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
         mime = "text/html"; ext = "html"
     checksum = hashlib.sha256(content_bytes).hexdigest()
 
-    folder = os.path.join(settings.upload_dir, "hire_contracts")
-    os.makedirs(folder, exist_ok=True)
+    # AWS-01 — عبر طبقة التخزين. المفتاح محدَّد لأن الرقم المرجعي جزء
+    # من هويّة العقد: إعادة التوليد تكتب فوق نسخته لا تُنشئ يتيمة ثانية.
     safe_ref = reference_no.replace("/", "_")
-    fpath = os.path.join(folder, f"{safe_ref}.{ext}")
-    with open(fpath, "wb") as f:
-        f.write(content_bytes)
+    fpath = save_at_key(content_bytes, f"hire_contracts/{safe_ref}.{ext}")
 
     doc_type_code = f"{tpl_code.lower().replace('-', '_')}_{emp.id}"
     # FIX — versioning: كل توليد جديد يأخذ version+1 ويُنزّل السابق من is_current.
@@ -1133,7 +1132,7 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
           company_id=emp.company_id)
     if is_pdf:
         from fastapi.responses import FileResponse
-        return FileResponse(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
+        return file_response(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
     return {
         "ok": True, "html": rendered,
         "document_id": doc.id, "reference_no": reference_no,

@@ -26,6 +26,7 @@ from ..deps import (
 )
 from ..permissions import CROSS_COMPANY_ROLES
 from ..clock import today as kuwait_today
+from ..storage import save_at_key
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -472,13 +473,10 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
     checksum = hashlib.sha256(pdf_bytes).hexdigest()
 
     # كتابة الملف الفعلي — الاسم يحوي reference للتتبّع
-    folder = os.path.join(settings.upload_dir, "forms")
-    os.makedirs(folder, exist_ok=True)
+    # AWS-01 — عبر طبقة التخزين. المفتاح محدَّد لأن الرقم المرجعي جزء
+    # من هويّة الصيغة ويُتتبَّع به.
     safe_ref = reference_no.replace("/", "_")
-    fname = f"{safe_ref}.html"
-    fpath = os.path.join(folder, fname)
-    with open(fpath, "wb") as f:
-        f.write(pdf_bytes)
+    fpath = save_at_key(pdf_bytes, f"forms/{safe_ref}.html")
 
     # نسخة توقيع مصدر المستند لو له توقيع نشط
     sig_version = None

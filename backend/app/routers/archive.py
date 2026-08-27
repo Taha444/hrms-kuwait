@@ -21,6 +21,7 @@ from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
 from ..safe_files import read_limited, unique_path
 from ..clock import today as kuwait_today
+from ..storage import delete_key, file_response, key_exists, save_bytes
 
 router = APIRouter(prefix="/archive", tags=["archive"])
 
@@ -196,12 +197,9 @@ async def add_custom_document(
             raise HTTPException(status_code=404, detail="الفرع غير موجود")
         company_id = entity.company_id
     assert_same_company(user, company_id, db=db)
-
-    # اكتب الملف على القرص
-    folder = os.path.join(settings.upload_dir, "custom_docs", entity_type)
-    fpath = unique_path(folder, file.filename, prefix=f"custom_{entity_id}_")
-    with open(fpath, "wb") as f:
-        f.write(await read_limited(file))
+    # AWS-01 — الكتابة عبر طبقة التخزين لا على القرص مباشرة
+    fpath = save_bytes(await read_limited(file), f"custom_docs/{entity_type}",
+                       file.filename, prefix=f"custom_{entity_id}_")
 
     # slug فريد للـtype (nameid داخلي — العرض بيستخدم title)
     import re
@@ -271,11 +269,9 @@ async def replace_custom_document(
     from .documents import _close_expiry_tasks_for
     _close_expiry_tasks_for(db, old.id)
 
-    # اكتب الملف الجديد
-    folder = os.path.join(settings.upload_dir, "custom_docs", old.entity_type)
-    fpath = unique_path(folder, file.filename, prefix=f"custom_{old.entity_id}_v{old.version+1}_")
-    with open(fpath, "wb") as f:
-        f.write(await read_limited(file))
+    # AWS-01 — الكتابة عبر طبقة التخزين لا على القرص مباشرة
+    fpath = save_bytes(await read_limited(file), f"custom_docs/{old.entity_type}",
+                       file.filename, prefix=f"custom_{old.entity_id}_v{old.version+1}_")
 
     meta = old.extracted_data_json if isinstance(old.extracted_data_json, dict) else {}
     if notes:
@@ -319,14 +315,14 @@ def download_custom_document_version(doc_id: int, request: Request,
     if not (doc.document_type_code or "").startswith("custom:"):
         raise HTTPException(status_code=400, detail="هذا المسار للمستندات المخصّصة فقط")
     assert_same_company(user, doc.company_id, db=db)
-    if not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="الملف مش موجود على الخادم")
     audit(db, user, "download_custom_doc_version", doc.entity_type, doc.entity_id,
           detail=f"doc#{doc.id} v{doc.version} is_current={doc.is_current}",
           request=request, company_id=doc.company_id,
           correlation_id=f"doc:{doc.id}")
     db.commit()
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+    return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                        media_type=doc.mime or "application/octet-stream")
 
 
@@ -458,9 +454,9 @@ def delete_custom_document(doc_id: int, request: Request,
         # P0-#10 — اقفل expiry tasks قبل الحذف
         _close_expiry_tasks_for(db, v.id)
         # امسح الملف الفعلي (لو موجود)
-        if v.file_path and os.path.exists(v.file_path):
+        if v.file_path and key_exists(v.file_path):
             try:
-                os.remove(v.file_path)
+                delete_key(v.file_path)
             except OSError:
                 pass  # نستمر حتى لو فشل مسح ملف واحد
         db.delete(v)

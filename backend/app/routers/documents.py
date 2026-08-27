@@ -15,8 +15,9 @@ from ..database import get_db
 from ..deps import assert_same_company, audit, require_perm
 from .. import ocr
 from ..notifications import create_task, notify_roles
-from ..safe_files import read_limited, unique_path
+from ..safe_files import read_limited, safe_filename, unique_path
 from ..clock import today as kuwait_today
+from ..storage import file_response, key_exists, save_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,14 @@ def canonical_document_detail(od_code: str):
 async def ocr_preview(document_type_code: str = Form(...), file: UploadFile = File(...),
                       user: models.User = Depends(require_perm("upload_documents"))):
     """يقرأ المستند ويُرجع بيانات *مقترحة* فقط — يؤكّدها المستخدم قبل الحفظ (قاعدة ذهبية)."""
-    tmp = unique_path(os.path.join(settings.upload_dir, "tmp"), file.filename, prefix="ocr_")
-    with open(tmp, "wb") as f:
+    # AWS-01 — استثناء مقصود: هذا ليس مستنًدا يُحفظ بل ملف عمل يُقرأ
+    # ثم يُحذف في finally. محرّك OCR يحتاج مساًرا حقيقيًّا على القرص،
+    # ورفعه إلى التخزين الدائم يعني رفع ما لا يُراد الاحتفاظ به. ولهذا
+    # يذهب إلى مجلد النظام المؤقّت لا إلى مجلد الرفع: مجلد الرفع يُصبح
+    # S3 على AWS، وملف يُكتب ثم يُقرأ ثم يُحذف لا مكان له هناك.
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix="ocr_", suffix=safe_filename(file.filename))
+    with os.fdopen(fd, "wb") as f:
         f.write(await read_limited(file))
     try:
         suggested = ocr.extract(document_type_code, tmp)
@@ -189,10 +196,9 @@ async def upload_document(
     else:
         company_id = user.company_id
 
-    folder = os.path.join(settings.upload_dir, "documents")
-    fpath = unique_path(folder, file.filename, prefix=f"{entity_type}_{entity_id}_")
-    with open(fpath, "wb") as f:
-        f.write(await read_limited(file))
+    # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
+    fpath = save_bytes(await read_limited(file), "documents", file.filename,
+                       prefix=f"{entity_type}_{entity_id}_")
 
     # تعطيل النسخ السابقة لنفس النوع
     prev = db.scalars(select(models.Document).where(
@@ -280,14 +286,14 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
         models.Document.document_type_code == document_type_code,
         models.Document.is_current == True,  # noqa: E712
     ))
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     assert_same_company(user, doc.company_id, db=db)
     audit(db, user, "download_document", entity_type, entity_id,
           detail=f"{document_type_code} v{doc.version}",
           request=request, company_id=doc.company_id)
     db.commit()
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+    return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
 
@@ -318,14 +324,14 @@ def download_document_version(doc_id: int, request: Request,
     السابقة كانت "محفوظة" ولا سبيل إلى فتحها: وجودها في القاعدة لا يكفي.
     """
     doc = db.get(models.Document, doc_id)
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     assert_same_company(user, doc.company_id, db=db)
     audit(db, user, "download_document_version", doc.entity_type, doc.entity_id,
           detail=f"{doc.document_type_code} v{doc.version} (id={doc.id})",
           request=request, company_id=doc.company_id)
     db.commit()
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+    return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
 

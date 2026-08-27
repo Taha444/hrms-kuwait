@@ -21,6 +21,7 @@ from ..qr import haversine_m
 from ..safe_files import read_limited
 from .. import qr_token
 from ..clock import today as kuwait_today
+from ..storage import save_at_key
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -121,12 +122,10 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
     raw = await read_limited(selfie)
     if not raw or len(raw) < 200:
         raise HTTPException(status_code=400, detail="صورة السيلفي إلزامية لتسجيل الحضور")
-    folder = os.path.join(settings.upload_dir, "selfies")
-    os.makedirs(folder, exist_ok=True)
+    # AWS-01 — عبر طبقة التخزين. المفتاح محدَّد لا عشوائي لأن اسمه يحمل
+    # الفعل ورقم الموظف ولحظة التسجيل — وهي جزء من دليل الحضور.
     fname = f"{action}_{emp.id}_{int(datetime.now().timestamp()*1000)}.jpg"
-    fpath = os.path.join(folder, fname)
-    with open(fpath, "wb") as f:
-        f.write(raw)
+    fpath = save_at_key(raw, f"selfies/{fname}")
 
     # منع إعادة استخدام التذكرة (لمرة واحدة)
     if not qr_token.consume_jti(db, payload["jti"], "checkin_ticket", payload["exp"]):

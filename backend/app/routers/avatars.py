@@ -28,6 +28,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import audit, get_current_user
 from ..safe_files import read_limited, unique_path
+from ..storage import delete_key, file_response, key_exists, save_bytes
 
 
 router = APIRouter(tags=["avatars"])
@@ -48,7 +49,7 @@ def _avatars_folder() -> str:
 @router.get("/me/avatar")
 def my_avatar_status(user: models.User = Depends(get_current_user)):
     """يعيد حالة صورة المستخدم الحالي (بدون بيانات الصورة نفسها)."""
-    has = bool(user.avatar_path and os.path.exists(user.avatar_path))
+    has = bool(user.avatar_path and key_exists(user.avatar_path))
     return {
         "has_avatar": has,
         "updated_at": user.avatar_updated_at.isoformat() if user.avatar_updated_at else None,
@@ -58,11 +59,11 @@ def my_avatar_status(user: models.User = Depends(get_current_user)):
 @router.get("/me/avatar/image")
 def my_avatar_image(user: models.User = Depends(get_current_user)):
     """يرد الصورة الفعلية للمستخدم الحالي."""
-    if not user.avatar_path or not os.path.exists(user.avatar_path):
+    if not user.avatar_path or not key_exists(user.avatar_path):
         raise HTTPException(status_code=404, detail="لا توجد صورة بروفايل")
     ext = os.path.splitext(user.avatar_path)[1].lower()
     mime = _MIME_BY_EXT.get(ext, "application/octet-stream")
-    return FileResponse(user.avatar_path, media_type=mime)
+    return file_response(user.avatar_path, media_type=mime)
 
 
 @router.get("/users/{user_id}/avatar/image")
@@ -71,11 +72,11 @@ def user_avatar_image(user_id: int,
                      db: Session = Depends(get_db)):
     """يرد صورة مستخدم آخر — أي مسجّل دخول يقدر يشوفها (لعرضها في قوائم/سلاسل اعتماد)."""
     target = db.get(models.User, user_id)
-    if not target or not target.avatar_path or not os.path.exists(target.avatar_path):
+    if not target or not target.avatar_path or not key_exists(target.avatar_path):
         raise HTTPException(status_code=404, detail="لا توجد صورة بروفايل")
     ext = os.path.splitext(target.avatar_path)[1].lower()
     mime = _MIME_BY_EXT.get(ext, "application/octet-stream")
-    return FileResponse(target.avatar_path, media_type=mime)
+    return file_response(target.avatar_path, media_type=mime)
 
 
 @router.post("/me/avatar")
@@ -100,10 +101,9 @@ async def upload_my_avatar(request: Request,
     if not data:
         raise HTTPException(status_code=400, detail="الملف فارغ")
 
-    folder = _avatars_folder()
-    path = unique_path(folder, f"user_{user.id}{ext}", prefix=f"av_u{user.id}_")
-    with open(path, "wb") as f:
-        f.write(data)
+    # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
+    path = save_bytes(data, "avatars", f"user_{user.id}{ext}",
+                      prefix=f"av_u{user.id}_")
 
     old = user.avatar_path
     user.avatar_path = path
@@ -113,9 +113,9 @@ async def upload_my_avatar(request: Request,
     db.commit()
 
     # امسح الملف القديم بعد نجاح الحفظ
-    if old and old != path and os.path.exists(old):
+    if old and old != path and key_exists(old):
         try:
-            os.remove(old)
+            delete_key(old)
         except OSError:
             pass
 
@@ -135,9 +135,9 @@ def delete_my_avatar(request: Request,
     user.avatar_updated_at = None
     audit(db, user, "avatar_delete", "user", user.id, request=request)
     db.commit()
-    if old and os.path.exists(old):
+    if old and key_exists(old):
         try:
-            os.remove(old)
+            delete_key(old)
         except OSError:
             pass
     return {"ok": True}

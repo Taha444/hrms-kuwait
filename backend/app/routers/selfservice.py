@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..storage import file_response, key_exists
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
@@ -85,9 +86,9 @@ def my_document(document_type_code: str,
         models.Document.document_type_code == document_type_code,
         models.Document.is_current == True,  # noqa: E712
     ))
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path),
+    return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
 

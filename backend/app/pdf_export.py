@@ -23,6 +23,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+from .storage import key_exists
 from .permissions import ROLE_LABEL_AR
 
 _FONT_NAME = "Amiri"
@@ -155,7 +156,7 @@ class ArabicPDF:
         for i in range(n):
             cx = self.right - i * col_w - col_w / 2
             sig_path = images[i] if i < len(images) else None
-            if sig_path and os.path.exists(sig_path):
+            if sig_path and key_exists(sig_path):
                 try:
                     from reportlab.lib.utils import ImageReader
                     img = ImageReader(sig_path)

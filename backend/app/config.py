@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     # الملفات
     upload_dir: str = "./uploads"
 
+    # AWS-01 — وجهة التخزين. الافتراضي قرص الخادم كما كان، فلا يتغيّر شيء
+    # لمن لم يضبط شيًئا. وعلى AWS تُضبط "s3" فتنتقل كل الكتابة والقراءة بلا
+    # لمس موضع نداء واحد — وهذا هو الغرض من وجود طبقة تخزين واحدة.
+    storage_backend: str = "local"        # local | s3
+    s3_bucket: str = ""
+    s3_prefix: str = ""
+    s3_region: str = ""
+    # لا مفاتيح وصول هنا عمًدا: الاعتماد يُقرأ من IAM role على الـEC2. أي
+    # مفتاح يُكتب في .env هو مفتاح يُسرَّب مع أول نسخة احتياطية أو سجلّ.
+
     # CORS
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
 

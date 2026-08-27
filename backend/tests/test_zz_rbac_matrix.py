@@ -5,6 +5,7 @@
 RBAC" كدليل. هنا تُبنى المصفوفة من النظام نفسه لا من افتراض، فيظهر أي انحراف
 بين ما يمنحه الدور نظرًيا وما تسمح به نقاط النهاية فعلًا.
 """
+from app.storage import read_bytes
 import pytest
 
 from tests.conftest import auth_headers, login
@@ -2827,7 +2828,9 @@ def test_rnw03_14_15_23_documents_and_screens(client):
         assert final.checksum_sha256 == hashlib.sha256(FINAL_BYTES).hexdigest(), \
             "الملف المرفوع بلا بصمة صحيحة — حفظ بلا إثبات"
         # ولم يُولَّد مستند بديل يحمل شعاًرا: المحفوظ هو ما رُفع
-        with open(final.file_path, "rb") as f:
+        # مفتاح لا مسار (AWS-01)
+        import io as _io
+        with _io.BytesIO(read_bytes(final.file_path)) as f:
             assert f.read() == FINAL_BYTES, "الملف المحفوظ ليس هو المرفوع"
     finally:
         db.close()
