@@ -21,6 +21,17 @@ def _n(code, name, category, event_type, channel, sla, body):
             "channel_default": channel, "sla_hours": sla, "body_text": body}
 
 
+# BKL-04 — «طلب طلب إجازة».
+#
+# أربعة وثلاثون من أربعة وخمسين نوع طلب اسمه يبدأ بـ«طلب» («طلب إجازة» ·
+# «طلب سلفة»)، وكانت هذه القوالب تضيف الكلمة فوقها. فيقرأ الموظف «طلب طلب
+# إجازة» في إشعار يصله على هاتفه.
+#
+# والإصلاح في القالب لا في الاسم: الاسم هو ما يظهر في قائمة «تقديم طلب»
+# وتُبنى عليه مراجع الأنواع، وتغييره يمسّ ما لا علاقة له بالإشعار. وحين لا
+# يضيف القالب الكلمة، تصحّ الجملة للنوعين معًا — من يبدأ اسمه بـ«طلب» ومن
+# لا يبدأ («تظلّم» · «استقالة»).
+
 DEFAULT_NOTIFICATION_TEMPLATES = [
     # الحضور والإجازات (10)
     _n("NTF-001", "طلب إجازة بانتظار اعتمادك", CAT_ATTENDANCE, "request_stage", "in_app", 24,
@@ -96,19 +107,19 @@ DEFAULT_NOTIFICATION_TEMPLATES = [
 
     # الموافقات وسير العمل (10)
     _n("NTF-033", "بانتظار موافقتك", CAT_APPROVALS, "request_stage", "in_app", 24,
-      "طلب {{request_type}} من {{employee_name}} بانتظار موافقتك."),
+      "{{request_type}} من {{employee_name}} بانتظار موافقتك."),
     _n("NTF-034", "تحديث على طلبك", CAT_APPROVALS, "request_update", "in_app", None,
-      "وصل طلبك ({{request_type}}) إلى مرحلة: {{stage_label}}."),
+      "وصل «{{request_type}}» إلى مرحلة: {{stage_label}}."),
     _n("NTF-035", "تم رفض طلبك", CAT_APPROVALS, "request_update", "in_app", None,
-      "تم رفض طلبك ({{request_type}}). السبب: {{reason}}."),
+      "رُفض «{{request_type}}». السبب: {{reason}}."),
     _n("NTF-036", "تم إلغاء طلبك", CAT_APPROVALS, "request_update", "in_app", None,
-      "تم إلغاء طلبك ({{request_type}}) من قبل الإدارة."),
+      "أُلغي «{{request_type}}» من قبل الإدارة."),
     _n("NTF-037", "اكتمل طلبك", CAT_APPROVALS, "request_update", "in_app", None,
-      "تم إنهاء جميع مراحل طلبك ({{request_type}}) بنجاح."),
+      "اكتملت جميع مراحل «{{request_type}}» بنجاح."),
     _n("NTF-038", "مطلوب حضورك للتوقيع", CAT_APPROVALS, "appointment", "whatsapp", 72,
       "برجاء مراجعة شؤون الموظفين لإتمام طلبك بالتوقيع في {{scheduled_at}}."),
     _n("NTF-039", "جاهز للاستلام", CAT_APPROVALS, "pickup_ready", "in_app", 48,
-      "طلبك ({{request_type}}) جاهز للاستلام من شؤون الموظفين."),
+      "«{{request_type}}» جاهز للاستلام من شؤون الموظفين."),
     _n("NTF-040", "طلب نقل داخلي", CAT_APPROVALS, "request_stage", "in_app", 48,
       "طلب نقل داخلي لـ{{employee_name}} إلى {{to_branch}}."),
     _n("NTF-041", "طلب ترقية أو تعديل راتب", CAT_APPROVALS, "request_stage", "in_app", 72,
