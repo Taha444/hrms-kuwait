@@ -46,9 +46,40 @@ export default function Operations() {
         <Link to="/requests" className="stat" style={{ textDecoration: "none" }}>
           <div className="num">{data.pending_requests}</div><div className="lbl">{t("kpi_pending_requests")}</div>
         </Link>
-        <Link to="/tasks" className="stat" style={{ textDecoration: "none" }}>
+        {/* BKL-06 — الرقم وقائمته في شاشة واحدة. كان ينقل إلى «مهامي»
+            وهو يعدّ مهام الشركة كلها: 29 في البطاقة و12 في الوجهة، لأن
+            المهام موزّعة على عدّة مندوبين. */}
+        <a href="#gov-tasks" className="stat" style={{ textDecoration: "none" }}>
           <div className="num">{data.open_gov_tasks}</div><div className="lbl">{t("ops_gov_tasks")}</div>
-        </Link>
+        </a>
+      </div>
+
+      {/* BKL-06 — القائمة التي يعدّها الرقم أعلاه، بالنطاق نفسه */}
+      <div className="card" id="gov-tasks">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h3 style={{ margin: 0 }}>{t("ops_gov_tasks")} ({data.open_gov_tasks})</h3>
+        </div>
+        {!(data.gov_tasks || []).length ? (
+          <p className="muted">{t("ops_no_gov_tasks")}</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>{t("col_title")}</th><th>{t("ops_col_due")}</th>
+                <th>{t("ops_col_severity")}</th>
+              </tr></thead>
+              <tbody>
+                {(data.gov_tasks || []).map((k: any) => (
+                  <tr key={k.id}>
+                    <td>{k.title}{k.detail && <div className="muted" style={{ fontSize: 12 }}>{k.detail}</div>}</td>
+                    <td>{k.due_date || "—"}</td>
+                    <td>{k.severity || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card">

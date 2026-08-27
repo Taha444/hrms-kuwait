@@ -162,6 +162,10 @@ const dict: Record<string, { ar: string; en: string }> = {
   tasks_dismissed: { ar: "المتجاهَلة", en: "Dismissed" },
   col_type: { ar: "النوع", en: "Type" },
   col_title: { ar: "العنوان", en: "Title" },
+  // BKL-06 — قائمة المهام الحكومية تحت عدّادها في مركز العمليات
+  ops_no_gov_tasks: { ar: "لا مهام حكومية مفتوحة.", en: "No open government tasks." },
+  ops_col_due: { ar: "الاستحقاق", en: "Due" },
+  ops_col_severity: { ar: "الأهمية", en: "Severity" },
   col_detail: { ar: "التفاصيل", en: "Detail" },
   col_severity: { ar: "الأهمية", en: "Severity" },
   act_complete: { ar: "إنجاز", en: "Complete" },

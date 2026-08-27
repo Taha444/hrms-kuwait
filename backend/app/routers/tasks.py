@@ -11,13 +11,19 @@ from ..database import get_db
 from ..deps import get_current_user, require_perm
 from ..notifications import daily_scan
 
+from ..gov_tasks import GOV_TASK_TYPES
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 # تصنيف الإشعارات (Rule / 3.10)
+#
+# BKL-06 — الأنواع الحكومية **تُشتقّ** من ``gov_tasks.GOV_TASK_TYPES`` لا
+# تُكتب هنا ثانيًة. كانت القائمتان متطابقتين بالمصادفة، ونوع يُضاف هناك
+# ويُنسى هنا يجعل مهمة تُعدّ في اللوحة ولا تظهر في فلتر «حكومي» — وهو
+# العطل نفسه بصورة أخرى.
 _CATEGORY = {
-    "renew_residency": "government", "renew_work_permit": "government", "license_expiring": "government",
-    "doc_expiring": "government", "transfer_info": "government", "exit_permit": "government",
-    "capacity_exceeded": "government", "request_stage": "approvals", "request_update": "approvals",
+    **{tp: "government" for tp in GOV_TASK_TYPES},
+    "request_stage": "approvals", "request_update": "approvals",
     "pickup_ready": "hr", "appointment": "hr",
 }
 

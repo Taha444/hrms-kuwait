@@ -92,9 +92,20 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
     pending_requests = db.scalar(rq) or 0
 
     # المهام الحكومية المفتوحة
-    # QA-20 — التعريف من مصدر واحد يشترك فيه عدّاد اللوحة وهذه الصفحة
-    from ..gov_tasks import count_open_gov_tasks
-    open_gov_tasks = count_open_gov_tasks(db, cid)
+    # QA-20/BKL-06 — التعريف **والنطاق** من مصدر واحد، والقائمة تُبنى من
+    # الاستعلام الذي يُشتقّ منه العدّاد. فالرقم الظاهر هو طول القائمة التي
+    # تُفتح تحته حرفيًّا — لا رقم يقول 29 وقائمة تعرض 12.
+    from ..gov_tasks import count_gov_tasks, list_gov_tasks
+    open_gov_tasks = count_gov_tasks(db, company_id=cid)
+    gov_task_rows = [
+        {"id": tk.id, "type": tk.type, "title": tk.title, "detail": tk.detail,
+         "severity": tk.severity, "due_date": tk.due_date,
+         "assignee_user_id": tk.assignee_user_id,
+         "related_entity_type": tk.related_entity_type,
+         "related_entity_id": tk.related_entity_id,
+         "created_at": tk.created_at}
+        for tk in list_gov_tasks(db, company_id=cid)
+    ]
 
     # ملخّص الامتثال
     all_items = permits + licenses
@@ -110,4 +121,6 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
         "licenses": licenses,
         "pending_requests": pending_requests,
         "open_gov_tasks": open_gov_tasks,
+        # القائمة نفسها، لا عدداً فقط: رقم بلا وجهة تعرضه يبقى ادّعاءً
+        "gov_tasks": gov_task_rows,
     }
