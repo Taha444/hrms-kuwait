@@ -121,6 +121,9 @@ def _gov_contract_context(db: Session, emp: models.Employee,
         "day_name_en": today.strftime("%A"),
         "contract_term_ar": "سنة",
         "contract_term_en": "ONE YEAR",
+        # GC-07 — النوع الخام كما هو مسجَّل، لا الصيغة المعروضة: الصيغة
+        # نصّ للقراءة وقد تُترجم، والقرار يُبنى على القيمة لا على عرضها.
+        "contract_type_raw": (emp.contract_type or ""),
     }
 
 

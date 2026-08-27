@@ -35,14 +35,14 @@
     "updated": ""
   },
   "GC-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "gov_contract_docx.py يملأ النموذج الرسمي ببصمته 2a9cf6e4 · test_zzz_gov_contract_docx.py (10) · 584 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "دليل بنيوي: هيكل XML خارج عُقد النصّ متطابق حرفيًّا و13 جزًءا (تنسيق/خطوط/شعار) متطابقة بالبصمة — test_layout_and_logo_are_byte_identical_to_the_official_file",
+    "updated": "2026-08-27"
   },
   "GC-03": {
     "status": "open",

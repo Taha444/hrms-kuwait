@@ -173,3 +173,112 @@ def test_tagged_copy_is_derived_not_stored():
         f"ملفات وورد إضافية في assets: {files} — الأصل وحده يُحفَظ"
     )
     assert G.build_tagged() == G.build_tagged(), "الاشتقاق غير حتميّ"
+
+
+# ---------------------------------------------------------------------------
+# GC-07 — البند السادس: فقرة واحدة تبقى والأخرى تُشطب
+# ---------------------------------------------------------------------------
+def _paragraph_texts(data: bytes) -> list[str]:
+    xml = zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml").decode("utf-8")
+    paras = re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)
+    return ["".join(m.group(2) for m in _T.finditer(p)) for p in paras]
+
+
+def _paragraph_is_struck(data: bytes, index: int) -> bool:
+    xml = zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml").decode("utf-8")
+    para = re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)[index]
+    runs = re.findall(r"<w:r(?:\s[^>]*)?>.*?</w:r>", para, re.S)
+    texted = [r for r in runs if "<w:t" in r]
+    return bool(texted) and all("<w:strike/>" in r for r in texted)
+
+
+def test_definite_contract_strikes_the_indefinite_clause():
+    """عقد محدد المدة: تبقى فقرته وتُشطب فقرة «غير محدد»."""
+    out = G.fill(VALUES, definite=True)
+    for i in G.CLAUSE_PARAGRAPHS["indefinite"]:
+        assert _paragraph_is_struck(out, i), f"فقرة «غير محدد» {i} لم تُشطب"
+    for i in G.CLAUSE_PARAGRAPHS["definite"]:
+        assert not _paragraph_is_struck(out, i), f"فقرة «محدد» {i} شُطبت بالخطأ"
+
+
+def test_indefinite_contract_strikes_the_definite_clause():
+    """والعكس — القرار يتبع نوع العقد المسجَّل لا افتراًضا ثابًتا."""
+    out = G.fill(VALUES, definite=False)
+    for i in G.CLAUSE_PARAGRAPHS["definite"]:
+        assert _paragraph_is_struck(out, i), f"فقرة «محدد» {i} لم تُشطب"
+    for i in G.CLAUSE_PARAGRAPHS["indefinite"]:
+        assert not _paragraph_is_struck(out, i), f"فقرة «غير محدد» {i} شُطبت بالخطأ"
+
+
+def test_the_two_clauses_are_never_both_active():
+    """جوهر GC-07: عقد يقول إنه محدد وغير محدد في آن لا يُحتجّ به.
+
+    بند المدة هو ما يُحتكم إليه عند إنهاء العلاقة.
+    """
+    for definite in (True, False):
+        out = G.fill(VALUES, definite=definite)
+        active = [i for group in G.CLAUSE_PARAGRAPHS.values() for i in group
+                  if not _paragraph_is_struck(out, i)]
+        both = {"definite": all(i in active for i in G.CLAUSE_PARAGRAPHS["definite"]),
+                "indefinite": all(i in active for i in G.CLAUSE_PARAGRAPHS["indefinite"])}
+        assert not (both["definite"] and both["indefinite"]), (
+            "الفقرتان المتعارضتان نشطتان معًا"
+        )
+
+
+def test_struck_clause_keeps_its_text():
+    """الشطب لا الحذف: النصّ الرسمي يبقى كامًلا ويُقرأ الاستبعاد.
+
+    حذف فقرة من نموذج رسمي تغيير لمحتواه لا تعبئة له.
+    """
+    original_paras = _paragraph_texts(G.official_bytes())
+    out_paras = _paragraph_texts(G.fill(VALUES, definite=True))
+    assert len(original_paras) == len(out_paras), "عدد الفقرات تغيّر — حُذفت فقرة"
+    for i in G.CLAUSE_PARAGRAPHS["indefinite"]:
+        assert out_paras[i].strip(), f"فقرة {i} المشطوبة فُرّغت من نصّها"
+
+
+def test_striking_touches_only_the_target_paragraphs():
+    """لا يتسرّب الشطب إلى بقيّة المستند."""
+    out = G.fill(VALUES, definite=True)
+    target = set(G.CLAUSE_PARAGRAPHS["indefinite"])
+    xml = zipfile.ZipFile(io.BytesIO(out)).read("word/document.xml").decode("utf-8")
+    paras = re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)
+    for i, para in enumerate(paras):
+        if i in target:
+            continue
+        assert "<w:strike/>" not in para, f"شطب تسرّب إلى الفقرة {i}"
+
+
+def test_generate_follows_the_recorded_contract_type():
+    """المسار الكامل: النوع المسجَّل يصل الورقة.
+
+    اختبار الوحدة يثبت أن الشطب يعمل؛ وهذا يثبت أنه **يُستدعى** بالقيمة
+    الصحيحة. الفجوة بينهما هي التي تُنتج عقًدا صحيح الآلية خاطئ المحتوى.
+    """
+    base = {src: "x" for _, src, _, _ in G.FIELD_SOURCES} | {
+        "contract_date": "01/01/2026"}
+
+    out_def, *_ = G.generate(base | {"contract_type_raw": "definite"})
+    out_indef, *_ = G.generate(base | {"contract_type_raw": "indefinite"})
+    assert out_def != out_indef, "نوع العقد لم يغيّر المخرَج إطلاًقا"
+
+    if out_def[:2] == b"PK":            # docx — نفحص الشطب مباشرة
+        for i in G.CLAUSE_PARAGRAPHS["indefinite"]:
+            assert _paragraph_is_struck(out_def, i)
+        for i in G.CLAUSE_PARAGRAPHS["definite"]:
+            assert _paragraph_is_struck(out_indef, i)
+
+
+def test_unknown_contract_type_defaults_to_definite_not_to_both():
+    """نوع غير معروف لا يعني «اطبع الفقرتين».
+
+    الافتراض الصامت الذي يترك العقد متناقًضا هو العيب الأصلي نفسه.
+    """
+    base = {src: "x" for _, src, _, _ in G.FIELD_SOURCES} | {
+        "contract_date": "01/01/2026", "contract_type_raw": "شيء غير معروف"}
+    out, *_ = G.generate(base)
+    if out[:2] == b"PK":
+        struck = [i for group in G.CLAUSE_PARAGRAPHS.values() for i in group
+                  if _paragraph_is_struck(out, i)]
+        assert struck, "لم تُشطب أي فقرة — العقد يحمل بندين متعارضين"

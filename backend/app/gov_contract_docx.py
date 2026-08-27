@@ -211,16 +211,93 @@ def tags_in(data: bytes) -> set[str]:
     return set(re.findall(r"\{\{(\w+)\}\}", xml))
 
 
-def fill(values: dict[str, str], tagged: bytes | None = None) -> bytes:
+# ---------------------------------------------------------------------------
+# GC-07 — البند السادس: فقرتان متعارضتان في نموذج واحد
+# ---------------------------------------------------------------------------
+# النموذج الرسمي يحمل فقرتين لا تجتمعان: «محدد المدة» و«غير محدد المدة»،
+# وتحتهما ملاحظة أن ذلك يخضع لإرادة الطرفين. في الورقة تُشطب إحداهما بالقلم.
+#
+# وكان المخرَج يطبعهما **معًا مملوءتين بنفس التاريخ** — عقد يقول إنه محدد
+# المدة وغير محدد المدة في آن. ليس عيبًا تجميليًّا: بند المدة هو ما يُحتكم
+# إليه عند إنهاء العلاقة، ومستند يقول الشيء ونقيضه لا يُحتجّ به.
+#
+# القرار (مالك العمل): تُملأ الفقرة المطابقة لنوع العقد المسجَّل، وتُشطب
+# الأخرى — نفس ما يُفعل بالورقة، فيبقى النصّ الرسمي كامًلا ويُقرأ الاستبعاد.
+# لا تُحذف: حذف فقرة من نموذج رسمي تغيير لمحتواه.
+CLAUSE_PARAGRAPHS: dict[str, list[int]] = {
+    "definite": [32, 33, 78, 79],      # الإنجليزي ثم العربي
+    "indefinite": [34, 80],
+}
+
+_P_RE = re.compile(r"<w:p[ >].*?</w:p>", re.S)
+_R_RE = re.compile(r"(<w:r(?:\s[^>]*)?>)(.*?)(</w:r>)", re.S)
+_RPR_RE = re.compile(r"(<w:rPr(?:\s[^>]*)?>)(.*?)(</w:rPr>)", re.S)
+
+#: العناصر التي يأتي ``w:strike`` قبلها في ترتيب مخطَّط OOXML. الترتيب ليس
+#: تجميلًا: مستند مخالف له قد يرفضه Word ويقبله غيره — فيبدو سليًما عند من
+#: ولّده ومعطوًبا عند من يفتحه.
+_AFTER_STRIKE = ("<w:dstrike", "<w:outline", "<w:shadow", "<w:emboss",
+                 "<w:imprint", "<w:noProof", "<w:vanish", "<w:color",
+                 "<w:spacing", "<w:w ", "<w:kern", "<w:position", "<w:sz",
+                 "<w:szCs", "<w:highlight", "<w:u ", "<w:effect", "<w:bdr",
+                 "<w:shd", "<w:vertAlign", "<w:rtl", "<w:lang")
+
+
+def _strike_rpr(inner: str) -> str:
+    if "<w:strike" in inner:
+        return inner
+    cut = len(inner)
+    for tag in _AFTER_STRIKE:
+        i = inner.find(tag)
+        if i != -1:
+            cut = min(cut, i)
+    return inner[:cut] + "<w:strike/>" + inner[cut:]
+
+
+def _strike_run(m: re.Match) -> str:
+    open_tag, body, close_tag = m.group(1), m.group(2), m.group(3)
+    if _RPR_RE.search(body):
+        body = _RPR_RE.sub(
+            lambda r: r.group(1) + _strike_rpr(r.group(2)) + r.group(3), body, count=1)
+    else:
+        body = "<w:rPr><w:strike/></w:rPr>" + body
+    return open_tag + body + close_tag
+
+
+def strike_clause(xml: str, paragraphs: list[int]) -> str:
+    """يشطب فقرات بعينها — لا يحذفها."""
+    out, idx = [], -1
+    last = 0
+    for m in _P_RE.finditer(xml):
+        idx += 1
+        if idx not in paragraphs:
+            continue
+        out.append(xml[last:m.start()])
+        out.append(_R_RE.sub(_strike_run, m.group(0)))
+        last = m.end()
+    out.append(xml[last:])
+    return "".join(out)
+
+
+def fill(values: dict[str, str], tagged: bytes | None = None,
+         definite: bool | None = None) -> bytes:
     """يملأ نسخة العمل الموسومة بالقيم ويعيد docx جاهًزا.
 
     الحقل غير المُمرَّر يُترك وسًما ظاهًرا لا يُفرَّغ بصمت: عقد بمربّع فارغ
     يُوقَّع ويُقدَّم للهيئة أسوأ من عقد لا يُولَّد. والمنع الفعليّ في
     ``required_fields`` قبل الوصول إلى هنا.
+
+    ``definite`` يحدّد أيّ فقرتَي البند السادس تبقى وأيّهما تُشطب (GC-07).
+    و``None`` تعني عدم الشطب — للاختبار وحده: عقد بفقرتين متعارضتين لا
+    يُسلَّم.
     """
     data = tagged if tagged is not None else build_tagged()
     src = zipfile.ZipFile(io.BytesIO(data))
     xml = src.read("word/document.xml").decode("utf-8")
+    if definite is not None:
+        # تُشطب الفقرة المخالفة لنوع العقد المسجَّل — لا تُحذف
+        xml = strike_clause(xml, CLAUSE_PARAGRAPHS["indefinite" if definite
+                                                   else "definite"])
     for key, val in values.items():
         xml = xml.replace("{{" + key + "}}", _escape(str(val)))
     out = io.BytesIO()
@@ -342,7 +419,10 @@ def generate(ctx: dict) -> tuple[bytes, str, str, list[str]]:
     values, missing = build_values(ctx)
     if missing:
         return b"", "", "", missing
-    docx = fill(values)
+    # GC-07 — نوع العقد المسجَّل هو ما يقرّر أي فقرة تبقى. لا افتراض هنا:
+    # الافتراض الصامت يُنتج عقًدا يقول غير ما اتُّفق عليه.
+    definite = str(ctx.get("contract_type_raw") or "").strip().lower() != "indefinite"
+    docx = fill(values, definite=definite)
     pdf = to_pdf(docx)
     if pdf:
         return pdf, "pdf", "application/pdf", []
