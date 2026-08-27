@@ -276,6 +276,17 @@ def _residency_number(db: Session, emp: models.Employee) -> str:
     return (p.number or "") if p else ""
 
 
+
+def _residency_expiry(db: Session, emp: models.Employee) -> str:
+    """تاريخ انتهاء الإقامة السارية — من permits لا من عمود على الموظف."""
+    p = db.scalar(
+        select(models.Permit)
+        .where(models.Permit.employee_id == emp.id, models.Permit.kind == "residency")
+        .order_by(models.Permit.expiry_date.desc())
+    )
+    return p.expiry_date.isoformat() if p and p.expiry_date else ""
+
+
 def _build_context(db: Session, emp: models.Employee) -> dict:
     company = db.get(models.Company, emp.company_id)
     branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
@@ -323,6 +334,18 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "company_name_en": (company.name_en or "") if company else "",
         "commercial_reg": (company.commercial_reg or "") if company else "",
         "date_today": kuwait_today().isoformat(),
+
+        # ── FRM-01 — حقول الصيغ الخمس، كلٌّ من مصدره ────────────────────────
+        # كانت تُطبع نوائب ورقية ([____] · [DD/MM/YYYY] · [Bank/Cash]) في
+        # مستند يولّده النظام. وما لا مصدر له هنا يبقى غائًبا فيُحذف صفّه،
+        # لا يُملأ بنائب ولا بصفر.
+        "residency_no": _residency_number(db, emp),
+        "residency_expiry": _residency_expiry(db, emp),
+        "work_location": (branch.name if branch else ""),
+        "actual_salary": ("" if emp.actual_salary is None else str(emp.actual_salary)),
+        "official_salary": ("" if emp.basic_salary is None else str(emp.basic_salary)),
+        "employment_status": ("على رأس العمل / Active" if emp.status == "active" else ""),
+        "payroll_cycle": "شهري / Monthly",
         "ref_no": f"{emp.company_id}-{emp.id}-{datetime.now():%Y%m%d}",
         # P0-#11 — قيم افتراضية من قانون العمل الكويتي (قابلة للـoverride عبر extras):
         "probation_days": "100",
@@ -389,12 +412,64 @@ def _resolve_authoritative_data(db: Session, emp: models.Employee, extras: dict)
     return ctx
 
 
+#: علامة داخلية للحقل الذي لا مصدر له. لا تظهر للمستخدم أبًدا.
+_UNFILLED = "@@UNFILLED@@"
+
+#: فاصل الأجزاء داخل خانة واحدة («الراتب: كذا · البدلات: كذا»).
+#: نمط لا سلسلة: النصّ ثنائي الاتجاه قد يحمل علامات اتجاه غير مرئية حول
+#: الفاصل، فالمطابقة على سلسلة بعينها تفشل بلا أثر ظاهر.
+_SEG_SPLIT = re.compile(r"\s*[·•]\s*")
+_SEG_JOIN = " · "
+
+_CELL_RE = re.compile(r"(<td[^>]*>)(.*?)(</td>)", re.S)
+_ROW_RE = re.compile(r"<tr[^>]*>(?:(?!</tr>).)*?</tr>", re.S)
+
+
+def _prune_unfilled(html_text: str) -> str:
+    """يحذف ما لا مصدر له: الجزء أوًلا، ثم الصفّ إن خلا.
+
+    FRM-01 — القاعدة: **حقل لم يُملأ لا يُطبع نائبه.** والنموذج الورقي فيه
+    خانات تُملأ باليد؛ أما مستند يولّده النظام فخانته الفارغة إقرار مطبوع
+    بأن البيانات ناقصة، في ورقة تُقدَّم لبنك أو سفارة.
+
+    والحذف على مستوى **الجزء** لا الصفّ كله: صفّ «الراتب الرسمي: 2500 ·
+    الراتب الفعلي: ــ» فيه رقم صحيح؛ حذفه كله يُضيّع بياًنا موجوًدا لأن
+    بياًنا آخر مفقود. فيُحذف الجزء الناقص ويبقى الباقي، وإن خلا الصفّ
+    كلّه حُذف — لأن عنوان بلا قيمة يسأل قارئه عن سبب الفراغ.
+    """
+    def clean_cell(m):
+        inner = m.group(2)
+        if _UNFILLED not in inner:
+            return m.group(0)
+        parts = [s for s in _SEG_SPLIT.split(inner) if _UNFILLED not in s]
+        return m.group(1) + _SEG_JOIN.join(parts) + m.group(3)
+
+    text = _CELL_RE.sub(clean_cell, html_text)
+
+    def drop_empty_row(m):
+        row = m.group(0)
+        cells = _CELL_RE.findall(row)
+        if not cells:
+            return row
+        # صفّ خلت خانته العربية (الأولى) من كل قيمة: لا معنى لعنوانه وحده
+        first = re.sub(r"<[^>]+>", "", cells[0][1]).strip()
+        return "" if not first else row
+
+    text = _ROW_RE.sub(drop_empty_row, text)
+    # ما بقي منها في نصّ جارٍ يصير شرطة: النقاط تدعو للكتابة باليد على
+    # مستند صادر، والشرطة تُقرأ نقًصا.
+    return text.replace(_UNFILLED, "—")
+
+
 def _fill_html(t: models.DocumentTemplate, ctx: dict) -> str:
     def repl(m):
         key = m.group(1)
-        return html.escape(str(ctx.get(key, "................")))
+        val = ctx.get(key)
+        if val is None or str(val).strip() == "":
+            return _UNFILLED
+        return html.escape(str(val))
     filled = _TOKEN_RE.sub(repl, _sanitize_body_html(t.body_html))
-    return _wrap_printable(t, ctx, filled)
+    return _wrap_printable(t, ctx, _prune_unfilled(filled))
 
 
 def _generate_reference_no(db: Session, template_code: str | None, company_id: int,
@@ -545,14 +620,18 @@ def _wrap_printable(t: "models.DocumentTemplate", ctx: dict, body: str) -> str:
     branch_name = html.escape(str(ctx.get("branch_name", "")))
 
     def cell(ar_label, en_label, value):
-        v = html.escape(str(value)) if value else "................"
+        # FRM-01 — حقل بلا قيمة لا يُطبع نائبه. النقاط موضع كتابة باليد في
+        # نموذج ورقي؛ وفي مستند يولّده النظام هي إقرار بأن البيانات ناقصة
+        # مطبوع في ورقة رسمية. فتُترك الخانة فارغة بصريًّا (شرطة) ويُقرأ
+        # النقص بوصفه نقًصا لا مكاًنا للكتابة.
+        v = html.escape(str(value)) if value else "—"
         return f"<td><span class='muted'>{ar_label} / {en_label}</span><br>{v}</td>"
 
     info_grid = f"""
 <table class="info-grid">
 <tr>{cell('اسم الموظف', 'Employee Name', ctx.get('employee_name'))}
 {cell('الرقم المدني', 'Civil ID', ctx.get('civil_id'))}</tr>
-<tr>{cell('الرقم الوظيفي', 'Employee ID', ctx.get('employee_id'))}
+<tr>{cell('الرقم الوظيفي', 'Employee No.', ctx.get('employee_no'))}
 {cell('المسمى الوظيفي', 'Job Title', ctx.get('job_title'))}</tr>
 <tr>{cell('القسم', 'Department', ctx.get('department'))}
 {cell('الفرع', 'Branch', ctx.get('branch_name'))}</tr>

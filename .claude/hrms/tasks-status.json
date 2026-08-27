@@ -20,19 +20,19 @@
     "updated": ""
   },
   "ARC-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "مكوّن DocumentVersions + version_count/uploaded_by_name/size_bytes في /documents/history · 10 اختبارات في test_zzz_document_versions.py · 626 خضراء",
+    "updated": "2026-08-27"
   },
   "ARC-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "مركَّب على DocGrid (شركة+فرع) وCustomDocsSection ومستندات الموظف — حارس يتحقّق من الأسطح الثلاثة · 626 خضراء",
+    "updated": "2026-08-27"
   },
   "ARC-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "NeedsCompany مربوط بـneedsCompany — حالة Empty ≠ Loading ≠ Unauthorized · محروس باختبار · 626 خضراء",
+    "updated": "2026-08-27"
   },
   "GC-01": {
     "status": "done",

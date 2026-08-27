@@ -98,7 +98,7 @@ DEFAULT_TEMPLATES = [
      _tpl("HRMS-PR-001", "شهادة راتب", "Salary Certificate",
           "تشهد {{company_name}} بأن السيد/السيدة {{employee_name}}، حامل الرقم المدني {{civil_id}}، يعمل لديها بوظيفة {{job_title}} منذ تاريخ {{hire_date}}، ويتقاضى راتبًا أساسيًا قدره {{basic_salary}} د.ك، وبدلات {{allowances_total}} د.ك، بإجمالي شهري {{gross_salary}} د.ك. صدرت هذه الشهادة بناءً على طلبه لتقديمها إلى {{target_entity}} دون أدنى مسؤولية على الشركة تجاه الغير.",
           "{{company_name}} certifies that Mr./Ms. {{employee_name}}, Civil ID {{civil_id}}, has been employed as {{job_title}} since {{hire_date}} and receives a basic salary of KWD {{basic_salary}}, allowances of KWD {{allowances_total}}, totaling KWD {{gross_salary}} monthly. This certificate is issued upon request for submission to {{target_entity}} without liability to third parties.",
-          [("[____] /KWD البدلات [____] /KWD الراتب الأساسي", "Basic Salary Allowances"), ("[Bank/Embassy/Other] الجهة الموجه إليها [____] /KWD الإجمالي", "Total Salary Addressed To")],
+          [("الراتب الأساسي: {{basic_salary}} د.ك · البدلات: {{allowances_total}} د.ك", "Basic Salary / Allowances"), ("الإجمالي: {{gross_salary}} د.ك · الجهة الموجّه إليها: {{target_entity}}", "Total Salary / Addressed To")],
           [("Prepared by HR", "إعداد الموارد البشرية"), ("Manager Review", "مراجعة المدير"), ("Authorized Signatory", "المخول بالتوقيع")], has_ack=False)),
     ("HRMS-PR-002", "شهادة لمن يهمه الأمر", "To Whom It May Concern Certificate", "الشهادات والخطابات",
      _tpl("HRMS-PR-002", "شهادة لمن يهمه الأمر", "To Whom It May Concern Certificate",
@@ -128,7 +128,7 @@ DEFAULT_TEMPLATES = [
      _tpl("HRMS-PR-006", "بيان بيانات موظف", "Employee Data Statement",
           "بيان بيانات الموظف/ة {{employee_name}} (رقم مدني {{civil_id}}، وظيفة {{job_title}}، تاريخ التعيين {{hire_date}}، نوع العقد {{contract_type}}) مستخرج من نظام الموارد البشرية ويعرض البيانات المسجلة وقت الإصدار. أي تعديل لاحق يخضع لسجل التدقيق والصلاحيات المعتمدة.",
           "Employee data statement for {{employee_name}} (Civil ID {{civil_id}}, Job {{job_title}}, Hire Date {{hire_date}}, Contract {{contract_type}}) generated from the HRMS at issue time. Subsequent changes are subject to audit logs and approved permissions.",
-          [("[ ] نوع العقد [DD/MM/YYYY] تاريخ التعيين", "Joining Date Contract Type"), ("[____] /KWD الراتب الفعلي [____] /KWD الراتب الرسمي", "Official Salary Actual Salary"), ("[ ] مكان العمل الفعلي [ ] مكان العمل الرسمي", "Official Work Location Actual Work Location"), ("[DD/MM/YYYY] انتهاء الإقامة [ ] رقم الإقامة", ". Residency No Residency Expiry")],
+          [("تاريخ التعيين: {{hire_date}} · نوع العقد: {{contract_type_ar}}", "Joining Date / Contract Type"), ("الراتب الرسمي: {{official_salary}} د.ك · الراتب الفعلي: {{actual_salary}} د.ك", "Official Salary / Actual Salary"), ("مكان العمل: {{work_location}}", "Work Location"), ("رقم الإقامة: {{residency_no}} · انتهاء الإقامة: {{residency_expiry}}", "Residency No. / Expiry")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-007", "شهادة مدة خدمة", "Length of Service Certificate", "الشهادات والخطابات",
      _tpl("HRMS-PR-007", "شهادة مدة خدمة", "Length of Service Certificate",
@@ -140,13 +140,13 @@ DEFAULT_TEMPLATES = [
      _tpl("HRMS-PR-008", "خطاب تحويل راتب للبنك", "Bank Salary Transfer Letter",
           "السادة {{bank_name}} المحترمين، نفيدكم بأن الموظف/ة {{employee_name}} يعمل لدى {{company_name}} بوظيفة {{job_title}} منذ {{hire_date}} وبإجمالي راتب شهري {{gross_salary}} د.ك، وقد تقرر تحويل راتبه الشهري إلى الحساب رقم {{iban}} اعتبارًا من راتب شهر {{effective_month}}، وذلك دون التزام مالي إضافي على الشركة تجاه البنك.",
           "Dear {{bank_name}}, we confirm that {{employee_name}} is employed by {{company_name}} as {{job_title}} since {{hire_date}} with a total monthly salary of KWD {{gross_salary}}. The monthly salary shall be transferred to account {{iban}} effective from payroll month {{effective_month}}, without additional liability on the company toward the bank.",
-          [("[ ] اسم البنك", "IBAN/"), ("[ ] رقم الحساب", "Bank Name Account / IBAN"), ("[DD/MM/YYYY] تاريخ البدء [____] /KWD راتب التحويل", "Transfer Salary Effective Date")],
+          [("اسم البنك: {{bank_name}}", "Bank Name"), ("رقم الحساب / الآيبان: {{bank_account_iban}}", "Account / IBAN"), ("راتب التحويل: {{basic_salary}} د.ك · تاريخ البدء: {{transfer_start_date}}", "Transfer Salary / Effective Date")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-009", "إفادة استمرارية راتب", "Salary Continuity Confirmation", "الشهادات والخطابات",
      _tpl("HRMS-PR-009", "إفادة استمرارية راتب", "Salary Continuity Confirmation",
           "تفيد {{company_name}} بأن الموظف/ة {{employee_name}} ما زال على رأس عمله، وأن راتبه يصرف وفق دورة الرواتب المعتمدة بالشركة، مع خضوع أي تغيير لاحق للقرارات والسياسات الداخلية.",
           "{{company_name}} confirms that {{employee_name}} remains actively employed and receives salary according to the company payroll cycle. Any future change is subject to internal decisions and policies.",
-          [("[Bank/Cash] طريقة الصرف [Monthly] دورة الصرف", "Payroll Cycle Payment Method"), ("[Active] الحالة [MM/YYYY] آخر راتب مصروف", "Last Payroll Month Status")],
+          [("دورة الصرف: {{payroll_cycle}} · طريقة الصرف: {{payment_method}}", "Payroll Cycle / Payment Method"), ("الحالة: {{employment_status}} · آخر راتب مصروف: {{last_payroll_month}}", "Status / Last Payroll Month")],
           [("Prepared By", "إعداد"), ("Reviewed By", "مراجعة"), ("Approved By", "اعتماد")], has_ack=False)),
     ("HRMS-PR-010", "خطاب موجه لجهة رسمية", "Official Entity Letter", "الشهادات والخطابات",
      _tpl("HRMS-PR-010", "خطاب موجه لجهة رسمية", "Official Entity Letter",
@@ -284,7 +284,7 @@ DEFAULT_TEMPLATES = [
      _tpl("HRMS-PR-032", "كشف راتب شهري مبسط", "Simplified Monthly Payroll Statement",
           "كشف رواتب الفترة {{period}}: الأساسي {{basic_total}} د.ك، البدلات {{allowances_total}} د.ك، الإضافي {{overtime_total}} د.ك، خصم الغياب {{absence_deduction}} د.ك، السلف/الأقساط {{loan_deductions}} د.ك، الخصومات الأخرى {{other_deductions}} د.ك، وصافي الرواتب {{net_total}} د.ك. حالة المسيّر: {{payroll_status}}.",
           "Payroll statement for {{period}}: basic {{basic_total}} KWD, allowances {{allowances_total}} KWD, overtime {{overtime_total}} KWD, absence deduction {{absence_deduction}} KWD, loans {{loan_deductions}} KWD, other deductions {{other_deductions}} KWD, net {{net_total}} KWD. Payroll status: {{payroll_status}}.",
-          [("[____] البدلات [____] الراتب الأساسي", "Basic Salary Allowances"), ("[____] المكافآت [____] العمل الإضافي", "Overtime Bonuses"), ("[____] السلف [____] الخصومات", "Deductions Advances"), ("[Bank/Cash] طريقة الدفع [____] صافي الراتب د.ك", "Net Salary Payment Method")],
+          [("الراتب الأساسي: {{basic_salary}} د.ك · البدلات: {{allowances_total}} د.ك", "Basic Salary / Allowances"), ("العمل الإضافي: {{overtime_pay}} د.ك · المكافآت: {{bonuses}} د.ك", "Overtime / Bonuses"), ("الخصومات: {{total_deductions}} د.ك · السلف: {{advances}} د.ك", "Deductions / Advances"), ("صافي الراتب: {{net_salary}} د.ك · طريقة الدفع: {{payment_method}}", "Net Salary / Payment Method")],
           [("Prepared by Accounts", "إعداد المحاسبة"), ("HR Review", "مراجعة الموارد البشرية"), ("Manager Approval", "اعتماد المدير")], has_ack=False)),
     ("HRMS-PR-033", "إشعار نقص مستندات", "Missing Documents Notice", "المعاملات الحكومية والمستندات",
      _tpl("HRMS-PR-033", "إشعار نقص مستندات", "Missing Documents Notice",
@@ -496,6 +496,7 @@ def build_company(db, cfg) -> dict:
         emps.append(e)
     db.flush()
 
+
     # هيكل تنظيمي (P0-07): إدارات فعلية + مدير مباشر لكل موظف — بيانات ديمو كانت بلا
     # أقسام ولا مديرين إطلاًقا رغم وجود الحقول (Employee.department_id/direct_manager_id).
     depts = [
@@ -605,6 +606,15 @@ def run():
                        must_change_password=force_pw_change))
 
     infos = [build_company(db, cfg) for cfg in COMPANIES]
+
+    # FRM-01 — الرقم الوظيفي يُولَّد عند الإنشاء من الواجهة، ولم تكن البذرة
+    # تفعل. فكانت مستندات العرض تطبع «—» مكان رقم إلزامي — وقبل الإصلاح
+    # كانت تطبع معرّف الصفّ في القاعدة تحت عنوان «الرقم الوظيفي».
+    # والتعبئة شاملة لا على قائمة بعينها: بعض الموظفين يُنشأون في مسار آخر
+    # (موظف المدير)، وقائمة يدوية تُغفلهم.
+    from . import employee_no as _emp_no
+    _emp_no.backfill_missing(db)
+    db.flush()
 
     # أنواع الطلبات (عامة) وأنواع المستندات
     for rt in DEFAULT_REQUEST_TYPES:
