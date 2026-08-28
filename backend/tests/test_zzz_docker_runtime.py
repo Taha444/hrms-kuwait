@@ -107,3 +107,42 @@ def test_the_production_image_is_the_one_at_the_repo_root():
         "Dockerfile الجذر لا ينسخ الخادم — ليس صورة الإنتاج"
     )
     assert "uvicorn" in text, "لا أمر تشغيل للخادم في صورة الإنتاج"
+
+
+# ---------------------------------------------------------------------------
+# اعتماديات بايثون: ما تستورده الشيفرة يجب أن يُعلَن
+# ---------------------------------------------------------------------------
+#: استيراد داخل دالة لا يظهر عند الإقلاع ولا في الاختبارات المحلية —
+#: يظهر أول مرة على الخادم البعيد وقت أول رفع ملف.
+_LAZY_IMPORTS = {"boto3": "app/storage.py — STORAGE_BACKEND=s3"}
+
+
+def test_lazily_imported_packages_are_declared():
+    """حزمة تُستورد عند الحاجة يجب أن تكون في requirements.
+
+    ``S3Storage`` يستورد ``boto3`` داخل ``__init__`` كي لا يُثقل الإقلاع
+    المحلي. وكان غائًبا عن ``requirements.txt``: الشيفرة تعرض قدرة لا
+    تحملها الصورة، فتُضبط ``STORAGE_BACKEND=s3`` على AWS ويسقط الخادم
+    عند أول رفع مرفق — بعيًدا عن أي بيئة يُجرَّب فيها.
+    """
+    reqs = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    declared = [line.split("==")[0].split("[")[0].strip().lower()
+                for line in reqs.splitlines()
+                if line.strip() and not line.lstrip().startswith("#")]
+    missing = [pkg for pkg in _LAZY_IMPORTS if pkg.lower() not in declared]
+    assert not missing, (
+        f"مستوردة في الشيفرة وغير معلَنة: "
+        f"{[(p, _LAZY_IMPORTS[p]) for p in missing]}"
+    )
+
+
+def test_the_s3_backend_still_needs_the_declared_package():
+    """توثيق سبب الحارس: لو زال الاستيراد زال سببه.
+
+    يفشل هذا عمًدا إن حُذف دعم S3 — عندها يُحذف ``boto3`` من القائمتين
+    معًا، لا يُترك حارس يحرس ما لم يعد موجوًدا.
+    """
+    src = (ROOT / "backend" / "app" / "storage.py").read_text(encoding="utf-8")
+    assert "import boto3" in src, (
+        "لم تعد storage.py تستورد boto3 — احذف الحزمة و_LAZY_IMPORTS معًا"
+    )

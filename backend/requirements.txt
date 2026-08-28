@@ -24,6 +24,10 @@ psycopg2-binary==2.9.10
 pyotp==2.9.0
 # رمز QR لتفعيل authenticator app (يستخدم أيضًا في P2-01 verification)
 qrcode[pil]==8.0
+# تخزين المرفقات على S3 (STORAGE_BACKEND=s3) — app/storage.py يستورده عند
+# الحاجة فقط، فغيابه لا يظهر محليًّا ويُسقط الخادم على AWS عند أول إقلاع.
+boto3==1.43.82
+
 # اختبارات
 pytest==8.3.4
 httpx==0.28.1
