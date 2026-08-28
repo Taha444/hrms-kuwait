@@ -32,6 +32,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from .font_coverage import find_arabic_fonts
+
 ASSET = Path(__file__).parent / "assets" / "GOV-CONTRACT-RENEWAL.docx"
 
 #: بصمة النموذج الرسمي كما سلّمته الهيئة. اختلافها يعني أن أحًدا عدّله.
@@ -454,11 +456,6 @@ def generate(ctx: dict) -> tuple[bytes, str, str, list[str], dict]:
 # ---------------------------------------------------------------------------
 # GC-09 — جاهزية البيئة لإخراج عربية سليمة
 # ---------------------------------------------------------------------------
-#: أسماء عائلات خطوط تدعم العربية. وجود واحدة يكفي.
-_ARABIC_FONT_HINTS = ("noto", "amiri", "kacst", "scheherazade", "dejavu",
-                      "arial", "tahoma", "times", "traditional")
-
-
 def environment_report() -> dict:
     """هل تستطيع هذه البيئة إخراج العقد بعربية سليمة؟
 
@@ -467,39 +464,28 @@ def environment_report() -> dict:
     وتُحسب بصمته، ويصل الموظف ليوقّعه. عطل لا يظهر إلا لمن يفتح الورقة.
 
     فيُفحص هنا ويظهر في فحص الصحّة، بدل أن يُكتشف عند التقديم.
+
+    **والفحص يقرأ الخط لا اسمه.** كان يعدّ كل ما يحمل ``noto``
+    خطًّا عربيًّا، فردّ على الإنتاج ``ok`` وأدرج دليلاً من خطوط سنهالية
+    وماليالامية ولاوية. والقياس الآن بجدول ``cmap``: أفيه ألف ولام وميم؟
     """
     exe = soffice_path()
-    fonts: list[str] = []
-    for root in ("/usr/share/fonts", "/usr/local/share/fonts",
-                 str(Path.home() / ".fonts"), r"C:\Windows\Fonts"):
-        d = Path(root)
-        if not d.is_dir():
-            continue
-        try:
-            for f in d.rglob("*"):
-                if f.suffix.lower() in (".ttf", ".otf", ".ttc"):
-                    low = f.name.lower()
-                    if any(h in low for h in _ARABIC_FONT_HINTS):
-                        fonts.append(f.name)
-                        if len(fonts) >= 5:
-                            break
-        except OSError:
-            continue
-        if len(fonts) >= 5:
-            break
+    fonts = find_arabic_fonts()
 
-    can_pdf = bool(exe)
+    # «يقدر» تعني يُخرج ورقة **مقروءة**. المحرّك وحده يُخرج PDF بمربّعات
+    # فارغة وينجح — فلو حُسب ذلك قدرة لقرأها المسلِّم جاهزيةً وسلّم الورقة.
+    can_pdf = bool(exe) and bool(fonts)
     return {
         "libreoffice": exe or None,
         "arabic_fonts_found": fonts[:5],
         "can_render_pdf": can_pdf,
-        "status": ("ok" if can_pdf and fonts
-                   else "degraded" if can_pdf or fonts
+        "status": ("ok" if exe and fonts
+                   else "degraded" if exe or fonts
                    else "unavailable"),
         # لا يُوصف الحال بـ«جاهز» ما لم يكن الاثنان معًا: LibreOffice بلا
         # خطوط عربية أسوأ من غيابه — يُنتج ملًفا يبدو سليًما وهو غير مقروء.
-        "note": ("جاهز لإخراج PDF بعربية سليمة" if can_pdf and fonts else
+        "note": ("جاهز لإخراج PDF بعربية سليمة" if exe and fonts else
                  "LibreOffice موجود بلا خطوط عربية — العقد سيخرج بمربّعات فارغة"
-                 if can_pdf else
+                 if exe else
                  "LibreOffice غير مثبَّت — يُسلَّم docx بالتخطيط الرسمي بدل PDF"),
     }
