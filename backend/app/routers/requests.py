@@ -583,8 +583,16 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
     audit(db, user, f"request_{data.decision}", "request", req.id,
           detail=data.note, request=request, company_id=req.company_id,
           correlation_id=f"req:{req.id}",
+          # BKL-02 — السبب حقل مُهيكَل لا نصّ حرّ في detail: من يبحث عن
+          # «لماذا رُفض» يحتاج أن يُصفّي عليه لا أن يقرأ ألف سطر.
+          reason=data.note, result="success",
           before=before,
           after={"status": req.status, "current_stage": req.current_stage})
+    # BKL-02 — سطر التدقيق يُضاف إلى الجلسة ولا يُلتزَم. و``workflow.decide``
+    # يلتزم داخله **قبل** إضافته، فيُحفظ القرار ويُهمَل سجلّه: قرار نُفِّذ
+    # بلا أثر يقول من اتّخذه ومتى ومن أي عنوان. وهو أخطر من غياب التدقيق
+    # كلّه، لأن السجلّ يبدو كامًلا وفيه فجوة لا تُرى.
+    db.commit()
     st = workflow.status_info(req.status)
     return {"ok": True, "status": req.status, "status_label": st["label"], "current_stage": req.current_stage}
 
@@ -601,8 +609,9 @@ def cancel(req_id: int, request: Request, note: str | None = None,
         raise HTTPException(status_code=403, detail=str(e))
     audit(db, user, "request_cancel", "request", req.id,
           detail=note, request=request, company_id=req.company_id,
-          correlation_id=f"req:{req.id}", before=before,
+          correlation_id=f"req:{req.id}", before=before, reason=note,
           after={"status": req.status})
+    db.commit()   # BKL-02 — بلا التزام يُهمَل سطر التدقيق ويبقى الإلغاء بلا أثر
     return {"ok": True, "status": req.status}
 
 
@@ -624,6 +633,7 @@ def resubmit_request(req_id: int, request: Request, data: dict | None = None,
           request=request, company_id=req.company_id,
           correlation_id=f"req:{req.id}", before=before,
           after={"status": req.status, "current_stage": req.current_stage})
+    db.commit()   # BKL-02 — نفس السبب: إعادة التقديم تُحفَظ وسجلّها يُهمَل
     return {"ok": True, "status": req.status, "current_stage": req.current_stage}
 
 

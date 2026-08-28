@@ -130,9 +130,9 @@
     "updated": "2026-08-28"
   },
   "BKL-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الكتالوج والخادم متّسقان (مقارنة فعلية بالخادم لا بالشيفرة) + أُصلح عيب IN (NULL,x) الذي كان يجعل superseded_by تُرجع None دائًما في requests.py وworkflow.py · 8 اختبارات بفكستشر يصنع حالة استبدال حقيقية · 659 خضراء",
+    "updated": "2026-08-28"
   },
   "BKL-06": {
     "status": "done",

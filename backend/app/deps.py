@@ -393,10 +393,24 @@ def _is_internal(ip: str) -> bool:
             or addr in ipaddress.ip_network("100.64.0.0/10"))
 
 
+
+def _actor_branch(db: Session, user: "models.User | None") -> int | None:
+    """فرع الفاعل وقت الفعل — من ملف موظفه إن وُجد.
+
+    قرار يخصّ فرًعا يجب أن يُقرأ بفرعه: «من اعتمد» وحدها لا تكفي حين يكون
+    لكل فرع مسؤوله.
+    """
+    if user is None or not getattr(user, "employee_id", None):
+        return getattr(user, "scope_branch_id", None) if user else None
+    emp = db.get(models.Employee, user.employee_id)
+    return (emp.branch_id if emp else None) or getattr(user, "scope_branch_id", None)
+
+
 def audit(db: Session, user: models.User | None, action: str, entity_type: str | None = None,
           entity_id: int | None = None, detail: str | None = None, request: Request | None = None,
           company_id: int | None = None, before: dict | None = None, after: dict | None = None,
-          correlation_id: str | None = None):
+          correlation_id: str | None = None, result: str = "success",
+          reason: str | None = None, branch_id: int | None = None):
     """تسجيل عملية في سجل التدقيق.
 
     company_id: تجاوز اختياري لشركة الفاعل (user.company_id) — ضروري حين ينفّذ فاعل بلا
@@ -425,6 +439,15 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
         user_agent=ua,
         original_user_id=original_uid,
         correlation_id=correlation_id,
+        # BKL-02 — الصفة وقت الفعل لا وقت القراءة: الأدوار تتغيّر، ومن
+        # يفتّش في قرار بعد شهور يحتاج أن يعرف بأي صفة اتُّخذ حينها.
+        actor_role=(user.role if user else None),
+        branch_id=(branch_id if branch_id is not None
+                   else _actor_branch(db, user)),
+        # النتيجة حقل مُهيكَل لا نصّ حر: «لا يُسجَّل Success عند فشل
+        # العملية» قاعدة لا تُفرَض على نصّ يُقرأ بالعين.
+        result=result,
+        reason=reason,
         before_json=before,
         after_json=after,
     )

@@ -1151,6 +1151,19 @@ class AuditLog(Base):
     #   - before_json / after_json: حالة الكيان قبل وبعد التعديل
     original_user_id: Mapped[int | None] = mapped_column(Integer)
     user_agent: Mapped[str | None] = mapped_column(String(400))
+    # BKL-02 — التدقيق المركزي يطلب أربعة حقول لم تكن مُهيكَلة:
+    #
+    # الدور والفرع: من يفتّش في قرار بعد شهور يسأل «بأي صفة قرّر، وعن أي
+    # فرع؟» — والإجابة من ملف المستخدم اليوم لا تصلح: الأدوار تتغيّر،
+    # والسجلّ يجب أن يحفظ الصفة **وقت الفعل** لا وقت القراءة.
+    #
+    # النتيجة والسبب: كانا يُدسّان في detail نصًّا حًرا، فلا يُصفّى عليهما
+    # ولا يُعدّان. و«لا يُسجَّل Success عند فشل العملية» قاعدة لا تُفرَض
+    # على نصّ حر.
+    actor_role: Mapped[str | None] = mapped_column(String(40))
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"))
+    result: Mapped[str | None] = mapped_column(String(12))   # success | failure
+    reason: Mapped[str | None] = mapped_column(String(500))
     correlation_id: Mapped[str | None] = mapped_column(String(80), index=True)
     before_json: Mapped[dict | None] = mapped_column(JSON)
     after_json: Mapped[dict | None] = mapped_column(JSON)
