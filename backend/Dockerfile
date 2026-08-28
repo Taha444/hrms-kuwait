@@ -13,7 +13,7 @@ WORKDIR /app
 # للتقديم. ولهذا تُثبَّت هنا لا تُترك لافتراض أن الصورة تحملها.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev tesseract-ocr tesseract-ocr-ara tesseract-ocr-eng \
-    libreoffice-writer fonts-noto-core fonts-noto-extra fonts-amiri \
+    libreoffice-writer fonts-noto-core fonts-noto-extra \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

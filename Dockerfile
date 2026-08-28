@@ -25,10 +25,15 @@ WORKDIR /app
 # **وهذا الملف هو ما تبنيه المنصّة، لا backend/Dockerfile.** أُضيفت الحزم
 # هناك أوًلا فلم يتغيّر شيء على الإنتاج، وكشفه فحص /api/health/deep.
 # ويربط الملفين حارس في tests/test_zzz_docker_runtime.py فلا يفترقان ثانيًة.
+#
+# وأسماء الحزم تُكتب كما هي في المستودع لا كما تُذكر في التوثيق العام:
+# «fonts-amiri» أسقط بناءً كامًلا لأن اسمها في Debian غير ذلك. وNoto
+# Naskh Arabic في fonts-noto-core تكفي للعربية، فاكتُفي بالمُتحقَّق منه —
+# اسم غير مؤكَّد يوقف النشر كلّه لا الميزة وحدها.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev \
     tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara \
-    libreoffice-writer fonts-noto-core fonts-noto-extra fonts-amiri \
+    libreoffice-writer fonts-noto-core fonts-noto-extra \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./backend/requirements.txt
