@@ -115,9 +115,9 @@
     "updated": ""
   },
   "BKL-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الجذر: decide/cancel/resubmit تسجّل ولا تلتزم فتضيع السجلّات · + أعمدة actor_role/branch_id/result/reason تُملأ في audit() مركزيًّا · ترحيل y4q5r6s7t8u · 7 اختبارات منها «لا نجاح عند الفشل» + حارس نحويّ لكل نقاط الكتابة · 666 خضراء",
+    "updated": "2026-08-28"
   },
   "BKL-03": {
     "status": "open",

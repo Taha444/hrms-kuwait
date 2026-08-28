@@ -15,7 +15,7 @@ import logging
 import re
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import models
@@ -108,6 +108,11 @@ def create_task(
                    # status افتراضه يُطبَّق عند الإدراج، فهو None قبل flush
                    and (o.status or "open") in ("open", "in_progress")]
         if pending:
+            # BKL-03 — تُعاد المهمة الموجودة كما كان، لكن يُوسَم أنها لم
+            # تُنشأ الآن. بلا هذا التمييز يعدّ المسح اليومي التخطّي
+            # إنشاءً، فيقول «وُلّدت 24 مهمة» وقد أُنشئ صفر — والمشغّل
+            # يقرأ الرقم فيظنّ أن المهام تتكرّر كل تشغيل.
+            pending[0].__dict__["_hrms_was_created"] = False
             return pending[0]
         existing = db.scalar(
             select(models.Task).where(
@@ -116,6 +121,7 @@ def create_task(
             )
         )
         if existing:
+            existing.__dict__["_hrms_was_created"] = False
             return existing
     from datetime import datetime, timedelta, timezone
     sla_due_at: datetime | None = None
@@ -147,6 +153,16 @@ def create_task(
     return task
 
 
+
+def was_created(task) -> bool:
+    """هل أُنشئت هذه المهمة الآن، أم أُعيدت لأنها موجودة؟
+
+    BKL-03 — ``create_task`` تعيد المهمة في الحالتين (وهذا مقصود: أحد عشر
+    منادًيا يعتمد على القيمة). فبلا سؤال صريح يعدّ المنادي التخطّي إنشاءً.
+    """
+    return task is not None and task.__dict__.get("_hrms_was_created", True)
+
+
 def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list[models.User]:
     q = select(models.User).where(models.User.role.in_(roles), models.User.is_active == True)  # noqa: E712
     if company_id is not None:
@@ -154,21 +170,34 @@ def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list
     return list(db.scalars(q).all())
 
 
-def notify_roles(db: Session, company_id: int | None, roles: list[str], **kwargs) -> None:
-    """ينشئ مهمة لكل مستخدم ضمن الأدوار المحددة داخل الشركة."""
+def notify_roles(db: Session, company_id: int | None, roles: list[str], **kwargs) -> int:
+    """ينشئ مهمة لكل مستخدم ضمن الأدوار المحددة. **يعيد عدد ما أُنشئ فعًلا.**
+
+    BKL-03 — كان يعيد None، فيعدّ المسح اليومي المرور لا الإنشاء: يقول
+    «وُلّدت 10 مهام» وقد وجدها كلها موجودة فلم يُنشئ شيًئا. والمشغّل يقرأ
+    الرقم فيظنّ أن المهام تتكرّر كل تشغيل.
+    """
     base_dedup = kwargs.pop("dedup_key", None)
+    made = 0
     for user in users_by_role(db, company_id, roles):
         dk = f"{base_dedup}:u{user.id}" if base_dedup else None
-        create_task(db, company_id=company_id, assignee_user_id=user.id, dedup_key=dk, **kwargs)
+        if was_created(create_task(db, company_id=company_id,
+                                   assignee_user_id=user.id,
+                                   dedup_key=dk, **kwargs)):
+            made += 1
+    return made
 
 
-def notify_employee_self(db: Session, employee_id: int, **kwargs) -> None:
-    """يُشعر العامل نفسه إن كان له حساب خدمة ذاتية."""
+def notify_employee_self(db: Session, employee_id: int, **kwargs) -> int:
+    """يُشعر العامل نفسه إن كان له حساب خدمة ذاتية. يعيد عدد ما أُنشئ."""
     user = db.scalar(select(models.User).where(models.User.employee_id == employee_id))
-    if user:
-        base_dedup = kwargs.pop("dedup_key", None)
-        dk = f"{base_dedup}:u{user.id}" if base_dedup else None
-        create_task(db, company_id=user.company_id, assignee_user_id=user.id, dedup_key=dk, **kwargs)
+    if not user:
+        return 0
+    base_dedup = kwargs.pop("dedup_key", None)
+    dk = f"{base_dedup}:u{user.id}" if base_dedup else None
+    return 1 if was_created(create_task(
+        db, company_id=user.company_id, assignee_user_id=user.id,
+        dedup_key=dk, **kwargs)) else 0
 
 
 # ----------------------------- المسح اليومي -----------------------------
@@ -196,7 +225,7 @@ def expiry_severity(days_left: int) -> str:
 def daily_scan(db: Session) -> dict:
     """يفحص الإقامات/الجوازات/التراخيص/المستندات ويولّد مهامًا للمستلِمين."""
     today = kuwait_today()
-    created = 0
+    _before = db.scalar(select(func.count()).select_from(models.Task)) or 0
 
     companies = {c.id: c for c in db.scalars(select(models.Company)).all()}
 
@@ -231,7 +260,6 @@ def daily_scan(db: Session) -> dict:
             related_entity_type="permit", related_entity_id=permit.id,
             severity=sev, due_date=permit.expiry_date, dedup_key=dk,
         )
-        created += 1
 
     # 2) المستندات (جوازات وغيرها + custom docs)
     #    R9 — للمستندات المخصّصة (type يبدأ بـ"custom:") التنبيه opt-in عبر notify_on_expiry.
@@ -329,7 +357,6 @@ def daily_scan(db: Session) -> dict:
                 related_entity_type="document", related_entity_id=doc.id,
                 severity=sev, due_date=doc.expiry_date, dedup_key=dk,
             )
-        created += 1
 
     # 3) التراخيص + مقارنة العمالة بالمسموح
     for lic in db.scalars(select(models.License).where(models.License.status == "active")).all():
@@ -346,7 +373,6 @@ def daily_scan(db: Session) -> dict:
                     severity=sev, due_date=lic.expiry_date,
                     dedup_key=f"license_expiring:{lic.id}:{bucket}",
                 )
-                created += 1
         # تجاوز سعة العمالة
         if lic.allowed_workers:
             actual = len(db.scalars(
@@ -363,10 +389,15 @@ def daily_scan(db: Session) -> dict:
                     related_entity_type="license", related_entity_id=lic.id,
                     severity="warning", dedup_key=f"capacity:{lic.id}",
                 )
-                created += 1
 
     db.commit()
-    return {"generated": created, "scanned_at": today.isoformat()}
+    # BKL-03 — العدد يُقاس من القاعدة لا يُجمع بالنيّة.
+    #
+    # جمعه في كل فرع يعني رقًما يعتمد على ألّا يُنسى موضع إنشاء — وقد نُسي
+    # فعًلا: بعد إصلاح أوّل صار العدّاد 32 والمُنشأ 60. والقياس على الفرق
+    # يبقى صحيًحا مهما أُضيفت مواضع، لأنه يصف النتيجة لا الطريق إليها.
+    made = (db.scalar(select(func.count()).select_from(models.Task)) or 0) - _before
+    return {"generated": made, "scanned_at": today.isoformat()}
 
 
 def sla_scan(db: Session) -> dict:
