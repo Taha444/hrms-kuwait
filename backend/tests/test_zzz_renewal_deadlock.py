@@ -212,3 +212,114 @@ def test_a_case_that_reached_verify_can_always_be_closed(client, new_case):
     )
     assert client.get(f"/api/renewals/{rid}",
                       headers=pro).json()["status"] == "completed"
+
+
+# ==========================================================================
+# RNW-D2 — الإنقاذ: المنع لا يحرّر ما هو عالق بالفعل
+# ==========================================================================
+def _strand(rid: int) -> None:
+    """يضع المعاملة في القفلة كما تبدو في البيانات القديمة.
+
+    الالتفاف على الواجهة مقصود: البوّابة الجديدة تمنع الوصول إلى هذه
+    الحالة، والمطلوب اختبار **الخروج** منها لا الدخول إليها. ولو بُني
+    الاختبار عبر الواجهة لما أمكن إنتاج الحالة أصًلا، ولمرّ اختبار الإنقاذ
+    وهو لم يختبر إنقاًذا.
+    """
+    db = SessionLocal()
+    try:
+        rn = db.get(models.ResidencyRenewal, rid)
+        rn.status = "pending_hr_verify"
+        rn.new_expiry_date = None
+        rn.new_permit_number = None
+        rn.gov_reference_no = None
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_a_stranded_case_can_be_completed_in_place(client, new_case):
+    """**الإنقاذ**: معاملة عالقة تُستكمل من مرحلتها وتُغلق."""
+    pro, rid = new_case()
+    _reach_awaiting_civil_card(client, pro, rid)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "civil_id"}, files=_f())
+    _strand(rid)
+
+    fin = client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        **GOV_DATA,
+        "new_expiry_date": (date.today() + timedelta(days=730)).isoformat(),
+    })
+    assert fin.status_code == 200, (
+        f"المعاملة العالقة ما زالت ترفض الاستكمال: {fin.text}"
+    )
+
+    hr = auth_headers(login(client, *HR))
+    done = client.post(f"/api/renewals/{rid}/hr-verify", headers=hr,
+                       data={"note": "أُنقذت"})
+    assert done.status_code == 200, done.text
+    assert client.get(f"/api/renewals/{rid}",
+                      headers=pro).json()["status"] == "completed"
+
+
+def test_stranded_cases_are_listed_before_anything_is_changed(client, new_case):
+    """الحصر قبل التعديل: الأداة تسمّي المعاملة وما ينقصها."""
+    from app.stuck_renewals import find_stuck
+
+    pro, rid = new_case()
+    _reach_awaiting_civil_card(client, pro, rid)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "civil_id"}, files=_f())
+    _strand(rid)
+
+    db = SessionLocal()
+    try:
+        rows = {r["id"]: r for r in find_stuck(db)}
+    finally:
+        db.close()
+    assert rid in rows, "المعاملة العالقة لم تظهر في الحصر"
+    assert len(rows[rid]["missing"]) == 3
+
+
+def test_healthy_cases_awaiting_hr_are_not_reported_as_stuck(client, new_case):
+    """معاملة كاملة تنتظر HR ليست عالقة — عدّها عالقة يُغرق القائمة."""
+    from app.stuck_renewals import find_stuck
+
+    pro, rid = new_case()
+    _reach_awaiting_civil_card(client, pro, rid)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "civil_id"}, files=_f())
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        **GOV_DATA,
+        "new_expiry_date": (date.today() + timedelta(days=730)).isoformat(),
+    })
+    assert client.get(f"/api/renewals/{rid}",
+                      headers=pro).json()["status"] == "pending_hr_verify"
+
+    db = SessionLocal()
+    try:
+        ids = [r["id"] for r in find_stuck(db)]
+    finally:
+        db.close()
+    assert rid not in ids, "معاملة مكتملة عُدّت عالقة"
+
+
+def test_a_closed_case_still_refuses_gov_data(client, new_case):
+    """الإنقاذ لم يفتح الباب على مصراعيه: المكتملة لا تُعدَّل."""
+    pro, rid = new_case()
+    _reach_awaiting_civil_card(client, pro, rid)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "civil_id"}, files=_f())
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        **GOV_DATA,
+        "new_expiry_date": (date.today() + timedelta(days=730)).isoformat(),
+    })
+    hr = auth_headers(login(client, *HR))
+    client.post(f"/api/renewals/{rid}/hr-verify", headers=hr, data={"note": "تم"})
+
+    again = client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        **GOV_DATA, "gov_reference_no": "GOV-TAMPER",
+        "new_expiry_date": (date.today() + timedelta(days=900)).isoformat(),
+    })
+    assert again.status_code == 409, (
+        "معاملة مغلقة قبلت تعديل بياناتها الحكومية"
+    )

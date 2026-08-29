@@ -903,9 +903,23 @@ def finalize_renewal(rid: int, request: Request,
         raise HTTPException(status_code=403, detail="فقط المندوب يقدر يُتمم المعاملة الحكومية")
     # R4/R6 — finalize مسموحة قبل رفع البطاقة المدنية أو بعده (المندوب قد يعبّي
     # البيانات قبل استلام البطاقة من الموظف)
-    if rn.status not in (R.RENEWING, R.CONTRACTS_SIGNED, R.WITH_DELEGATE, R.AWAITING_CIVIL_CARD):
-        raise HTTPException(status_code=409,
-                          detail=f"الحالة الحالية ({rn.status}) لا تسمح بإدخال بيانات المعاملة الحكومية")
+    # RNW-D2 — الإنقاذ: pending_hr_verify ضمن المسموح.
+    #
+    # المنع (RNW-D1) يحمي ما هو آتٍ ولا يحرّر ما هو عالق: معاملات وصلت
+    # المرحلة قبل الإصلاح بلا بيانات حكومة، فلا finalize يقبلها ولا HR
+    # يغلقها. والقرار المتَّخذ: تُستكمل في مكانها بدل إرجاعها — HR يرى
+    # الناقص، والمندوب يُدخله، والمعاملة تُغلق بلا رحلة ذهاب وعودة تظهر
+    # للموظف كأنها تراجعت.
+    #
+    # والتعديل هنا آمن لأن المرحلة اسمها «بانتظار تحقّق HR»: لم يُصادَق
+    # على شيء بعد، وكل إدخال يُسجَّل في التدقيق بقيمته قبل وبعد.
+    if rn.status not in (R.RENEWING, R.CONTRACTS_SIGNED, R.WITH_DELEGATE,
+                         R.AWAITING_CIVIL_CARD, R.PENDING_HR_VERIFY):
+        raise HTTPException(
+            status_code=409,
+            detail=(f"الحالة الحالية ({R.STATUS_LABELS.get(rn.status, {}).get('ar', rn.status)}) "
+                    "لا تسمح بإدخال بيانات المعاملة الحكومية — "
+                    "تُدخَل أثناء التجديد أو بانتظار البطاقة أو بانتظار تحقّق HR"))
     # التحقق من صحة القيم
     if not gov_reference_no.strip():
         raise HTTPException(status_code=400, detail="الرقم المرجعي الحكومي إلزامي")
