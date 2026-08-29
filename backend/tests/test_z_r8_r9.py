@@ -3717,10 +3717,17 @@ def test_retest_idle_logout_enforced_by_server(client):
     minutes = int(getattr(settings, "idle_logout_minutes", 0) or 0)
     assert minutes > 0, "المهلة معطّلة في الإعدادات"
 
+    # IMP-02 — الخمول صار يُقاس على الجلسة لا على المستخدم، فيُشاخ صفّ
+    # هذه الجلسة بعينها. تشييخ صفّ المستخدم لم يعد يُنهي شيًئا: جلستان
+    # في متصفّحين لا تُنهي إحداهما الأخرى — وهذا هو المقصود.
+    from app.security import decode_token
+    sid = decode_token(lr.json()["access_token"])["sid"]
+
     db = SessionLocal()
     try:
-        user = db.scalar(select(models.User).where(models.User.civil_id == "100000000101"))
-        user.last_activity_at = (
+        row = db.get(models.SessionActivity, sid)
+        assert row is not None, "لم تُسجَّل جلسة — الخمول بلا مرجع"
+        row.last_activity_at = (
             datetime.now(timezone.utc) - timedelta(minutes=minutes + 5)
         ).replace(tzinfo=None)
         db.commit()

@@ -63,6 +63,17 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def new_session_id() -> str:
+    """هوية جلسة — تعلو الرمزين معًا.
+
+    ``jti`` يخصّ رمًزا واحًدا، ورمز الدخول يُستبدل كل نصف ساعة. فلو قِيس
+    الخمول على ``jti`` لبدت الجلسة النشطة خاملةً عند كل تجديد، ولو قِيس
+    على المستخدم لتصارعت جلستاه. و``sid`` واحد يمشي مع رمز الدخول ورمز
+    التجديد معًا من تسجيل الدخول إلى الخروج، فهو وحده ما يمثّل «الجلسة».
+    """
+    return uuid.uuid4().hex
+
+
 def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
     payload = data.copy()
     now = datetime.now(timezone.utc)
@@ -76,11 +87,13 @@ def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
 
 def create_access_token(subject: int, role: str, company_id: int | None,
                         impersonator_id: int | None = None,
-                        active_company_id: int | None = None) -> str:
+                        active_company_id: int | None = None,
+                        sid: str | None = None) -> str:
     """R9 §16 — active_company_id يُستخدم لمستخدمي is_cross_company:
     التوكن يحمل company_id=NULL لكن active_company_id=X، والسيرفر يستنتج منه
     الشركة الحالية + employee_id عبر UserCompanyLink."""
-    claims = {"sub": str(subject), "role": role, "company_id": company_id}
+    claims = {"sub": str(subject), "role": role, "company_id": company_id,
+              "sid": sid or new_session_id()}
     if impersonator_id is not None:
         # يتيح تسجيل impersonate_end لاحًقا (P1-04) بمعرفة من بدأ الانتحال فعًلا
         claims["impersonator_id"] = impersonator_id
@@ -93,14 +106,15 @@ def create_access_token(subject: int, role: str, company_id: int | None,
     )
 
 
-def create_refresh_token(subject: int, impersonator_id: int | None = None) -> str:
+def create_refresh_token(subject: int, impersonator_id: int | None = None,
+                         sid: str | None = None) -> str:
     """رمز التجديد يحمل وسم الانتحال إن وُجد.
 
     بدونه تُولَد من رمز تجديد جلسةِ انتحالٍ رموزُ دخول نظيفة، فتُقيَّد الأفعال
     على المُنتحَل وحده ويضيع من فعلها حًقا — وهو السؤال الوحيد الذي وُجد
     الانتحال ليجيبه. الوسم يسري مع الجلسة كلها لا مع أول رمز فيها.
     """
-    claims: dict = {"sub": str(subject)}
+    claims: dict = {"sub": str(subject), "sid": sid or new_session_id()}
     if impersonator_id is not None:
         claims["impersonator_id"] = impersonator_id
     return _create_token(claims, timedelta(days=settings.refresh_token_expire_days), "refresh")

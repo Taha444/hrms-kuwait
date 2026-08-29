@@ -1133,6 +1133,41 @@ class RevokedToken(Base):
     reason: Mapped[str | None] = mapped_column(String(40))
 
 
+class SessionActivity(Base):
+    """آخر نشاط **لجلسة بعينها** — لا للمستخدم.
+
+    **العطل الذي أنتج هذا الجدول**: الخمول كان يُقرأ من
+    ``users.last_activity_at``، أي من صفّ المستخدم لا من الجلسة. فترتّب
+    على ذلك ثلاثة أعطال من جذر واحد:
+
+    1. **الانتحال يُرفض فوًرا**: الإدارة العليا تنتحل شخصية مستخدم خامل
+       منذ ساعة، فيقرأ محرّك الخمول آخر نشاط ذلك المستخدم ويحكم بانتهاء
+       جلسة تولّدت قبل ثانية. بدء جلسة عومل معاملة استئنافها.
+    2. **جلستان لمستخدم واحد تتصارعان**: متصفّحان، وصفّ واحد يكتبان فيه؛
+       نشاط أحدهما يُبقي الآخر حًيا، وخموله يُنهيه.
+    3. **الانتحال يزوّر حضور المُنتحَل**: نشاط المُنتحِل يُكتب على صفّ من
+       انتُحلت شخصيته، فيبدو نشًطا وهو لم يفتح النظام.
+
+    والمفتاح ``jti`` — مُعرّف الرمز نفسه، يُولَّد لكل رمز على حدة. فجلسة
+    الانتحال جلسة جديدة بحكم أن رمزها جديد، لا بحكم استثناء مكتوب لها.
+
+    والصفّ يُحذف بعد ``expires_at`` كصفوف الإبطال: بعدها يرفض الرمزَ
+    انقضاءُ مدّته، فحفظ نشاطه بلا معنى.
+    """
+
+    __tablename__ = "session_activity"
+
+    #: jti الرمز — المفتاح نفسه: جلسة واحدة لكل رمز، والبحث فهرسيّ.
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    #: متى تنتهي صلاحية الرمز أصًلا — بعدها يُحذف الصفّ
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    #: هل هذه جلسة انتحال؟ يُفصّل السجل نفسه عند التفتيش
+    impersonated: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

@@ -512,7 +512,8 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
                 actor: models.User = Depends(require_super_admin),
                 db: Session = Depends(get_db)):
     """انتحال هوية مستخدم مؤقتًا (للإدارة العليا فقط) — يُسجَّل في التدقيق."""
-    from ..security import create_access_token, create_refresh_token
+    from ..security import (create_access_token, create_refresh_token,
+                            new_session_id)
 
     target = db.get(models.User, user_id)
     if not target:
@@ -522,12 +523,19 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
     audit(db, actor, "impersonate_start", "user", target.id,
           detail=f"reason={reason or '-'}", request=request, company_id=target.company_id)
     db.commit()
+    # IMP-01 — **جلسة جديدة، لا استئناف لجلسة المُنتحَل.** كان الخمول
+    # يُقرأ من صفّ المستخدم، فمن انتُحلت شخصيته وهو خامل منذ ساعة تُرفض
+    # جلسة الانتحال بـ401 وهي وليدة. وsid جديد هنا يجعل الجلسة جديدة
+    # ببنيتها: عدّاد خمولها يبدأ من هذه اللحظة، وينتهي بعد المدّة نفسها
+    # لا أطول.
+    sid = new_session_id()
     return {
         "access_token": create_access_token(target.id, target.role, target.company_id,
-                                            impersonator_id=actor.id),
+                                            impersonator_id=actor.id, sid=sid),
         # الوسم في رمز التجديد أيًضا: بدونه يعود التجديد بجلسة نظيفة
         # فيضيع من فعل الأفعال حًقا (انظر create_refresh_token)
-        "refresh_token": create_refresh_token(target.id, impersonator_id=actor.id),
+        "refresh_token": create_refresh_token(target.id, impersonator_id=actor.id,
+                                              sid=sid),
         "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
     }
 @router.post("/impersonate-end")

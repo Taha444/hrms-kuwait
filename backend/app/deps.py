@@ -6,6 +6,8 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from . import models
@@ -24,13 +26,22 @@ _PRE_CHANGE_ALLOWED = ("/auth/me", "/auth/change-password", "/auth/logout")
 _ACTIVITY_WRITE_THROTTLE_SECONDS = 60
 
 
-def enforce_idle_timeout(db: Session, user: models.User) -> None:
+def enforce_idle_timeout(db: Session, user: models.User,
+                         jti: str | None = None,
+                         impersonated: bool = False,
+                         expires_at=None) -> None:
     """يُنهي الجلسة إن تجاوز الخمول settings.idle_logout_minutes — من الخادم.
 
     ROOT CAUSE (QA-23): المهلة كانت مؤقًتا في المتصفح فقط
     (``auth.tsx`` → ``idle_logout_minutes``). إغلاق التبويب أو استدعاء الـAPI
     مباشرة يتجاوزها تماًما، فيظل التوكن صالًحا حتى انتهاء صلاحيته. أي ضبط أمني
     تفرضه الواجهة وحدها ليس ضبًطا.
+
+    **IMP-01/IMP-02 — القياس على الجلسة لا على المستخدم.** كان النشاط
+    يُقرأ ويُكتب على ``users.last_activity_at``، فورثت جلسة الانتحال خمول
+    من انتُحلت شخصيته ورُفضت بـ401 وهي وليدة، وتصارعت جلستان لمستخدم
+    واحد على صفّ واحد. والمفتاح الآن ``jti`` — ولأنه يُولَّد لكل رمز،
+    فجلسة الانتحال جديدة بحكم بنيتها لا باستثناء مكتوب لها.
 
     idle_logout_minutes = 0 ⇒ معطّل (خيار صريح لا سلوك افتراضي).
     """
@@ -40,22 +51,41 @@ def enforce_idle_timeout(db: Session, user: models.User) -> None:
 
     minutes = int(getattr(settings, "idle_logout_minutes", 0) or 0)
     now = datetime.now(timezone.utc)
-    last = user.last_activity_at
+    naive_now = now.replace(tzinfo=None)
+
+    row = db.get(models.SessionActivity, jti) if jti else None
+    # رمز قديم صدر قبل هذا الجدول: يُقاس على صفّ المستخدم كما كان. لا
+    # نُخرج أحًدا لأننا غيّرنا مكان التخزين.
+    last = row.last_activity_at if row is not None else (
+        None if jti else user.last_activity_at)
+
     if minutes > 0 and last is not None:
         if last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
         if now - last > timedelta(minutes=minutes):
             # لا نلمس tokens_valid_after: ذلك يُسقط جلسات كل أجهزة المستخدم.
-            # يكفي ألّا نحدّث last_activity_at هنا، فيظل كل طلب لاحق مرفوًضا
-            # حتى تسجيل دخول جديد — وهو ما يضبط الطابع من جديد.
+            # يكفي ألّا نحدّث النشاط هنا، فيظل كل طلب لاحق مرفوًضا حتى
+            # تسجيل دخول جديد — وهو ما يضبط الطابع من جديد.
             raise HTTPException(
                 status_code=401,
                 detail=f"انتهت الجلسة لعدم النشاط لأكثر من {minutes} دقيقة — سجّل الدخول من جديد",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    naive_now = now.replace(tzinfo=None)
-    if last is None or (now - last).total_seconds() >= _ACTIVITY_WRITE_THROTTLE_SECONDS:
+    stale = last is None or (now - last).total_seconds() >= _ACTIVITY_WRITE_THROTTLE_SECONDS
+    if jti:
+        if row is None:
+            db.add(models.SessionActivity(
+                jti=jti, user_id=user.id, last_activity_at=naive_now,
+                expires_at=expires_at, impersonated=impersonated))
+            db.commit()
+        elif stale:
+            row.last_activity_at = naive_now
+            db.commit()
+
+    # حضور المستخدم الحقيقي: لا يُحدَّث من جلسة انتحال. من انتُحلت شخصيته
+    # لم يفتح النظام، وإظهاره نشًطا يُفسد «آخر ظهور» ويخفي غياًبا.
+    if stale and not impersonated:
         user.last_activity_at = naive_now
         db.commit()
 
@@ -98,7 +128,6 @@ def get_current_user(
         iat = payload.get("iat")
         if iat is not None:
             try:
-                from datetime import timezone
                 valid_after = user.tokens_valid_after
                 if valid_after.tzinfo is None:
                     valid_after = valid_after.replace(tzinfo=timezone.utc)
@@ -114,7 +143,19 @@ def get_current_user(
                 pass  # iat غير صالح؟ لا نمنع الوصول لأسباب موازية
 
     # QA-23 — الخمول يُنهي الجلسة من الخادم، لا من مؤقّت المتصفح.
-    enforce_idle_timeout(db, user)
+    # IMP-01 — بهوية هذه الجلسة (jti) وحدها: رمز الانتحال جديد، فلا يرث
+    # خمول من انتُحلت شخصيته ولا يزوّر حضوره.
+    # تبديل الشركة يعيد إصدار الرمزين، ويحتاج هوية الجلسة الجارية كي
+    # يواصلها بدل أن يبدأ غيرها ويصفّر عدّاد الخمول.
+    request.state.sid = payload.get("sid")
+    _exp = payload.get("exp")
+    enforce_idle_timeout(
+        # sid لا jti: jti يخصّ رمًزا واحًدا يُستبدل كل نصف ساعة، فالقياس
+        # عليه يجعل كل جلسة نشطة تبدو خاملة عند أول تجديد.
+        db, user, jti=(payload.get("sid") or payload.get("jti")),
+        impersonated=payload.get("impersonator_id") is not None,
+        expires_at=(datetime.fromtimestamp(int(_exp), timezone.utc).replace(tzinfo=None)
+                    if _exp else None))
 
     # QA-26 — سياق الفاعل: كتابات التدقيق العميقة (داخل محرّك المسار) لا يصلها
     # user ولا Request، فكانت تُسجَّل بلا منفذ ولا IP. تقرأ من هنا الآن.

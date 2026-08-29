@@ -16,6 +16,7 @@ from ..security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    new_session_id,
     verify_password,
 )
 from ..config import settings
@@ -179,9 +180,10 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
                 companies_list.append({"id": co.id, "name": co.name,
                                        "name_en": co.name_en, "role": lk.role})
 
+    sid = new_session_id()   # هوية واحدة للرمزين — انظر security.new_session_id
     return schemas.TokenOut(
-        access_token=create_access_token(user.id, user.role, user.company_id),
-        refresh_token=create_refresh_token(user.id),
+        access_token=create_access_token(user.id, user.role, user.company_id, sid=sid),
+        refresh_token=create_refresh_token(user.id, sid=sid),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),
@@ -282,11 +284,14 @@ def select_company(company_id: int, request: Request,
     # هنا فوًرا — لا بعد نصف ساعة كما في التجديد. إسقاط الوسم هنا يعني أن
     # كل انتحال لمالك شركات يفقد أثره من أول خطوة.
     imp_id = getattr(request.state, "original_user_id", None)
+    # تبديل الشركة استمرار للجلسة لا بدء لواحدة جديدة: يُحمل sid كما هو،
+    # وإلا صفّرت كل نقلة عدّاد الخمول فلم تنتهِ جلسة أبًدا.
+    sid = getattr(request.state, "sid", None) or new_session_id()
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
                                         active_company_id=company_id,
-                                        impersonator_id=imp_id),
-        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id),
+                                        impersonator_id=imp_id, sid=sid),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name,
         company_id=company_id,  # informational — for UI display
@@ -316,7 +321,8 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
     # QA-23 — التجديد نشاط أيًضا: بلا هذا الفحص يُحيي الخمولُ نفسه بصمت، إذ
     # تُجدِّد الواجهة التوكن دورًيا فلا تنتهي جلسة أبًدا مهما طال ترك الجهاز.
     from ..deps import enforce_idle_timeout
-    enforce_idle_timeout(db, user)
+    enforce_idle_timeout(db, user, jti=payload.get("sid"),
+                         impersonated=payload.get("impersonator_id") is not None)
     # R9 §16 — refresh لا يعيد active_company_id — على cross-company user يعيد الاختيار
     # (نتوقع أن التوكن يُستهلك عبر واجهة تسجل تلقائيًا اختيار الشركة الأخير من localStorage).
     # وسم الانتحال يسري مع الجلسة كلها. بدون تمريره هنا يعيد التجديد جلسة
@@ -333,10 +339,11 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
                 or impersonator.role != "super_admin"):
             raise HTTPException(status_code=401,
                                 detail="لم يعد المُنتحِل مخوًّلا — أعد تسجيل الدخول")
+    sid = payload.get("sid") or new_session_id()
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
-                                         impersonator_id=imp_id),
-        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id),
+                                         impersonator_id=imp_id, sid=sid),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),
