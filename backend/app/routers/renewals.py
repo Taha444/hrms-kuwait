@@ -336,8 +336,56 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
     return _serialize(db, rn)
 
 
+#: TSK-01 — بادئة مفتاح المهمة لكل مرحلة. تُقرأ هنا لا تُستنتج من النصّ:
+#: بها يُعرف ما ينتمي للمرحلة الحالية وما بقي من مرحلة مضت.
+#: (والمراحل الغائبة عن الخريطة لا تُنشئ مهمة أصًلا.)
+STAGE_TASK_PREFIX = {
+    R.PENDING_MANAGER: "renewal_mgr:",
+    R.PENDING_HR: "renewal_hr:",
+    R.AWAITING_CONTRACTS: "renewal_pro:",
+    R.AWAITING_SIGNATURE: "renewal_sign:",
+    R.CONTRACTS_SIGNED: "renewal_signed:",
+    R.AWAITING_CIVIL_CARD: "renewal_card:",
+    R.COMPLETED: "renewal_done:",
+}
+
+
+def _close_superseded_stage_tasks(db, rn) -> int:
+    """يغلق مهام المراحل التي مضت.
+
+    **العطل**: كل مرحلة تُنشئ مهمتها بمفتاح مستقلّ ولا تغلق ما قبلها،
+    فتتراكم على المعاملة الواحدة مهام لمراحل انتهت. صندوق يمتلئ بما لم
+    يعد مطلوًبا يُقرأ كأنه عمل متأخّر، فيُهمَل كلّه.
+
+    والإغلاق **بالبادئة لا بالكنس الشامل**: كنس كل مهام المعاملة ثم
+    إعادة إنشاء مهمة المرحلة الحالية يبدو مكافًئا وهو ليس كذلك — المهمة
+    القائمة تُغلق ويُنشأ صفّ جديد مكانها عند كل نداء، فيتحوّل منع
+    التكرار إلى مصدر له، ويفقد المستخدم ما كان قد بدأه (in_progress).
+    """
+    keep = STAGE_TASK_PREFIX.get(rn.status)
+    rows = db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "renewal",
+        models.Task.related_entity_id == rn.id,
+        models.Task.status.in_(("open", "in_progress")),
+    )).all()
+    closed = 0
+    for task in rows:
+        key = task.dedup_key or ""
+        if keep and key.startswith(keep):
+            continue                       # مهمة المرحلة الحالية: تبقى
+        task.status = "dismissed"
+        task.completed_at = datetime.utcnow()
+        closed += 1
+    return closed
+
+
 def _notify_stage(db, rn):
-    """إشعار المسؤول عن المرحلة الحالية."""
+    """إشعار المسؤول عن المرحلة الحالية.
+
+    ويغلق ما بقي من المراحل السابقة قبل ذلك — التنبيه على مرحلة جديدة
+    بلا إغلاق ما سبقها يترك المعاملة الواحدة بأربع مهام مفتوحة.
+    """
+    _close_superseded_stage_tasks(db, rn)
     name = (db.get(models.Employee, rn.employee_id).name if rn.employee_id else "")
     if rn.status == R.PENDING_MANAGER:
         for u in users_by_role(db, rn.company_id, ["company_manager"]):

@@ -16,6 +16,7 @@ import re
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models
@@ -137,7 +138,31 @@ def create_task(
         related_entity_id=related_entity_id, severity=severity, due_date=due_date,
         dedup_key=dedup_key, template_code=template_code, sla_due_at=sla_due_at,
     )
-    db.add(task)
+    # TSK-01 — القاعدة هي الحَكَم، والشيفرة تحتمل حكمها.
+    #
+    # الفحص أعلاه يمنع التكرار في الحالة العادية، لكنه يُخترق عند التزامن:
+    # نسختان تقرآن «لا يوجد» في اللحظة نفسها. والقيد الفريد يمنع الصفّ
+    # الثاني — فلو تُرك الاستثناء يصعد لأسقط طلب المستخدم كلَّه بسبب مهمة
+    # موجودة فعًلا، وهو أسوأ من التكرار نفسه.
+    #
+    # وSAVEPOINT ضروري: الفشل داخل معاملة يُبطلها كلها في PostgreSQL،
+    # فبدونه يسقط كل ما أنجزه الطلب قبل هذا السطر.
+    if dedup_key:
+        try:
+            with db.begin_nested():
+                db.add(task)
+                db.flush()
+        except IntegrityError:
+            existing = db.scalar(select(models.Task).where(
+                models.Task.dedup_key == dedup_key,
+                models.Task.status.in_(["open", "in_progress"]),
+            ))
+            if existing is not None:
+                existing.__dict__["_hrms_was_created"] = False
+                return existing
+            raise
+    else:
+        db.add(task)
     # إرسال عبر القنوات الخارجية (واتساب/SMS) إن فُعّلت — best-effort
     try:
         from .channels import dispatch

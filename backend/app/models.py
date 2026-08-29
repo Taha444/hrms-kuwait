@@ -15,12 +15,14 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     Time,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -531,6 +533,21 @@ class Document(Base):
 class Task(Base):
     """محرّك المهام/الإشعارات — كل صلاحية قاربت على الانتهاء = مهمة لها مسؤول."""
     __tablename__ = "tasks"
+
+    # TSK-01 — منع التكرار **في القاعدة** لا في الشيفرة وحدها. الفحص قبل
+    # الإدراج يُخترق عند التزامن: نسختان تقرآن «لا يوجد» في اللحظة نفسها
+    # فتكتب كلٌّ منهما صًفا. والقيد جزئي على المفتوح وحده: مهمة انتهت
+    # تتكرّر بطبيعتها — التجديد السنوي يُنشئ المهمة نفسها كل سنة.
+    #
+    # ويُعلَن هنا لا في الترحيل وحده، وإلا نشأت قواعد الاختبارات
+    # (create_all) بلا قيد فحرست الاختباراتُ سلوًكا لا يشبه الإنتاج.
+    __table_args__ = (
+        Index("uq_tasks_open_dedup", "dedup_key", unique=True,
+              sqlite_where=text("status IN ('open', 'in_progress') "
+                                "AND dedup_key IS NOT NULL"),
+              postgresql_where=text("status IN ('open', 'in_progress') "
+                                    "AND dedup_key IS NOT NULL")),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)

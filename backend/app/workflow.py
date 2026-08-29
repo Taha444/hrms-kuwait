@@ -25,6 +25,7 @@ from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
 from . import models
+from .task_kinds import is_notification
 from .config import settings
 from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
 from .permissions import ROLE_LABEL_AR
@@ -868,6 +869,10 @@ def _close_open_tasks(db: Session, req: models.Request) -> None:
         models.Task.status.in_(("open", "in_progress")),
     )).all()
     for t in open_tasks:
+        # TSK-03 — الإشعار خبر لا إجراء: إغلاقه مع المهام يمحو إخطار
+        # النتيجة نفسه، فيبقى الموظف لا يعرف ماذا جرى بطلبه.
+        if is_notification(t.type):
+            continue
         t.status = "dismissed"
         t.completed_at = datetime.now(timezone.utc)
 

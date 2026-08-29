@@ -323,3 +323,89 @@ def test_a_closed_case_still_refuses_gov_data(client, new_case):
     assert again.status_code == 409, (
         "معاملة مغلقة قبلت تعديل بياناتها الحكومية"
     )
+
+
+# ==========================================================================
+# TSK-01 — تحرّك المرحلة يغلق مهام ما قبلها
+# ==========================================================================
+def _open_task_keys(rid: int) -> set[str]:
+    db = SessionLocal()
+    try:
+        return {t.dedup_key or "" for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "renewal",
+            models.Task.related_entity_id == rid,
+            models.Task.status.in_(("open", "in_progress")))).all()}
+    finally:
+        db.close()
+
+
+def test_moving_a_stage_closes_the_previous_stage_tasks(client, new_case):
+    """**العطل**: كل مرحلة تُنشئ مهمّتها ولا تغلق ما قبلها.
+
+    فتتراكم على المعاملة الواحدة مهام لمراحل انتهت، وصندوق يمتلئ بما لم
+    يعد مطلوًبا يُقرأ كأنه عمل متأخّر فيُهمَل كلّه.
+    """
+    pro, rid = new_case()
+    at_start = _open_task_keys(rid)          # مرحلة «بانتظار رفع العقود»
+
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "renewal_contract_gov"}, files=_f())
+    after_signed = _open_task_keys(rid)      # صارت «بانتظار توقيع الموظف»
+
+    stale = {k for k in at_start if k.startswith("renewal_pro:")}
+    assert stale, "لم تُنشأ مهمة المرحلة الأولى — الاختبار لا يقيس شيًئا"
+    assert not (stale & after_signed), (
+        f"مهمة مرحلة مضت ما زالت مفتوحة: {stale & after_signed}"
+    )
+
+
+def test_the_current_stage_task_is_not_churned(client, new_case):
+    """والإغلاق بالبادئة لا بالكنس: مهمة المرحلة الحالية تبقى **هي**.
+
+    كنس الكل ثم إعادة الإنشاء يبدو مكافًئا وهو ليس كذلك: صفّ جديد عند كل
+    نداء، فيتحوّل منع التكرار إلى مصدر له ويضيع ما بدأه المستخدم.
+    """
+    pro, rid = new_case()
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "renewal_contract_gov"}, files=_f())
+
+    db = SessionLocal()
+    try:
+        before = [t.id for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "renewal",
+            models.Task.related_entity_id == rid,
+            models.Task.status == "open")).all()]
+    finally:
+        db.close()
+
+    # نداء لا يحرّك المرحلة
+    client.get(f"/api/renewals/{rid}", headers=pro)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "renewal_contract_gov"}, files=_f())
+
+    db = SessionLocal()
+    try:
+        after = [t.id for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "renewal",
+            models.Task.related_entity_id == rid,
+            models.Task.status == "open")).all()]
+    finally:
+        db.close()
+    assert before == after, f"تبدّلت صفوف المهام بلا تحرّك مرحلة: {before} → {after}"
+
+
+def test_completing_a_case_leaves_no_open_task(client, new_case):
+    """واكتمال المعاملة يغلق كل ما بقي."""
+    pro, rid = new_case()
+    _reach_awaiting_civil_card(client, pro, rid)
+    client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                data={"doc_type": "civil_id"}, files=_f())
+    client.post(f"/api/renewals/{rid}/finalize", headers=pro, data={
+        **GOV_DATA,
+        "new_expiry_date": (date.today() + timedelta(days=730)).isoformat(),
+    })
+    hr = auth_headers(login(client, *HR))
+    client.post(f"/api/renewals/{rid}/hr-verify", headers=hr, data={"note": "تم"})
+
+    left = {k for k in _open_task_keys(rid) if not k.startswith("renewal_done:")}
+    assert not left, f"مهام مفتوحة لمعاملة مكتملة: {left}"

@@ -40,15 +40,9 @@ def _category(task_type: str) -> str:
 #
 # المهمة: مطلوب منك إجراء، لها صاحب واحد وتُقفل حين يتم.
 # الإشعار: معلومة. لا أزرار، ومكانه مركز الإشعارات.
-NOTIFICATION_TYPES = {
-    "request_update",   # "تم اعتماد/رفض طلبك" — خبر لا إجراء
-    "digest",           # ملخّص دوري
-    "sla_escalation",   # تنبيه تأخّر — الإجراء على المهمة الأصلية لا عليه
-}
-
-
-def is_notification(task_type: str) -> bool:
-    return task_type in NOTIFICATION_TYPES
+# التعريف في app/task_kinds — يستعمله المحرّك والعرض معًا. وبقاؤه هنا
+# كان يجعل من يعرض المهام يعرف الفرق ومن يغلقها لا يعرفه.
+from ..task_kinds import NOTIFICATION_TYPES, is_notification  # noqa: E402,F401
 
 
 @router.get("/my")
