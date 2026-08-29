@@ -379,6 +379,47 @@ def _close_superseded_stage_tasks(db, rn) -> int:
     return closed
 
 
+#: RNW-D4 — من يملك الفعل في كل مرحلة. تُقرأ في رسالة الرفض فيعرف
+#: القارئ إلى أين يذهب بدل أن يقف أمام «الحالة لا تسمح».
+STAGE_ACTOR = {
+    R.NEW: "الموظف أو المندوب",
+    R.PENDING_MANAGER: "مدير الشركة",
+    R.PENDING_HR: "شؤون الموظفين",
+    R.WITH_DELEGATE: "المندوب",
+    R.AWAITING_CONTRACTS: "المندوب",
+    R.AWAITING_SIGNATURE: "الموظف صاحب الطلب",
+    R.CONTRACTS_SIGNED: "المندوب",
+    R.RENEWING: "المندوب",
+    R.AWAITING_CIVIL_CARD: "الموظف صاحب الطلب",
+    R.PENDING_HR_VERIFY: "شؤون الموظفين",
+    R.COMPLETED: "—",
+    R.REJECTED: "—",
+}
+
+
+def _stage_conflict(rn, action: str, needed_status=None) -> HTTPException:
+    """رفض 409 يقول أربعة أشياء بدل واحد.
+
+    **العطل**: «الحالة لا تسمح بذلك» تخبر المستخدم أنه أخطأ ولا تخبره
+    بماذا. فيعيد المحاولة، أو يظنّ النظام معطًلا، أو يتصل بمن لا يملك
+    الفعل. ونصف قيمة الرفض في أن يقول إلى أين يذهب.
+
+    فالرسالة تحمل: المرحلة الحالية · لماذا رُفض · المرحلة المطلوبة ·
+    ومَن يملكها.
+    """
+    def label(code):
+        return R.STATUS_LABELS.get(code, {}).get("ar", code)
+
+    parts = [f"المرحلة الحالية: «{label(rn.status)}»",
+             f"ولا تسمح بـ{action}"]
+    if needed_status:
+        parts.append(f"المطلوب أن تكون «{label(needed_status)}»")
+        who = STAGE_ACTOR.get(needed_status)
+        if who and who != "—":
+            parts.append(f"ويقوم بها: {who}")
+    return HTTPException(status_code=409, detail=" — ".join(parts))
+
+
 def _notify_stage(db, rn):
     """إشعار المسؤول عن المرحلة الحالية.
 
@@ -501,7 +542,7 @@ def decide_renewal(rid: int, decision: str = Form(...), reject_reason: str | Non
     # مطابقة الدور للمرحلة
     stage_role = {R.PENDING_MANAGER: "company_manager", R.PENDING_HR: "hr"}.get(rn.status)
     if stage_role is None:
-        raise HTTPException(status_code=409, detail="لا يمكن اتخاذ قرار في هذه الحالة")
+        raise _stage_conflict(rn, "اتخاذ قرار اعتماد")
     if user.role != stage_role and user.role != "super_admin":
         raise HTTPException(status_code=403, detail="لست المعتمِد لهذه المرحلة")
 
@@ -537,7 +578,7 @@ def mark_renewing(rid: int, request: Request = None,
     if not _is_pro(user, perms):
         raise HTTPException(status_code=403, detail="خاص بالمندوب")
     if rn.status != R.CONTRACTS_SIGNED:
-        raise HTTPException(status_code=409, detail="الحالة لا تسمح بذلك")
+        raise _stage_conflict(rn, "بدء إجراءات التجديد", R.CONTRACTS_SIGNED)
     rn.status = R.RENEWING
     audit(db, user, "renewal_renewing", "renewal", rn.id, request=request)
     db.commit()
@@ -563,7 +604,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         if not is_pro:
             raise HTTPException(status_code=403, detail="رفع العقود خاص بالمندوب")
         if rn.status != R.AWAITING_CONTRACTS:
-            raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع العقود")
+            raise _stage_conflict(rn, "رفع العقود", R.AWAITING_CONTRACTS)
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
                         "عقد حكومي" if doc_kind == R.DOC_CONTRACT_GOV else "عقد داخلي", file)
         # R9 §1: التجديد يحتاج فقط العقد الحكومي للانتقال — العقد الداخلي اختياري
@@ -576,7 +617,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         if not (is_owner_emp or is_pro):
             raise HTTPException(status_code=403, detail="خاص بالموظف صاحب الطلب")
         if rn.status != R.AWAITING_SIGNATURE:
-            raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع الموقّع")
+            raise _stage_conflict(rn, "رفع العقد الموقّع", R.AWAITING_SIGNATURE)
         # RNW-08 — الربط بالنسخة المولّدة السارية وقت التوقيع، لا بالمعاملة وحدها
         src = _generated_contract_doc(db, rn)
         await _save_doc(db, user, request, "renewal", rn.id, rn.company_id, doc_kind,
@@ -611,7 +652,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         if not is_pro:
             raise HTTPException(status_code=403, detail="خاص بالمندوب")
         if rn.status != R.RENEWING:
-            raise HTTPException(status_code=409, detail="عيّن الحالة (جاري التجديد) أولًا")
+            raise _stage_conflict(rn, "رفع إذن العمل", R.RENEWING)
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_WORK_PERMIT, "إذن العمل الجديد", file)
         _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
@@ -623,7 +664,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         if not (is_owner_emp or is_pro):
             raise HTTPException(status_code=403, detail="خاص بالموظف صاحب الطلب")
         if rn.status != R.AWAITING_CIVIL_CARD:
-            raise HTTPException(status_code=409, detail="الحالة لا تسمح برفع البطاقة")
+            raise _stage_conflict(rn, "رفع البطاقة المدنية", R.AWAITING_CIVIL_CARD)
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_CIVIL_CARD, "البطاقة المدنية الجديدة", file)
         # R4-A — بدل التنقّل المباشر لـCOMPLETED، نمرّ عبر PENDING_HR_VERIFY
@@ -1045,7 +1086,7 @@ def hr_verify_renewal(rid: int, request: Request,
         raise HTTPException(status_code=403,
                           detail="التحقق من إتمام معاملة التجديد لـHR/الإدارة العليا فقط")
     if rn.status != R.PENDING_HR_VERIFY:
-        raise HTTPException(status_code=409, detail="المعاملة ليست في مرحلة تحقق HR")
+        raise _stage_conflict(rn, "تحقّق شؤون الموظفين", R.PENDING_HR_VERIFY)
     # RNW-17/18 — الإغلاق مشروط بفحص اكتمال يسمّي الناقص، لا بضغطة «تم»
     blockers = _closure_blockers(db, rn)
     if blockers:

@@ -409,3 +409,34 @@ def test_completing_a_case_leaves_no_open_task(client, new_case):
 
     left = {k for k in _open_task_keys(rid) if not k.startswith("renewal_done:")}
     assert not left, f"مهام مفتوحة لمعاملة مكتملة: {left}"
+
+
+# ==========================================================================
+# RNW-D4 — الرفض يقول إلى أين يذهب القارئ
+# ==========================================================================
+def test_a_refusal_names_the_stage_the_need_and_the_actor(client, new_case):
+    """«الحالة لا تسمح بذلك» تخبر المستخدم أنه أخطأ ولا تخبره بماذا.
+
+    فيعيد المحاولة، أو يظنّ النظام معطًلا، أو يتصل بمن لا يملك الفعل.
+    ونصف قيمة الرفض في أن يدلّ على الطريق.
+    """
+    pro, rid = new_case()
+    # البطاقة قبل أوانها: المعاملة ما زالت «بانتظار رفع العقود»
+    r = client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                    data={"doc_type": "civil_id"}, files=_f())
+    assert r.status_code == 409, r.text
+    msg = r.json()["detail"]
+    assert "المرحلة الحالية" in msg, f"لا يذكر المرحلة: {msg}"
+    assert "بانتظار رفع العقود" in msg, f"لا يسمّي المرحلة بالعربية: {msg}"
+    assert "المطلوب" in msg, f"لا يقول ما المطلوب: {msg}"
+    assert "يقوم بها" in msg, f"لا يقول من يملك الفعل: {msg}"
+
+
+def test_the_refusal_uses_arabic_labels_not_internal_codes(client, new_case):
+    """ولا يطبع الكود الداخلي في وجه القارئ (LBL-02 نفسه)."""
+    pro, rid = new_case()
+    msg = client.post(f"/api/renewals/{rid}/upload", headers=pro,
+                      data={"doc_type": "work_permit"},
+                      files=_f()).json()["detail"]
+    for code in ("awaiting_contracts", "renewing", "pending_hr_verify"):
+        assert code not in msg, f"كود داخلي في رسالة المستخدم: {msg}"
