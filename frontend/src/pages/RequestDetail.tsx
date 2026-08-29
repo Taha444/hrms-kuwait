@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import api, { errMsg } from "../api";
+import api, { errMsg, errMsgAsync } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import RequestSteps, { ProgressMini } from "../components/RequestSteps";
@@ -57,7 +57,7 @@ export default function RequestDetail() {
       const url = URL.createObjectURL(res.data as Blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+    } catch (e: any) { setErr(await errMsgAsync(e, t("error"))); }
   };
 
   const markPrinted = (kind: string) =>

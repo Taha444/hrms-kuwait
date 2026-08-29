@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import api, { downloadFile, errMsg } from "../api";
+import api, { downloadFile, errMsg, errMsgAsync } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { fmtKuwaitDateTime } from "../utils/datetime";
@@ -171,7 +171,7 @@ export default function Renewals() {
       const url = URL.createObjectURL(res.data as Blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+    } catch (e: any) { setErr(await errMsgAsync(e, t("error"))); }
   };
   const hasDoc = (dt: string) => sel?.documents?.some((d: any) => d.type === dt);
 

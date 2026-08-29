@@ -81,6 +81,30 @@ export async function downloadFile(path: string, params: any, fallbackName: stri
 // يستخرج رسالة خطأ نصية آمنة من استجابة الخادم (QA-P0-WF-02): أخطاء تحقق FastAPI (422)
 // تُعيد detail كمصفوفة كائنات لا كنص، وعرضها مباشرة في JSX يُسقط الواجهة بشاشة بيضاء
 // (Objects are not valid as a React child) — هذا يضمن أن الناتج نص دائًما.
+/**
+ * نفس errMsg، لكنه يفكّ ردّ الخطأ حين يكون Blob.
+ *
+ * **العطل**: التنزيلات تُطلب بـ`responseType: "blob"`، فأكسيوس يعطي جسم
+ * الخطأ Blob أيًضا. و`errMsg` تقرأ `data.detail` فتجده undefined وتسقط
+ * إلى النصّ الاحتياطي: كل فشل في التنزيل يظهر «خطأ» مهما كان سببه —
+ * والسبب مكتوب داخل الـBlob لا يقرؤه أحد.
+ *
+ * وهذا أسوأ من رسالة ناقصة: من يرى «خطأ» يعيد المحاولة، ومن يرى
+ * «المستند غير موجود» يعرف أن العطل في الملف لا في زرّه.
+ */
+export async function errMsgAsync(e: any, fallback: string): Promise<string> {
+  const data = e?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      return errMsg({ response: { data: parsed } }, fallback);
+    } catch {
+      return fallback;
+    }
+  }
+  return errMsg(e, fallback);
+}
+
 export function errMsg(e: any, fallback: string): string {
   const d = e?.response?.data?.detail;
   if (typeof d === "string") return d;

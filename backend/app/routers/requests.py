@@ -718,8 +718,25 @@ def download_request_document(req_id: int, kind: str,
     doc = db.scalar(select(models.RequestDocument).where(
         models.RequestDocument.request_id == req.id, models.RequestDocument.kind == kind
     ).order_by(models.RequestDocument.version.desc()))
-    if not doc or not doc.file_path or not key_exists(doc.file_path):
-        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    # ثلاث حالات كانت تُعطي الرسالة نفسها، والفرق بينها هو التشخيص:
+    #  - لا صفّ:        المستند لم يُولَّد أصًلا
+    #  - صفّ بلا مسار:  التوليد بدأ ولم يكتمل
+    #  - مسار بلا ملف:  **الملف فُقد** — والسبب المعتاد قرص حاوية مؤقّت
+    #                   يُمحى مع كل نشرة، والسجلّ يبقى في القاعدة
+    # ومن يقرأ «غير موجود» يظنّ أنه لم يُطلب؛ ومن يقرأ «فُقد» يعرف أن
+    # عليه إعادة التوليد لا إعادة المحاولة.
+    if not doc:
+        raise HTTPException(status_code=404,
+                            detail="لم يُولَّد هذا المستند لهذا الطلب بعد")
+    if not doc.file_path:
+        raise HTTPException(status_code=404,
+                            detail="سجلّ المستند موجود بلا ملف — لم يكتمل توليده")
+    if not key_exists(doc.file_path):
+        raise HTTPException(
+            status_code=410,
+            detail=("ملف المستند مفقود من التخزين رغم وجود سجلّه — "
+                    "أعد توليد المستند. وإن تكرّر ذلك بعد كل نشرة فالتخزين "
+                    "على قرص مؤقّت ويجب نقله إلى تخزين دائم."))
     if doc.file_path.endswith(".pdf"):
         media = "application/pdf"
     elif doc.file_path.endswith(".html"):
