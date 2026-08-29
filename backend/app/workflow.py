@@ -322,7 +322,7 @@ DEFAULT_REQUEST_TYPES = [
     # (الراتب في ملف الموظف)، فلا معنى لسلسلة موافقات عليها. مرحلة المدير
     # العام كانت شكلية: لا يقرّر شيًئا — الراتب مقرَّر سلًفا — بل يؤخّر شهادة
     # يحتاجها الموظف اليوم لبنك أو سفارة. ختم HR وحده يكفي ويُثبت المصدر.
-    _simple("REQCERTSAL", "طلب شهادة راتب (V1.3)", CAT_CERTIFICATES,
+    _simple("REQCERTSAL", "طلب شهادة راتب", CAT_CERTIFICATES,
            ["hr"], produces_document=True, requires_physical_signature=False,
            visible_to_employee=True, default_template_code="HRMS-PR-001"),
     _simple("REQCERTEMP", "طلب شهادة لمن يهمه الأمر", CAT_CERTIFICATES,
