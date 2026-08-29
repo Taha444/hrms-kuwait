@@ -528,14 +528,18 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
     # جلسة الانتحال بـ401 وهي وليدة. وsid جديد هنا يجعل الجلسة جديدة
     # ببنيتها: عدّاد خمولها يبدأ من هذه اللحظة، وينتهي بعد المدّة نفسها
     # لا أطول.
+    from datetime import datetime as _dt, timezone as _tz
     sid = new_session_id()
+    started = int(_dt.now(_tz.utc).timestamp())
     return {
         "access_token": create_access_token(target.id, target.role, target.company_id,
-                                            impersonator_id=actor.id, sid=sid),
+                                            impersonator_id=actor.id, sid=sid,
+                                            impersonation_started_at=started),
         # الوسم في رمز التجديد أيًضا: بدونه يعود التجديد بجلسة نظيفة
         # فيضيع من فعل الأفعال حًقا (انظر create_refresh_token)
         "refresh_token": create_refresh_token(target.id, impersonator_id=actor.id,
-                                              sid=sid),
+                                              sid=sid,
+                                              impersonation_started_at=started),
         "impersonated": {"id": target.id, "full_name": target.full_name, "role": target.role},
     }
 @router.post("/impersonate-end")

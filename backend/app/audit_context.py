@@ -19,9 +19,17 @@ from contextvars import ContextVar
 _actor: ContextVar[dict | None] = ContextVar("audit_actor", default=None)
 
 
-def set_actor(user_id: int | None, ip: str | None, user_agent: str | None = None) -> None:
-    """يضبط فاعل الطلب الجاري — يُستدعى من get_current_user وحده."""
-    _actor.set({"user_id": user_id, "ip": ip, "user_agent": user_agent})
+def set_actor(user_id: int | None, ip: str | None, user_agent: str | None = None,
+              original_user_id: int | None = None) -> None:
+    """يضبط فاعل الطلب الجاري — يُستدعى من get_current_user وحده.
+
+    و``original_user_id`` هو **من يجلس أمام الشاشة حًقا** عند الانتحال.
+    بدونه تعرف طبقةُ القرار المُنتحَلَ وحده، فتفحص قواعد النزاهة على
+    الشخص الخطأ: مَن انتحل شخصية معتمِد يستطيع اعتماد طلبٍ هو مقدّمه —
+    والاعتماد الذاتي ممنوع لكل الأدوار.
+    """
+    _actor.set({"user_id": user_id, "ip": ip, "user_agent": user_agent,
+                "original_user_id": original_user_id})
 
 
 def get_actor() -> dict:
@@ -35,3 +43,8 @@ def actor_user_id() -> int | None:
 
 def actor_ip() -> str | None:
     return get_actor().get("ip")
+
+
+def original_actor_user_id() -> int | None:
+    """الفاعل الحقيقي عند الانتحال، أو None في الجلسة العادية."""
+    return get_actor().get("original_user_id")

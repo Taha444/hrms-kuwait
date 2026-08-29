@@ -25,6 +25,7 @@ from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
 from . import models
+from .audit_context import original_actor_user_id
 from .task_kinds import is_notification
 from .config import settings
 from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
@@ -703,6 +704,16 @@ def can_decide(db: Session, req: models.Request, user: models.User, stage: dict,
     # ليمنح صاحب الطلب سلطة على طلبه.
     if user.employee_id and req.employee_id == user.employee_id:
         return False
+
+    # IMP-03 — والقاعدة تُطبَّق على **من يجلس أمام الشاشة**، لا على الاسم
+    # المعروض وحده. الانتحال يبدّل الهوية الظاهرة ولا يبدّل صاحب الطلب:
+    # فمن انتحل شخصية معتمِد كان يستطيع اعتماد طلبٍ هو مقدّمه — والانتحال
+    # أداة دعم لا بابٌ خلفيّ حول قواعد النزاهة.
+    original_id = original_actor_user_id()
+    if original_id:
+        actor = db.get(models.User, original_id)
+        if actor and actor.employee_id and req.employee_id == actor.employee_id:
+            return False
 
     if is_stage_approver(db, req, user, stage):
         return True

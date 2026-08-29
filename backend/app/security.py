@@ -88,7 +88,8 @@ def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
 def create_access_token(subject: int, role: str, company_id: int | None,
                         impersonator_id: int | None = None,
                         active_company_id: int | None = None,
-                        sid: str | None = None) -> str:
+                        sid: str | None = None,
+                        impersonation_started_at: int | None = None) -> str:
     """R9 §16 — active_company_id يُستخدم لمستخدمي is_cross_company:
     التوكن يحمل company_id=NULL لكن active_company_id=X، والسيرفر يستنتج منه
     الشركة الحالية + employee_id عبر UserCompanyLink."""
@@ -97,6 +98,11 @@ def create_access_token(subject: int, role: str, company_id: int | None,
     if impersonator_id is not None:
         # يتيح تسجيل impersonate_end لاحًقا (P1-04) بمعرفة من بدأ الانتحال فعًلا
         claims["impersonator_id"] = impersonator_id
+        # IMP-03 — لحظة بدء الانتحال تُحمَل في الرمز وتُنقل عبر كل تجديد.
+        # لو حُسب السقف من ``iat`` وحده لصُفِّر كل نصف ساعة، فيصير سقًفا
+        # اسًما لا يُبلَغ أبًدا.
+        if impersonation_started_at:
+            claims["impersonation_started_at"] = int(impersonation_started_at)
     if active_company_id is not None:
         claims["active_company_id"] = int(active_company_id)
     return _create_token(
@@ -107,7 +113,8 @@ def create_access_token(subject: int, role: str, company_id: int | None,
 
 
 def create_refresh_token(subject: int, impersonator_id: int | None = None,
-                         sid: str | None = None) -> str:
+                         sid: str | None = None,
+                         impersonation_started_at: int | None = None) -> str:
     """رمز التجديد يحمل وسم الانتحال إن وُجد.
 
     بدونه تُولَد من رمز تجديد جلسةِ انتحالٍ رموزُ دخول نظيفة، فتُقيَّد الأفعال
@@ -117,6 +124,8 @@ def create_refresh_token(subject: int, impersonator_id: int | None = None,
     claims: dict = {"sub": str(subject), "sid": sid or new_session_id()}
     if impersonator_id is not None:
         claims["impersonator_id"] = impersonator_id
+        if impersonation_started_at:
+            claims["impersonation_started_at"] = int(impersonation_started_at)
     return _create_token(claims, timedelta(days=settings.refresh_token_expire_days), "refresh")
 
 

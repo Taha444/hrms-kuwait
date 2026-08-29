@@ -287,11 +287,14 @@ def select_company(company_id: int, request: Request,
     # تبديل الشركة استمرار للجلسة لا بدء لواحدة جديدة: يُحمل sid كما هو،
     # وإلا صفّرت كل نقلة عدّاد الخمول فلم تنتهِ جلسة أبًدا.
     sid = getattr(request.state, "sid", None) or new_session_id()
+    imp_started = getattr(request.state, "impersonation_started_at", None)
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
                                         active_company_id=company_id,
-                                        impersonator_id=imp_id, sid=sid),
-        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid),
+                                        impersonator_id=imp_id, sid=sid,
+                                        impersonation_started_at=imp_started),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid,
+                                           impersonation_started_at=imp_started),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name,
         company_id=company_id,  # informational — for UI display
@@ -340,10 +343,13 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
             raise HTTPException(status_code=401,
                                 detail="لم يعد المُنتحِل مخوًّلا — أعد تسجيل الدخول")
     sid = payload.get("sid") or new_session_id()
+    imp_started = payload.get("impersonation_started_at")
     return schemas.TokenOut(
         access_token=create_access_token(user.id, user.role, user.company_id,
-                                         impersonator_id=imp_id, sid=sid),
-        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid),
+                                         impersonator_id=imp_id, sid=sid,
+                                         impersonation_started_at=imp_started),
+        refresh_token=create_refresh_token(user.id, impersonator_id=imp_id, sid=sid,
+                                           impersonation_started_at=imp_started),
         must_change_password=user.must_change_password,
         role=user.role, full_name=user.full_name, company_id=user.company_id,
         permissions=_perm_list(user, db),

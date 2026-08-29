@@ -6,11 +6,12 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
 from . import models
+from .config import settings
 from .database import get_db
 from .permissions import check_legacy, effective_permissions, has_page_action, has_permission
 from .security import decode_token
@@ -148,6 +149,7 @@ def get_current_user(
     # تبديل الشركة يعيد إصدار الرمزين، ويحتاج هوية الجلسة الجارية كي
     # يواصلها بدل أن يبدأ غيرها ويصفّر عدّاد الخمول.
     request.state.sid = payload.get("sid")
+    request.state.impersonation_started_at = payload.get("impersonation_started_at")
     _exp = payload.get("exp")
     enforce_idle_timeout(
         # sid لا jti: jti يخصّ رمًزا واحًدا يُستبدل كل نصف ساعة، فالقياس
@@ -164,6 +166,8 @@ def get_current_user(
         user.id,
         client_ip(request),
         (request.headers.get("user-agent") or "")[:400] or None,
+        original_user_id=(int(payload["impersonator_id"])
+                          if payload.get("impersonator_id") is not None else None),
     )
 
     # فرض تغيير كلمة المرور الإلزامي على مستوى الخادم (لا الواجهة فقط)
@@ -174,6 +178,21 @@ def get_current_user(
     imp_id = payload.get("impersonator_id")
     if imp_id is not None:
         request.state.original_user_id = int(imp_id)
+        # IMP-03 — مدة قصوى تنتهي تلقائًيا. تُحسب من ``iat`` الرمز لا من
+        # نشاط الجلسة: الخمول يُمدَّد بالاستعمال، وهذا سقف لا يُمدَّد.
+        # ولأن التجديد يحمل الوسم ويصدر رمًزا جديًدا، فبلا سقف تستمر جلسة
+        # الانتحال ما استمرّ التجديد.
+        _max = int(getattr(settings, "impersonation_max_minutes", 0) or 0)
+        _started = payload.get("impersonation_started_at") or payload.get("iat")
+        if _max > 0 and _started:
+            age = (datetime.now(timezone.utc)
+                   - datetime.fromtimestamp(int(_started), timezone.utc))
+            if age > timedelta(minutes=_max):
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"انتهت مدة الانتحال ({_max} دقيقة) — ابدأ جلسة جديدة إن لزم",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
     # R9 §16 — مستخدم متعدد الشركات: طبّق active_company_id من JWT
     # transiently على user.company_id + user.employee_id لكل هذا الطلب.
