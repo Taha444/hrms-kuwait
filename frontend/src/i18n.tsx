@@ -56,6 +56,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   loading: { ar: "جارِ التحميل…", en: "Loading…" },
   // QA-12 — سطر معلومة لا إجراء عليه
   tasks_info_only: { ar: "للعلم فقط", en: "For your information" },
+  tasks_kind_task: { ar: "يحتاج إجراء", en: "Needs action" },
+  tasks_kind_notification: { ar: "أخبار", en: "Notifications" },
+  tasks_kind_all: { ar: "الكل", en: "All" },
   // QA-28 — النسخ السابقة من المستندات
   doc_prev_versions: { ar: "النسخ السابقة", en: "Previous versions" },
   doc_uploaded_by: { ar: "رفعها", en: "Uploaded by" },

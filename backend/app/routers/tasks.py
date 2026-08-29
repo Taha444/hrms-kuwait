@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -42,15 +42,15 @@ def _category(task_type: str) -> str:
 # الإشعار: معلومة. لا أزرار، ومكانه مركز الإشعارات.
 # التعريف في app/task_kinds — يستعمله المحرّك والعرض معًا. وبقاؤه هنا
 # كان يجعل من يعرض المهام يعرف الفرق ومن يغلقها لا يعرفه.
-from ..task_kinds import NOTIFICATION_TYPES, is_notification  # noqa: E402,F401
+from ..task_kinds import NOTIFICATION_TYPES, inbox_query, is_notification  # noqa: E402,F401
 
 
 @router.get("/my")
 def my_tasks(status: str | None = "open", category: str | None = None,
+             kind: str | None = None,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    q = select(models.Task).where(models.Task.assignee_user_id == user.id)
-    if status:
-        q = q.where(models.Task.status == status)
+    """``kind=task`` للصندوق، ``kind=notification`` لمركز الإشعارات."""
+    q = inbox_query(user.id, status, kind)
     rows = db.scalars(q.order_by(models.Task.created_at.desc())).all()
     out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
             "detail": t.detail, "status": t.status, "severity": t.severity,
@@ -66,9 +66,18 @@ def my_tasks(status: str | None = "open", category: str | None = None,
 
 @router.get("/count")
 def my_open_count(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    n = len(db.scalars(select(models.Task.id).where(
-        models.Task.assignee_user_id == user.id, models.Task.status == "open")).all())
-    return {"open": n}
+    """TSK-03 — رقمان لا رقم واحد: ما يحتاج إجراًء، وما يُقرأ.
+
+    ``open`` يبقى المجموع كما كان (لا نكسر من يقرأه)، والفصل يُضاف
+    بجانبه. وكلها مشتقّة من ``inbox_query`` نفسها التي تُغذّي القائمة،
+    فيستحيل أن يعدّ الرقم شيًئا وتعرض القائمة تحته شيًئا آخر.
+    """
+    def _n(kind):
+        return db.scalar(select(func.count()).select_from(
+            inbox_query(user.id, "open", kind).subquery())) or 0
+
+    return {"open": _n(None), "tasks": _n("task"),
+            "notifications": _n("notification")}
 
 
 @router.post("/{task_id}/status")

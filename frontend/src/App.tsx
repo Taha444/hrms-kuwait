@@ -85,7 +85,11 @@ function Sidebar({ open }: { open: boolean }) {
     canOperations, canArchive, canStructure, canRenewals } = useAccess();
 
   useEffect(() => {
-    const refresh = () => api.get("/tasks/count").then((r) => setTaskCount(r.data.open)).catch(() => {});
+    // TSK-03 — الشارة تعدّ ما يحتاج إجراًء وحده. كانت تعدّ الصندوق كله،
+    // فتقول «44» وستة منها فقط تُعطّل العمل — ورقم بهذا الحجم يُقرأ كعمل
+    // متأخّر فيُهمَل كلّه، وتضيع الستة بين الأخبار.
+    const refresh = () => api.get("/tasks/count")
+      .then((r) => setTaskCount(r.data.tasks ?? r.data.open)).catch(() => {});
     refresh();
     // تحديث فوري عند إكمال/تجاهل مهمة من صفحة المهام، لا عند تغيير المسار فقط (QA-P1-TASK-01)
     window.addEventListener("tasks:changed", refresh);

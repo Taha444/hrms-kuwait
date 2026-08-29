@@ -12,16 +12,20 @@ export default function Tasks() {
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [status, setStatus] = useState("open");
   const [category, setCategory] = useState("");
+  // TSK-03 — الصندوق يفتح على ما يحتاج إجراًء. الأخبار في نفس الشاشة
+  // بمرشّح صريح لا مطموسة: تصنيف لا حذف — القديم ينتقل لمكانه ولا يُمحى.
+  const [kind, setKind] = useState("task");
   const [msg, setMsg] = useState("");
   const CATS = ["system", "government", "hr", "approvals"];
 
   const load = () => {
     setState("loading");
-    api.get("/tasks/my", { params: { status, category: category || undefined } })
+    api.get("/tasks/my", { params: { status, category: category || undefined,
+                                     kind: kind || undefined } })
       .then((r) => { setTasks(r.data); setState("ok"); })
       .catch(() => setState("error"));
   };
-  useEffect(() => { load(); }, [status, category]);
+  useEffect(() => { load(); }, [status, category, kind]);
 
   const setTaskStatus = async (id: number, s: string) => {
     await api.post(`/tasks/${id}/status?status=${s}`);
@@ -47,6 +51,12 @@ export default function Tasks() {
           <select aria-label={t("tasks_all_categories")} value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: 150 }}>
             <option value="">{t("tasks_all_categories")}</option>
             {CATS.map((c) => <option key={c} value={c}>{t(`cat_${c}`)}</option>)}
+          </select>
+          <select aria-label={t("tasks_kind_all")} value={kind}
+                  onChange={(e) => setKind(e.target.value)} style={{ width: 150 }}>
+            <option value="task">{t("tasks_kind_task")}</option>
+            <option value="notification">{t("tasks_kind_notification")}</option>
+            <option value="">{t("tasks_kind_all")}</option>
           </select>
           <select aria-label={t("status")} value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 150 }}>
             <option value="open">{t("tasks_open")}</option>

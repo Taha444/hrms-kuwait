@@ -25,3 +25,29 @@ NOTIFICATION_TYPES = {
 
 def is_notification(task_type: str | None) -> bool:
     return task_type in NOTIFICATION_TYPES
+
+
+def inbox_query(user_id: int, status: str | None = "open",
+                kind: str | None = None):
+    """استعلام صندوق مستخدم. **العدّاد والقائمة يستعملانه معًا.**
+
+    TSK-03 — العدّاد كان يعدّ كل صفوف المستخدم المفتوحة، والصندوق يعرضها
+    كلها: أربعة وأربعون عنصًرا عند شؤون الموظفين، ستة منها تحتاج إجراًء
+    وثمانية وثلاثون أخبار. ورقم بهذا الحجم يُقرأ كعمل متأخّر فيُهمَل كلّه،
+    والستة التي تُعطّل العمل تضيع بينها.
+
+    و``kind`` هو الفرق: ``task`` ما يحتاج إجراًء، ``notification`` ما
+    يُقرأ. وغيابه يعني الاثنين معًا — للتوافق مع من يريد الصندوق كاملًا.
+    """
+    from sqlalchemy import select
+
+    from . import models
+
+    q = select(models.Task).where(models.Task.assignee_user_id == user_id)
+    if status:
+        q = q.where(models.Task.status == status)
+    if kind == "task":
+        q = q.where(models.Task.type.notin_(tuple(NOTIFICATION_TYPES)))
+    elif kind == "notification":
+        q = q.where(models.Task.type.in_(tuple(NOTIFICATION_TYPES)))
+    return q
