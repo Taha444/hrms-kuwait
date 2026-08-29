@@ -1,107 +1,107 @@
 {
   "RNW-D1": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "بوّابة على الخادم: الانتقال إلى pending_hr_verify صار مشروًطا ببيانات الحكومة الثلاث + البطاقة، ويُقيَّم عند المدخلَين. 5 اختبارات في test_zzz_renewal_deadlock.py، وإعادة العطل تُسقط ثلاثة منها برسالتَي القفلة نفسهما (409 وقائمة الناقص).",
+    "updated": "2026-08-29"
   },
   "RNW-D2": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "بقرار المالك: الإكمال في المكان. finalize يقبل pending_hr_verify فتُستكمل المعاملة العالقة وتُغلق. أداة app.stuck_renewals تقرأ ولا تكتب للحصر قبل التعديل. 4 اختبارات إضافية، وإلغاء الإصلاح يُسقط اختبار الإنقاذ برسالة الرفض نفسها.",
+    "updated": "2026-08-29"
   },
   "RNW-D3": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "فحص آلي يقرأ الانتقالات من الشيفرة: كل حالة يُسنَد إليها لها فاعل في STAGE_ACTOR، وكل غير نهائية لها مهمة أو مسؤول، والنهائية معلَنة. والحالتان غير المُسنَدتين (with_delegate القديمة وnew الافتراضية) موثَّقتان بسبب لا مطموستين.",
+    "updated": "2026-08-29"
   },
   "RNW-D4": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "_stage_conflict يبني الرفض من أربعة أجزاء: المرحلة الحالية بالعربية، وما لا تسمح به، والمرحلة المطلوبة، ومن يملكها (STAGE_ACTOR). استُبدلت سبع رسائل. اختباران يتحقّقان من الأجزاء ومن خلوّ الرسالة من الأكواد الداخلية.",
+    "updated": "2026-08-29"
   },
   "IMP-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الخمول صار يُقاس على الجلسة (sid) لا على المستخدم: جدول session_activity + ترحيل a5b6c7d8e9f. جلسة الانتحال جديدة ببنيتها. 7 اختبارات في test_zzz_impersonation_idle.py، وإعادة القراءة من صفّ المستخدم تُسقط أربعة منها.",
+    "updated": "2026-08-29"
   },
   "IMP-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "نفس الإصلاح المعماري: الخمول على الجلسة. test_two_sessions_of_one_user_are_independent يثبت أن جلستين لمستخدم واحد لا تؤثر إحداهما في الأخرى، ويسقط عند إعادة القراءة من صفّ المستخدم.",
+    "updated": "2026-08-29"
   },
   "IMP-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "ثلاث حمايات مقيسة: الفاعل الحقيقي في الرمز والسياق والتدقيق؛ قاعدة «لا اعتماد ذاتي» تقرأ original_actor_user_id فلا يعتمد المنتحِل طلًبا هو مقدّمه؛ وسقف impersonation_max_minutes=60 مختوم في الرمز ولا يُمدَّد بالتجديد. 9 اختبارات، وإعادة العطل تُسقط اختبار الباب الخلفي بعد إلزام خطّ أساس موجَب.",
+    "updated": "2026-08-29"
   },
   "TSK-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "فهرس فريد جزئي uq_tasks_open_dedup على المفتوح وحده (ترحيل b6c7d8e9f0a + إعلان في النموذج)، وcreate_task تحتمل الرفض داخل SAVEPOINT، وتحرّك المرحلة يغلق مهام ما قبلها بالبادئة. 4+3 اختبارات، والإدراج المباشر لصفّ ثانٍ يُرفض من القاعدة.",
+    "updated": "2026-08-29"
   },
   "TSK-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "منفَّذ سابًقا كـBKL-06 ومتحقَّق منه الآن: app/gov_tasks.py بانٍ واحد للاستعلام يأخذ النطاق وسيًطا، والعدّ يُشتقّ من استعلام القائمة (count_gov_tasks تبني subquery من gov_tasks_query). operations.py ينادي الاثنين بـcompany_id نفسه. ستة اختبارات في test_zzz_gov_task_count.py منها test_count_equals_the_length_of_its_own_list.",
+    "updated": "2026-08-29"
   },
   "TSK-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "inbox_query في app/task_kinds مصدر واحد يأخذ kind وسيًطا، والعدّاد يشتقّ منه ثلاثة أرقام (open/tasks/notifications). الشارة في App.tsx تعدّ الإجراءات وحدها، وصفحة المهام تفتح على «يحتاج إجراء» بمرشّح صريح. 7 اختبارات، منها test_each_number_equals_the_list_it_opens وtest_the_split_is_not_vacuous.",
+    "updated": "2026-08-29"
   },
   "TSK-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "منفَّذ سابًقا كـBKL-04 ومتحقَّق منه: القالب لا يضيف «طلب» فوق اسم يحمله (notification_templates.py:24)، وترحيل x3p4q5r6s7t ينظّف الصفوف القائمة. ستة اختبارات في test_zzz_no_duplicate_words.py تشمل عناوين المهام والمراحل لا الإشعارات وحدها (test_stage_and_task_titles_do_not_repeat_words).",
+    "updated": "2026-08-29"
   },
   "TSK-05": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الترحيل نفسه ينظّف قبل إنشاء الفهرس: المكرّر يُوسَم dismissed (يبقى الأقدم)، والمهام المفتوحة لمعاملات منتهية أو مرفوضة تُغلق. جُرّب على قاعدة جديدة: upgrade head يمرّ والفهرس يُنشأ.",
+    "updated": "2026-08-29"
   },
   "TSK-06": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الحارس كان يفحص sla_escalation:{id} مجرًَّدا وnotify_roles تكتب :u{uid} — فلا يطابق أبًدا. صار الفحص بالبادئة، والتذكير القائم يُحدَّث برقم التأخّر الجديد بدل إضافة صفّ. 5 اختبارات، وإعادة المفتاح المجرَّد تُسقط اثنين.",
+    "updated": "2026-08-29"
   },
   "TSK-07": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "عدّاد اللوحة كان يعدّ الصندوق كله — نفس عيب TSK-03 في موضع ثانٍ؛ صار يشتقّ من inbox_query. وحقل notifications في ثلاث لوحات كان يحمل عدد المهام، ففُصل إلى رقمه الصحيح. 3 اختبارات تربط اللوحة بالشارة بالقائمة، وواحد يمنع المقارنة على صندوق فارغ.",
+    "updated": "2026-08-29"
   },
   "LBL-01": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "أُزيل «(V1.3)» من workflow.py:325 ومن الصفوف القائمة بترحيل c7d8e9f0a1b (بنمط لا باسم واحد). جُرّب على صفّ مزروع: قبل «طلب شهادة راتب (V1.3)» وبعد «طلب شهادة راتب»، والحارس يسقط عند إعادة الوسم.",
+    "updated": "2026-08-29"
   },
   "LBL-02": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "قيم enum المعروضة مترجَمة: labels.ts (contractTypeAr) وi18n للعقود والحالات، والحارس test_the_catalogue_has_no_raw_enum_as_a_name + فحص تسرّب على مخرجات API يمنع عودتها. RAW_ENUMS مكتوبة مستقلّة عن الشيفرة كي لا يُفرَّغ الفحص بتفريغ المصدر.",
+    "updated": "2026-08-29"
   },
   "LBL-03": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "الفحص على ما يخرج من الـAPI لا على الشاشات: test_no_raw_value_leaks_through_the_api على أربع نقاط (types/tasks/renewals/templates) — وهو ما يغذّي التقارير والتصدير والإشعارات معًا. الحقول التقنية مستثناة صراحًة، والكاشف مُقاس بقيمة مزروعة.",
+    "updated": "2026-08-29"
   },
   "LBL-04": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "qr/gps/both/none لا تظهر خامًّة كنصّ معروض: قيم option في EmployeeOnboarding/EmployeeProfile نصُّها QR وGPS وQR + GPS — اختصارات يقرؤها الناس لا أكواد. وtest_arabic_names_do_not_carry_latin_codes يمنع ظهور كود لاتيني صغير داخل اسم عربي.",
+    "updated": "2026-08-29"
   },
   "SIG-H1": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "نتيجة التحقيق: النقطة سليمة والواجهة لا تستدعيها. بمستخدم له نسختان تعيدهما كاملتين ببصمة وموافقة ومرجع؛ والفراغ نطاق صحيح لمن لا نسخة له. MyProfile.tsx ينادي /me/signature و/image وحدهما. 6 اختبارات تحرس القياس.",
+    "updated": "2026-08-29"
   },
   "SIG-H2": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "بقرار المالك: بُنيت الشاشة. قسم في MyProfile يعرض النسخ برقمها وتاريخها ومن اعتمدها وسببها وبصمتها، والحالية موسومة. والاختبار انقلب: كان يؤكّد أن الواجهة لا تستدعي النقطة، وصار يؤكّد أنها تستدعيها.",
+    "updated": "2026-08-29"
   },
   "SIG-H3": {
-    "status": "open",
-    "note": "",
-    "updated": ""
+    "status": "done",
+    "note": "app/endpoint_inventory: جرد يطابق الأجزاء الثابتة من كل مسار بنصّ الواجهة. 99 نقطة بلا استدعاء. الأداة نفسها محروسة: لا تُدرج /api/tasks/my ولا /auth/login، وتلتقط /me/signature/history، ولا تُدرج كل شيء.",
+    "updated": "2026-08-29"
   }
 }
