@@ -22,6 +22,11 @@ export default function MyProfile() {
   // تحميل الصورة ظهر "لم يتم رفع توقيع بعد" فوق تاريخ آخر تحديث — تناقض
   // مصدره مصدران لحقيقة واحدة لا خطأ في أيهما.
   const [sigImg, setSigImg] = useState<"idle" | "loading" | "error">("idle");
+  // SIG-H2 — سجل النسخ كان يُكتب في القاعدة كامًلا (بصمة واعتماد ومرجع)
+  // ولا شاشة تقرؤه، فقُرئ فراغُ الواجهة على أنه فراغ في البيانات وفُتح
+  // بلاغ على نقطة سليمة. البيانات موجودة، والناقص كان عرضها.
+  const [sigHistory, setSigHistory] = useState<any[]>([]);
+  const [sigCurrent, setSigCurrent] = useState<number | null>(null);
 
   // المعاينة تُجلب كـblob عبر axios ثم تُحوَّل لـobject URL. وضع المسار مباشرة
   // في <img src> لا يعمل: المتصفح لا يرفق ترويسة Authorization مع طلب الصورة،
@@ -41,6 +46,11 @@ export default function MyProfile() {
     }
   }).catch(() => { setSig({ has_signature: false, updated_at: null }); setSigImg("idle"); });
 
+  const loadSigHistory = () => api.get("/me/signature/history")
+    .then((r) => { setSigHistory(r.data?.versions || []);
+                   setSigCurrent(r.data?.current_version ?? null); })
+    .catch(() => { setSigHistory([]); setSigCurrent(null); });
+
   // نحرّر آخر object URL عند مغادرة الصفحة حتى لا تتسرّب الذاكرة
   useEffect(() => () => { if (sigPreview) URL.revokeObjectURL(sigPreview); }, [sigPreview]);
 
@@ -48,6 +58,7 @@ export default function MyProfile() {
     api.get("/me/profile").then((r) => setP(r.data))
       .catch((e) => setErr(errMsg(e, t("error"))));
     loadSig();
+    loadSigHistory();
   }, []);
 
   const uploadSig = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +209,53 @@ export default function MyProfile() {
             )}
           </div>
         </div>
+
+        {sig?.has_signature && (
+          <div style={{ marginTop: 20 }}>
+            <h4 style={{ margin: "0 0 4px" }}>{t("sig_history")}</h4>
+            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              {t("sig_history_hint")}
+            </div>
+            {!sigHistory.length ? (
+              <div className="muted">{t("sig_history_none")}</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>{t("sig_version")}</th>
+                    <th>{t("date")}</th>
+                    <th>{t("sig_approved_by")}</th>
+                    <th>{t("sig_reason")}</th>
+                    <th>{t("sig_checksum")}</th>
+                  </tr></thead>
+                  <tbody>
+                    {sigHistory.map((v: any) => (
+                      <tr key={v.version}>
+                        <td>
+                          {v.version}
+                          {v.version === sigCurrent && (
+                            <span className="pill info" style={{ marginInlineStart: 6 }}>
+                              {t("sig_current")}
+                            </span>
+                          )}
+                        </td>
+                        <td>{fmtKuwaitDateTime(v.created_at, lang)}</td>
+                        <td className="muted">{v.approver_role || "—"}</td>
+                        <td className="muted">{v.reason || "—"}</td>
+                        {/* البصمة كاملة في العنوان: الثمانية الأولى تكفي
+                            للتمييز البصري، والتحقّق يحتاجها كلها. */}
+                        <td className="muted" title={v.checksum_sha256}
+                            style={{ fontFamily: "monospace", fontSize: 12 }}>
+                          {(v.checksum_sha256 || "").slice(0, 8)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {p.may_receive_warning !== false && (

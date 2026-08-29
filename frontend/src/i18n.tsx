@@ -57,6 +57,15 @@ const dict: Record<string, { ar: string; en: string }> = {
   // QA-12 — سطر معلومة لا إجراء عليه
   tasks_info_only: { ar: "للعلم فقط", en: "For your information" },
   tasks_kind_task: { ar: "يحتاج إجراء", en: "Needs action" },
+  sig_history: { ar: "سجل نسخ التوقيع", en: "Signature version history" },
+  sig_history_none: { ar: "لا نسخ سابقة — هذه أول نسخة", en: "No previous versions" },
+  sig_history_hint: { ar: "السجل ثابت لا يُعدَّل: من يوقّع مستنًدا رسمًيا يحتاج أن يُثبت أي توقيع كان سارًيا حينها.", en: "This log is immutable." },
+  sig_version: { ar: "النسخة", en: "Version" },
+  sig_approved_by: { ar: "اعتمدها", en: "Approved by" },
+  sig_checksum: { ar: "البصمة", en: "Checksum" },
+  sig_reason: { ar: "السبب", en: "Reason" },
+  sig_current: { ar: "الحالية", en: "Current" },
+
   tasks_kind_notification: { ar: "أخبار", en: "Notifications" },
   tasks_kind_all: { ar: "الكل", en: "All" },
   // QA-28 — النسخ السابقة من المستندات

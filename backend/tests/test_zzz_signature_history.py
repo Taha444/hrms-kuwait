@@ -40,14 +40,15 @@ def _frontend_mentions(needle: str) -> bool:
     return False
 
 
-def test_the_endpoint_is_not_broken_it_is_unused(client):
-    """**نتيجة التحقيق**: لا عطل في النقطة، ولا استدعاء لها.
+def test_the_screen_now_reads_the_endpoint(client):
+    """**SIG-H2**: القرار كان بناء الشاشة، فيُقاس أنها تقرؤها فعًلا.
 
-    لو أُصلحت النقطة لأُنفق شغل على ما ليس معطًلا، ولبقي السبب الحقيقي —
-    غياب الشاشة — قائًما.
+    كان التحقيق قد أثبت أن النقطة سليمة وأن الواجهة لا تستدعيها. ولو
+    أُصلحت النقطة حينها لأُنفق شغل على ما ليس معطًلا وبقي السبب الحقيقي
+    — غياب الشاشة — قائًما.
     """
-    assert not _frontend_mentions("signature/history"), (
-        "صارت الواجهة تستدعيها — راجع قرار SIG-H2 قبل أي حذف"
+    assert _frontend_mentions("signature/history"), (
+        "الشاشة لا تقرأ السجل — عاد السبب الأصلي للبلاغ"
     )
 
 
@@ -106,11 +107,16 @@ def test_the_inventory_does_not_flag_a_clearly_used_endpoint():
         assert used not in flagged, f"«{used}» مستعمَل وأُدرج كمهجور"
 
 
-def test_the_inventory_finds_the_endpoint_that_started_this():
-    """والاتجاه المعاكس: يلتقط ما نعرف أنه غير مستدعى."""
+def test_the_inventory_still_finds_a_genuinely_unused_endpoint():
+    """والاتجاه المعاكس: يلتقط ما نعرف أنه غير مستدعى.
+
+    كان الشاهد هنا /me/signature/history نفسها، ثم بُنيت شاشتها
+    (SIG-H2) فصارت مستعمَلة — وهو تحوّل صحيح لا يُخفى بتعديل الادّعاء.
+    فنُقل الشاهد إلى نقطة إدارية ما زالت بلا واجهة.
+    """
     flagged = {r["path"] for r in unused_endpoints()}
-    assert "/api/me/signature/history" in flagged, (
-        "الجرد لم يلتقط النقطة التي فتحت التحقيق"
+    assert "/api/admin/db-status" in flagged, (
+        "الجرد لم يلتقط نقطة نعرف أنها بلا واجهة — الكاشف يطابق فضفاًضا"
     )
 
 
