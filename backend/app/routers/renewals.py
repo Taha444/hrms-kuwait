@@ -580,7 +580,11 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
                         R.DOC_CIVIL_CARD, "البطاقة المدنية الجديدة", file)
         # R4-A — بدل التنقّل المباشر لـCOMPLETED، نمرّ عبر PENDING_HR_VERIFY
         _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
-        rn.status = R.PENDING_HR_VERIFY
+        # RNW-D1 — الانتقال مشروط ببيانات الحكومة. المستند يُحفَظ في الحالتين:
+        # الموظف رفع ما عليه، ولا يُعاقَب بضياع رفعه لأن المندوب لم يُدخل
+        # بياناته بعد. تبقى المعاملة في مرحلتها حتى يُكملها المندوب.
+        if _ready_for_hr_verify(db, rn):
+            rn.status = R.PENDING_HR_VERIFY
         _notify_stage(db, rn)
     else:
         raise HTTPException(status_code=400, detail="نوع مستند غير معروف")
@@ -602,6 +606,43 @@ OCR_FIELDS_OF_INTEREST = {
     R.DOC_WORK_PERMIT: ("expiry_date", "doc_number"),
     R.DOC_CIVIL_CARD: ("civil_id", "expiry_date"),
 }
+
+
+#: RNW-D1 — بيانات المعاملة الحكومية التي بدونها لا معنى لتحقّق HR.
+#: يُدخلها المندوب عبر ``finalize``، وهي شرط دخول ``pending_hr_verify``.
+GOV_DATA_FIELDS = {
+    "new_expiry_date": "تاريخ الانتهاء الجديد",
+    "new_permit_number": "رقم الإقامة الجديد",
+    "gov_reference_no": "الرقم المرجعي للمعاملة الحكومية",
+}
+
+
+def _gov_data_missing(rn) -> list[str]:
+    """ما ينقص من بيانات الحكومة، مسمًّى.
+
+    **العطل الذي أنتج هذه الدالة**: كان رفع البطاقة المدنية ينقل المعاملة
+    إلى ``pending_hr_verify`` بلا فحص. فإن لم يكن المندوب أدخل بيانات
+    الحكومة بعد، وقعت المعاملة في حالة لا مخرج منها: ``finalize`` يردّ
+    409 لأن المرحلة لا تسمح بالإدخال، وتحقّق HR يرفض الإغلاق لأن
+    البيانات ناقصة. مقفولة من الناحيتين.
+    """
+    return [label for key, label in GOV_DATA_FIELDS.items()
+            if not getattr(rn, key, None)]
+
+
+def _civil_card_uploaded(db, rn) -> bool:
+    return _has(db, "employee", rn.employee_id, R.DOC_CIVIL_CARD)
+
+
+def _ready_for_hr_verify(db, rn) -> bool:
+    """شرطا الدخول إلى تحقّق HR: البطاقة مرفوعة **و**البيانات مكتملة.
+
+    ويُقيَّمان عند كلٍّ من المدخلين — رفع البطاقة وإدخال البيانات — فأيّهما
+    اكتمل أخيًرا هو الذي ينقل المعاملة. لو فُحص عند مدخل واحد لانتقلت
+    القفلة موضعها ولم تُغلق: من يرفع البطاقة أوًلا يُمنع، ثم يُدخل المندوب
+    البيانات ولا شيء ينقل المعاملة بعدها.
+    """
+    return _civil_card_uploaded(db, rn) and not _gov_data_missing(rn)
 
 
 def _closure_blockers(db, rn) -> list[str]:
@@ -911,8 +952,13 @@ def finalize_renewal(rid: int, request: Request,
         entry["confirmed_by"] = user.id
         entry["confirmed_at"] = datetime.utcnow().isoformat()
     rn.confirmed_data_json = record
-    # لو الحالة awaiting_civil_card بالفعل، نُبقيها (المندوب أكمل بيانات متأخّرة)
-    if rn.status != R.AWAITING_CIVIL_CARD:
+    # RNW-D1 — الطرف الثاني للبوّابة: لو كانت البطاقة مرفوعة من قبل فهذه
+    # الخطوة هي التي تُكمل الشرطين، فتنقل هي المعاملة. وبدون هذا الفرع
+    # ينتقل العطل ولا يزول: البطاقة تُرفض النقل لنقص البيانات، ثم تُدخَل
+    # البيانات ولا يبقى حدث ينقل المعاملة — ساكنة بلا مخرج مرة أخرى.
+    if _ready_for_hr_verify(db, rn):
+        rn.status = R.PENDING_HR_VERIFY
+    elif rn.status != R.AWAITING_CIVIL_CARD:
         rn.status = R.AWAITING_CIVIL_CARD
     _notify_stage(db, rn)
     audit(db, user, "finalize_renewal", "residency_renewal", rn.id, request=request,

@@ -1,0 +1,158 @@
+{
+  "categories": {
+    "renewal": "قفلة معاملة التجديد",
+    "session": "الانتحال والجلسات",
+    "tasks": "محرك المهام والعدادات",
+    "labels": "التسميات والقيم المعروضة",
+    "signature": "سجل التوقيعات"
+  },
+  "items": [
+    {
+      "id": "RNW-D1",
+      "cat": "renewal",
+      "sev": "blocker",
+      "text": "منع الانتقال إلى pending_hr_verify قبل اكتمال بيانات الحكومة الإلزامية — فحص على الخادم",
+      "skill": "hrms-renewal-stage-gates"
+    },
+    {
+      "id": "RNW-D2",
+      "cat": "renewal",
+      "sev": "blocker",
+      "text": "إنقاذ المعاملات العالقة حاليا في القفلة المزدوجة",
+      "skill": "hrms-renewal-stage-gates"
+    },
+    {
+      "id": "RNW-D3",
+      "cat": "renewal",
+      "sev": "high",
+      "text": "مراجعة كل انتقالات آلة الحالات — لا حالة بلا مخرج",
+      "skill": "hrms-renewal-stage-gates"
+    },
+    {
+      "id": "RNW-D4",
+      "cat": "renewal",
+      "sev": "medium",
+      "text": "رسائل 409 تسمّي الناقص ومن يستطيع إكماله بدل رفض صامت",
+      "skill": "hrms-renewal-stage-gates"
+    },
+    {
+      "id": "IMP-01",
+      "cat": "session",
+      "sev": "blocker",
+      "text": "جلسة الانتحال تبدأ بـ activity جديدة ولا ترث خمول المستخدم",
+      "skill": "hrms-impersonation-session"
+    },
+    {
+      "id": "IMP-02",
+      "cat": "session",
+      "sev": "high",
+      "text": "الخمول محسوب على الجلسة لا على المستخدم",
+      "skill": "hrms-impersonation-session"
+    },
+    {
+      "id": "IMP-03",
+      "cat": "session",
+      "sev": "high",
+      "text": "الانتحال لا يعطّل الحمايات: actor/original_actor · لا اعتماد ذاتي · مدة قصوى",
+      "skill": "hrms-impersonation-session"
+    },
+    {
+      "id": "TSK-01",
+      "cat": "tasks",
+      "sev": "blocker",
+      "text": "قيد فريد على مستوى القاعدة يمنع تكرار المهام + إغلاق تلقائي عند تحرك المعاملة",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-02",
+      "cat": "tasks",
+      "sev": "high",
+      "text": "عداد المهام الحكومية = نتيجة الفلتر بالضبط وبنفس company scope",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-03",
+      "cat": "tasks",
+      "sev": "high",
+      "text": "فصل المهام عن الإشعارات والـ Digest والـ SLA في التخزين والعد والعرض",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-04",
+      "cat": "tasks",
+      "sev": "low",
+      "text": "إصلاح «طلب طلب إجازة» في قوالب أسماء المهام",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-05",
+      "cat": "tasks",
+      "sev": "high",
+      "text": "تنظيف المهام المكررة والمفتوحة لمعاملات منتهية بـ migration مراجَعة",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-06",
+      "cat": "tasks",
+      "sev": "medium",
+      "text": "SLA لنفس الحدث تذكير واحد يُحدَّث لا عشرات تُضاف",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "TSK-07",
+      "cat": "tasks",
+      "sev": "medium",
+      "text": "مراجعة كل العدادات في النظام بنفس القاعدة",
+      "skill": "hrms-task-engine-hygiene"
+    },
+    {
+      "id": "LBL-01",
+      "cat": "labels",
+      "sev": "medium",
+      "text": "إزالة لاصقة (V1.3) من كتالوج الطلبات",
+      "skill": "hrms-label-hygiene"
+    },
+    {
+      "id": "LBL-02",
+      "cat": "labels",
+      "sev": "medium",
+      "text": "ترجمة كل enum معروض — indefinite وغيره — بالعربي والإنجليزي",
+      "skill": "hrms-label-hygiene"
+    },
+    {
+      "id": "LBL-03",
+      "cat": "labels",
+      "sev": "medium",
+      "text": "الفحص يشمل التقارير والتصدير CSV/XLSX و PDF والإشعارات ورسائل الخطأ",
+      "skill": "hrms-label-hygiene"
+    },
+    {
+      "id": "LBL-04",
+      "cat": "labels",
+      "sev": "low",
+      "text": "التأكد أن qr/gps/both/none لم تعد للظهور",
+      "skill": "hrms-label-hygiene"
+    },
+    {
+      "id": "SIG-H1",
+      "cat": "signature",
+      "sev": "high",
+      "text": "تحقيق: هل /api/me/signature/history مستخدم في الواجهة؟ ولماذا يرجع فارغا؟",
+      "skill": "hrms-signature-history-api"
+    },
+    {
+      "id": "SIG-H2",
+      "cat": "signature",
+      "sev": "medium",
+      "text": "التنفيذ حسب قرار التحقيق: إصلاح أو بناء الشاشة أو حذف الـ endpoint",
+      "skill": "hrms-signature-history-api"
+    },
+    {
+      "id": "SIG-H3",
+      "cat": "signature",
+      "sev": "low",
+      "text": "جرد الـ endpoints غير المستدعاة من الواجهة",
+      "skill": "hrms-signature-history-api"
+    }
+  ]
+}
