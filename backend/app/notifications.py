@@ -432,6 +432,7 @@ def sla_scan(db: Session) -> dict:
 
     now = datetime.now(timezone.utc)
     escalated = 0
+    refreshed = 0
 
     templates_by_code = {
         t.code: t for t in db.scalars(
@@ -457,26 +458,41 @@ def sla_scan(db: Session) -> dict:
         overdue_by = now - (created + timedelta(hours=tpl.sla_hours))
         if overdue_by.total_seconds() <= 0:
             continue
-        # منع التصعيد المتكرر بمفتاح ثبات
-        dk = f"sla_escalation:{task.id}"
-        already = db.scalar(select(models.Task.id).where(models.Task.dedup_key == dk))
-        if already:
+        # TSK-06 — تذكير واحد لكل حدث، **يُحدَّث ولا يُضاف**.
+        #
+        # العطل: المفتاح المفحوص كان «sla_escalation:{id}» مجرًَّدا، بينما
+        # ``notify_roles`` تكتب «...:u{user_id}» لكل مستلم. فالفحص لا
+        # يطابق صًفا أبًدا وحارسُ التكرار لا يحرس شيًئا — يمرّ لأن
+        # ``create_task`` تمنع التكرار ما دام التذكير مفتوًحا، فإذا أُغلق
+        # عاد المسح يُنشئ غيره كل ساعة.
+        prefix = f"sla_escalation:{task.id}:"
+        hours = int(overdue_by.total_seconds() // 3600)
+        detail = (f"تجاوزت المهمة #{task.id} مهلتها ({tpl.sla_hours} ساعة) بمقدار "
+                  f"{hours} ساعة.")
+        existing = db.scalars(select(models.Task).where(
+            models.Task.dedup_key.like(prefix + "%"))).all()
+        if existing:
+            # التأخّر يزداد بمرور الوقت: التذكير القائم يُحدَّث برقمه
+            # الجديد. صفٌّ ثانٍ لا يضيف معلومة ويُغرق الصندوق.
+            for row in existing:
+                row.detail = detail
+            refreshed += len(existing)
             continue
         # صعّد لمن يستطيع التدخل: مدير الشركة أو الموارد البشرية
         notify_roles(
             db, task.company_id, ["hr", "company_manager"],
             type="sla_escalation",
             title=f"مهمة متأخرة (SLA): {task.title}",
-            detail=(f"تجاوزت المهمة #{task.id} مهلتها ({tpl.sla_hours} ساعة) بمقدار "
-                    f"{int(overdue_by.total_seconds() // 3600)} ساعة."),
+            detail=detail,
             related_entity_type=task.related_entity_type,
             related_entity_id=task.related_entity_id,
-            severity="critical", dedup_key=dk,
+            severity="critical", dedup_key=f"sla_escalation:{task.id}",
         )
         escalated += 1
 
     db.commit()
-    return {"escalated": escalated, "scanned_at": now.isoformat()}
+    return {"escalated": escalated, "refreshed": refreshed,
+            "scanned_at": now.isoformat()}
 
 
 def digest_scan(db: Session) -> dict:

@@ -23,6 +23,9 @@ from app.task_kinds import NOTIFICATION_TYPES, inbox_query, is_notification
 from tests.conftest import auth_headers, login
 
 HR = ("100000000002", "hr12345")
+#: لوحة HR تعرض العدّاد باسم open_tasks لا my_open_tasks — الاسمان
+#: لرقم واحد، وهذا نفسه ما يُصلحه TSK-07.
+DASH_KEYS = ("my_open_tasks", "open_tasks")
 
 #: مكتوبة هنا مستقلّة عن الوحدة عمًدا: قراءتها من الوحدة تجعل تفريغها
 #: يُفرغ الاختبار فيمرّ أخضر وهو لا يفحص شيًئا.
@@ -139,6 +142,69 @@ def test_the_split_is_not_vacuous(client, hr_inbox):
                 for tk in db.scalars(select(models.Task).where(
                         models.Task.dedup_key == key)).all():
                     db.delete(tk)
+            db.commit()
+        finally:
+            db.close()
+
+
+# ==========================================================================
+# TSK-07 — القاعدة نفسها على كل العدادات، لا على واحد
+# ==========================================================================
+def test_the_dashboard_number_matches_the_box_it_opens(client, hr_inbox):
+    """**العيب نفسه في موضع ثانٍ**: اللوحة كانت تعدّ الصندوق كله.
+
+    فتقول «44» ويعرض الصندوق ستة. ولم يكن ذلك عيًبا جديًدا بل القاعدة
+    نفسها مكتوبة في موضعين — أُصلح أحدهما وبقي الآخر.
+    """
+    hdr, _ = hr_inbox
+    dash = client.get("/api/dashboard", headers=hdr)
+    assert dash.status_code == 200, dash.text
+    body = dash.json()
+    reported = next((body[k] for k in DASH_KEYS if k in body), None)
+    assert reported is not None, "اللوحة بلا عدّاد مهام"
+
+    rows = client.get("/api/tasks/my", headers=hdr,
+                      params={"status": "open", "kind": "task"}).json()
+    assert reported == len(rows), (
+        f"اللوحة {reported} والصندوق {len(rows)}"
+    )
+
+
+def test_the_dashboard_and_the_badge_agree(client, hr_inbox):
+    """ورقما الشاشتين واحد: من يرى اختلاًفا بينهما لا يثق بأيّهما."""
+    hdr, _ = hr_inbox
+    dash = client.get("/api/dashboard", headers=hdr).json()
+    count = client.get("/api/tasks/count", headers=hdr).json()
+    reported = next((dash[k] for k in DASH_KEYS if k in dash), None)
+    assert reported == count["tasks"], (
+        f"اللوحة {reported} والشارة {count['tasks']}"
+    )
+
+
+def test_this_comparison_is_not_run_on_an_empty_box(client, hr_inbox):
+    """مقارنة صفر بصفر تمرّ دائًما ولا تفحص شيًئا."""
+    hdr, uid = hr_inbox
+    key = "test:counter:sweep"
+    db = SessionLocal()
+    try:
+        if not db.scalar(select(models.Task).where(
+                models.Task.dedup_key == key)):
+            db.add(models.Task(company_id=1, type="renew_residency",
+                               title="عيّنة عدّاد", assignee_user_id=uid,
+                               dedup_key=key, status="open"))
+            db.commit()
+    finally:
+        db.close()
+    try:
+        dash = client.get("/api/dashboard", headers=hdr).json()
+        reported = next((dash[k] for k in DASH_KEYS if k in dash), None)
+        assert (reported or 0) >= 1, "الصندوق فارغ — المقارنات فراغ"
+    finally:
+        db = SessionLocal()
+        try:
+            for tk in db.scalars(select(models.Task).where(
+                    models.Task.dedup_key == key)).all():
+                db.delete(tk)
             db.commit()
         finally:
             db.close()

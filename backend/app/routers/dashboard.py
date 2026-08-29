@@ -31,9 +31,20 @@ def dashboard(company_id: int | None = None,
 
     from ..gov_tasks import count_open_gov_tasks
 
-    my_open_tasks = db.scalar(
-        select(func.count()).select_from(models.Task)
-        .where(models.Task.assignee_user_id == user.id, models.Task.status == "open")) or 0
+    # TSK-07 — العدّاد يُشتقّ من الاستعلام الذي يغذّي القائمة التي يفتحها.
+    #
+    # كان هذا الرقم يعدّ صندوق المستخدم كله — مهامه وأخباره معًا — بينما
+    # صندوق المهام يعرض ما يحتاج إجراًء. فرقمان لشيء واحد: اللوحة تقول
+    # «44» والصندوق يعرض ستة. وهو العيب نفسه الذي أُصلح في /tasks/count،
+    # ظهر ثانيةً هنا لأن القاعدة كانت مكتوبة في موضعين.
+    from ..task_kinds import inbox_query
+    my_open_tasks = db.scalar(select(func.count()).select_from(
+        inbox_query(user.id, "open", "task").subquery())) or 0
+    # والرقم الثاني رقم آخر. كان الحقل «notifications» في ثلاث لوحات
+    # يحمل عدد **المهام** — اسم يصف شيًئا وقيمة تصف غيره، فيقرأ المستخدم
+    # عدد أخباره وهو عدد ما عليه أن يفعله.
+    my_notifications = db.scalar(select(func.count()).select_from(
+        inbox_query(user.id, "open", "notification").subquery())) or 0
 
     role = user.role
     data: dict = {"role": role}
@@ -88,7 +99,7 @@ def dashboard(company_id: int | None = None,
                 "valid_licenses_pct": pct(valid_licenses, total_licenses),
                 "expired_licenses_pct": pct(expired_licenses, total_licenses),
             },
-            "notifications": my_open_tasks,
+            "notifications": my_notifications,
             "owner_view": True,
         })
         return data
@@ -175,7 +186,7 @@ def dashboard(company_id: int | None = None,
             "pending_requests": count(models.Request, models.Request.status == "pending"),
             "on_leave": count(models.Leave, models.Leave.status == "approved",
                               models.Leave.start_date <= today, models.Leave.end_date >= today),
-            "notifications": my_open_tasks,
+            "notifications": my_notifications,
             "contracts": count(models.Employee, models.Employee.status == "active"),
         })
         return data
@@ -184,7 +195,7 @@ def dashboard(company_id: int | None = None,
     if role == "accountant":
         data.update({
             "employees": count(models.Employee, models.Employee.status == "active"),
-            "notifications": my_open_tasks,
+            "notifications": my_notifications,
         })
         return data
 
