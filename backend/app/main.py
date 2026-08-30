@@ -329,9 +329,21 @@ def health_deep(request: Request):
         upload_dir = settings.upload_dir
         exists = os.path.isdir(upload_dir)
         writable = os.access(upload_dir, os.W_OK) if exists else False
+        # تخزين محلّي على الإنتاج = فقدان صامت.
+        #
+        # قرص الحاوية يُمحى مع كل نشرة: السجلّ يبقى في القاعدة والملف
+        # يختفي، فيبدو المستند موجوًدا حتى يُضغط زرّ الطباعة. وقد وقع هذا
+        # فعًلا. فتُعلَن الحالة هنا بدل انتظار من يكتشفها بالصدفة.
+        ephemeral = settings.is_production and (
+            (settings.storage_backend or "local").lower() == "local")
         results["checks"]["storage"] = {
-            "status": "ok" if exists and writable else "fail",
+            "status": ("fail" if not (exists and writable)
+                       else "degraded" if ephemeral else "ok"),
             "path": upload_dir, "writable": writable,
+            "backend": (settings.storage_backend or "local").lower(),
+            "note": ("تخزين محلّي على الإنتاج — الملفات تُمحى مع كل نشرة "
+                     "والسجلّات تبقى. انقله إلى قرص دائم أو S3."
+                     if ephemeral else None),
         }
         if not (exists and writable):
             ok = False

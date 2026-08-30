@@ -16,6 +16,7 @@ from ..deps import (
     assert_same_company,
     audit,
     get_current_user,
+    get_user_perms,
     require_perm,
     resolve_scope,
     scope_company_id,
@@ -70,7 +71,7 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     return emp
 
 
-@router.get("", response_model=list[schemas.EmployeeOut])
+@router.get("")
 def list_employees(response: Response, company_id: int | None = None, branch_id: int | None = None,
                    department_id: int | None = None, q: str | None = None,
                    limit: int = 100, offset: int = 0,
@@ -104,7 +105,20 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
     response.headers["X-Total-Count"] = str(total)
     limit = max(1, min(limit, 500))
     stmt = base.order_by(models.Employee.name).limit(limit).offset(max(offset, 0))
-    return list(db.scalars(stmt).all())
+    rows = list(db.scalars(stmt).all())
+
+    # سياسة الحقول تُطبَّق هنا كما تُطبَّق على مسار التفصيل. كانت مكتوبة
+    # هناك وحده، فبقي السرد يعيد الجواز والراتب لكل من يستطيع سرد
+    # الموظفين — ومنهم مسؤول الفرع. ومن أراد البيانات لا يفتح ملًفا واحًدا
+    # بل يفتح القائمة.
+    #
+    # وأُزيل ``response_model`` عمًدا: Pydantic يعيد بناء الحقول المحذوفة
+    # بقيمة None، فيعود التسريب في ثوب «لا يوجد جواز».
+    from ..field_policy import redact_employees
+
+    perms = get_user_perms(user, db)
+    payload = [schemas.EmployeeOut.model_validate(r).model_dump() for r in rows]
+    return redact_employees(payload, user, perms)
 
 
 @router.post("", response_model=schemas.EmployeeOut, status_code=201)
@@ -137,21 +151,18 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
 def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                  db: Session = Depends(get_db)):
     emp = _get_emp(db, user, emp_id)
-    # R2-D — نفس strip الـprofile: نُحوّل لـdict وننقّي الحقول الحساسة (بلا تعديل الصف في DB)
-    is_self = user.employee_id == emp.id
-    out = schemas.EmployeeOut.model_validate(emp).model_dump()
-    if user.role == "accountant" and not is_self:
-        for k in ("civil_id", "passport_number", "passport_expiry", "date_of_birth",
-                  "address", "nationality", "gender", "marital_status", "email", "phone",
-                  "personal_photo_path", "health_insurance",
-                  "contract_type", "contract_start_date", "contract_end_date"):
-            if k in out:
-                out[k] = None
-    elif user.role == "delegate" and not is_self:
-        for k in ("basic_salary", "actual_salary", "hire_date", "job_title",
-                  "contract_type", "contract_start_date", "contract_end_date"):
-            if k in out:
-                out[k] = None
+    # سياسة الحقول من app/field_policy — لا نسخة ثالثة هنا.
+    #
+    # **العطل**: كانت هذه الدالة تحمل قائمتها الخاصة، وتُنقّي للمحاسب
+    # والمندوب وحدهما. فمسؤول الفرع — وهو لا يملك ``view_documents`` —
+    # كان يأخذ الجواز صريًحا من هذا المسار بينما يمنعه مسار الملف الكامل.
+    # قاعدة واحدة في ثلاثة مواضع: أحدها يُصان واثنان يُنسيان.
+    from ..field_policy import redact_employee
+
+    perms = get_user_perms(user, db)
+    out = redact_employee(
+        schemas.EmployeeOut.model_validate(emp).model_dump(),
+        user, perms, employee_id=emp.id)
     # هل يجوز توجيه إنذار لهذا الموظف؟ الواجهة تُخفي بند الإنذارات بناًء عليه،
     # فلا تحمل نسخة ثانية من قائمة الأدوار المعفاة تنحرف عن قاعدة الخادم.
     from ..permissions import may_receive_warning

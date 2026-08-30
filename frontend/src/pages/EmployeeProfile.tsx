@@ -295,7 +295,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
         <>
           <div className="grid cards">
             <div className="card"><b>{t("epf_job")}:</b> {e.job_title || "—"}<br />
-              <b>{t("fld_official_salary")}:</b> {e.basic_salary} {kwd}<br />
+              {/* الحقل يُحذف من الردّ لمن لا يحقّ له رؤيته (field_policy)،
+                  فلا تُطبع العملة بلا رقم — تُقرأ كأن الراتب صفر. */}
+              <b>{t("fld_official_salary")}:</b>{" "}
+              {e.basic_salary === undefined ? "—" : <>{e.basic_salary} {kwd}</>}<br />
               {p.can_view_actual_salary && (
                 <><b>{t("fld_actual_salary")}:</b>{" "}
                   {!actualEdit

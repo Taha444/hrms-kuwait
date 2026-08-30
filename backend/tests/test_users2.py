@@ -68,7 +68,10 @@ def test_audit_filters_by_entity_and_date(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)
     acc = login(client, "100000000007", "account123")
-    emps = client.get("/api/employees", headers=auth_headers(acc)).json()
+    # البحث بالرقم المدني من حساب الإدارة: المحاسب لا يرى هذا الحقل
+    # (سياسة الحقول في app/field_policy — قائمة من قبل لمسار الملف
+    # وامتدّت إلى السرد). والمقيس هنا سجلّ التدقيق لا سرد الموظفين.
+    emps = client.get("/api/employees", headers=ah).json()
     emp = next(e for e in emps if e["civil_id"] == "100000000101")
     client.post(f"/api/employees/{emp['id']}/actual-salary", headers=auth_headers(acc),
                params={"amount": 999})

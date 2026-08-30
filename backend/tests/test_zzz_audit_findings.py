@@ -198,3 +198,45 @@ def test_foreign_keys_are_still_unenforced_on_sqlite():
     assert enforced == 0, (
         "فُعِّل فرض المفاتيح الأجنبية — احذف هذا الاختبار وأغلق F-003"
     )
+
+
+# ---------------------------------------------------------------------------
+# التخزين المؤقّت على الإنتاج يُعلَن، لا يُكتشف عند الطباعة
+# ---------------------------------------------------------------------------
+def test_local_storage_in_production_is_reported_as_degraded(client, monkeypatch):
+    """**العطل الذي وقع فعًلا**: قرص الحاوية يُمحى مع كل نشرة، فالسجلّ
+    يبقى في القاعدة والملف يختفي. ويبدو المستند موجوًدا حتى يُضغط زرّ
+    الطباعة — واكتشفه المستخدم لا النظام.
+
+    فحص الصحّة يعرف الإعدادين ولم يكن يربطهما. والربط هنا يحوّل خطر فقد
+    صامت إلى سطر يُقرأ قبل وقوعه.
+    """
+    from app.config import settings
+
+    # is_production مشتقّة من رابط القاعدة لا من حقل بيئة صريح
+    # (config.py:70)، فيُضبط ما يُقرأ فعًلا لا اسم يبدو صحيًحا.
+    monkeypatch.setattr(settings, "database_url",
+                        "postgresql+psycopg2://x/y", raising=False)
+    monkeypatch.setattr(settings, "storage_backend", "local", raising=False)
+    assert settings.is_production, "لم تُضبط حالة الإنتاج — الاختبار لا يقيس شيًئا"
+
+    hdr = auth_headers(login(client, *SUPER))
+    storage = client.get("/api/health/deep", headers=hdr).json()["checks"]["storage"]
+    assert storage["status"] == "degraded", (
+        f"تخزين مؤقّت على الإنتاج يُبلَّغ «{storage['status']}»"
+    )
+    assert "تُمحى" in (storage.get("note") or ""), storage
+
+
+def test_s3_in_production_is_not_flagged(client, monkeypatch):
+    """ولا يُبلَّغ عن تخزين دائم — إنذار دائم لا يُقرأ."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "database_url",
+                        "postgresql+psycopg2://x/y", raising=False)
+    monkeypatch.setattr(settings, "storage_backend", "s3", raising=False)
+    assert settings.is_production
+
+    hdr = auth_headers(login(client, *SUPER))
+    storage = client.get("/api/health/deep", headers=hdr).json()["checks"]["storage"]
+    assert storage["status"] != "degraded", storage
