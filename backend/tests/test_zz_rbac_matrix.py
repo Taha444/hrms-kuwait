@@ -292,7 +292,10 @@ def test_health_deep_reports_clock_and_migration_currency(client):
     انحراف الساعة أبطل رموز 2FA صحيحة ولم يظهر في أي مكان؛ ورأس الترحيلات
     كان يُعرض بلا مقارنة برأس الكود — فترحيل لم يُطبَّق يُكتشف بعطل لا بفحص.
     """
-    r = client.get("/api/health/deep")
+    # F-001 — تفصيل فحص الصحّة صار امتيازًا: المجهول يرى حالة
+    # المكوّنات بلا أرقامها، فما يفحص المحتوى يُصادِق.
+    _h = auth_headers(login(client, "000000000000", "admin123"))
+    r = client.get("/api/health/deep", headers=_h)
     body = r.json()
     checks = body.get("checks", {})
 
@@ -1776,7 +1779,8 @@ def test_dlv31_seed_accounts_are_detected(client):
         db.close()
 
     # ويظهر في فحص الصحة بلا أسماء ولا كلمات مرور
-    deep = client.get("/api/health/deep").json()
+    _h = auth_headers(login(client, "000000000000", "admin123"))
+    deep = client.get("/api/health/deep", headers=_h).json()
     check = deep["checks"].get("seed_accounts")
     assert check is not None, "فحص الصحة لا يعرض حسابات البذرة"
     assert check["status"] == "fail" and check["count"] >= 1

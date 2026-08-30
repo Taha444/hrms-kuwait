@@ -1,0 +1,3408 @@
+{
+ "generated_from": "route.dependant (شجرة اعتماديات FastAPI)",
+ "total": 265,
+ "read_endpoints": [
+  "/api/2fa/status",
+  "/api/admin/break-glass",
+  "/api/admin/db-status",
+  "/api/admin/reset-status",
+  "/api/admin/system-info",
+  "/api/archive/company",
+  "/api/attendance/close-status",
+  "/api/attendance/my",
+  "/api/attendance/review",
+  "/api/audit",
+  "/api/auth/me",
+  "/api/auth/my-companies",
+  "/api/branches",
+  "/api/companies",
+  "/api/dashboard",
+  "/api/delegations",
+  "/api/departments",
+  "/api/documents/canonical",
+  "/api/documents/history",
+  "/api/documents/latest",
+  "/api/documents/ocr-status",
+  "/api/employees",
+  "/api/employees/attendance-policy/pending",
+  "/api/eos/cases",
+  "/api/eos/reasons",
+  "/api/feature-flags",
+  "/api/feature-flags/raw",
+  "/api/feature-flags/registry",
+  "/api/gov-portals",
+  "/api/health",
+  "/api/health/deep",
+  "/api/licenses",
+  "/api/manifest",
+  "/api/me/avatar",
+  "/api/me/avatar/image",
+  "/api/me/profile",
+  "/api/me/signature",
+  "/api/me/signature/history",
+  "/api/me/signature/image",
+  "/api/me/signature/pending/image",
+  "/api/me/tours",
+  "/api/notifications/preferences",
+  "/api/notifications/templates",
+  "/api/notifications/templates/categories",
+  "/api/operations",
+  "/api/org/structure",
+  "/api/payroll/preview",
+  "/api/payroll/runs",
+  "/api/pro/deprecation-notice",
+  "/api/pro/government",
+  "/api/pro/notes",
+  "/api/pro/permits",
+  "/api/renewals",
+  "/api/renewals/due/permits",
+  "/api/reports/attendance",
+  "/api/reports/employees",
+  "/api/reports/workflow-operations",
+  "/api/requests/inbox",
+  "/api/requests/mine",
+  "/api/requests/registry",
+  "/api/requests/status-map",
+  "/api/requests/status-model",
+  "/api/requests/types",
+  "/api/requests/types-schemas",
+  "/api/search",
+  "/api/shifts",
+  "/api/signatories",
+  "/api/signatories/resolve",
+  "/api/signatures/pending",
+  "/api/tasks/count",
+  "/api/tasks/my",
+  "/api/templates",
+  "/api/templates/exists",
+  "/api/templates/placeholders",
+  "/api/users",
+  "/api/users/catalog",
+  "/api/users/orphaned",
+  "/api/users/permission-matrix",
+  "/api/version"
+ ],
+ "all": [
+  {
+   "path": "/api/2fa/confirm",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "confirm"
+  },
+  {
+   "path": "/api/2fa/disable",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "disable"
+  },
+  {
+   "path": "/api/2fa/enroll",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "enroll"
+  },
+  {
+   "path": "/api/2fa/recovery/regenerate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "regenerate_recovery"
+  },
+  {
+   "path": "/api/2fa/status",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "status"
+  },
+  {
+   "path": "/api/2fa/verify",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "verify"
+  },
+  {
+   "path": "/api/admin/break-glass",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "open_break_glass"
+  },
+  {
+   "path": "/api/admin/break-glass",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "list_break_glass"
+  },
+  {
+   "path": "/api/admin/break-glass/close",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "close_break_glass"
+  },
+  {
+   "path": "/api/admin/db-status",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "db_status"
+  },
+  {
+   "path": "/api/admin/ensure-catalog",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "ensure_catalog"
+  },
+  {
+   "path": "/api/admin/reset-demo-data",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "reset_demo_data"
+  },
+  {
+   "path": "/api/admin/reset-status",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "reset_status"
+  },
+  {
+   "path": "/api/admin/system-info",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "system_info"
+  },
+  {
+   "path": "/api/archive/branch/{branch_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "branch_archive"
+  },
+  {
+   "path": "/api/archive/company",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "company_archive"
+  },
+  {
+   "path": "/api/archive/company/info",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_company_info"
+  },
+  {
+   "path": "/api/archive/custom-doc",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "add_custom_document"
+  },
+  {
+   "path": "/api/archive/custom-doc/{doc_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_custom_document"
+  },
+  {
+   "path": "/api/archive/custom-doc/{doc_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "delete_custom_document"
+  },
+  {
+   "path": "/api/archive/custom-doc/{doc_id}/download",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "download_custom_document_version"
+  },
+  {
+   "path": "/api/archive/custom-doc/{doc_id}/history",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "custom_document_history"
+  },
+  {
+   "path": "/api/archive/custom-doc/{doc_id}/replace",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "replace_custom_document"
+  },
+  {
+   "path": "/api/attendance/branch/{branch_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "branch_attendance"
+  },
+  {
+   "path": "/api/attendance/check-in",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "check_in"
+  },
+  {
+   "path": "/api/attendance/close-month",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "close_attendance_month"
+  },
+  {
+   "path": "/api/attendance/close-status",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "attendance_close_status"
+  },
+  {
+   "path": "/api/attendance/my",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_attendance"
+  },
+  {
+   "path": "/api/attendance/reopen-month",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "reopen_attendance_month"
+  },
+  {
+   "path": "/api/attendance/review",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "attendance_review"
+  },
+  {
+   "path": "/api/attendance/validate-qr",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "validate_qr"
+  },
+  {
+   "path": "/api/attendance/{record_id}/correct",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "correct_attendance"
+  },
+  {
+   "path": "/api/audit",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_audit"
+  },
+  {
+   "path": "/api/auth/change-password",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "change_password"
+  },
+  {
+   "path": "/api/auth/login",
+   "methods": [
+    "POST"
+   ],
+   "guard": "none",
+   "deps": [
+    "get_db"
+   ],
+   "handler": "login"
+  },
+  {
+   "path": "/api/auth/logout",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "logout"
+  },
+  {
+   "path": "/api/auth/me",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "me"
+  },
+  {
+   "path": "/api/auth/my-companies",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_companies"
+  },
+  {
+   "path": "/api/auth/refresh",
+   "methods": [
+    "POST"
+   ],
+   "guard": "authz-only",
+   "deps": [
+    "get_db"
+   ],
+   "handler": "refresh"
+  },
+  {
+   "path": "/api/auth/reset-password",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "reset_password"
+  },
+  {
+   "path": "/api/auth/select-company",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "select_company"
+  },
+  {
+   "path": "/api/branches",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_branches"
+  },
+  {
+   "path": "/api/branches",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_branch"
+  },
+  {
+   "path": "/api/branches/{branch_id}/kiosk-key/rotate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "rotate_kiosk_key"
+  },
+  {
+   "path": "/api/branches/{branch_id}/kiosk-url",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_kiosk_url"
+  },
+  {
+   "path": "/api/branches/{branch_id}/qr",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "branch_qr"
+  },
+  {
+   "path": "/api/branches/{branch_id}/stats",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "branch_stats"
+  },
+  {
+   "path": "/api/branches/{branch_id}/supervisors/{user_id}",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "add_supervisor"
+  },
+  {
+   "path": "/api/companies",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_companies"
+  },
+  {
+   "path": "/api/companies",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "create_company"
+  },
+  {
+   "path": "/api/companies/{company_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "update_company"
+  },
+  {
+   "path": "/api/companies/{company_id}/status",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "set_status"
+  },
+  {
+   "path": "/api/dashboard",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "dashboard"
+  },
+  {
+   "path": "/api/delegations",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_delegations"
+  },
+  {
+   "path": "/api/delegations",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_delegation"
+  },
+  {
+   "path": "/api/delegations/{delegation_id}/revoke",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "revoke_delegation"
+  },
+  {
+   "path": "/api/departments",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_departments"
+  },
+  {
+   "path": "/api/departments",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_department"
+  },
+  {
+   "path": "/api/documents/canonical",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "canonical_catalog"
+  },
+  {
+   "path": "/api/documents/canonical/{od_code}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "canonical_document_detail"
+  },
+  {
+   "path": "/api/documents/history",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "document_history"
+  },
+  {
+   "path": "/api/documents/latest",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "latest_document"
+  },
+  {
+   "path": "/api/documents/ocr-preview",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "ocr_preview"
+  },
+  {
+   "path": "/api/documents/ocr-status",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "ocr_status"
+  },
+  {
+   "path": "/api/documents/requests/{doc_id}/revoke",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "revoke_request_document"
+  },
+  {
+   "path": "/api/documents/upload",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "upload_document"
+  },
+  {
+   "path": "/api/documents/{doc_id}/download",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "download_document_version"
+  },
+  {
+   "path": "/api/documents/{doc_id}/expiry",
+   "methods": [
+    "PATCH"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "correct_document_expiry"
+  },
+  {
+   "path": "/api/employees",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_employees"
+  },
+  {
+   "path": "/api/employees",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_employee"
+  },
+  {
+   "path": "/api/employees/attendance-policy/pending",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_employees_without_policy"
+  },
+  {
+   "path": "/api/employees/backfill-employee-no",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "backfill_employee_numbers"
+  },
+  {
+   "path": "/api/employees/salary-change-requests/{req_id}/decide",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "decide_salary_change"
+  },
+  {
+   "path": "/api/employees/{emp_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_employee"
+  },
+  {
+   "path": "/api/employees/{emp_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_employee"
+  },
+  {
+   "path": "/api/employees/{emp_id}/actual-salary",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_actual_salary"
+  },
+  {
+   "path": "/api/employees/{emp_id}/apply-ocr",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "apply_ocr"
+  },
+  {
+   "path": "/api/employees/{emp_id}/attendance-mode",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_attendance_mode"
+  },
+  {
+   "path": "/api/employees/{emp_id}/attendance-policy",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_attendance_policy"
+  },
+  {
+   "path": "/api/employees/{emp_id}/change-history",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "employee_change_history"
+  },
+  {
+   "path": "/api/employees/{emp_id}/company-contract/generate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "generate_employee_company_contract"
+  },
+  {
+   "path": "/api/employees/{emp_id}/events",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "add_event"
+  },
+  {
+   "path": "/api/employees/{emp_id}/events",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_events"
+  },
+  {
+   "path": "/api/employees/{emp_id}/gov-contract/generate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "generate_employee_gov_contract"
+  },
+  {
+   "path": "/api/employees/{emp_id}/permits",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "add_permit"
+  },
+  {
+   "path": "/api/employees/{emp_id}/profile",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "employee_profile"
+  },
+  {
+   "path": "/api/employees/{emp_id}/salary-change-request",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "propose_salary_change"
+  },
+  {
+   "path": "/api/employees/{emp_id}/salary-change-requests",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_salary_change_requests"
+  },
+  {
+   "path": "/api/employees/{emp_id}/status",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_status"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "prepare_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate/acknowledge",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "acknowledge_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate/approve",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "approve_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate/cancel",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "cancel_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate/clearance",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "clearance_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/terminate/execute",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "execute_termination"
+  },
+  {
+   "path": "/api/employees/{emp_id}/timeline",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "employee_timeline"
+  },
+  {
+   "path": "/api/employees/{emp_id}/transfer",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "transfer_employee"
+  },
+  {
+   "path": "/api/eos/calculate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "calculate"
+  },
+  {
+   "path": "/api/eos/cases",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "initiate_case"
+  },
+  {
+   "path": "/api/eos/cases",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_cases"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/acknowledge",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "acknowledge_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/approve",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "approve_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/calculate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "calculate_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/clearance",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "clearance_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/file",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "file_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/print",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "print_case"
+  },
+  {
+   "path": "/api/eos/cases/{case_id}/settle",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "settle_case"
+  },
+  {
+   "path": "/api/eos/for-employee",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "for_employee"
+  },
+  {
+   "path": "/api/eos/leave-balance",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "leave_balance"
+  },
+  {
+   "path": "/api/eos/reasons",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "reasons"
+  },
+  {
+   "path": "/api/feature-flags",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "list_flags"
+  },
+  {
+   "path": "/api/feature-flags",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "set_flag"
+  },
+  {
+   "path": "/api/feature-flags/raw",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "list_raw_rows"
+  },
+  {
+   "path": "/api/feature-flags/registry",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "registry"
+  },
+  {
+   "path": "/api/feature-flags/{flag_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "delete_flag"
+  },
+  {
+   "path": "/api/gov-portals",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_portals"
+  },
+  {
+   "path": "/api/gov-portals",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_portal"
+  },
+  {
+   "path": "/api/gov-portals/{portal_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_portal"
+  },
+  {
+   "path": "/api/gov-portals/{portal_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "delete_portal"
+  },
+  {
+   "path": "/api/health",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "health"
+  },
+  {
+   "path": "/api/health/deep",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "health_deep"
+  },
+  {
+   "path": "/api/kiosk/{branch_id}/qr",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [
+    "get_db"
+   ],
+   "handler": "kiosk_qr"
+  },
+  {
+   "path": "/api/licenses",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_licenses"
+  },
+  {
+   "path": "/api/licenses",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_license"
+  },
+  {
+   "path": "/api/manifest",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "manifest"
+  },
+  {
+   "path": "/api/me/avatar",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_avatar_status"
+  },
+  {
+   "path": "/api/me/avatar",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "upload_my_avatar"
+  },
+  {
+   "path": "/api/me/avatar",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "delete_my_avatar"
+  },
+  {
+   "path": "/api/me/avatar/image",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_avatar_image"
+  },
+  {
+   "path": "/api/me/document/{document_type_code}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_document"
+  },
+  {
+   "path": "/api/me/profile",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_profile"
+  },
+  {
+   "path": "/api/me/signature",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_my_signature_info"
+  },
+  {
+   "path": "/api/me/signature",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "upload_my_signature"
+  },
+  {
+   "path": "/api/me/signature/history",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_my_signature_history"
+  },
+  {
+   "path": "/api/me/signature/image",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_my_signature_image"
+  },
+  {
+   "path": "/api/me/signature/pending/image",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_my_pending_signature_image"
+  },
+  {
+   "path": "/api/me/tours",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_tours"
+  },
+  {
+   "path": "/api/me/tours/{tour_key}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "reset_tour"
+  },
+  {
+   "path": "/api/me/tours/{tour_key}/complete",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "complete_tour"
+  },
+  {
+   "path": "/api/notifications/preferences",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_preferences"
+  },
+  {
+   "path": "/api/notifications/preferences",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_preferences"
+  },
+  {
+   "path": "/api/notifications/templates",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_notification_templates"
+  },
+  {
+   "path": "/api/notifications/templates/categories",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "notification_categories"
+  },
+  {
+   "path": "/api/operations",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_operations"
+   ],
+   "handler": "operations_center"
+  },
+  {
+   "path": "/api/org/structure",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "org_structure"
+  },
+  {
+   "path": "/api/payroll/preview",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "preview"
+  },
+  {
+   "path": "/api/payroll/run",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "run"
+  },
+  {
+   "path": "/api/payroll/runs",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_runs"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_run"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}/adjustment",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "adjustment_run"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}/approve",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "approve_run"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}/finalize",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "finalize_run"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}/lock",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "lock_run"
+  },
+  {
+   "path": "/api/payroll/runs/{run_id}/reopen",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "reopen_run"
+  },
+  {
+   "path": "/api/pro/deprecation-notice",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "deprecation_notice"
+  },
+  {
+   "path": "/api/pro/government",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "government_overview"
+  },
+  {
+   "path": "/api/pro/licenses/{license_id}/renew",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "renew_license"
+  },
+  {
+   "path": "/api/pro/notes",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "add_note"
+  },
+  {
+   "path": "/api/pro/notes",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_notes"
+  },
+  {
+   "path": "/api/pro/permits",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_permits"
+  },
+  {
+   "path": "/api/pro/permits/{permit_id}/renew",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "renew_permit"
+  },
+  {
+   "path": "/api/renewals",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_renewal"
+  },
+  {
+   "path": "/api/renewals",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_renewals"
+  },
+  {
+   "path": "/api/renewals/due/permits",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "permits_due_without_case"
+  },
+  {
+   "path": "/api/renewals/{rid}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_renewal"
+  },
+  {
+   "path": "/api/renewals/{rid}/closure-check",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "closure_check"
+  },
+  {
+   "path": "/api/renewals/{rid}/decide",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "decide_renewal"
+  },
+  {
+   "path": "/api/renewals/{rid}/document/{doc_type}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "download_renewal_document"
+  },
+  {
+   "path": "/api/renewals/{rid}/extracted",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "extracted_values"
+  },
+  {
+   "path": "/api/renewals/{rid}/finalize",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "finalize_renewal"
+  },
+  {
+   "path": "/api/renewals/{rid}/gov-contract/generate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "generate_gov_contract"
+  },
+  {
+   "path": "/api/renewals/{rid}/hr-verify",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "hr_verify_renewal"
+  },
+  {
+   "path": "/api/renewals/{rid}/renewing",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "mark_renewing"
+  },
+  {
+   "path": "/api/renewals/{rid}/timeline",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "renewal_timeline"
+  },
+  {
+   "path": "/api/renewals/{rid}/upload",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "upload_renewal_doc"
+  },
+  {
+   "path": "/api/reports/attendance",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "export_attendance"
+  },
+  {
+   "path": "/api/reports/employees",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "export_employees"
+  },
+  {
+   "path": "/api/reports/eos/{emp_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "export_eos"
+  },
+  {
+   "path": "/api/reports/payroll/{run_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "export_payroll"
+  },
+  {
+   "path": "/api/reports/workflow-operations",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "workflow_operations_report"
+  },
+  {
+   "path": "/api/requests",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "submit_request"
+  },
+  {
+   "path": "/api/requests/inbox",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "approval_inbox"
+  },
+  {
+   "path": "/api/requests/mine",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_requests"
+  },
+  {
+   "path": "/api/requests/registry",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "registry"
+  },
+  {
+   "path": "/api/requests/status-map",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "status_map"
+  },
+  {
+   "path": "/api/requests/status-model",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "status_model"
+  },
+  {
+   "path": "/api/requests/types",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_request_types"
+  },
+  {
+   "path": "/api/requests/types",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_request_type"
+  },
+  {
+   "path": "/api/requests/types-schemas",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_type_schemas"
+  },
+  {
+   "path": "/api/requests/types/{code}/schema",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_type_schema"
+  },
+  {
+   "path": "/api/requests/{req_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_request"
+  },
+  {
+   "path": "/api/requests/{req_id}/appointment",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_appointment"
+  },
+  {
+   "path": "/api/requests/{req_id}/cancel",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "cancel"
+  },
+  {
+   "path": "/api/requests/{req_id}/decide",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "decide"
+  },
+  {
+   "path": "/api/requests/{req_id}/document/{kind}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "download_request_document"
+  },
+  {
+   "path": "/api/requests/{req_id}/document/{kind}/mark-filed",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "mark_document_filed"
+  },
+  {
+   "path": "/api/requests/{req_id}/document/{kind}/mark-printed",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "mark_document_printed"
+  },
+  {
+   "path": "/api/requests/{req_id}/documents",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "upload_request_document"
+  },
+  {
+   "path": "/api/requests/{req_id}/received",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "mark_received"
+  },
+  {
+   "path": "/api/requests/{req_id}/resubmit",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "resubmit_request"
+  },
+  {
+   "path": "/api/search",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "global_search"
+  },
+  {
+   "path": "/api/shifts",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_shifts"
+  },
+  {
+   "path": "/api/shifts",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_shift"
+  },
+  {
+   "path": "/api/signatories",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_signatories"
+  },
+  {
+   "path": "/api/signatories",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_signatory"
+  },
+  {
+   "path": "/api/signatories/resolve",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "resolve_endpoint"
+  },
+  {
+   "path": "/api/signatories/{sig_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_signatory"
+  },
+  {
+   "path": "/api/signatories/{sig_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "deactivate_signatory"
+  },
+  {
+   "path": "/api/signatures/pending",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "_require_hr",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_pending_replacements"
+  },
+  {
+   "path": "/api/signatures/pending/{target_user_id}/approve",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "_require_hr",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "approve_replacement"
+  },
+  {
+   "path": "/api/signatures/pending/{target_user_id}/history",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "_require_hr",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_signature_history_for_hr"
+  },
+  {
+   "path": "/api/signatures/pending/{target_user_id}/image",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "_require_hr",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_pending_image_for_hr"
+  },
+  {
+   "path": "/api/signatures/pending/{target_user_id}/reject",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "_require_hr",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "reject_replacement"
+  },
+  {
+   "path": "/api/tasks/bulk",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "bulk_task_action"
+  },
+  {
+   "path": "/api/tasks/cleanup-orphans",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "cleanup_orphan_tasks"
+  },
+  {
+   "path": "/api/tasks/count",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_open_count"
+  },
+  {
+   "path": "/api/tasks/my",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "my_tasks"
+  },
+  {
+   "path": "/api/tasks/run-digest",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "run_digest"
+  },
+  {
+   "path": "/api/tasks/run-scan",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "run_scan"
+  },
+  {
+   "path": "/api/tasks/run-sla-scan",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "run_sla_scan"
+  },
+  {
+   "path": "/api/tasks/{task_id}/claim",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "claim_task"
+  },
+  {
+   "path": "/api/tasks/{task_id}/release",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "release_task"
+  },
+  {
+   "path": "/api/tasks/{task_id}/retry-delivery",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "retry_delivery"
+  },
+  {
+   "path": "/api/tasks/{task_id}/status",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "update_status"
+  },
+  {
+   "path": "/api/templates",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_templates"
+  },
+  {
+   "path": "/api/templates",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "create_template"
+  },
+  {
+   "path": "/api/templates/exists",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "templates_exist"
+  },
+  {
+   "path": "/api/templates/placeholders",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "placeholders"
+  },
+  {
+   "path": "/api/templates/{tpl_id}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}",
+   "methods": [
+    "PUT"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "update_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "delete_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}/generate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "generate_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}/preview",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "preview_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}/render",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "render_template"
+  },
+  {
+   "path": "/api/templates/{tpl_id}/versions",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "list_template_versions"
+  },
+  {
+   "path": "/api/users",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_users"
+  },
+  {
+   "path": "/api/users",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "create_user"
+  },
+  {
+   "path": "/api/users/apply-template/{user_id}/{template_code}",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "apply_template"
+  },
+  {
+   "path": "/api/users/auto-link-employees",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "auto_link_all_orphans"
+  },
+  {
+   "path": "/api/users/catalog",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "perm_catalog"
+  },
+  {
+   "path": "/api/users/copy-permissions",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "copy_permissions"
+  },
+  {
+   "path": "/api/users/impersonate-end",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "impersonate_end"
+  },
+  {
+   "path": "/api/users/orphaned",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_orphaned_users"
+  },
+  {
+   "path": "/api/users/permission-matrix",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "matrix_catalog"
+  },
+  {
+   "path": "/api/users/{user_id}/2fa/reset",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "reset_user_2fa"
+  },
+  {
+   "path": "/api/users/{user_id}/avatar/image",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "user_avatar_image"
+  },
+  {
+   "path": "/api/users/{user_id}/company-links",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "add_company_link"
+  },
+  {
+   "path": "/api/users/{user_id}/company-links",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "list_company_links"
+  },
+  {
+   "path": "/api/users/{user_id}/company-links/{link_id}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "remove_company_link"
+  },
+  {
+   "path": "/api/users/{user_id}/enable-cross-company",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "enable_cross_company"
+  },
+  {
+   "path": "/api/users/{user_id}/impersonate",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth",
+   "deps": [
+    "get_current_user",
+    "get_db",
+    "require_super_admin"
+   ],
+   "handler": "impersonate"
+  },
+  {
+   "path": "/api/users/{user_id}/link-employee",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "link_user_to_employee"
+  },
+  {
+   "path": "/api/users/{user_id}/link-employee",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "link_orphan_to_employee"
+  },
+  {
+   "path": "/api/users/{user_id}/matrix",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_matrix"
+  },
+  {
+   "path": "/api/users/{user_id}/matrix",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_matrix"
+  },
+  {
+   "path": "/api/users/{user_id}/matrix/reset",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "reset_matrix"
+  },
+  {
+   "path": "/api/users/{user_id}/permissions",
+   "methods": [
+    "GET"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "get_permissions"
+  },
+  {
+   "path": "/api/users/{user_id}/permissions",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "assign_permissions"
+  },
+  {
+   "path": "/api/users/{user_id}/permissions/{perm_code}",
+   "methods": [
+    "DELETE"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "revoke_permission"
+  },
+  {
+   "path": "/api/users/{user_id}/scope",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_data_scope"
+  },
+  {
+   "path": "/api/users/{user_id}/status",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "set_user_status"
+  },
+  {
+   "path": "/api/users/{user_id}/toggle",
+   "methods": [
+    "POST"
+   ],
+   "guard": "auth+authz",
+   "deps": [
+    "checker",
+    "get_current_user",
+    "get_db"
+   ],
+   "handler": "toggle_active"
+  },
+  {
+   "path": "/api/verify/{code}",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [
+    "get_db"
+   ],
+   "handler": "verify_document"
+  },
+  {
+   "path": "/api/version",
+   "methods": [
+    "GET"
+   ],
+   "guard": "none",
+   "deps": [],
+   "handler": "version"
+  }
+ ]
+}

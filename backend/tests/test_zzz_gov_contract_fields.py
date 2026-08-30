@@ -12,6 +12,7 @@ import pytest
 from app import models
 from app.database import SessionLocal
 from app.routers import renewals as RN
+from tests.conftest import auth_headers, login
 
 
 @pytest.fixture
@@ -212,7 +213,10 @@ def test_environment_report_never_claims_ready_without_both():
 
 def test_deep_health_surfaces_gov_contract_readiness(client):
     """الحال يظهر في فحص الصحّة، فيُكتشف قبل التقديم لا بعده."""
-    r = client.get("/api/health/deep")
+    # F-001 — تفصيل فحص الصحّة صار امتيازًا: المجهول يرى حالة
+    # المكوّنات بلا أرقامها، فما يفحص المحتوى يُصادِق.
+    _h = auth_headers(login(client, "000000000000", "admin123"))
+    r = client.get("/api/health/deep", headers=_h)
     assert r.status_code in (200, 503), r.text
     checks = r.json().get("checks", {})
     assert "gov_contract" in checks, "جاهزية العقد لا تظهر في فحص الصحّة"

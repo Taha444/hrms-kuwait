@@ -30,6 +30,24 @@ engine = create_engine(
     echo=False,
 )
 
+# F-003 — SQLite تتجاهل المفاتيح الأجنبية ما لم تُطلَب لكل اتصال، بينما
+# يفرضها PostgreSQL على الإنتاج. فصفٌّ يتيم يمرّ أخضر محلًّيا ويُرفض هناك.
+#
+# **ولماذا لم تُفعَّل بعد**: جُرّبت فسقط سبعة عشر اختبارًا — لا لأنها تُنشئ
+# بيانات فاسدة، بل لأن تنظيفها يحذف الأب قبل الأبناء. والعلاج الصحيح ليس
+# ترقيع التنظيف: اثنان وستون مفتاًحا أجنبًيا يشير إلى ``users`` بلا سياسة
+# ``ondelete``، ومعها دورات مراجع يحذّر منها SQLAlchemy. فتفعيل الفرض
+# بلا تلك السياسات ينقل العطل ولا يزيله.
+#
+# والقرار: تبقى النتيجة **مفتوحة وموثَّقة** في docs/qa/BACKEND_AUDIT.md
+# بدل شحن تفعيل يكسر المجموعة. وترتيب العمل: تُراجَع سياسات الحذف
+# للمراجع الاثنين والستين أوًلا، ثم يُفعَّل الفرض ويُثبَّت بحارس.
+#
+#     @event.listens_for(engine, "connect")
+#     def _fk(dbapi_connection, _record):
+#         dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

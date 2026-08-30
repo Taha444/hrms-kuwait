@@ -1,0 +1,73 @@
+{
+  "seq": 4,
+  "items": [
+    {
+      "id": "F-001",
+      "title": "فحص الصحّة العميق مكشوف بلا مصادقة ويُفصح عن حالة النظام",
+      "sev": "high",
+      "area": "errors",
+      "endpoint": "GET /api/health/deep",
+      "role": "بلا مصادقة",
+      "expected": "بيانات تشغيلية تُقرأ بمصادقة، أو ملخّص بلا أرقام",
+      "actual": "200 يكشف عدد الشركات والموظفين والمستخدمين والمستندات، ومسار التخزين، ورقم ترحيل القاعدة، ووجود حسابات بذرة من عدمه، وقنوات الإشعارات",
+      "repro": "curl -s https://<host>/api/health/deep  (بلا أي ترويسة Authorization)",
+      "impact": "",
+      "fix": "",
+      "evidence": "تحقُّق يدوي — الردّ كامل في مخرَج الجلسة",
+      "state": "fixed",
+      "note": "التفصيل صار امتيازًا: المجهول يرى حالة كل مكوّن بلا أرقام ولا مسار تخزين ولا نسخة قاعدة، والتفصيل لرمز HEALTH_TOKEN أو حساب إدارة عليا. خمسة اختبارات في test_zzz_audit_findings.py، وإلغاء الحجب يُسقط ثلاثة منها.",
+      "found": "2026-08-30"
+    },
+    {
+      "id": "F-002",
+      "title": "رسالة تجاوز الحجم تذكر حًدا غير الحدّ المطبَّق",
+      "sev": "medium",
+      "area": "validation",
+      "endpoint": "POST /api/me/signature",
+      "role": "أي مستخدم",
+      "expected": "413 مع الحدّ الفعلي للمسار (500KB للتوقيع)",
+      "actual": "413 مع «يتجاوز الحدّ المسموح (15MB)» — الرسالة مثبَّتة داخل read_limited وتطبع الافتراضي مهما كان الحدّ المُمرَّر",
+      "repro": "رفع صورة PNG سليمة حجمها 878KB إلى POST /api/me/signature — تُرفض برسالة 15MB",
+      "impact": "",
+      "fix": "",
+      "evidence": "safe_files.py:46 يطبع نًصا ثابًتا، وsignatures.py:320 يمرّر _MAX_BYTES=500*1024",
+      "state": "fixed",
+      "note": "read_limited تحسب الحدّ المُمرَّر وتطبعه (500KB للتوقيع، MB لغيره). اختبار يرفع 878KB ويتحقّق أن الرسالة تقول 500KB لا 15MB.",
+      "found": "2026-08-30"
+    },
+    {
+      "id": "F-003",
+      "title": "SQLite لا يفرض المفاتيح الأجنبية — الاختبارات تقبل أشكال بيانات يرفضها الإنتاج",
+      "sev": "medium",
+      "area": "data",
+      "endpoint": "طبقة القاعدة (بيئة SQLite: التطوير والاختبارات)",
+      "role": "—",
+      "expected": "PRAGMA foreign_keys=ON لكل اتصال، فتتصرّف SQLite كما يتصرّف Postgres",
+      "actual": "PRAGMA foreign_keys = 0. القيود معلَنة في النماذج ولا تُفرَض محلًّيا: صفّ يتيم يمرّ في الاختبار ويُرفض على الإنتاج",
+      "repro": "PRAGMA foreign_keys على أي اتصال SQLite للتطبيق — يعيد 0. والإنتاج على Postgres يفرضها تلقائًيا",
+      "impact": "",
+      "fix": "",
+      "evidence": "فحص مباشر على قاعدة المراجعة المحلّية",
+      "state": "open",
+      "note": "أُعيد فتحها بعد تجربة الإصلاح: تفعيل PRAGMA foreign_keys=ON أسقط 17 اختباًرا — لا لأنها تُنشئ بياًنا فاسًدا بل لأن تنظيفها يحذف الأب قبل الأبناء. و62 مفتاًحا يشير إلى users بلا سياسة ondelete، ومعها دورات مراجع. العلاج الصحيح: تُكتب سياسات الحذف أوًلا ثم يُفعَّل الفرض. شحن التفعيل الآن ينقل العطل ولا يزيله.",
+      "found": "2026-08-30"
+    },
+    {
+      "id": "F-004",
+      "title": "معرّف رقمي خارج المدى يُنتج 500 غير معالَج في كل مسارات /{id}",
+      "sev": "medium",
+      "area": "errors",
+      "endpoint": "GET /api/employees/{id} — وكل نقطة بمعرّف رقمي",
+      "role": "أي مستخدم مصادَق",
+      "expected": "404 أو 422 — معرّف غير صالح ليس عطًلا في الخادم",
+      "actual": "500 Internal Server Error. السبب OverflowError من مشغّل القاعدة: Pydantic لا يحدّ نطاق int، فيصل الرقم إلى القاعدة ويتجاوز مدى INTEGER",
+      "repro": "curl -H 'Authorization: Bearer <token>' '<host>/api/employees/99999999999999999999'  → 500",
+      "impact": "",
+      "fix": "",
+      "evidence": "سجل الخادم: OverflowError: Python int too large to convert to SQLite INTEGER (وعلى Postgres: value out of range for type integer)",
+      "state": "fixed",
+      "note": "معالج لنوعَي OverflowError وDataError يردّ 404. لا وسيط: BaseHTTPMiddleware يلفّ كل طلب ويعلّق الردود المتدفّقة (جُرّب فتوقّفت المجموعة عند تنزيل ملف)، ومعالج Exception العامّ يُعاد رفعه تحت TestClient. أربعة اختبارات على ثلاثة مسارات.",
+      "found": "2026-08-30"
+    }
+  ]
+}

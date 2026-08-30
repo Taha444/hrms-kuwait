@@ -43,5 +43,13 @@ async def read_limited(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> b
     """يقرأ محتوى الملف مع فرض حدّ أقصى للحجم (يمنع استنزاف الذاكرة)."""
     data = await file.read(max_bytes + 1)
     if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحدّ المسموح (15MB)")
+        # F-002 — الحدّ **المطبَّق** لا الافتراضي. كانت الرسالة تقول 15MB
+        # دائًما بينما يمرّر مسار التوقيع 500KB، فيُرفض ملف 600KB ويُقال
+        # لصاحبه إن الحدّ خمسة عشر ميجابايت — فيعيد المحاولة بلا فهم.
+        # ورسالة تذكر رقًما خاطًئا أسوأ من رسالة بلا رقم.
+        mb = max_bytes / (1024 * 1024)
+        limit = f"{max_bytes // 1024}KB" if mb < 1 else f"{mb:.0f}MB"
+        raise HTTPException(
+            status_code=413,
+            detail=f"حجم الملف يتجاوز الحدّ المسموح ({limit})")
     return data

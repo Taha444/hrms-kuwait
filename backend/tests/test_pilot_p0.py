@@ -724,7 +724,10 @@ def test_v22_digest_creates_summary_per_user(client):
 
 def test_v22_health_deep_returns_all_checks(client):
     """V2.2 §25 — /health/deep يعيد كل الأنظمة الأساسية بأبعادها."""
-    r = client.get("/api/health/deep")
+    # F-001 — تفصيل فحص الصحّة صار امتيازًا: المجهول يرى حالة
+    # المكوّنات بلا أرقامها، فما يفحص المحتوى يُصادِق.
+    _h = auth_headers(login(client, "000000000000", "admin123"))
+    r = client.get("/api/health/deep", headers=_h)
     assert r.status_code in (200, 503)
     body = r.json()
     assert "checks" in body

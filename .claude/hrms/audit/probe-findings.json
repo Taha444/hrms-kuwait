@@ -1,0 +1,389 @@
+[
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يصل إلى /api/companies ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 1 — يُتوقع 403",
+    "endpoint": "/api/companies",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\authz_EMPLOYEE_api_companies.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يصل إلى /api/documents/canonical ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 6 — يُتوقع 403",
+    "endpoint": "/api/documents/canonical",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\authz_ACCOUNTANT_api_documents_canonical.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يصل إلى /api/eos/reasons ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 7 — يُتوقع 403",
+    "endpoint": "/api/eos/reasons",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\authz_EMPLOYEE_api_eos_reasons.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يصل إلى /api/eos/reasons ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 7 — يُتوقع 403",
+    "endpoint": "/api/eos/reasons",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\authz_SUPERVISOR_api_eos_reasons.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يصل إلى /api/eos/reasons ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 7 — يُتوقع 403",
+    "endpoint": "/api/eos/reasons",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\authz_ACCOUNTANT_api_eos_reasons.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "PRO يصل إلى /api/eos/reasons ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 7 — يُتوقع 403",
+    "endpoint": "/api/eos/reasons",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\authz_PRO_api_eos_reasons.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يصل إلى /api/notifications/templates ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 74 — يُتوقع 403",
+    "endpoint": "/api/notifications/templates",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\authz_EMPLOYEE_api_notifications_templates.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يصل إلى /api/notifications/templates ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 74 — يُتوقع 403",
+    "endpoint": "/api/notifications/templates",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\authz_SUPERVISOR_api_notifications_templates.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يصل إلى /api/notifications/templates/categories ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 10 — يُتوقع 403",
+    "endpoint": "/api/notifications/templates/categories",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\authz_EMPLOYEE_api_notifications_templates_categories.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يصل إلى /api/notifications/templates/categories ويحصل على بيانات",
+    "detail": "كود 200 وعدد العناصر 10 — يُتوقع 403",
+    "endpoint": "/api/notifications/templates/categories",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\authz_SUPERVISOR_api_notifications_templates_categories.json"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /.env",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/.env",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_env.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /.git/config",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/.git/config",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_git_config.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /actuator",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/actuator",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_actuator.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /debug",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/debug",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_debug.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /swagger",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/swagger",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_swagger.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /backup",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/backup",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_backup.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /phpinfo.php",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/phpinfo.php",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_phpinfophp.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /admin",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/admin",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_admin.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /.git/HEAD",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/.git/HEAD",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_git_HEAD.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /config.json",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/config.json",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_configjson.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "exposure",
+    "title": "مسار مكشوف للعامة: /server-status",
+    "detail": "يرجع 200 بحجم 2833 بايت بلا مصادقة",
+    "endpoint": "/server-status",
+    "role": "",
+    "evidence": "audit\\evidence\\exposed_server-status.txt"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: SUPERVISOR يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\idor_SUPERVISOR_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: MANAGER يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "MANAGER",
+    "evidence": "audit\\evidence\\idor_MANAGER_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: HR يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "HR",
+    "evidence": "audit\\evidence\\idor_HR_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: ACCOUNTANT يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\idor_ACCOUNTANT_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: PRO يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\idor_PRO_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: OWNER يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "OWNER",
+    "evidence": "audit\\evidence\\idor_OWNER_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "IDOR محتمل: SUPERADMIN يقرأ /api/employees/{id} لعدة معرّفات",
+    "detail": "المعرّفات التي أرجعت 200: [1, 2, 5, 10, 11]. تحقق يدويا أن السجلات مملوكة له فعلا.",
+    "endpoint": "/api/employees",
+    "role": "SUPERADMIN",
+    "evidence": "audit\\evidence\\idor_SUPERADMIN_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يرى حقولا محظورة في /api/documents/canonical",
+    "detail": "الحقول المسربة: ['start_date', 'end_date']",
+    "endpoint": "/api/documents/canonical",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\field_EMPLOYEE_api_documents_canonical.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "EMPLOYEE يرى حقولا محظورة في /api/requests/types-schemas",
+    "detail": "الحقول المسربة: ['start_date', 'end_date']",
+    "endpoint": "/api/requests/types-schemas",
+    "role": "EMPLOYEE",
+    "evidence": "audit\\evidence\\field_EMPLOYEE_api_requests_types-schemas.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يرى حقولا محظورة في /api/documents/canonical",
+    "detail": "الحقول المسربة: ['basic_salary', 'gross_salary']",
+    "endpoint": "/api/documents/canonical",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\field_SUPERVISOR_api_documents_canonical.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يرى حقولا محظورة في /api/employees",
+    "detail": "الحقول المسربة: ['basic_salary']",
+    "endpoint": "/api/employees",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\field_SUPERVISOR_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يرى حقولا محظورة في /api/me/profile",
+    "detail": "الحقول المسربة: ['basic_salary']",
+    "endpoint": "/api/me/profile",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\field_SUPERVISOR_api_me_profile.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "SUPERVISOR يرى حقولا محظورة في /api/requests/types-schemas",
+    "detail": "الحقول المسربة: ['salary']",
+    "endpoint": "/api/requests/types-schemas",
+    "role": "SUPERVISOR",
+    "evidence": "audit\\evidence\\field_SUPERVISOR_api_requests_types-schemas.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يرى حقولا محظورة في /api/auth/me",
+    "detail": "الحقول المسربة: ['civil_id']",
+    "endpoint": "/api/auth/me",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\field_ACCOUNTANT_api_auth_me.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يرى حقولا محظورة في /api/documents/canonical",
+    "detail": "الحقول المسربة: ['civil_id']",
+    "endpoint": "/api/documents/canonical",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\field_ACCOUNTANT_api_documents_canonical.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يرى حقولا محظورة في /api/employees",
+    "detail": "الحقول المسربة: ['civil_id']",
+    "endpoint": "/api/employees",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\field_ACCOUNTANT_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يرى حقولا محظورة في /api/me/profile",
+    "detail": "الحقول المسربة: ['civil_id']",
+    "endpoint": "/api/me/profile",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\field_ACCOUNTANT_api_me_profile.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "ACCOUNTANT يرى حقولا محظورة في /api/requests/types-schemas",
+    "detail": "الحقول المسربة: ['passport_no']",
+    "endpoint": "/api/requests/types-schemas",
+    "role": "ACCOUNTANT",
+    "evidence": "audit\\evidence\\field_ACCOUNTANT_api_requests_types-schemas.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "PRO يرى حقولا محظورة في /api/documents/canonical",
+    "detail": "الحقول المسربة: ['basic_salary', 'gross_salary']",
+    "endpoint": "/api/documents/canonical",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\field_PRO_api_documents_canonical.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "PRO يرى حقولا محظورة في /api/employees",
+    "detail": "الحقول المسربة: ['basic_salary']",
+    "endpoint": "/api/employees",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\field_PRO_api_employees.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "PRO يرى حقولا محظورة في /api/me/profile",
+    "detail": "الحقول المسربة: ['basic_salary']",
+    "endpoint": "/api/me/profile",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\field_PRO_api_me_profile.json"
+  },
+  {
+    "sev": "critical",
+    "area": "authz",
+    "title": "PRO يرى حقولا محظورة في /api/requests/types-schemas",
+    "detail": "الحقول المسربة: ['salary']",
+    "endpoint": "/api/requests/types-schemas",
+    "role": "PRO",
+    "evidence": "audit\\evidence\\field_PRO_api_requests_types-schemas.json"
+  }
+]

@@ -70,7 +70,10 @@ def test_r7e_sick_leave_requires_medical_report_conditionally(client):
 
 def test_r7f_health_reports_channels(client):
     admin = auth_headers(login(client, "000000000000", "admin123"))
-    r = client.get("/api/health/deep")
+    # F-001 — تفصيل فحص الصحّة صار امتيازًا: المجهول يرى حالة
+    # المكوّنات بلا أرقامها، فما يفحص المحتوى يُصادِق.
+    _h = auth_headers(login(client, "000000000000", "admin123"))
+    r = client.get("/api/health/deep", headers=_h)
     body = r.json()
     assert "notifications" in body["checks"]
     ch = body["checks"]["notifications"]

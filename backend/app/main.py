@@ -3,7 +3,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -200,13 +200,112 @@ for r in (auth, companies, users, employees, org, attendance, kiosk, documents, 
 app.include_router(signatures.hr_router, prefix="/api")
 
 
+# ---------------------------------------------------------------------------
+# F-004 — معرّف رقمي خارج مدى العمود ليس عطًلا في الخادم
+# ---------------------------------------------------------------------------
+# **العطل**: كل مسار فيه ``/{id}`` يقبل عدًدا صحيًحا بلا حدّ — فـPydantic
+# لا يحدّ نطاق ``int``. فيصل الرقم إلى مشغّل القاعدة ويتجاوز مدى العمود،
+# فيرتفع ``OverflowError`` على SQLite و``DataError`` على PostgreSQL،
+# ويردّ الخادم 500 غير معالَج. أي مستخدم مصادَق يُنتجه بسطر واحد.
+#
+# ولأن المسارات بالمئات، فالعلاج هنا لا عند كل واحد: قيد في كل توقيع
+# يُنسى في المسار التالي، والمعالج يغطّي ما كُتب وما سيُكتب.
+#
+# و404 هو الردّ الصادق: المعرّف صالح شكًلا ولا سجلّ له — وهذا بالضبط ما
+# يعنيه «غير موجود». وإخفاء الفارق عن العميل مقصود: من يجرّب أرقاًما لا
+# يتعلّم من الردّ حدود الأعمدة.
+_INT32_MAX = 2 ** 31 - 1
+
+
+def _out_of_range_response(request: Request, exc: Exception):
+    """معرّف يتجاوز مدى العمود ⇒ 404، لا 500.
+
+    **العطل**: كل مسار فيه ``/{id}`` يقبل عدًدا صحيًحا بلا حدّ — فـPydantic
+    لا يحدّ نطاق ``int``. فيصل الرقم إلى مشغّل القاعدة ويتجاوز مدى العمود،
+    فيرتفع ``OverflowError`` على SQLite و``DataError`` على PostgreSQL،
+    ويردّ الخادم 500 غير معالَج. أي مستخدم مصادَق يُنتجه بسطر واحد.
+    ولأن المسارات بالمئات، فالعلاج مركزيّ: قيد في كل توقيع يُنسى في
+    المسار التالي.
+
+    **ولماذا معالج لنوع بعينه لا وسيط ولا معالج عامّ**:
+    - الوسيط (``BaseHTTPMiddleware``) يلفّ كل طلب، فيبطئ كل نداء
+      **ويعلّق الردود المتدفّقة** — جُرّب فتوقّفت المجموعة عند تنزيل ملف.
+    - ومعالج ``Exception`` العامّ تتولّاه ``ServerErrorMiddleware`` وهي
+      تُعيد رفعه تحت ``TestClient``، فيمرّ في الإنتاج ويسقط في الاختبار.
+    والتسجيل لنوع محدَّد تتولّاه ``ExceptionMiddleware``: بلا لفّ، وبسلوك
+    واحد في البيئتين.
+    """
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=404, content={"detail": "السجلّ غير موجود"})
+
+
+app.add_exception_handler(OverflowError, _out_of_range_response)
+
+try:                                   # DataError = تجاوز المدى على PostgreSQL
+    from sqlalchemy.exc import DataError as _DataError
+
+    app.add_exception_handler(_DataError, _out_of_range_response)
+except Exception:                      # pragma: no cover - نسخة بلا الصنف
+    pass
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "hrms-kuwait"}
 
 
+#: F-001 — من يرى تفصيل حالة النظام.
+#:
+#: **العطل**: النقطة كانت مفتوحة للجميع وتُفصح عن عدد الشركات والموظفين
+#: والمستخدمين والمستندات، ومسار التخزين، ورقم ترحيل القاعدة، ووجود
+#: حسابات بذرة من عدمه. أرقام عمل وبصمة بنية تحتية لمن يعرف الرابط فقط.
+#:
+#: **ولماذا لم تُغلق كلًّيا**: هي طريق التحقّق بعد كل نشرة، وإغلاقها يدفع
+#: من يحتاجها إلى تخطّيها لا إلى تأمينها. فالمجهول يرى **حالة كل مكوّن**
+#: — وهي ما يلزم للمراقبة الآلية — والتفصيل يحتاج رمًزا أو إدارة عليا.
+def _health_detail_allowed(request: Request) -> bool:
+    token = (getattr(settings, "health_token", "") or "").strip()
+    if token:
+        import hmac as _hmac
+        given = (request.headers.get("x-health-token")
+                 or request.query_params.get("token") or "")
+        if given and _hmac.compare_digest(given, token):
+            return True
+    auth = request.headers.get("authorization") or ""
+    if auth.lower().startswith("bearer "):
+        try:
+            from .security import decode_token
+            payload = decode_token(auth.split(" ", 1)[1])
+            return payload.get("role") == "super_admin"
+        except Exception:
+            return False
+    return False
+
+
+def _redact(results: dict) -> dict:
+    """حالة كل مكوّن بلا أرقامه.
+
+    تكفي المراقبة الآلية وتكفي التحقّق من نشرة، ولا تعطي عابًرا جرًدا
+    لحجم الشركة ولا نسخة قاعدتها.
+    """
+    checks = {}
+    for name, body in (results.get("checks") or {}).items():
+        if isinstance(body, dict):
+            slim = {"status": body.get("status")}
+            # قيمتان لا تكشفان شيًئا ويحتاجهما من ينشر
+            for keep in ("up_to_date", "can_render_pdf"):
+                if keep in body:
+                    slim[keep] = body[keep]
+            checks[name] = slim
+        else:
+            checks[name] = body
+    return {"service": results.get("service"), "checks": checks,
+            "detail": "مختصر — للتفصيل استعمل رمز الصحّة أو حساب الإدارة العليا"}
+
+
 @app.get("/api/health/deep")
-def health_deep():
+def health_deep(request: Request):
     """V2.2 §25 — فحص عميق: DB + Scheduler + Storage + Registry counts.
     يعيد 200 مع تفاصيل كل مكوّن، أو 503 عند فشل أي جزء أساسي."""
     from sqlalchemy import text
@@ -392,10 +491,11 @@ def health_deep():
     except Exception as e:
         results["checks"]["notifications"] = {"status": "fail", "error": str(e)[:200]}
 
+    body = results if _health_detail_allowed(request) else _redact(results)
     if not ok:
         from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=503, content={"status": "degraded", **results})
-    return {"status": "ok", **results}
+        return JSONResponse(status_code=503, content={"status": "degraded", **body})
+    return {"status": "ok", **body}
 
 
 # Evidence Pack + V1.5 Manifest: يُنشر بلا مصادقة لتوثيق أن الـ deployment مربوط بالـ build
