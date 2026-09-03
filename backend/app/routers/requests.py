@@ -293,10 +293,13 @@ def get_type_schema(code: str,
     """V2.2 §4 — يعيد form_schema_json لنوع الطلب (الواجهة تبني الفورم منه).
     يقبل الـ canonical والـ legacy alias معًا."""
     from .. import form_schemas
+    from ..ref_options import fill_schema_options
     s = form_schemas.get_schema(code)
     if not s:
         raise HTTPException(status_code=404, detail="لا يوجد schema مُعرَّف لهذا النوع")
-    return {"code": code, "schema": s}
+    # V-F — الحقول المرجعية تصل بخياراتها. كانت تُعرض حقل رقم، فيُطلب من
+    # الموظف كتابة معرّف قاعدة بيانات لا يعرفه ولا تعرضه أي شاشة.
+    return {"code": code, "schema": fill_schema_options(db, s, user.company_id)}
 
 
 @router.get("/types-schemas")
@@ -304,7 +307,10 @@ def list_type_schemas(user: models.User = Depends(get_current_user),
                       db: Session = Depends(get_db)):
     """V2.2 §4 — كل schemas الأنواع الرسمية في نداء واحد (للـ SPA الواجهة)."""
     from .. import form_schemas
-    return form_schemas.SCHEMAS
+    from ..ref_options import fill_schema_options
+    # الخيارات تُملأ لكل مخطّط، وداخل نطاق شركة السائل وحدها.
+    return {code: fill_schema_options(db, s, user.company_id)
+            for code, s in form_schemas.SCHEMAS.items()}
 
 
 @router.post("/types", status_code=201)

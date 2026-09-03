@@ -210,6 +210,47 @@ export default function SchemaForm({
         // مراجع الكيانات (branch_ref/license_ref/shift_ref/employee_ref) تُرسَل كرقم
         const isRef = f.type.endsWith("_ref");
 
+        // V-F — الحقل المرجعي يُعرض قائمة بأسماء يعرفها المستخدم.
+        //
+        // كان يُعرض حقل رقم: «الوردية المطلوبة: ___» — ويُنتظر من الموظف
+        // أن يكتب معرّف قاعدة البيانات. رقم لا يعرفه ولا تعرضه أي شاشة،
+        // فالنموذج غير صالح للاستعمال مهما اكتمل الإعداد خلفه.
+        //
+        // والخيارات تأتي من الخادم داخل نطاق الشركة (app/ref_options.py)،
+        // فلا تحمل الواجهة قائمة ثانية تنحرف عنها.
+        if (isRef) {
+          const opts: any[] = (f as any).options || [];
+          const setupMsg = (f as any).setup_required;
+          if (!opts.length && setupMsg) {
+            // الحماية §3 — «إعداد مطلوب» مفهوم بدل نموذج مكسور.
+            return (
+              <div className="field" key={f.code}>
+                {label}
+                <div className="muted" style={{ padding: "8px 0" }}>{setupMsg}</div>
+              </div>
+            );
+          }
+          return (
+            <div className="field" key={f.code}>
+              {label}
+              <select
+                id={id}
+                value={val ?? ""}
+                required={isRequired}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  set(f.code, raw === "" ? undefined : Number(raw));
+                }}
+              >
+                <option value="">—</option>
+                {opts.map((o: any) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+
         return (
           <div className="field" key={f.code}>
             {label}

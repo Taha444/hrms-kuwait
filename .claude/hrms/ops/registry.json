@@ -1,0 +1,412 @@
+{
+  "packages": {
+    "1": "Storage & Document Lifecycle",
+    "2": "Tasks/Notifications/Counters/Expiry",
+    "3": "Request Catalog & Legacy Cleanup",
+    "4": "Residency Renewal E2E",
+    "5": "Electronic Signature & Official Documents",
+    "6": "Employee Lifecycle / Exit / EOS",
+    "7": "Employee Number & Data Consistency",
+    "8": "Branch Approval Fallback",
+    "9": "Travel Leave",
+    "10": "Notification Channels",
+    "11": "State Model / Timeline / Audit"
+  },
+  "items": [
+    {
+      "id": "P1-01",
+      "pkg": "1",
+      "prio": "P0",
+      "title": "Generated Documents تضيع بعد الـDeploy — نقل لتخزين دائم",
+      "skill": "hrms-document-storage-lifecycle"
+    },
+    {
+      "id": "P1-02",
+      "pkg": "1",
+      "prio": "P0",
+      "title": "WF→OD mapping من الـCanonical Registry فقط — لكل الـworkflows",
+      "skill": "hrms-document-storage-lifecycle"
+    },
+    {
+      "id": "P1-03",
+      "pkg": "1",
+      "prio": "P1",
+      "title": "Generated Documents تدخل Digital Archive تلقائيا · Print اختياري",
+      "skill": "hrms-document-storage-lifecycle"
+    },
+    {
+      "id": "P1-04",
+      "pkg": "1",
+      "prio": "GUARD",
+      "title": "Current/Previous Versions شغال — ممنوع يتكسر",
+      "skill": "hrms-document-storage-lifecycle"
+    },
+    {
+      "id": "P2-05",
+      "pkg": "2",
+      "prio": "P0",
+      "title": "Duplicate Residency/Expiry Tasks — idempotent generation وإغلاق عند تغير المرحلة",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-06",
+      "pkg": "2",
+      "prio": "P0",
+      "title": "Expiry Engine يراقب Current Version فقط",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-07",
+      "pkg": "2",
+      "prio": "P1",
+      "title": "Tasks ≠ Notifications — Digest خارج actionable count",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-08",
+      "pkg": "2",
+      "prio": "P1",
+      "title": "Daily Digest transient ولا يبني backlog",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-09",
+      "pkg": "2",
+      "prio": "P1",
+      "title": "Completed/Cancelled/Rejected تقفل آثارها",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-10",
+      "pkg": "2",
+      "prio": "P0",
+      "title": "توحيد Counters — الرقم على الـCard = القائمة اللي تفتح",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-11",
+      "pkg": "2",
+      "prio": "P1",
+      "title": "Cross-company Counter Scoping — سياسة واحدة معلنة",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P2-12",
+      "pkg": "2",
+      "prio": "P1",
+      "title": "Operations Center يعرض Real Work فقط",
+      "skill": "hrms-tasks-counters-expiry"
+    },
+    {
+      "id": "P3-13",
+      "pkg": "3",
+      "prio": "P0",
+      "title": "Employee catalog = Canonical فقط · 27 نوع فيهم duplicates",
+      "skill": "hrms-catalog-legacy-cleanup"
+    },
+    {
+      "id": "P3-14",
+      "pkg": "3",
+      "prio": "P1",
+      "title": "internal_action types لا تظهر كطلبات (ADMEMP/ADMTASK/ADMMISS/ADMLIC/ADMSIGN)",
+      "skill": "hrms-catalog-legacy-cleanup"
+    },
+    {
+      "id": "P3-15",
+      "pkg": "3",
+      "prio": "P1",
+      "title": "REQSIG لا يعمل كمسار توقيع موازٍ",
+      "skill": "hrms-catalog-legacy-cleanup"
+    },
+    {
+      "id": "P3-16",
+      "pkg": "3",
+      "prio": "P2",
+      "title": "تنظيف Legacy Labels — (V1.3) · طلب طلب · indefinite",
+      "skill": "hrms-catalog-legacy-cleanup"
+    },
+    {
+      "id": "P4-17",
+      "pkg": "4",
+      "prio": "P0",
+      "title": "Renewal Stuck State — pending_hr_verify بلا بيانات حكومة",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P4-18",
+      "pkg": "4",
+      "prio": "P0",
+      "title": "تنفيذ المسار المعتمد كاملا للتجديد",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P4-19",
+      "pkg": "4",
+      "prio": "P0",
+      "title": "OCR Failure مسار عادي بثلاث نتائج لا حاجز",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P4-20",
+      "pkg": "4",
+      "prio": "P0",
+      "title": "Government Data تُدخل قبل HR Verification أو من نفس المرحلة",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P4-21",
+      "pkg": "4",
+      "prio": "P1",
+      "title": "Government Contract Generation Duplication — 5 نسخ Current",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P4-22",
+      "pkg": "4",
+      "prio": "P1",
+      "title": "Renewal Timeline يسجل القصة كاملة بـ19 حدثا",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "P5-23",
+      "pkg": "5",
+      "prio": "P1",
+      "title": "Signature Policy لكل OD/request/document ثم إزالة الخطوات اليدوية بلا سبب",
+      "skill": "hrms-signature-official-docs"
+    },
+    {
+      "id": "P5-24",
+      "pkg": "5",
+      "prio": "P1",
+      "title": "Authorized Signatories — تحقق أولا: missing setup أم integration gap",
+      "skill": "hrms-signature-official-docs"
+    },
+    {
+      "id": "P5-25",
+      "pkg": "5",
+      "prio": "GUARD",
+      "title": "لا توقيع حكومي بدل الجهة — OD-013 ممنوع تغييره",
+      "skill": "hrms-signature-official-docs"
+    },
+    {
+      "id": "P6-26",
+      "pkg": "6",
+      "prio": "P1",
+      "title": "Archived Employee ما زال يملك Self-Service — gating على الـbackend",
+      "skill": "hrms-exit-eos-lifecycle"
+    },
+    {
+      "id": "P6-27",
+      "pkg": "6",
+      "prio": "P1",
+      "title": "Master Exit Case واحد يربط terminate و eos/cases و REQRESIGN/REQEOS/REQCLR",
+      "skill": "hrms-exit-eos-lifecycle"
+    },
+    {
+      "id": "P6-28",
+      "pkg": "6",
+      "prio": "P1",
+      "title": "Exit Timeline — لا أرشفة بلا audit event واضح",
+      "skill": "hrms-exit-eos-lifecycle"
+    },
+    {
+      "id": "P7-29",
+      "pkg": "7",
+      "prio": "P1",
+      "title": "Missing Employee Numbers — safe backfill بقواعد التوليد المعتمدة",
+      "skill": "hrms-employee-number-data"
+    },
+    {
+      "id": "P7-30",
+      "pkg": "7",
+      "prio": "GUARD",
+      "title": "Test Data ≠ Product Bug · نقص البيانات يعرض Setup Required",
+      "skill": "hrms-employee-number-data"
+    },
+    {
+      "id": "P8-31",
+      "pkg": "8",
+      "prio": "P1",
+      "title": "Branch Approval Fallback — السلوك رسمي والـlabel تقول الحقيقة",
+      "skill": "hrms-approval-fallback-actor"
+    },
+    {
+      "id": "P9-32",
+      "pkg": "9",
+      "prio": "P1",
+      "title": "Travel Leave — الفورم يسأل صراحة ولا تناقض بين البيانات والمسار",
+      "skill": "hrms-travel-leave-routing"
+    },
+    {
+      "id": "P10-33",
+      "pkg": "10",
+      "prio": "P1",
+      "title": "Notification Channels — تحقق من التكامل قبل عرض Toggle",
+      "skill": "hrms-notification-channels"
+    },
+    {
+      "id": "P11-34",
+      "pkg": "11",
+      "prio": "P1",
+      "title": "كل State لها دخول وخروج منطقي — لا dead state",
+      "skill": "hrms-state-model-consistency"
+    },
+    {
+      "id": "P11-35",
+      "pkg": "11",
+      "prio": "P2",
+      "title": "ACKNOWLEDGEMENT ≠ APPROVAL — راجع المعنى لا الـenum",
+      "skill": "hrms-state-model-consistency"
+    },
+    {
+      "id": "P11-36",
+      "pkg": "11",
+      "prio": "P1",
+      "title": "Timeline يعكس الـActor الحقيقي",
+      "skill": "hrms-approval-fallback-actor"
+    }
+  ],
+  "verify": [
+    {
+      "id": "V-A",
+      "title": "WF→OD Mapping",
+      "note": "السجل يثبت mismatch تاريخي — نحتاج E2E على البناء الحالي",
+      "skill": "hrms-document-storage-lifecycle"
+    },
+    {
+      "id": "V-B",
+      "title": "Government Contract repeated generation",
+      "note": "5 توليدات تاريخية — تأكد أن السلوك الحالي ما زال يسمح",
+      "skill": "hrms-renewal-e2e"
+    },
+    {
+      "id": "V-C",
+      "title": "Travel routing",
+      "note": "تأكد من travel_required=true تحديدا قبل الحكم على الـrouting",
+      "skill": "hrms-travel-leave-routing"
+    },
+    {
+      "id": "V-D",
+      "title": "Authorized Signatories",
+      "note": "missing setup فقط أم integration gap؟",
+      "skill": "hrms-signature-official-docs"
+    },
+    {
+      "id": "V-E",
+      "title": "Notification external channels",
+      "note": "implemented فعلا أم لا؟",
+      "skill": "hrms-notification-channels"
+    },
+    {
+      "id": "V-F",
+      "title": "REQSHIFT",
+      "note": "missing setup أم workflow غير قابل للاستخدام؟",
+      "skill": "hrms-employee-number-data"
+    },
+    {
+      "id": "V-G",
+      "title": "Archived Employee",
+      "note": "بعد gating fix تأكد أن الـbackend POST يرفض، مش الـUI بس",
+      "skill": "hrms-exit-eos-lifecycle"
+    }
+  ],
+  "dod": [
+    {
+      "id": "DOD-01",
+      "title": "Normal Leave",
+      "flow": "Submit → correct approvers → correct WF → correct OD → signature حسب السياسة → permanent download → archive → tasks closed → notification correct"
+    },
+    {
+      "id": "DOD-02",
+      "title": "Travel Leave",
+      "flow": "Travel clearly selected → correct travel routing → PRO/government stage حسب Business Rule فقط → no ambiguity"
+    },
+    {
+      "id": "DOD-03",
+      "title": "Salary Certificate",
+      "flow": "خيار واحد فقط → approval chain الصحيحة → correct document → signatory policy → permanent download → archive"
+    },
+    {
+      "id": "DOD-04",
+      "title": "Signature Replacement",
+      "flow": "reason required → pending → old remains active → HR approve/reject → correct new version/history/audit"
+    },
+    {
+      "id": "DOD-05",
+      "title": "Residency Renewal",
+      "flow": "expiry → one task → contract → employee signature → government processing → final docs → OCR success OR manual fallback → gov data → HR verification → completed → new expiry everywhere → old tasks/reminders closed"
+    },
+    {
+      "id": "DOD-06",
+      "title": "Document Renewal",
+      "flow": "old current → replacement → new current → old previous version → expiry engine watches new only"
+    },
+    {
+      "id": "DOD-07",
+      "title": "Tasks/Notifications",
+      "flow": "actionable tasks only in count → digest doesn't inflate → completed/cancelled leaves no stale action"
+    },
+    {
+      "id": "DOD-08",
+      "title": "Cross-company PRO",
+      "flow": "switch GUF/MUF → every selected-company counter/list consistent → global items clearly labeled"
+    },
+    {
+      "id": "DOD-09",
+      "title": "Archived Employee",
+      "flow": "cannot submit → no attendance action → no recurring work notifications → retention per policy only"
+    },
+    {
+      "id": "DOD-10",
+      "title": "Exit/EOS",
+      "flow": "one connected case from resignation/termination through settlement/clearance/archive/access closure"
+    },
+    {
+      "id": "DOD-11",
+      "title": "Storage",
+      "flow": "generate several official documents → redeploy/restart → every document remains downloadable"
+    },
+    {
+      "id": "DOD-12",
+      "title": "Counters",
+      "flow": "every Dashboard/Card number manually reconciled with rows opened from it"
+    }
+  ],
+  "guardrails": [
+    "Multi-company architecture intentional",
+    "Owner portfolio / All Companies visibility intentional حسب الصلاحية",
+    "PRO/Delegate assigned GUF + MUF يجوز له العمل في الاثنين",
+    "Secondary PRO assignment لا تدخل Payroll/EOS/financial employee counts",
+    "PRO يرى البيانات الحكومية اللازمة وليس Payroll/private HR data",
+    "Employee leave-date privacy الحالية intentional",
+    "Branch Supervisor salary/documents visibility accepted",
+    "Manager Users/Permissions داخل شركته accepted",
+    "Super Admin ليس مطلوبا منه رؤية كل requests",
+    "Government Links للـPRO/Delegate فقط",
+    "Normal Leave لا يدخل PRO",
+    "Government official documents لا يصدرها النظام بدل الجهة",
+    "closure-check في Residency Renewal يظل mandatory",
+    "OCR low confidence لا يعمل silent authoritative update",
+    "Current/Previous Document Versions behavior الحالي يحافظ عليه",
+    "2FA behavior الحالي intentional للأدوار المعتمدة",
+    "Auto Logout ~10 دقائق للأدوار الحساسة intentional",
+    "Signature replacement: old signature remains active until approval",
+    "First Login/password behavior للحسابات الحقيقية لا نعيد تغييره",
+    "لا نغيّر Payroll/RBAC أثناء Operational Cleanup إلا بـFinding مثبت وموافق عليه"
+  ],
+  "uncovered_modules": [
+    "Payroll",
+    "Attendance management",
+    "Onboarding",
+    "EOS case lifecycle",
+    "Templates Management",
+    "Users / Permissions",
+    "Impersonation",
+    "Audit Log",
+    "HR UI",
+    "Manager UI",
+    "Accountant UI",
+    "Branch Supervisor UI",
+    "Owner UI"
+  ]
+}

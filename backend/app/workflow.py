@@ -22,6 +22,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy import or_ as sa_or
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from . import models
@@ -195,7 +196,7 @@ DEFAULT_REQUEST_TYPES = [
              "when": {"field": "travel_required", "truthy": True}},
         ],
         "template_html": None,
-        "visible_to_employee": True, "default_template_code": "HRMS-PR-015",
+        "visible_to_employee": True, "default_template_code": "HRMS-PR-027",
     },
     {
         "code": "salary_certificate",
@@ -298,7 +299,7 @@ DEFAULT_REQUEST_TYPES = [
            ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
            ["branch_supervisor", "hr", "company_manager"], produces_document=True,
-           default_template_code="HRMS-PR-007"),
+           default_template_code="HRMS-PR-016"),
 
     # بيانات الموظف والمستندات
     _simple("REQDOC", "رفع أو تحديث مستند موظف", CAT_EMP_DATA,
@@ -371,7 +372,7 @@ DEFAULT_REQUEST_TYPES = [
            ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRF", "طلب نقل داخلي", CAT_CAREER,
            ["branch_supervisor", "company_manager"], produces_document=True,
-           default_template_code="HRMS-PR-007"),
+           default_template_code="HRMS-PR-016"),
     _simple("REQPROMO", "طلب ترقية أو تعديل راتب", CAT_CAREER,
            ["branch_supervisor", "company_manager"], produces_document=True, visible_to_employee=True,
            default_template_code="HRMS-PR-008"),
@@ -382,10 +383,10 @@ DEFAULT_REQUEST_TYPES = [
            default_template_code="HRMS-PR-006"),
     _simple("REQRESIGN", "طلب استقالة", CAT_CONTRACTS,
            ["company_manager", "hr"], produces_document=True, visible_to_employee=True,
-           default_template_code="HRMS-PR-025"),
+           default_template_code="HRMS-PR-014"),
     _simple("REQEOS", "طلب احتساب وتسوية نهاية خدمة", CAT_CONTRACTS,
            ["hr", "accountant", "company_manager"], produces_document=True,
-           default_template_code="HRMS-PR-028"),
+           default_template_code="HRMS-PR-038"),
     # V2.2 §13.10 (AC-10) + RW-14 — إخلاء الطرف بمهام متوازية لا سلسلة.
     # الجهات مستقلة بطبعها: كل واحدة تعرف عهدتها ولا تعرف عهدة غيرها، وترتيبها
     # بينها اصطناعي كان يجعل المالية تنتظر دور غيرها بلا سبب. والمندوب لا
@@ -394,7 +395,7 @@ DEFAULT_REQUEST_TYPES = [
         "code": "REQCLR", "name": "إخلاء طرف وتسليم عهدة", "category": CAT_CONTRACTS,
         "produces_document": True, "requires_physical_signature": True,
         "is_confidential": False, "visible_to_employee": False,
-        "default_template_code": "HRMS-PR-026",
+        "default_template_code": "HRMS-PR-040",
         "approval_chain_json": [
             {"order": 0, "kind": "parallel", "label": "إقرارات الجهات",
              "step_type": "VALIDATION", "produces_document": False,
@@ -423,7 +424,7 @@ DEFAULT_REQUEST_TYPES = [
            default_template_code="HRMS-PR-013"),
     _simple("ADMWARN", "إصدار إنذار", CAT_ADMIN,
            ["hr", "company_manager"], produces_document=True,
-           default_template_code="HRMS-PR-010"),
+           default_template_code="HRMS-PR-022"),
     _simple("ADMTASK", "تكليف مندوب أو مهمة إدارية", CAT_ADMIN,
            ["company_manager", "delegate", "hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-019"),
@@ -727,8 +728,27 @@ def _employee_name(db: Session, req: models.Request) -> str:
     return emp.name if emp else f"#{req.employee_id}"
 
 
+#: حالات الموظف التي لا يُفتح لصاحبها طلب جديد.
+#:
+#: V-G — الواجهة كانت تُخفي الزرّ والخادم يقبل: جُرّب فُتح طلب إجازة
+#: باسم موظف منتهية خدمته وردّ 201. وواجهة تُخفي زرًّا ليست حماية —
+#: من يعرف المسار يفتح الطلب بأمر واحد، فتصل مهمة إلى معتمِد وربما
+#: يُطبع مستند رسمي باسم من لم يعد على رأس العمل.
+#:
+#: والمنع هنا في ``create_request`` لا في الراوتر: كل مسار إنشاء يمرّ
+#: بها، فلا يبقى باب ثانٍ يُنسى.
+BLOCKED_EMPLOYEE_STATUSES = ("terminated", "archived", "resigned")
+
+
 def create_request(db: Session, employee: models.Employee, requester: models.User,
                    rt: models.RequestType, payload: dict) -> models.Request:
+    status = (employee.status or "").strip().lower()
+    if status in BLOCKED_EMPLOYEE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"لا يُفتح طلب جديد لموظف حالته «{employee.status}». "
+                    "أعِد تفعيل الملف أوًلا إن كان ذلك مقصوًدا."))
+
     # V2.2 §13.8 (AC-08) + RW-18 — لقطة القواعد الفاعلة لحظة الإرسال.
     # المراحل المشروطة بحدّ تُحسب من هذه اللقطة لا من القراءة الحالية، فتعديل
     # حدٍّ بعد الإرسال لا يُضيف مرحلة لطلب قائم ولا يحذف منه.
