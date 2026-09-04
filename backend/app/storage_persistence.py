@@ -93,6 +93,24 @@ def mount_hint() -> str | None:
     return (os.environ.get(MOUNT_ENV) or "").strip() or None
 
 
+def is_mount_point() -> bool:
+    """هل مجلّد الرفع **نقطة تركيب** فعًلا؟ — قياس مباشر لا اسم متغيّر.
+
+    ``os.path.ismount`` يسأل النظام نفسه: هل هذا المسار على جهاز غير
+    جهاز أبيه؟ وهو أصدق من ``RAILWAY_VOLUME_MOUNT_PATH`` لأنه لا يعتمد
+    على اسم تحدّده المنصّة وقد تغيّره — يقيس الواقع لا الإعلان.
+
+    وأضفتُه بعد أن رأيت ضبط الإنتاج الفعلي: القرص مركَّب على
+    ``/app/backend/uploads`` وهو **نفسه** ما يحسبه التطبيق
+    (``WORKDIR /app/backend`` + ``upload_dir="./uploads"``) — ضبط سليم
+    بلا متغيّر بيئة، وكان فحصي سيحذّر منه كذًبا لأنه داخل ``/app``.
+    """
+    try:
+        return os.path.ismount(os.path.realpath(settings.upload_dir))
+    except OSError:
+        return False
+
+
 def _under_mount() -> bool:
     mount = mount_hint()
     if not mount:
@@ -177,6 +195,7 @@ def report(db=None) -> dict:
     boot_count = int(marker.get("boot_count") or 0)
     survived = boot_count >= 2
     under_mount = _under_mount()
+    mounted = is_mount_point()
 
     lost = missing_files(db) if db is not None else None
 
@@ -188,6 +207,9 @@ def report(db=None) -> dict:
     elif survived:
         persistent, why = True, (
             f"القرص نجا من {boot_count - 1} استبدال حاوية على الأقلّ.")
+    elif mounted:
+        persistent, why = True, (
+            "مجلّد الرفع نقطة تركيب — قرص منفصل عن قرص الحاوية.")
     elif under_mount:
         persistent, why = True, (
             f"مجلّد الرفع داخل القرص الدائم المُعلَن ({mount_hint()}).")
@@ -210,6 +232,7 @@ def report(db=None) -> dict:
         "survived_restart": survived,
         "mount_path": mount_hint(),
         "upload_dir_under_mount": under_mount,
+        "upload_dir_is_mount_point": mounted,
         "missing_files": lost,
     }
 
@@ -218,7 +241,11 @@ def looks_ephemeral() -> bool:
     """هل يبدو مجلّد الرفع داخل صورة الحاوية؟
 
     الحاوية تعمل من ``/app``، ومحتواها يُستبدَل مع كل نشرة. مجلّد رفع
-    داخله يعني ضياع كل مستند صادر عند النشرة التالية.
+    داخله يعني ضياع كل مستند صادر عند النشرة التالية — **ما لم يكن
+    المسار نفسه نقطة تركيب لقرص دائم**، وهو ضبط سليم رأيته في الإنتاج:
+    القرص مركَّب على ``/app/backend/uploads`` وهو نفسه ما يحسبه التطبيق،
+    فلا يلزم متغيّر بيئة أصًلا. وتحذير من ضبط سليم هو ما يُدرِّب الناس
+    على تجاهل التحذيرات.
 
     ولا يُبنى على هذا رفضُ الإقلاع: إسقاط نظام يعمل قرار أثقل من
     التحذير، والقياس هنا استدلال على الشكل لا دليل قاطع (قد يُركَّب
@@ -229,7 +256,7 @@ def looks_ephemeral() -> bool:
         return False
     if (settings.storage_backend or "local").lower() != "local":
         return False
-    if _under_mount():
+    if _under_mount() or is_mount_point():
         return False
     try:
         up = os.path.realpath(settings.upload_dir)

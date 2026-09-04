@@ -268,3 +268,66 @@ def test_a_loss_after_the_disk_started_still_convicts(clean_marker):
         db.close()
     assert rep["persistent"] is False, rep
     assert rep["missing_files"]["missing"] >= 1, rep["missing_files"]
+
+
+def test_a_mount_point_inside_the_app_tree_is_not_a_warning(monkeypatch):
+    """**الحالة التي كشفها ضبط الإنتاج الفعلي.**
+
+    القرص مركَّب على ``/app/backend/uploads`` — وهو **نفسه** ما يحسبه
+    التطبيق (``WORKDIR /app/backend`` + ``upload_dir="./uploads"``)،
+    فلا يلزم متغيّر بيئة أصًلا. ضبط سليم بلا ضبط.
+
+    وفحصي كان سيحذّر منه كذًبا لأنه داخل ``/app``. وتحذير من ضبط سليم
+    هو بالضبط ما يُدرِّب الناس على تجاهل التحذيرات — العيب الذي بُني
+    هذا الملف كلّه لتجنّبه.
+
+    والقاعدة الصحيحة ليست «تجنّب /app» بل «لا تُركّب فوق محتًوى
+    تحمله الصورة». و``backend/uploads`` مستبعَد في ``.dockerignore``.
+    """
+    app_dir = os.path.dirname(os.path.dirname(sp.__file__))
+    path = os.path.join(app_dir, "uploads")
+    monkeypatch.setattr(settings, "upload_dir", path)
+    monkeypatch.setattr(type(settings), "is_production",
+                        property(lambda self: True))
+    monkeypatch.delenv(sp.MOUNT_ENV, raising=False)
+
+    # بلا تركيب: تحذير محقّ.
+    monkeypatch.setattr(sp, "is_mount_point", lambda: False)
+    assert sp.looks_ephemeral() is True
+
+    # وبتركيب فعلي على المسار نفسه: لا تحذير.
+    monkeypatch.setattr(sp, "is_mount_point", lambda: True)
+    assert sp.looks_ephemeral() is False, (
+        "حُذِّر من قرص دائم مركَّب — إنذار كاذب على ضبط سليم"
+    )
+
+
+def test_a_mount_point_is_evidence_on_the_first_boot(clean_marker, monkeypatch):
+    """وهو دليل **فوري**: لا ينتظر نشرة ثانية ولا اسم متغيّر بيئة.
+
+    ``os.path.ismount`` يسأل النظام: هل هذا المسار على جهاز غير جهاز
+    أبيه؟ — قياس للواقع لا للإعلان.
+    """
+    monkeypatch.setattr(sp, "is_mount_point", lambda: True)
+    sp.record_boot()
+    r = sp.report()
+    assert r["persistent"] is True, r
+    assert r["upload_dir_is_mount_point"] is True
+    assert r["boot_count"] == 1, "احتاج نشرة ثانية رغم وجود دليل فوري"
+
+
+def test_the_docs_match_the_production_mount(monkeypatch):
+    """والدليل يذكر المسار الذي يعمل بلا ضبط — لا مساًرا يحتاجه.
+
+    نصيحة تخالف ما يعمل فعًلا تُنتج ضبًطا ثانًيا لا لزوم له.
+    """
+    from pathlib import Path
+
+    doc = Path(__file__).resolve().parents[2] / "docs" / "DEPLOY_RAILWAY_VOLUME.md"
+    if not doc.exists():
+        return
+    text = doc.read_text(encoding="utf-8")
+    assert "/app/backend/uploads" in text, "الدليل لا يذكر المسار العامل"
+    assert "لا تُركّب القرص فوق مسار" in text, (
+        "الدليل ما زال يقول «تجنّب /app» بدل القاعدة الصحيحة"
+    )
