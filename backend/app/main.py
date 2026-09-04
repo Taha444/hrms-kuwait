@@ -64,6 +64,11 @@ async def lifespan(app: FastAPI):
     # إنشاء الجداول للتطوير (في الإنتاج تُدار عبر Alembic)
     init_db()
     os.makedirs(settings.upload_dir, exist_ok=True)
+    # P1-01 — علامة الدوام: وجودها من إقلاع سابق دليل تجريبي على أن
+    # القرص نجا من استبدال حاوية. تُقرأ في /health/deep.
+    from .storage_persistence import record_boot, warn_if_ephemeral
+    record_boot()
+    warn_if_ephemeral()
 
     from .channels import configure_from_settings
     configure_from_settings(settings)
@@ -341,23 +346,42 @@ def health_deep(request: Request):
         upload_dir = settings.upload_dir
         exists = os.path.isdir(upload_dir)
         writable = os.access(upload_dir, os.W_OK) if exists else False
-        # تخزين محلّي على الإنتاج = فقدان صامت.
+        # P1-01 — السؤال ليس «أي خلفية؟» بل «هل يبقى ما نُكتب؟».
         #
-        # قرص الحاوية يُمحى مع كل نشرة: السجلّ يبقى في القاعدة والملف
-        # يختفي، فيبدو المستند موجوًدا حتى يُضغط زرّ الطباعة. وقد وقع هذا
-        # فعًلا. فتُعلَن الحالة هنا بدل انتظار من يكتشفها بالصدفة.
-        ephemeral = settings.is_production and (
-            (settings.storage_backend or "local").lower() == "local")
-        results["checks"]["storage"] = {
-            "status": ("fail" if not (exists and writable)
-                       else "degraded" if ephemeral else "ok"),
-            "path": upload_dir, "writable": writable,
-            "backend": (settings.storage_backend or "local").lower(),
-            "note": ("تخزين محلّي على الإنتاج — الملفات تُمحى مع كل نشرة "
-                     "والسجلّات تبقى. انقله إلى قرص دائم أو S3."
-                     if ephemeral else None),
-        }
+        # كان الفحص يَسِم ``local`` على الإنتاج «degraded» بلا شرط. ومع
+        # قرص Railway الدائم تبقى الخلفية ``local`` وهي سليمة — ففحص
+        # يشتكي دائًما يُدرَّب الناس على تجاهله، ثم لا يُرى حين يشتكي
+        # بحقّ. وهذا أسوأ من غياب الفحص.
+        #
+        # فيُقاس الدوام بأدلّته: مستندات صادرة ضاعت ملفاتها (الضرر نفسه)،
+        # أو علامة نجت من استبدال حاوية، أو قرص دائم مُعلَن يقع مجلّد
+        # الرفع داخله. و«لا أعرف» حالة معلَنة لا تُخفى.
+        from . import storage_persistence
+
+        backend = (settings.storage_backend or "local").lower()
+        with SessionLocal() as _db:
+            persist = storage_persistence.report(_db)
+
         if not (exists and writable):
+            status = "fail"
+        elif backend != "local":
+            status = "ok"                     # S3 دائم بطبعه
+        elif persist["persistent"] is False:
+            status = "fail"                   # ضياع مُثبَت، لا احتمال
+        elif persist["persistent"] is True:
+            status = "ok"
+        else:
+            status = "degraded" if settings.is_production else "ok"
+
+        results["checks"]["storage"] = {
+            "status": status,
+            "path": upload_dir, "writable": writable,
+            "backend": backend,
+            "persistence": persist,
+            "note": (persist["reason"] if backend == "local"
+                     and persist["persistent"] is not True else None),
+        }
+        if status == "fail":
             ok = False
     except Exception as e:
         results["checks"]["storage"] = {"status": "fail", "error": str(e)[:200]}

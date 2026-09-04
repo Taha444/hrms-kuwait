@@ -203,13 +203,19 @@ def test_foreign_keys_are_still_unenforced_on_sqlite():
 # ---------------------------------------------------------------------------
 # التخزين المؤقّت على الإنتاج يُعلَن، لا يُكتشف عند الطباعة
 # ---------------------------------------------------------------------------
-def test_local_storage_in_production_is_reported_as_degraded(client, monkeypatch):
+def test_local_storage_in_production_is_reported_as_degraded(client, monkeypatch,
+                                                             tmp_path):
     """**العطل الذي وقع فعًلا**: قرص الحاوية يُمحى مع كل نشرة، فالسجلّ
     يبقى في القاعدة والملف يختفي. ويبدو المستند موجوًدا حتى يُضغط زرّ
     الطباعة — واكتشفه المستخدم لا النظام.
 
-    فحص الصحّة يعرف الإعدادين ولم يكن يربطهما. والربط هنا يحوّل خطر فقد
-    صامت إلى سطر يُقرأ قبل وقوعه.
+    **وP1-01 صحّح معيار هذا الادّعاء، لا نيّته.** كان يقيس على اسم
+    الخلفية: ``local`` على الإنتاج = degraded. وبعد قرار المالك (قرص
+    Railway دائم) تبقى الخلفية ``local`` وهي سليمة — فمعيار الاسم صار
+    يشتكي من الإصلاح نفسه، وفحص يشتكي دائًما يُدرَّب الناس على تجاهله.
+
+    فالادّعاء انتقل من «أي خلفية؟» إلى **«هل يبقى ما نكتبه؟»**: تخزين
+    محلّي بلا دليل دوام يُعلَن ويُقرأ سببه، لا يُكتشف عند الطباعة.
     """
     from app.config import settings
 
@@ -218,14 +224,22 @@ def test_local_storage_in_production_is_reported_as_degraded(client, monkeypatch
     monkeypatch.setattr(settings, "database_url",
                         "postgresql+psycopg2://x/y", raising=False)
     monkeypatch.setattr(settings, "storage_backend", "local", raising=False)
+    # مجلّد بكر: لا علامة نجاة ولا قرص دائم مُعلَن — أي لا دليل دوام.
+    from app import storage_persistence as _sp
+
+    fresh = tmp_path / "ephemeral"
+    fresh.mkdir()
+    monkeypatch.setattr(settings, "upload_dir", str(fresh), raising=False)
+    monkeypatch.delenv(_sp.MOUNT_ENV, raising=False)
     assert settings.is_production, "لم تُضبط حالة الإنتاج — الاختبار لا يقيس شيًئا"
 
     hdr = auth_headers(login(client, *SUPER))
     storage = client.get("/api/health/deep", headers=hdr).json()["checks"]["storage"]
     assert storage["status"] == "degraded", (
-        f"تخزين مؤقّت على الإنتاج يُبلَّغ «{storage['status']}»"
+        f"تخزين بلا دليل دوام على الإنتاج يُبلَّغ «{storage['status']}»"
     )
-    assert "تُمحى" in (storage.get("note") or ""), storage
+    assert storage["persistence"]["persistent"] is None, storage["persistence"]
+    assert storage.get("note"), "أُعلنت الحالة بلا سبب يُقرأ"
 
 
 def test_s3_in_production_is_not_flagged(client, monkeypatch):
