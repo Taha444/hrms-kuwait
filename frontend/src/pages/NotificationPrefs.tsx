@@ -3,12 +3,17 @@ import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 
 // V2.2 §20 — تفضيلات إشعارات المستخدم (فئة × قناة)
-type Pref = { category: string; channel: string; enabled: boolean };
-
-const CHANNELS = ["in_app", "whatsapp", "sms", "email"];
-const CHANNEL_LABEL_AR: Record<string, string> = {
-  in_app: "داخل النظام", whatsapp: "واتساب", sms: "SMS", email: "بريد",
+type Pref = {
+  category: string; channel: string; enabled: boolean;
+  available?: boolean; unavailable_reason?: string | null;
 };
+type Channel = { channel: string; label: string; available: boolean; reason: string | null };
+
+// P10-33 — القنوات من الخادم لا من مصفوفة هنا.
+//
+// كانت القائمة مكتوبة ثلاث مرّات (النموذج، الراوتر، وهذه المصفوفة)،
+// والمفتاح يُعرض للأربع بلا شرط وافتراضه مُفعَّل — فيرى المستخدم واتساب
+// والبريد يعملان ولا يصله شيء. والبريد لا صنف قناة له إطلاًقا.
 const CHANNEL_LABEL_EN: Record<string, string> = {
   in_app: "In-app", whatsapp: "WhatsApp", sms: "SMS", email: "Email",
 };
@@ -17,6 +22,7 @@ export default function NotificationPrefs() {
   const { lang } = useI18n();
   const isEn = lang === "en";
   const [rows, setRows] = useState<Pref[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,11 +31,16 @@ export default function NotificationPrefs() {
     .then(r => setRows(r.data))
     .catch(e => setErr(errMsg(e, isEn ? "Failed to load preferences" : "فشل تحميل التفضيلات")));
 
-  useEffect(() => { load(); }, []);
+  const loadChannels = () => api.get("/notifications/channels")
+    .then(r => setChannels(r.data)).catch(() => setChannels([]));
+
+  useEffect(() => { load(); loadChannels(); }, []);
 
   const categories = Array.from(new Set(rows.map(r => r.category)));
 
   const toggle = (category: string, channel: string) => {
+    // قناة لا تُسلِّم لا تُبدَّل: الحفظ عليها يَعِد بما لا يقع.
+    if (!channels.find(c => c.channel === channel)?.available) return;
     setRows(rs => rs.map(r =>
       (r.category === category && r.channel === channel) ? { ...r, enabled: !r.enabled } : r
     ));
@@ -74,9 +85,15 @@ export default function NotificationPrefs() {
                 <th style={{ textAlign: isEn ? "left" : "right", padding: 8 }}>
                   {isEn ? "Category" : "الفئة"}
                 </th>
-                {CHANNELS.map(ch => (
-                  <th key={ch} style={{ padding: 8, minWidth: 90 }}>
-                    {isEn ? CHANNEL_LABEL_EN[ch] : CHANNEL_LABEL_AR[ch]}
+                {channels.map(c => (
+                  <th key={c.channel} style={{ padding: 8, minWidth: 90 }}
+                      title={c.reason || undefined}>
+                    {isEn ? (CHANNEL_LABEL_EN[c.channel] || c.label) : c.label}
+                    {!c.available && (
+                      <div className="muted" style={{ fontSize: 11, fontWeight: 400 }}>
+                        {isEn ? "not available" : "غير مُفعَّلة"}
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -85,15 +102,19 @@ export default function NotificationPrefs() {
               {categories.map(cat => (
                 <tr key={cat} style={{ borderTop: "1px solid var(--border, #e2e8f0)" }}>
                   <td style={{ padding: 8 }}>{cat}</td>
-                  {CHANNELS.map(ch => {
-                    const row = rows.find(r => r.category === cat && r.channel === ch);
+                  {channels.map(c => {
+                    const row = rows.find(r => r.category === cat && r.channel === c.channel);
+                    const label = isEn ? (CHANNEL_LABEL_EN[c.channel] || c.label) : c.label;
                     return (
-                      <td key={ch} style={{ padding: 8, textAlign: "center" }}>
+                      <td key={c.channel} style={{ padding: 8, textAlign: "center" }}
+                          title={c.reason || undefined}>
                         <input
                           type="checkbox"
-                          checked={row?.enabled ?? true}
-                          onChange={() => toggle(cat, ch)}
-                          aria-label={`${cat} — ${isEn ? CHANNEL_LABEL_EN[ch] : CHANNEL_LABEL_AR[ch]}`}
+                          checked={(row?.enabled ?? false) && c.available}
+                          disabled={!c.available}
+                          onChange={() => toggle(cat, c.channel)}
+                          aria-label={`${cat} — ${label}`}
+                          aria-describedby={c.available ? undefined : `np-why-${c.channel}`}
                         />
                       </td>
                     );
@@ -102,6 +123,16 @@ export default function NotificationPrefs() {
               ))}
             </tbody>
           </table>
+          {channels.some(c => !c.available) && (
+            <div style={{ marginTop: 12 }}>
+              {channels.filter(c => !c.available).map(c => (
+                <div key={c.channel} className="muted" id={`np-why-${c.channel}`}
+                     style={{ fontSize: 12 }}>
+                  {(isEn ? (CHANNEL_LABEL_EN[c.channel] || c.label) : c.label)}: {c.reason}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

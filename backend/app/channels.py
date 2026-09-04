@@ -129,6 +129,54 @@ def register_channel(channel: NotificationChannel) -> None:
     _channels.append(channel)
 
 
+#: P10-33 — كتالوج القنوات: **مصدر واحد** يقرؤه الخادم والواجهة.
+#:
+#: كانت القائمة مكتوبة ثلاث مرّات — في تعليق النموذج، وفي
+#: ``notification_settings.CHANNELS``، وفي مصفوفة داخل شاشة التفضيلات.
+#: وثلاث نسخ لقائمة واحدة تنحرف إحداها، والانحراف هنا يَعِد المستخدم
+#: بتسليم لا يقع.
+#:
+#: و``implemented`` ليس ``configured``: البريد معلَن في القائمة منذ
+#: البداية **ولا صنف قناة له إطلاًقا** — فمفتاحه لا يعمل في أي ضبط،
+#: لا اليوم ولا بعد ضبط المزوّدين.
+CHANNEL_CATALOG: dict[str, dict] = {
+    "in_app": {"label": "داخل النظام", "implemented": True,
+               "needs_provider": False},
+    "whatsapp": {"label": "واتساب", "implemented": True,
+                 "needs_provider": True,
+                 "setup": "يلزم ضبط TWILIO_ACCOUNT_SID و TWILIO_AUTH_TOKEN "
+                          "و TWILIO_WHATSAPP_FROM"},
+    "sms": {"label": "SMS", "implemented": True, "needs_provider": True,
+            "setup": "يلزم ضبط TWILIO_ACCOUNT_SID و TWILIO_AUTH_TOKEN "
+                     "و TWILIO_SMS_FROM"},
+    "email": {"label": "بريد", "implemented": False, "needs_provider": True,
+              "setup": "قناة البريد غير مُنفَّذة بعد — لا مزوّد ولا صنف قناة"},
+}
+
+
+def channel_availability() -> dict[str, dict]:
+    """هل تُسلِّم كل قناة فعًلا الآن؟ — ومع السبب حين لا تُسلِّم.
+
+    P10-33 — **المفتاح لا يُعرض قبل التحقّق من التكامل**. كان يُعرض
+    للقنوات الأربع بلا شرط، وافتراضه ``enabled=True``: فيرى المستخدم
+    واتساب والبريد مُفعَّلين ولا يصله شيء أبًدا. ووعدٌ لا يقع أسوأ من
+    خانة مُعطَّلة يُقرأ سببها.
+    """
+    live = {getattr(ch, "name", "") for ch in _channels
+            if getattr(ch, "provider", True)}
+    out = {}
+    for name, meta in CHANNEL_CATALOG.items():
+        if not meta["implemented"]:
+            ok, why = False, meta.get("setup")
+        elif not meta["needs_provider"]:
+            ok, why = True, None
+        else:
+            ok = name in live
+            why = None if ok else meta.get("setup")
+        out[name] = {"label": meta["label"], "available": ok, "reason": why}
+    return out
+
+
 def active_channels() -> list[dict]:
     """R7-F §4 — تشخيص شفّاف للقنوات الفعّالة (يُعرض في Health dashboard).
     يميّز بين قنوات فعلية (SMS/WhatsApp عبر Twilio) وقناة تسجيل داخلية (log فقط)."""

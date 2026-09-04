@@ -18,10 +18,23 @@ def test_74_notification_templates_seeded(client):
 
 
 def test_preferences_default_enabled_and_updatable(client):
+    """P10-33 صحّح أساس هذا الادّعاء — والنيّة التي حماها باقية.
+
+    كان: كل قناة مُفعَّلة افتراًضا. وهو صحيح **للقنوات التي تُسلِّم**:
+    من لم يضبط شيًئا يصله الإشعار. لكنه كان يشمل «واتساب» و«بريد» بلا
+    مزوّد — بل البريد لا صنف قناة له إطلاًقا — فيرى المستخدم مفاتيح
+    مُفعَّلة لا يصله عبرها شيء أبًدا.
+
+    فالادّعاء انتقل من «كلّها مُفعَّلة» إلى «ما يُسلِّم مُفعَّل، وما لا
+    يُسلِّم لا يَعِد».
+    """
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     prefs = client.get("/api/notifications/preferences", headers=hr).json()
     assert len(prefs) > 0
-    assert all(p["enabled"] for p in prefs)
+    deliverable = [p for p in prefs if p["available"]]
+    assert deliverable, "لا قناة تُسلِّم — القياس فارغ"
+    assert all(p["enabled"] for p in deliverable)
+    assert not [p for p in prefs if p["enabled"] and not p["available"]]
 
     cat = prefs[0]["category"]
     r = client.put("/api/notifications/preferences", headers=hr,
