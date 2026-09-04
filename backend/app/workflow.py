@@ -923,13 +923,16 @@ def _close_open_tasks(db: Session, req: models.Request) -> None:
 
 
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
-           note: str | None, rt: models.RequestType) -> models.Request:
+           note: str | None, rt: models.RequestType,
+           action: str | None = None) -> models.Request:
     chain = _chain(rt, req)
     stage = chain[req.current_stage]
     approval = models.RequestApproval(
         request_id=req.id, stage_order=req.current_stage,
         stage_label=stage.get("label", ""), approver_role=user.role,
         approver_user_id=user.id, decision=decision, note=note,
+        # P11-35 — ما فعله الإنسان، إلى جانب أثره على المسار.
+        action=action,
         # P11-36 — الفاعل الحقيقي يُثبَّت على القرار لا في التدقيق وحده:
         # من يقرأ الطلب بعد شهور يقرأ الطلب، لا سجلّ التدقيق.
         original_user_id=original_actor_user_id(),
@@ -1221,6 +1224,35 @@ def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool
     return True, "; ".join(changes)
 
 
+#: الأدوار التي تتلقّى مهمة فشل التطبيق — وهي التي تُعيد المحاولة.
+#: من يُبلَّغ بالعطل هو من يملك إصلاحه، وإلا صار البلاغ خبًرا لا إجراء.
+APPLY_RETRY_ROLES = ("hr", "company_manager", "super_admin")
+
+
+def retry_apply(db: Session, req: models.Request) -> None:
+    """P11-34 — يُعيد تطبيق أثر طلب عالق في ``apply_failed``.
+
+    **ولماذا لزم أصًلا**: الحالة كانت بلا مخرج. قِستُها فوجدت
+    ``allowed_actions`` فارغة و``no_actions_reason`` فارًغا — شاشة صامتة
+    ولافتة تقول «يحتاج إجراء» بلا إجراء موجود. والإلغاء محجوز للمدير
+    العام، فلمن تلقّى المهمة (الشؤون القانونية) الطلبُ جدار.
+
+    **وهو الباب نفسه لا باب ثانٍ**: يستدعي ``_finalize`` التي تطبّق الأثر
+    وتُكمل أو تُفشل. طريق ثانٍ لتطبيق الأثر يعني قاعدتين تنحرفان — وهو
+    ما يحذّر منه تعليق ``_finalize`` نفسه.
+
+    والفشل المتكرّر يبقى ``apply_failed`` بسببه المحدَّث: إعادة المحاولة
+    لا تُخفي العطل، بل تُتيح تصحيح سببه ثم المضيّ.
+    """
+    if req.status != "apply_failed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"إعادة التطبيق تخصّ الطلبات المتعثّرة وحدها — حالته «{req.status}»")
+    _finalize(db, req)
+    db.commit()
+    db.refresh(req)
+
+
 def _finalize(db: Session, req: models.Request) -> None:
     rt = get_request_type(db, req.company_id, req.request_type_code)
 
@@ -1275,6 +1307,20 @@ def _finalize(db: Session, req: models.Request) -> None:
                          "reason": note},
                 dedup_key=f"req_att_fail:{req.id}",
             )
+            # P11-34 — الكنس **قبل** إنشاء مهمة الفشل، لا بعده.
+            #
+            # ``_close_open_tasks`` يغلق مهام طلب بلغ حالة نهائية، وهذه
+            # ليست نهائية: ``closed_at=None`` واللافتة «يحتاج إجراء».
+            # وكان النداء يأتي بعد الإنشاء فيكنس ما أُنشئ لتوّه: قِستُ
+            # المهمة فوجدتها ``dismissed`` وشدّتها ``critical``.
+            #
+            # فمهمة تقول «فشل تطبيق قرار معتمَد — يلزم إجراء يدوي» تُقتل
+            # في المعاملة نفسها التي أنشأتها، ولا يُبلَّغ أحد. والطلب
+            # يبقى مفتوًحا ظاهًرا وميًتا فعًلا.
+            #
+            # ومهام المراحل تُغلق فعًلا: الاعتماد تمّ، والذي فشل بعده.
+            _close_open_tasks(db, req)
+
             # الإدارة (HR) تحتاج task ثانية لمعرفة إن فيه إجراء يدوي مطلوب
             for u in users_by_role(db, req.company_id, ["hr", "company_manager"]):
                 create_task(
@@ -1285,7 +1331,6 @@ def _finalize(db: Session, req: models.Request) -> None:
                     related_entity_type="request", related_entity_id=req.id,
                     dedup_key=f"req_apply_failed:{req.id}", severity="critical",
                 )
-            _close_open_tasks(db, req)
             return
         # نجح التطبيق — نسجّل ملاحظة قبل/بعد كـ approval trail
         db.add(models.RequestApproval(

@@ -409,6 +409,9 @@ class RequestIn(BaseModel):
 
 class ApprovalDecisionIn(BaseModel):
     decision: str  # approved / rejected
+    # P11-35 — الفعل المعروض على الزرّ. اختياري توافًقا مع من يرسل القرار
+    # وحده، ويُتحقَّق منه على الخادم فلا يُرسَل فعل لا تحمله هذه المرحلة.
+    action: str | None = None
     note: str | None = None
 
 

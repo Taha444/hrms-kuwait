@@ -703,6 +703,13 @@ class RequestApproval(Base):
     # من يقرأ الطلب لا يقرأ التدقيق.
     original_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     decision: Mapped[str] = mapped_column(String(20))  # approved/rejected
+    # P11-35 — الفعل الذي اتّخذه الإنسان، لا أثره على المسار وحده.
+    #
+    # ``decision`` ثلاث قيم يفرّعها المحرّك عليها، والأفعال تسعة: من ضغط
+    # «البيانات صحيحة» أو «تمّ التنفيذ» أو «علمت» كان يُسجَّل «اعتمد».
+    # وفي نزاع عمّالي «اعتمدت الشؤون القانونية الخصم» دعوى غير «تحقّقت
+    # من الأرقام» — واللفظ الواحد يخلطهما بعد شهور بلا وسيلة للتمييز.
+    action: Mapped[str | None] = mapped_column(String(30))
     decided_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     note: Mapped[str | None] = mapped_column(Text)
 

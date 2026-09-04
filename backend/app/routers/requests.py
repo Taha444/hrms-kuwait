@@ -603,9 +603,28 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
             status_code=400,
             detail="هذه المرحلة تكتمل برفع إذن المغادرة (documents) لا بالاعتماد المباشر",
         )
+    # P11-35 — الفعل يُحفظ، ولا يُصدَّق كما وصل.
+    #
+    # المرسَل يجب أن يكون من أفعال **هذه** المرحلة بالضبط، وأن يترجم إلى
+    # القرار المرسَل نفسه. وإلا لَأمكن تسجيل «علمت» على مرحلة قرار —
+    # فيصير الاعتماد في السجلّ اطلاًعا، وهو تحريف للمعنى بأمر واحد.
+    action = (data.action or "").strip() or None
+    if action:
+        allowed = {a["action"]: a["decision"]
+                   for a in request_actions.allowed_actions(db, req, user)}
+        if action not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"الفعل «{action}» ليس من أفعال هذه المرحلة")
+        if allowed[action] != data.decision:
+            raise HTTPException(
+                status_code=400,
+                detail="الفعل لا يطابق القرار المرسَل")
+
     # P0-#7 — capture before-state for audit trail
     before = {"status": req.status, "current_stage": req.current_stage}
-    req = workflow.decide(db, req, user, data.decision, data.note, rt)
+    req = workflow.decide(db, req, user, data.decision, data.note, rt,
+                          action=action)
     audit(db, user, f"request_{data.decision}", "request", req.id,
           detail=data.note, request=request, company_id=req.company_id,
           correlation_id=f"req:{req.id}",
@@ -782,6 +801,34 @@ def _latest_doc(db: Session, req_id: int, kind: str) -> models.RequestDocument:
     if not doc:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
     return doc
+
+
+@router.post("/{req_id}/retry-apply")
+def retry_apply_endpoint(req_id: int, request: Request,
+                         user: models.User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    """P11-34 — مخرج ``apply_failed``: يعيد تطبيق الأثر بعد تصحيح سببه.
+
+    الحالة كانت بلا مخرج: لا أفعال ولا سبب معروض، والإلغاء محجوز للمدير
+    العام — فلمن تلقّى مهمة الفشل الطلبُ جدار.
+
+    ومن يُعيد المحاولة هو من يتلقّى المهمة: البلاغ بلا صلاحية إصلاح خبر
+    لا إجراء.
+    """
+    req = _get_req(db, user, req_id)
+    if user.role not in workflow.APPLY_RETRY_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="إعادة التطبيق من صلاحية الشؤون القانونية أو المدير العام")
+    before = {"status": req.status}
+    workflow.retry_apply(db, req)
+    audit(db, user, "request_apply_retried", "request", req.id,
+          detail=f"{before['status']} → {req.status}", request=request,
+          company_id=req.company_id, correlation_id=f"req:{req.id}",
+          before=before, after={"status": req.status})
+    db.commit()
+    st = workflow.status_info(req.status)
+    return {"ok": True, "status": req.status, "status_label": st["label"]}
 
 
 @router.post("/{req_id}/document/{kind}/mark-printed")
@@ -1039,6 +1086,11 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
                 "approver_name": _name(ap.approver_user_id) if ap else None,
                 # P11-36 — والشاشة هي ما يُقرأ: العمود بلا قارئ يعيد العطل
                 # نفسه الذي أُصلح.
+                # P11-35 — لفظ الفعل نفسه: «تحقّق» ليس «اعتمد».
+                "action": ap.action if ap else None,
+                "action_label": (request_actions.ACTION_LABELS[ap.action]["ar"]
+                                 if ap and ap.action in request_actions.ACTION_LABELS
+                                 else None),
                 "on_behalf": bool(ap and ap.original_user_id),
                 "acted_by": (_name(ap.original_user_id)
                              if ap and ap.original_user_id else None),
@@ -1060,6 +1112,9 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
             {"stage": a.stage_order, "label": a.stage_label, "role": a.approver_role,
              "role_label": ROLE_AR.get(a.approver_role, a.approver_role),
              "approver_name": _name(a.approver_user_id),
+             "action": a.action,
+             "action_label": (request_actions.ACTION_LABELS[a.action]["ar"]
+                              if a.action in request_actions.ACTION_LABELS else None),
              "on_behalf": bool(a.original_user_id),
              "acted_by": (_name(a.original_user_id) if a.original_user_id else None),
              "decision": a.decision, "note": a.note, "at": a.decided_at} for a in approvals

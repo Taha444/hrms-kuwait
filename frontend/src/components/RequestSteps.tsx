@@ -9,6 +9,7 @@ type Stage = {
   state: "done" | "current" | "pending" | "rejected" | "cancelled" | "skipped" | "returned";
   approver_name?: string | null; decided_at?: string | null; note?: string | null;
   on_behalf?: boolean; acted_by?: string | null;
+  action?: string | null; action_label?: string | null;
 };
 
 const CURRENT_SUBLABEL: Record<string, string> = {
@@ -79,6 +80,9 @@ export default function RequestSteps({ stages, status }: { stages: Stage[]; stat
                   {STATE_PILL[s.state]}
                 </span>
                 {s.approver_name && <span>· {s.approver_name}</span>}
+                {/* P11-35 — لفظ الفعل نفسه: «تحقّق من البيانات» ليس
+                    «اعتمد»، وفي نزاع عمّالي الفرق بينهما دعوى كاملة. */}
+                {s.action_label && <span>· {s.action_label}</span>}
                 {/* P11-36 — من ضغط «اعتمد» حًقا حين يختلف عن الاسم الذي وقع
                     تحته. الاسم وحده كان يُبقي اعتماد مدير النظام منسوًبا
                     للشؤون القانونية أمام من يراجع بعد شهور. */}

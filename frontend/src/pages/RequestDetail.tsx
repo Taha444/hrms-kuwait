@@ -27,10 +27,13 @@ export default function RequestDetail() {
     catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
-  const decide = (decision: string) => {
+  // P11-35 — يُرسَل الفعل مع القرار. الزرّ يقول «البيانات صحيحة» أو «تمّ
+  // التنفيذ» أو «علمت»، وكان يصل الخادمَ «approved» وحده — فيُقرأ في
+  // السجلّ بعد شهور «اعتمد». والفعل يُتحقَّق منه على الخادم فلا يُحرَّف.
+  const decide = (decision: string, action?: string) => {
     // الإرجاع للتصحيح يلزم توضيح السبب دائًما (QA-P2-WF-03)، خلافًا للاعتماد/الرفض
     if (decision === "returned" && !note.trim()) { setErr(t("rd_return_note_required")); return; }
-    act(() => api.post(`/requests/${id}/decide`, { decision, note }), t("rd_decided"));
+    act(() => api.post(`/requests/${id}/decide`, { decision, action, note }), t("rd_decided"));
   };
   const cancel = () =>
     act(() => api.post(`/requests/${id}/cancel`, null, { params: { note } }), t("rd_cancelled"));
@@ -131,7 +134,7 @@ export default function RequestDetail() {
               <button key={a.action}
                       className={a.decision === "rejected" ? "danger"
                                  : a.decision === "returned" ? "warn" : ""}
-                      onClick={() => decide(a.decision)}>
+                      onClick={() => decide(a.decision, a.action)}>
                 {lang === "en" ? a.label_en : a.label_ar}
               </button>
             ))}

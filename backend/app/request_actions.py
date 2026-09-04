@@ -38,6 +38,17 @@ ACTIONS_BY_STEP_TYPE: dict[str, list[str]] = {
     "DECISION": ["approve", "reject", "return"],
     "VALIDATION": ["valid", "invalid", "return"],
     "EXECUTION": ["start", "complete", "cannot_complete"],
+    # P11-35 — **معلَّق قصًدا: لا سلسلة تستعمله اليوم** (قِستُ الكتالوج:
+    # المراحل غير DECISION أربع، ثلاث VALIDATION وواحدة إقرارات جهات).
+    #
+    # ولم أُوصِّفه بالتخمين لأن سؤاله غير محسوم: ``dispute`` مربوط
+    # بـ``rejected``، ومعناه أن اعتراض موظف على إنذار **يُسقط الطلب
+    # كلّه**. وقد يكون ذلك مقصوًدا وقد يكون العكس — الاعتراض يُسجَّل
+    # ويمضي المسار. والجواب قرار عمل لا استنتاج شيفرة.
+    #
+    # ويحرسه ``test_zzz_acknowledgement_meaning``: أول سلسلة تستعمل هذا
+    # النوع تُسقط الاختبار، فيُحسم السؤال يوم يصير حقيقًيا لا يوم يعترض
+    # موظف فيجد إنذاره قد أُلغي.
     "ACKNOWLEDGEMENT": ["acknowledge", "dispute"],
 }
 
@@ -57,6 +68,14 @@ ACTION_LABELS: dict[str, dict[str, str]] = {
 
 #: الفعل ← القرار الذي يُرسَل إلى ``/decide``. الواجهة لا تترجم أفعاًلا إلى
 #: قرارات بنفسها: ترجمة في الواجهة تعني قاعدة ثانية تنحرف.
+#:
+#: P11-35 — **وهذه الخريطة أثرٌ على المسار لا معًنى**. ثلاث قيم يفرّع
+#: عليها المحرّك، وتسعة أفعال تنهار إليها: من ضغط «البيانات صحيحة» أو
+#: «تمّ التنفيذ» أو «علمت» كان يُسجَّل «اعتمد» وانتهى الأمر. وفي نزاع
+#: عمّالي «اعتمدت الشؤون القانونية الخصم» دعوى غير «تحقّقت من الأرقام».
+#:
+#: فلم تُوسَّع القيم — توسيعها يكسر كل تفريع في المحرّك — بل صار الفعل
+#: يُحفَظ إلى جانب أثره في ``RequestApproval.action``، ويُعرَض بلفظه.
 ACTION_DECISION: dict[str, str] = {
     "approve": "approved", "valid": "approved", "complete": "approved",
     "acknowledge": "approved",
@@ -68,6 +87,9 @@ ACTION_DECISION: dict[str, str] = {
 #: الإرجاع للتصحيح متاح في المراحل الأولى فقط: بعد قطع الطلب شوًطا يصير
 #: إرجاعه إلى مقدّمه إلغاءً لقرارات اتُّخذت قبله.
 RETURN_MAX_STAGE = 2
+
+#: يُقرأ من المحرّك فلا تتباعد قائمتان لنفس الصلاحية.
+from .workflow import APPLY_RETRY_ROLES as _RETRY_ROLES  # noqa: E402
 
 
 def allowed_actions(db: Session, req: models.Request,
@@ -121,6 +143,17 @@ def why_not(db: Session, req: models.Request, user: models.User | None) -> str |
     """
     if user is None:
         return None
+    # P11-34 — حالة تحتاج إجراًء تقول ما هو، ومن يملكه.
+    #
+    # ``apply_failed`` لافتتها «فشل التطبيق — يحتاج إجراء»، وكانت
+    # ``allowed_actions`` فارغة و``no_actions_reason`` فارًغا: شاشة صامتة
+    # أمام طلب معتمَد لم يقع أثره. من يقرأها يظنّ الطلب ماضًيا في طريقه.
+    if req.status == "apply_failed":
+        if user.role in _RETRY_ROLES:
+            return ("لم يُطبَّق أثر هذا الطلب بعد اعتماده. صحّح سبب الفشل "
+                    "ثم أعد التطبيق.")
+        return ("لم يُطبَّق أثر هذا الطلب بعد اعتماده — الشؤون القانونية "
+                "مُبلَّغة وتتولّى تصحيحه.")
     if req.status != "pending":
         return None
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
