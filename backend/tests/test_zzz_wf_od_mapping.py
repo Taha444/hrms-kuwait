@@ -53,34 +53,67 @@ def _types_producing_documents():
     return out
 
 
-#: **الخريطة المراجَعة.** كل سطر قرار، لا استنتاج أداة.
+#: **الخريطة المراجَعة** — وما بقي منها يدوًيا.
+#:
+#: صُحّحت أوًلا بمطابقة الأسماء، ثم بالسجلّ. والفرق بينهما درس:
+#: مطابقة الأسماء أعطت ``REQCLR`` القالبَ «محضر تسليم عهدة»، والسجلّ
+#: يقول إن مسارها يُنتج ``OD-016`` = «شهادة إخلاء طرف». الاسمان قريبان
+#: والمستندان مختلفان — ولهذا يطلب البند «من السجلّ **فقط**».
 REVIEWED = {
-    # صُحّحت في هذه الجولة — اسم القالب يطابق نوع الطلب صراحًة
-    "leave": "HRMS-PR-027",        # قرار اعتماد إجازة   (كان: قرار إنهاء خدمة)
-    "REQRESIGN": "HRMS-PR-014",    # قبول استقالة        (كان: إيقاف لحين التحقيق)
-    "REQEOS": "HRMS-PR-038",       # التسوية النهائية    (كان: إشعار عودة من إجازة)
-    "ADMWARN": "HRMS-PR-022",      # إنذار موظف          (كان: خطاب لجهة رسمية)
-    "REQCLR": "HRMS-PR-040",       # محضر تسليم عهدة     (كان: تكليف عمل إضافي)
-    "REQTRF": "HRMS-PR-016",       # قرار نقل موظف       (كان: شهادة مدة خدمة)
-    "REQTRFLIC": "HRMS-PR-016",    # قرار نقل موظف       (كان: شهادة مدة خدمة)
-    # كانت صحيحة قبل الجولة
+    "leave": "HRMS-PR-027",
+    "REQRESIGN": "HRMS-PR-014",
+    "REQEOS": "HRMS-PR-038",
+    "ADMWARN": "HRMS-PR-022",
+    "REQCLR": "HRMS-PR-039",       # OD-016 شهادة إخلاء طرف (لا PR-040)
+    "REQTRF": "HRMS-PR-016",
+    "REQTRFLIC": "HRMS-PR-016",
+    "REQPROMO": "HRMS-PR-018",     # OD-005 قرار تغيير وظيفي
+    "REQCON": "HRMS-PR-012",       # OD-005
+    "REQRESE": "HRMS-PR-034",      # OD-013 غلاف متابعة معاملة حكومية
+    "REQRESN": "HRMS-PR-034",      # OD-013
     "salary_certificate": "HRMS-PR-001",
     "REQCERTSAL": "HRMS-PR-001",
     "REQCERTEMP": "HRMS-PR-002",
     "REQCERTEXP": "HRMS-PR-003",
 }
 
-#: **لم تُحسم — قرار مالك لا هندسة.** أي ورقة رسمية يتسلّمها الموظف
-#: سؤالٌ عن السياسة لا عن الشيفرة، فتبقى هنا مرئية حتى تُحسم.
+#: ما لا يقيسه السجلّ: نوع بلا مسار قانوني أو بلا قالب.
 UNDECIDED = {
-    "REQPROMO": "«ترقية أو تعديل راتب» — PR-018 ترقية أم PR-019 تعديل راتب؟",
-    "REQCON": "«تجديد عقد أو عدم تجديد» — PR-012 أم PR-013؟ الورقة تتبع النتيجة.",
-    "REQRESE": "تجديد إقامة مبكر — PR-034 «تفويض تجديد إقامة» تفويض لا قرار.",
-    "REQRESN": "تجديد إقامة عادي — نفس السؤال.",
-    "REQMIS": "«مهمة عمل خارجية» — لا قالب مطابق بين الاثنين والأربعين.",
-    "REQWLOC": "«تكليف مؤقت بموقع» — بلا قالب. PR-017 يطابق اسًما.",
+    "REQMIS": "«مهمة عمل خارجية» — مسارها WF-029 (تصنيف عام) لا يعلن أي OD.",
+    "REQWLOC": "«تكليف مؤقت بموقع» — بلا قالب أصًلا.",
     "ADMLIC": "«تجديد مستند شركة» — كيانه الشركة لا الموظف (internal_action).",
 }
+
+
+def test_no_type_points_at_a_document_its_workflow_does_not_declare():
+    """**جوهر P1-02**: الخريطة من السجلّ وحده.
+
+    لكل نوع مسارٌ قانوني يعلن مستنداته، ولكل قالب مستندٌ يقابله
+    (``LEGACY_PRN_ALIASES``). فالسؤال يُجاب بالتركيب لا بالرأي: هل
+    المستند الذي يشير إليه القالب من بين ما يعلنه المسار؟
+
+    وخمسة أنواع كانت تخالف — ومنها واحد «صحّحته» مطابقةُ الأسماء إلى
+    مستند آخر.
+    """
+    bad = []
+    for rt in _types_producing_documents():
+        entry = R.LEGACY_REQUEST_ALIASES.get(rt["code"]) or {}
+        canonical = entry.get("canonical") if isinstance(entry, dict) else None
+        declared = set((R.CANONICAL_WORKFLOWS.get(canonical) or {}).get("od") or [])
+        actual = R.LEGACY_PRN_ALIASES.get(rt.get("default_template_code"))
+        if actual and declared and actual not in declared:
+            bad.append((rt["code"], actual, sorted(declared)))
+    assert not bad, (
+        "قالب يشير إلى مستند لا يعلنه مسار نوعه "
+        f"(النوع، مستند القالب، ما يعلنه المسار): {bad}"
+    )
+
+
+def test_the_registry_bridge_is_usable():
+    """وأداة لا تربط شيًئا تُمرّر كل شيء."""
+    bridged = [rt["code"] for rt in _types_producing_documents()
+               if R.LEGACY_PRN_ALIASES.get(rt.get("default_template_code"))]
+    assert len(bridged) >= 10, f"الجسر لا يغطّي إلا {len(bridged)} نوع"
 
 
 def test_the_measurement_is_possible():

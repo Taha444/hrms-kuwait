@@ -279,10 +279,10 @@ DEFAULT_REQUEST_TYPES = [
     # الإقامة والمعاملات الحكومية
     _simple("REQRESE", "طلب تجديد إقامة مبكر", CAT_RESIDENCY,
            ["hr", "company_manager", "delegate"], produces_document=True, visible_to_employee=True,
-           default_template_code="HRMS-PR-021"),
+           default_template_code="HRMS-PR-034"),
     _simple("REQRESN", "طلب تجديد إقامة عادي", CAT_RESIDENCY,
            ["delegate", "hr"], produces_document=True,
-           default_template_code="HRMS-PR-021"),
+           default_template_code="HRMS-PR-034"),
     _simple("REQPASS", "طلب تحديث أو تجديد جواز السفر", CAT_RESIDENCY,
            ["hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-024"),
@@ -375,12 +375,12 @@ DEFAULT_REQUEST_TYPES = [
            default_template_code="HRMS-PR-016"),
     _simple("REQPROMO", "طلب ترقية أو تعديل راتب", CAT_CAREER,
            ["branch_supervisor", "company_manager"], produces_document=True, visible_to_employee=True,
-           default_template_code="HRMS-PR-008"),
+           default_template_code="HRMS-PR-018"),
 
     # العقود وإنهاء الخدمة
     _simple("REQCON", "تجديد عقد أو عدم تجديد", CAT_CONTRACTS,
            ["hr", "company_manager"], produces_document=True,
-           default_template_code="HRMS-PR-006"),
+           default_template_code="HRMS-PR-012"),
     _simple("REQRESIGN", "طلب استقالة", CAT_CONTRACTS,
            ["company_manager", "hr"], produces_document=True, visible_to_employee=True,
            default_template_code="HRMS-PR-014"),
@@ -395,7 +395,7 @@ DEFAULT_REQUEST_TYPES = [
         "code": "REQCLR", "name": "إخلاء طرف وتسليم عهدة", "category": CAT_CONTRACTS,
         "produces_document": True, "requires_physical_signature": True,
         "is_confidential": False, "visible_to_employee": False,
-        "default_template_code": "HRMS-PR-040",
+        "default_template_code": "HRMS-PR-039",
         "approval_chain_json": [
             {"order": 0, "kind": "parallel", "label": "إقرارات الجهات",
              "step_type": "VALIDATION", "produces_document": False,

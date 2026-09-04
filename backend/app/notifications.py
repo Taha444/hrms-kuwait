@@ -529,6 +529,23 @@ def digest_scan(db: Session) -> dict:
         already = db.scalar(select(models.Task.id).where(models.Task.dedup_key == dk))
         if already:
             continue
+
+        # P2-08 — الملخّص **عابر**: ملخّص اليوم يُلغي ما قبله.
+        #
+        # المفتاح اليومي يمنع التكرار داخل اليوم ولا يغلق ملخّص الأمس.
+        # فبعد شهر ثلاثون صًفا مفتوًحا لكل مستخدم، كلها تقول «لديك كذا
+        # مهمة» بأرقام قديمة. وصندوق يمتلئ بملخّصات بائدة يُقرأ كعمل
+        # متأخّر، ويُهمَل — ومعه الملخّص الصحيح.
+        #
+        # وهو **ملخّص لا سجلّ**: قيمته في يومه، وما بعده يُعاد حسابه.
+        stale = db.scalars(select(models.Task).where(
+            models.Task.type == "digest",
+            models.Task.assignee_user_id == user_id,
+            models.Task.status.in_(("open", "in_progress")),
+        )).all()
+        for old_digest in stale:
+            old_digest.status = "dismissed"
+            old_digest.completed_at = now.replace(tzinfo=None)
         user = db.get(models.User, user_id)
         if not user or not user.is_active:
             continue

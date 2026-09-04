@@ -189,6 +189,18 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         # يبدأ من HR/الإدارة بشأنه (P0-06: تنظيم كتالوج الطلبات حسب الدور)
         if user.role == "employee" and not rt.visible_to_employee:
             continue
+        # P3-13 — كتالوج الموظف من السجلّ القانوني وحده.
+        #
+        # ``salary_certificate`` موسوم في السجلّ «Alias retired — استخدم
+        # OD-001» ومع ذلك كان يظهر بجانب ``REQCERTSAL`` بالاسم نفسه:
+        # «طلب شهادة راتب» مرّتين في قائمة واحدة. فيقف الموظف أمام خيارين
+        # لا فرق بينهما، وأيّهما اختار فالنصف الآخر بقيّة ميّتة.
+        #
+        # والقاعدة تُشتقّ من السجلّ لا تُكتب استثناًء بكود بعينه: كل alias
+        # يُتقاعد غًدا يختفي من القائمة يوم يُوسَم، لا يوم يتذكّره أحد.
+        _entry = v15_registry.LEGACY_REQUEST_ALIASES.get(rt.code) or {}
+        if user.role == "employee" and isinstance(_entry, dict) and                 "retired" in str(_entry.get("note", "")).lower():
+            continue
         seen.add(rt.code)
         canonical_info = v15_registry.resolve_request(rt.code)
         canonical_code = canonical_info.get("canonical")
