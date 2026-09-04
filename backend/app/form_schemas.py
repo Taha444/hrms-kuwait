@@ -68,9 +68,14 @@ SCHEMAS: dict[str, dict] = {
         ],
         "attachments": {"required": [], "optional": ["medical_report"]},
         "validation": {"end_gte_start": ["start_date", "end_date"]},
-        # ملاحظة: strict_validation مُطفَأة على REQLV للتوافق مع اختبارات موجودة
-        # تعتمد على schema مرن. الـsick→medical_report يطبَّق فعليًا فقط لو المستخدم
-        # اختار leave_type=sick صراحًة عبر الفورم (لا للـpayload القديم اللي بلا نوع).
+        # ملاحظة قديمة صُحّحت: كان هنا أن strict_validation مُطفَأة على
+        # REQLV. **وهي مُفعَّلة فعًلا** — الكود ضمن
+        # ``_VERIFIED_ENFORCE_REQUIRED`` أدناه، وتلك الكتلة تتجاوز ما
+        # يُكتب هنا. بنيتُ استنتاًجا على هذا التعليق فسقط عند القياس.
+        # وتعليق يخالف ما يقع أسوأ من لا تعليق: يُقرأ ويُصدَّق.
+        #
+        # والـsick→medical_report يطبَّق فعلًيا فقط لو اختار المستخدم
+        # leave_type=sick صراحًة عبر الفورم (لا للـpayload القديم بلا نوع).
         "meta": {"legacy_aliases": ["leave", "annual_leave", "sick_leave"]},
     },
     # ------------------------- تصحيح الحضور -------------------------
@@ -878,6 +883,33 @@ def validate_payload(code: str, payload: dict, strict: bool | None = None) -> li
             errors.append(
                 f"_attachments: مرفقات مطلوبة مفقودة — {', '.join(sorted(missing_atts))}"
             )
+
+    # P9-32 — **حقل مخفيّ لا يحمل قيمة**: تناقض بين ما رآه المستخدم وما وصل.
+    #
+    # الشرط كان يُفرَض في اتجاه واحد: «أشّر السفر ⇒ الوجهة مطلوبة». أما
+    # العكس فلا — قِستُه فمرّ طلب إجازة فيه «القاهرة» و«تجديد الجواز»
+    # وخانة السفر غير مؤشَّرة، **بلا مرحلة المندوب**. فالبيانات تقول
+    # سفر والمسار يقول لا، ولا أحد يلاحظ: يسافر الموظف بلا إذن مغادرة.
+    #
+    # والقاعدة تُشتقّ من إعلان ``conditional`` نفسه لا تُكتب لكل نموذج،
+    # فتحمي كل حقل مشروط يُضاف غًدا — لا حقل السفر وحده.
+    #
+    # وتُفحَص **خارج** بوّابة ``strict``، للسبب الذي تُفحَص لأجله
+    # المرفقات: مسار خاطئ ليس اختيارًيا.
+    #
+    # (وقد ظننتُ أوًلا أن ``REQLV`` غير صارمة اعتماًدا على تعليق في
+    # تعريفها — وهو قديم: الكتلة التي تُفعّل ``_VERIFIED_ENFORCE_REQUIRED``
+    # تتجاوزه. لكن ثلاثة نماذج غير صارمة فعًلا — REQEOS وREQCLR
+    # وREQTRAVEL — والقاعدة تحميها كلها.)
+    for code_ in sorted(hidden):
+        val = payload.get(code_)
+        if val is None or val is False or (isinstance(val, str) and not val.strip()):
+            continue
+        label = next((f.get("label", code_) for f in (s.get("fields") or [])
+                      if f["code"] == code_), code_)
+        errors.append(
+            f"{code_}: «{label}» مملوء والشرط الذي يُظهره غير متحقّق — "
+            "صحّح الشرط أو امسح الحقل")
 
     # التحقق الحقلي الصارم فقط لما strict_validation مُفعّلة
     if not strict:
