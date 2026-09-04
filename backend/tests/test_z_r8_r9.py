@@ -3620,14 +3620,29 @@ def test_retest_frontend_implements_show_rule():
 
 
 def test_retest_reqsig_visible_to_employee(client):
-    """QA-07 — طلب تغيير التوقيع خدمة ذاتية، فيجب أن يظهر للموظف في "طلب جديد"."""
+    """QA-07 نُقض أساسه بالقياس (P3-15) — والحاجة التي حماها باقية.
+
+    كان الادّعاء: تغيير التوقيع خدمة ذاتية فيجب أن يظهر للموظف في «طلب
+    جديد». وهو صحيح **لو كان النوع يعمل**. ولم يكن: سُقتُ REQSIG كامًلا
+    فرُدّ ``completed`` والتوقيع بعده ``path=None`` و``version=0`` وسجلّ
+    النسخ صفر. فما كان يحرسه هذا الاختبار هو **ظهور باب مسدود**.
+
+    والحاجة نفسها باقية ويحرسها الآن ما يقيس وصولها: أن يجد الموظف
+    طريًقا عامًلا إلى استبدال توقيعه — وهو ``POST /me/signature`` بسبب،
+    ثم اعتماد HR. الادّعاء انتقل من «هل الباب معروض؟» إلى «هل يصل؟».
+    """
     from tests.conftest import auth_headers, login
 
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.get("/api/requests/types", headers=emp, params={"creatable_only": True})
     assert r.status_code == 200, r.text
     codes = {t["code"] for t in r.json()}
-    assert "REQSIG" in codes, "REQSIG غائب عن كتالوج الموظف"
+    assert "REQSIG" not in codes, (
+        "REQSIG معروض في «طلب جديد» — وهو باب يُعتمد ولا يغيّر التوقيع"
+    )
+    # والطريق العامل قائم ومفتوح للموظف: الغياب أعلاه ليس إغلاًقا للحاجة.
+    info = client.get("/api/me/signature", headers=emp)
+    assert info.status_code == 200, info.text
 
 
 def test_retest_reqsig_fix_reaches_existing_databases():
@@ -3918,7 +3933,15 @@ def test_retest_notifications_have_no_action_buttons(client):
     assert is_notification("request_update"), "تحديث حالة الطلب ليس مهمة"
     assert is_notification("digest")
     assert not is_notification("renew_residency"), "تجديد الإقامة إجراء مطلوب"
-    assert not is_notification("ready_to_print")
+    # P1-03 غيّر أساس هذا الادّعاء: يوم كُتب، كانت الطباعة الطريق **الوحيد**
+    # إلى أرشيف الموظف (الدخول داخل ``mark-filed`` وهي ترفض قبل
+    # ``mark-printed``) — فترْكها يعطّل عمًلا حًقا، وتصنيفه مهمًة كان صحيًحا.
+    #
+    # صار المستند يدخل الملف عند صدوره، فلا يتعطّل شيء إن لم يطبع أحد.
+    # والمعيار نفسه يقلب النتيجة لأن الواقع الذي يقيسه تغيّر.
+    assert is_notification("ready_to_print"), (
+        "الطباعة ما زالت تُعدّ عمًلا واجًبا بعد أن صارت الأرشفة تلقائية"
+    )
 
     from pathlib import Path
     ui = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "Tasks.tsx"

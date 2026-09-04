@@ -273,6 +273,19 @@ const dict: Record<string, { ar: string; en: string }> = {
   sig_replace: { ar: "استبدال التوقيع", en: "Replace signature" },
   sig_uploaded: { ar: "تم رفع التوقيع بنجاح", en: "Signature uploaded successfully" },
   sig_none: { ar: "لم يتم رفع توقيع بعد", en: "No signature uploaded yet" },
+  // P3-15 — الاستبدال يمر بوحدة التوقيع لا بطلب: النسخة القديمة تبقى
+  // سارية حتى يعتمد HR الجديدة، وكل نسخة تُسجَّل في سجل لا يُعدَّل.
+  sig_replace_reason: { ar: "سبب استبدال التوقيع (إلزامي)",
+                        en: "Reason for replacing the signature (required)" },
+  sig_replace_hint: {
+    ar: "توقيعك الحالي يبقى سارًيا على كل المستندات حتى تعتمد الشؤون القانونية النسخة الجديدة.",
+    en: "Your current signature stays in force on all documents until HR approves the new one.",
+  },
+  sig_replace_pick: { ar: "اختر صورة التوقيع الجديد", en: "Choose the new signature image" },
+  sig_replace_sent: { ar: "أُرسل الاستبدال — بانتظار اعتماد الشؤون القانونية",
+                      en: "Replacement submitted — awaiting HR approval" },
+  sig_replace_need_reason: { ar: "اكتب سبب الاستبدال أوًلا", en: "Write the reason first" },
+  sig_cancel: { ar: "إلغاء", en: "Cancel" },
   sig_preview: { ar: "معاينة التوقيع", en: "Signature preview" },
   // QA-25 — يوجد توقيع مسجَّل لكن صورته تعذّر تحميلها: حالة مختلفة عن غيابه
   sig_preview_failed: { ar: "تعذّر عرض صورة التوقيع — حدّث الصفحة",

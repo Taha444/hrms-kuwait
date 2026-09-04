@@ -377,11 +377,35 @@ def settle_case(case_id: int, request: Request, payment_reference: str,
     # الآن يُطبَّق الفصل فعليًا على ملف الموظف
     emp = db.get(models.Employee, case.employee_id)
     if emp:
+        _before = {"status": emp.status,
+                   "termination_date": str(emp.termination_date or "")}
         emp.status = "terminated"
         emp.termination_date = case.termination_date
         emp.termination_reason = case.termination_reason
         import json as _json
         emp.eos_settlement_json = _json.dumps(case.settlement_json, ensure_ascii=False)
+        # P6-28 — الخروج حدث على **ملف الموظف** لا على الحالة وحدها.
+        #
+        # كانت ست خطوات تُدقَّق كلها على ``eos_case`` وصفر على الموظف،
+        # بينما ملفه هو ما يتغيّر: يصير ``terminated`` ويُجمَّد
+        # (BLOCKED_EMPLOYEE_STATUSES) فلا يُفتح له طلب. فمن يفتح الملف
+        # ويسأل «متى أُغلق ومن أغلقه وبأي سند؟» لا يجد سطًرا — والأثر
+        # موجود تحت رقم حالة يجب أن يعرفه سلًفا ليصل إليه.
+        #
+        # ``correlation_id`` هو نفسه الذي تحمله خطوات الحالة، فيُقرأ
+        # الطرفان مًعا: ملف الموظف يقول ماذا جرى، والحالة تقول كيف.
+        audit(db, user, "employee_terminated", "employee", emp.id,
+              detail=(f"إنهاء خدمة عبر الحالة {case.reference_no} — "
+                      f"{case.termination_reason or '-'} @ "
+                      f"{case.termination_date} | مرجع الدفع "
+                      f"{payment_reference.strip()}"),
+              request=request, company_id=emp.company_id,
+              correlation_id=f"eos:{case.id}",
+              before=_before,
+              after={"status": "terminated",
+                     "termination_date": str(case.termination_date),
+                     "eos_case_id": case.id,
+                     "eos_reference_no": case.reference_no})
     db.commit()
     return _serialize_case(db, case)
 

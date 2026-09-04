@@ -10,7 +10,8 @@ from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
 from .. import request_actions
-from .. import form_schemas, models, permissions, schemas, workflow
+from .. import (doc_archive, form_schemas, models, module_owned, permissions,
+                schemas, workflow)
 from ..config import settings
 from ..database import get_db
 from ..deps import (assert_same_company, audit, get_current_user, require_any_perm,
@@ -208,6 +209,13 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         # (superseded_by) التي يستخدمها submit_request للرفض.
         replacement = superseded_by(db, cid, rt.code)
         if creatable_only and replacement:
+            continue
+        # P3-15 — موضوع تملكه وحدة مستقلة لا يُعرض كطلب يُنشأ.
+        #
+        # والقراءة من الإعلان نفسه الذي يمنعه ``create_request``: كتالوج
+        # يَعرض ما يرفضه الخادم هو ما وقع حرًفا قبل توحيد ``superseded_by``.
+        # ويبقى في الكتالوج الكامل فتُقرأ الطلبات التاريخية المبنية عليه.
+        if creatable_only and module_owned.owning_module(rt.code):
             continue
         # V2.2 §12 — الإجراءات الإدارية الداخلية ليست طلبات: إضافة موظف تُنفَّذ
         # من شاشة التعيين، وإشعار نقص المستندات إشعار لا طلب، وتجديد ترخيص
@@ -827,26 +835,14 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
     audit(db, user, "file_document", "request", req.id, detail=kind, request=request, company_id=req.company_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     if rt:
-        # أرشفة فعلية في ملف الموظف العام (جدول Document) — لا يبقى الأثر داخل الطلب فقط
-        type_code = f"request_{req.request_type_code}"
-        prev = db.scalars(select(models.Document).where(
-            models.Document.entity_type == "employee", models.Document.entity_id == req.employee_id,
-            models.Document.document_type_code == type_code, models.Document.is_current == True,  # noqa: E712
-        )).all()
-        for d in prev:
-            d.is_current = False
-        # R1-A §8 — نختم metadata الاعتماد على المستند المؤرشف: is_issued=True
-        # + نسخ reference_no/checksum من RequestDocument (اللي بيحملهم من workflow.py)
-        db.add(models.Document(
-            company_id=req.company_id, entity_type="employee", entity_id=req.employee_id,
-            document_type_code=type_code, title=rt.name, file_path=doc.file_path,
-            mime="application/pdf", version=len(prev) + 1, is_current=True, uploaded_by=user.id,
-            is_issued=True,
-            reference_no=doc.reference_no,
-            checksum_sha256=doc.checksum_sha256,
-            signature_version=doc.signature_version,
-            generated_at=datetime.utcnow(), generated_by=user.id,
-        ))
+        # P1-03 — الأرشفة بقاعدة واحدة يستدعيها التوليد وهذه الخطوة مًعا.
+        #
+        # كانت القاعدة مكتوبة هنا وحدها، والمستند لا يدخل الملف قبل أن
+        # يضغط أحد «طُبع» ثم «أُرشف». صار الدخول عند الصدور، وتبقى هذه
+        # الخطوة لتسجيل الأثر الورقي — و``archive_request_document``
+        # idempotent بالمرجع فلا تُنشئ صًفا ثانًيا لنفس الورقة.
+        doc_archive.archive_request_document(
+            db, req, doc, title=rt.name, actor_id=user.id)
         from ..notifications import notify_from_template
         notify_from_template(
             db, code="NTF-045", assignee_user_id=user.id, company_id=req.company_id,

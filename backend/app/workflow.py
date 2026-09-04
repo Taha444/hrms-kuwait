@@ -25,7 +25,7 @@ from sqlalchemy import or_ as sa_or
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from . import models
+from . import models, module_owned
 from .audit_context import original_actor_user_id
 from .task_kinds import is_notification
 from .config import settings
@@ -742,6 +742,20 @@ BLOCKED_EMPLOYEE_STATUSES = ("terminated", "archived", "resigned")
 
 def create_request(db: Session, employee: models.Employee, requester: models.User,
                    rt: models.RequestType, payload: dict) -> models.Request:
+    # P3-15 — موضوع يملكه غير هذه الوحدة لا يُفتح هنا.
+    #
+    # الحارس في نقطة الاختناق لا عند الواجهة: أي منفذ ينشئ طلًبا يمرّ من
+    # هنا، فالمنع لا يُنسى في مسار ثانٍ. وREQSIG كان يُعتمد ويُختم
+    # «مكتمل» والتوقيع لم يمسّه شيء — والصمت أسوأ من الرفض.
+    _owned = module_owned.owning_module(rt.code)
+    if _owned:
+        raise HTTPException(status_code=409, detail={
+            "code": "MODULE_OWNED_SUBJECT",
+            "message": module_owned.rejection_message(rt.code),
+            "module": _owned.get("module"),
+            "where": _owned.get("where"),
+        })
+
     status = (employee.status or "").strip().lower()
     if status in BLOCKED_EMPLOYEE_STATUSES:
         raise HTTPException(
@@ -1654,6 +1668,17 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             if signer and signer.signature_updated_at:
                 # نحفظ الطابع الزمني كـinteger unix timestamp للـsignature version
                 doc.signature_version = int(signer.signature_updated_at.timestamp())
+
+    # P1-03 — الصدور هو الدخول: المستند يدخل ملف الموظف بمجرّد توليده.
+    #
+    # كان الدخول يقع داخل ``mark-filed`` وحدها، وهي ترفض قبل
+    # ``mark-printed``. فمن ولّد شهادة وأرسلها PDF بلا طباعة لم تدخل
+    # ملف الموظف أبًدا — والطباعة أثر ورقي لا شرط وجود.
+    from . import doc_archive
+    doc_archive.archive_request_document(
+        db, req, doc,
+        title=(rt.name if rt is not None else req.request_type_code),
+        actor_id=actor.id if actor else None)
     return doc
 
 

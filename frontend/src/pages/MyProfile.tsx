@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 import { contractTypeAr } from "../labels";
@@ -8,7 +7,6 @@ import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 // الخدمة الذاتية: ملف الموظف الشخصي — بياناته/عقده/مستنداته/إجازاته/إنذاراته + توقيعه الرقمي.
 export default function MyProfile() {
   const { t, lang } = useI18n();
-  const navigate = useNavigate();
   const [p, setP] = useState<any>(null);
   const [err, setErr] = useState("");
   const [dlErr, setDlErr] = useState("");
@@ -27,6 +25,11 @@ export default function MyProfile() {
   // بلاغ على نقطة سليمة. البيانات موجودة، والناقص كان عرضها.
   const [sigHistory, setSigHistory] = useState<any[]>([]);
   const [sigCurrent, setSigCurrent] = useState<number | null>(null);
+
+  // P3-15 — الاستبدال كان يُحوَّل إلى طلب REQSIG: يُعتمد ويُختم «مكتمل»
+  // والتوقيع لا يتغيّر. الطريق العامل هنا: رفع بسبب ← معلَّق ← اعتماد HR.
+  const [sigReplacing, setSigReplacing] = useState(false);
+  const [sigReason, setSigReason] = useState("");
 
   // المعاينة تُجلب كـblob عبر axios ثم تُحوَّل لـobject URL. وضع المسار مباشرة
   // في <img src> لا يعمل: المتصفح لا يرفق ترويسة Authorization مع طلب الصورة،
@@ -61,7 +64,8 @@ export default function MyProfile() {
     loadSigHistory();
   }, []);
 
-  const uploadSig = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadSig = async (e: React.ChangeEvent<HTMLInputElement>,
+                           replacing = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setSigErr(""); setSigMsg("");
@@ -72,10 +76,19 @@ export default function MyProfile() {
     }
     const fd = new FormData();
     fd.append("file", file);
+    // الاستبدال يستوجب سبًبا صريًحا (التوقيع دليل يُحتجّ به على المستندات)،
+    // وأول رفع لا يستوجبه. والسبب يُمرَّر كمعامل استعلام كما يقرؤه الخادم.
+    const url = replacing && sigReason.trim()
+      ? `/me/signature?reason=${encodeURIComponent(sigReason.trim())}`
+      : "/me/signature";
     try {
-      await api.post("/me/signature", fd);
-      setSigMsg(t("sig_uploaded"));
+      const res = await api.post(url, fd);
+      setSigMsg(res.data?.status === "pending_approval"
+        ? t("sig_replace_sent") : t("sig_uploaded"));
+      setSigReplacing(false);
+      setSigReason("");
       loadSig();
+      loadSigHistory();
     } catch (err: any) { setSigErr(errMsg(err, t("error"))); }
     e.target.value = "";
   };
@@ -190,9 +203,37 @@ export default function MyProfile() {
                 واعتماد HR. كان زر الاستبدال يرفع الملف مباشرة بلا سبب فيرفضه
                 الخادم بـ400 «سبب استبدال التوقيع إلزامي» — وهو الخطأ المُبلَّغ. */}
             {sig?.has_signature ? (
-              <button onClick={() => navigate("/requests?type=REQSIG&new=1")}>
-                {t("sig_replace")}
-              </button>
+              sigReplacing ? (
+                <div style={{ display: "grid", gap: 8, maxWidth: 420 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {t("sig_replace_hint")}
+                  </div>
+                  <input value={sigReason} onChange={(e) => setSigReason(e.target.value)}
+                         placeholder={t("sig_replace_reason")} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {/* الملف لا يُقبل قبل السبب: الخادم يرفض بلا سبب بعد أن
+                        يكون المستخدم اختار ملفه — والرفض بعد الجهد أسوأ من
+                        منعه قبله. */}
+                    <label className={sigReason.trim() ? "btn" : "btn disabled"}
+                           style={{ cursor: sigReason.trim() ? "pointer" : "not-allowed",
+                                    opacity: sigReason.trim() ? 1 : 0.5 }}>
+                      {t("sig_replace_pick")}
+                      <input type="file" accept="image/png,image/jpeg"
+                             style={{ display: "none" }}
+                             disabled={!sigReason.trim()}
+                             onChange={(e) => uploadSig(e, true)} />
+                    </label>
+                    <button className="btn-secondary"
+                            onClick={() => { setSigReplacing(false); setSigReason(""); }}>
+                      {t("sig_cancel")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setSigErr(""); setSigMsg(""); setSigReplacing(true); }}>
+                  {t("sig_replace")}
+                </button>
+              )
             ) : (
               <label className="btn" style={{ cursor: "pointer" }}>
                 {t("sig_upload")}
