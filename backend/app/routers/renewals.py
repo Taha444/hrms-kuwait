@@ -75,6 +75,22 @@ def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
                 "_note": f"تعذّرت قراءة المستند: {type(exc).__name__}"}
     doc.extracted_data_json = data
 
+    # P4-22 — قراءة المستند حدث في القصة، لا خطوة صامتة.
+    #
+    # كانت النتيجة تُحفَظ في المستند ولا تُسجَّل. فمن يقرأ خطّ الزمن بعد
+    # شهور يرى «رُفعت البطاقة المدنية» ثم «سُجّلت بيانات المعاملة»، ولا
+    # يعرف هل قرأها النظام أم أُدخلت يدًوا، ولا بأي ثقة.
+    #
+    # وهو ما تحرسه القاعدة 14: لا تحديث صامت عند ضعف الثقة. والصمت في
+    # السجلّ نصف التحديث الصامت.
+    conf = float(data.get("_confidence") or 0.0)
+    outcome = ("فشلت القراءة" if data.get("_provider") == "error"
+               else "ثقة منخفضة — تحتاج تأكيًدا" if conf < LOW_CONFIDENCE
+               else "ثقة عالية")
+    audit(db, None, "renewal_ocr_read", entity_type, entity_id,
+          detail=f"{doc_kind}: {outcome} ({conf:.2f})",
+          company_id=getattr(doc, "company_id", None))
+
 
 
 
@@ -838,7 +854,33 @@ TIMELINE_LABELS = {
     "renewal_renewing": "بدأت الإجراءات الحكومية",
     "finalize_renewal": "سُجّلت بيانات المعاملة الحكومية",
     "hr_verify_renewal": "التحقق النهائي واكتمال المعاملة",
+    "renewal_ocr_read": "قرأ النظام المستند",
 }
+
+#: P4-22 — «رُفع مستند» تخفي أهمّ ما في القصة.
+#:
+#: الرفع حدث واحد في التدقيق (``renewal_upload``) وستّة مستندات مختلفة
+#: تمرّ به: العقد المولَّد، ونسخة الموظف الموقّعة، والنسخة النهائية،
+#: وإذن العمل، والبطاقة المدنية. ومن يقرأ الخطّ بعد شهور يرى ست مرّات
+#: «رُفع مستند» ولا يعرف أيّها كان.
+#:
+#: والكود مسجَّل في ``detail`` منذ البداية — الناقص أن يُقرأ.
+UPLOAD_LABELS = {
+    R.DOC_CONTRACT_GOV: "رُفع العقد الحكومي المولَّد",
+    R.DOC_CONTRACT_INTERNAL: "رُفع عقد الشركة (اختياري)",
+    R.DOC_SIGNED_GOV: "رفع الموظف العقد موقًَّعا",
+    R.DOC_SIGNED_INTERNAL: "رُفع عقد الشركة موقًَّعا",
+    R.DOC_CONTRACT_FINAL: "رُفع العقد بتوقيع الطرفين",
+    R.DOC_WORK_PERMIT: "رُفع إذن العمل الجديد",
+    R.DOC_CIVIL_CARD: "رُفعت البطاقة المدنية الجديدة",
+}
+
+
+def _timeline_label(action: str, detail: str | None) -> str:
+    """تسمية الحدث — وتفصيلها حين يحمله السجلّ."""
+    if action == "renewal_upload" and detail:
+        return UPLOAD_LABELS.get(detail.strip(), TIMELINE_LABELS[action])
+    return TIMELINE_LABELS.get(action, action)
 
 
 @router.get("/{rid}/timeline")
@@ -883,7 +925,7 @@ def renewal_timeline(rid: int, user: models.User = Depends(get_current_user),
             actor = users[row.user_id] = db.get(models.User, row.user_id)
         events.append({
             "action": row.action,
-            "label": TIMELINE_LABELS.get(row.action, row.action),
+            "label": _timeline_label(row.action, row.detail),
             "actor": (actor.full_name if actor else None),
             "actor_role": (ROLE_LABEL_AR.get(actor.role, actor.role) if actor else "النظام"),
             "at": row.created_at,

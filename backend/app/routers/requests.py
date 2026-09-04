@@ -1009,9 +1009,36 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
                 state = "current"
             else:
                 state = "pending"
+            # P8-31 — التسمية تقول من يتصرّف فعًلا، لا من نصّ التعريف.
+            #
+            # السقوط رسمي: مرحلة «المسؤول المباشر» تنتقل إلى مسؤول الفرع
+            # حين لا يكون للموظف مدير مباشر. لكن الشاشة كانت تعرض الدور
+            # المُعلَن، فيقرأ المستخدم «بانتظار المسؤول المباشر» وينتظر من
+            # لن يتصرّف — والفعل عند غيره.
+            #
+            # ويُحسب للمرحلة الجارية وحدها: الماضية يحكيها سجلّ القرارات
+            # بدورها الفعلي، والقادمة لم يُحسم من يتولّاها بعد.
+            effective_role, blocked = st.get("role"), None
+            if state == "current":
+                actual = workflow.resolve_stage_approvers(db, req, st)
+                roles = {u.role for u in actual if u.role}
+                if roles and st.get("role") not in roles:
+                    effective_role = sorted(roles)[0]
+                elif not actual:
+                    # مرحلة بلا معتمِد: الطلب واقف ولا أحد يستطيع تحريكه.
+                    # وكانت الشاشة تعرضها كغيرها — «بانتظار اعتماد مسؤول
+                    # الفرع» — فينتظر الموظف من لا وجود له، ولا يسأل أحد
+                    # عمّا يبدو ماضًيا في طريقه. والتنبيه يذهب لشؤون
+                    # الموظفين (workflow._warn_unassigned_stage) وحدهم.
+                    blocked = "لا معتمِد مرتبط بهذه المرحلة — تواصل مع شؤون الموظفين"
             stages.append({
                 "order": i, "label": st.get("label"), "role": st.get("role"),
                 "role_label": ROLE_AR.get(st.get("role"), st.get("role")),
+                "effective_role": effective_role,
+                "effective_role_label": ROLE_AR.get(effective_role, effective_role),
+                "delegated_from": (st.get("role")
+                                   if effective_role != st.get("role") else None),
+                "blocked_reason": blocked,
                 "kind": st.get("kind", "approval"), "state": state,
                 "approver_name": _name(ap.approver_user_id) if ap else None,
                 "decided_at": ap.decided_at if ap else None,

@@ -4,6 +4,8 @@ import { fmtKuwaitDateTime } from "../utils/datetime";
 // مسار الطلب الهرمي: يعرض كل مرحلة وحالتها (تمّ/الحالي/قادم/مرفوض) بوضوح.
 type Stage = {
   order: number; label: string; role_label: string; kind: string;
+  effective_role_label?: string; delegated_from?: string | null;
+  blocked_reason?: string | null;
   state: "done" | "current" | "pending" | "rejected" | "cancelled" | "skipped" | "returned";
   approver_name?: string | null; decided_at?: string | null; note?: string | null;
 };
@@ -53,7 +55,23 @@ export default function RequestSteps({ stages, status }: { stages: Stage[]; stat
             <div className="body">
               <div className="s-title">{s.label}</div>
               <div className="s-meta">
-                <span className="pill neutral">{s.role_label}</span>
+                {/* P8-31 — من يتصرّف فعًلا، لا من نصّ التعريف.
+                    مرحلة «المسؤول المباشر» تسقط إلى مسؤول الفرع حين لا
+                    مدير للموظف. وعرض الدور المُعلَن يجعل المستخدم ينتظر
+                    من لن يتصرّف. */}
+                <span className="pill neutral">
+                  {s.effective_role_label || s.role_label}
+                </span>
+                {s.blocked_reason && (
+                  <span className="pill critical" style={{ marginInlineStart: 4 }}>
+                    {s.blocked_reason}
+                  </span>
+                )}
+                {s.delegated_from && (
+                  <span className="pill info" style={{ marginInlineStart: 4 }}>
+                    بدًلا عن {s.role_label}
+                  </span>
+                )}
                 <span className={`pill ${s.state === "done" ? "success" : s.state === "current" ? "gold"
                   : s.state === "rejected" || s.state === "cancelled" ? "danger"
                   : s.state === "returned" ? "warning" : "neutral"}`}>
