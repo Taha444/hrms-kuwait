@@ -26,7 +26,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from . import models, module_owned
-from .audit_context import original_actor_user_id
+from .audit_context import actor_ip, actor_user_id, original_actor_user_id
 from .task_kinds import is_notification
 from .config import settings
 from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
@@ -930,6 +930,9 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
         request_id=req.id, stage_order=req.current_stage,
         stage_label=stage.get("label", ""), approver_role=user.role,
         approver_user_id=user.id, decision=decision, note=note,
+        # P11-36 — الفاعل الحقيقي يُثبَّت على القرار لا في التدقيق وحده:
+        # من يقرأ الطلب بعد شهور يقرأ الطلب، لا سجلّ التدقيق.
+        original_user_id=original_actor_user_id(),
     )
     db.add(approval)
     # autoflush=False على مستوى الجلسة (database.py) — بدون flush صريح هنا لا يرى استعلام
@@ -1258,7 +1261,8 @@ def _finalize(db: Session, req: models.Request) -> None:
             ))
             # P0-#7 — audit apply failure كسطر واضح مربوط بالـrequest
             db.add(models.AuditLog(
-                company_id=req.company_id, user_id=None,
+                company_id=req.company_id, user_id=actor_user_id(),
+            original_user_id=original_actor_user_id(), ip=actor_ip(),
                 action="request_apply_failed", entity_type="request",
                 entity_id=req.id, detail=f"reason: {note}",
                 correlation_id=f"req:{req.id}",
@@ -1294,7 +1298,8 @@ def _finalize(db: Session, req: models.Request) -> None:
         ))
         # P0-#7 — audit apply success
         db.add(models.AuditLog(
-            company_id=req.company_id, user_id=None,
+            company_id=req.company_id, user_id=actor_user_id(),
+            original_user_id=original_actor_user_id(), ip=actor_ip(),
             action="request_apply_success", entity_type="request",
             entity_id=req.id, detail=note,
             correlation_id=f"req:{req.id}",
@@ -1304,7 +1309,8 @@ def _finalize(db: Session, req: models.Request) -> None:
     req.closed_at = datetime.now(timezone.utc)
     # P0-#7 — audit completion (transition to terminal state)
     db.add(models.AuditLog(
-        company_id=req.company_id, user_id=None,
+        company_id=req.company_id, user_id=actor_user_id(),
+            original_user_id=original_actor_user_id(), ip=actor_ip(),
         action="request_completed", entity_type="request",
         entity_id=req.id,
         detail=f"{rt.code if rt else req.request_type_code}",

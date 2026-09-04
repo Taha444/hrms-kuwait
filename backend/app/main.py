@@ -144,6 +144,18 @@ _STATIC_HEADERS = {
 
 
 @app.middleware("http")
+async def actor_context(request, call_next):
+    """P11-36 — يُنشئ حامل الفاعل قبل أن تتفرّع خيوط التابع ونقطة النهاية.
+
+    بدونه يضبط ``get_current_user`` الفاعل في نسخة سياق لا تراها نقطة
+    النهاية، فتُكتب سجلات التدقيق العميقة «بلا منفذ» — وهو ما قِسته.
+    """
+    from .audit_context import begin_request
+    begin_request()
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
     for k, v in _STATIC_HEADERS.items():

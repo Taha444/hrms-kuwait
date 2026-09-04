@@ -27,6 +27,8 @@ from datetime import date, datetime
 from typing import Any, Callable
 
 from sqlalchemy import select
+
+from .audit_context import actor_user_id, original_actor_user_id
 from sqlalchemy.orm import Session
 
 from . import models
@@ -163,7 +165,8 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
     note_eff = f" (تاريخ السريان المعلن: {eff.isoformat()})" if eff and eff > kuwait_today() else ""
 
     db.add(models.AuditLog(
-        company_id=req.company_id, user_id=None,
+        company_id=req.company_id, user_id=actor_user_id(),
+        original_user_id=original_actor_user_id(),
         action=_audit_action(req.request_type_code),
         entity_type="request", entity_id=req.id,
         detail=f"{label} — الموظف #{emp.id}{note_eff}",
@@ -174,7 +177,8 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
     # سطر ثانٍ على الموظف نفسه: من يفتّش تاريخ موظف يبحث بـentity=employee
     # لا بـentity=request، فلا يعثر على التغيير إن لم يُقيَّد هنا أيًضا.
     db.add(models.AuditLog(
-        company_id=req.company_id, user_id=None,
+        company_id=req.company_id, user_id=actor_user_id(),
+        original_user_id=original_actor_user_id(),
         action="employee_updated_by_request",
         entity_type="employee", entity_id=emp.id,
         detail=f"{label} — بموجب الطلب #{req.id}{note_eff}",

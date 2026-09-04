@@ -9,6 +9,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from ..audit_context import actor_user_id, original_actor_user_id
+
 from .. import models
 from ..config import settings
 from ..database import get_db
@@ -93,7 +95,8 @@ def _close_expiry_tasks_for(db: Session, doc_id: int) -> int:
     # audit trail — نسجل event لكل task مُغلَق
     for t in closed:
         db.add(models.AuditLog(
-            company_id=t.company_id, user_id=None,
+            company_id=t.company_id, user_id=actor_user_id(),
+        original_user_id=original_actor_user_id(),
             action="expiry_task_auto_closed", entity_type="task",
             entity_id=t.id, detail=f"document #{doc_id} replaced/renewed",
             correlation_id=f"doc:{doc_id}",

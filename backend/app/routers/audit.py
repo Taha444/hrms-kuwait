@@ -45,9 +45,21 @@ def list_audit(company_id: int | None = None, limit: int = 100, offset: int = 0,
     user_names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
     # QA-26 — لا سجل بلا منفذ: ما لا فاعل بشري له هو فعل النظام صراحًة
     # (مجدوِل/صيانة)، لا حقل فارغ يُقرأ كعطل.
+    # P11-36 — من فعل حًقا، لا الاسم المعروض وحده.
+    #
+    # ``original_user_id`` كان يُكتب في كل صفّ يقع تحت انتحال — ولا
+    # يقرؤه أحد. فقُرئ اعتماد نفّذه مدير النظام بانتحال شخصية موظف
+    # الشؤون القانونية على أنه فعل الأخير، وهو الاسم الذي يبقى في
+    # السجلّ إلى الأبد أمام من يراجع.
+    #
+    # ولا يُستبدَل الاسم بل يُضاف إليه: من يقرأ يحتاج الاثنين — تحت أي
+    # صلاحية وقع الفعل، ومن يجلس أمام الشاشة.
     return [{"id": r.id, "action": r.action, "entity_type": r.entity_type,
              "entity_id": r.entity_id, "detail": r.detail, "ip": r.ip,
              "by": user_names.get(r.user_id) if r.user_id else None,
              "by_system": r.user_id is None,
+             "on_behalf": bool(r.original_user_id),
+             "acted_by": (user_names.get(r.original_user_id)
+                          if r.original_user_id else None),
              "at": r.created_at}
             for r in rows]

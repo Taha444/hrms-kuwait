@@ -695,6 +695,13 @@ class RequestApproval(Base):
     stage_label: Mapped[str] = mapped_column(String(150))
     approver_role: Mapped[str | None] = mapped_column(String(30))
     approver_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # P11-36 — من ضغط «اعتمد» حًقا، حين يختلف عن الاسم الذي وقع تحته.
+    #
+    # القرار كان يُنسَب إلى المنتحَل وحده، بلا أثر على الطلب نفسه: قِسته
+    # فوجدت مدير النظام يعتمد بانتحال شخصية الشؤون القانونية، والخطّ
+    # الزمني يقول إن الأخير اعتمد. وسجلّ التدقيق كان يحمل الحقيقة، لكن
+    # من يقرأ الطلب لا يقرأ التدقيق.
+    original_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     decision: Mapped[str] = mapped_column(String(20))  # approved/rejected
     decided_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     note: Mapped[str | None] = mapped_column(Text)

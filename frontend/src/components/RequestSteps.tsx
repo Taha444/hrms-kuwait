@@ -8,6 +8,7 @@ type Stage = {
   blocked_reason?: string | null;
   state: "done" | "current" | "pending" | "rejected" | "cancelled" | "skipped" | "returned";
   approver_name?: string | null; decided_at?: string | null; note?: string | null;
+  on_behalf?: boolean; acted_by?: string | null;
 };
 
 const CURRENT_SUBLABEL: Record<string, string> = {
@@ -78,6 +79,14 @@ export default function RequestSteps({ stages, status }: { stages: Stage[]; stat
                   {STATE_PILL[s.state]}
                 </span>
                 {s.approver_name && <span>· {s.approver_name}</span>}
+                {/* P11-36 — من ضغط «اعتمد» حًقا حين يختلف عن الاسم الذي وقع
+                    تحته. الاسم وحده كان يُبقي اعتماد مدير النظام منسوًبا
+                    للشؤون القانونية أمام من يراجع بعد شهور. */}
+                {s.on_behalf && s.acted_by && (
+                  <span title="نُفِّذ بانتحال مؤقّت لجلسة الدعم">
+                    · نفّذه {s.acted_by}
+                  </span>
+                )}
                 {s.decided_at && <span>· {fmt(s.decided_at)}</span>}
               </div>
               {sub && <div className="s-meta" style={{ color: "var(--gold)" }}>⏳ {sub}</div>}

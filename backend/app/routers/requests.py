@@ -1037,16 +1037,31 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
                 "blocked_reason": blocked,
                 "kind": st.get("kind", "approval"), "state": state,
                 "approver_name": _name(ap.approver_user_id) if ap else None,
+                # P11-36 — والشاشة هي ما يُقرأ: العمود بلا قارئ يعيد العطل
+                # نفسه الذي أُصلح.
+                "on_behalf": bool(ap and ap.original_user_id),
+                "acted_by": (_name(ap.original_user_id)
+                             if ap and ap.original_user_id else None),
                 "decided_at": ap.decided_at if ap else None,
                 "note": ap.note if ap else None,
             })
 
         data["stages"] = stages
         data["chain"] = chain
+        # P11-36 — الخطّ الزمني يقول من فعل حًقا.
+        #
+        # كان القرار يُنسَب إلى الاسم الذي وقع تحته وحده: قِسته فوجدت
+        # مدير النظام يعتمد بانتحال شخصية الشؤون القانونية، والخطّ يقول
+        # إن الأخير اعتمد — وهو الاسم الباقي أمام من يراجع بعد شهور.
+        #
+        # ولا يُستبدَل الاسم بل يُضاف إليه: تحت أي صلاحية وقع الاعتماد
+        # سؤال، ومن ضغط سؤال آخر، وكلاهما يلزم من يراجع.
         data["timeline"] = [
             {"stage": a.stage_order, "label": a.stage_label, "role": a.approver_role,
              "role_label": ROLE_AR.get(a.approver_role, a.approver_role),
              "approver_name": _name(a.approver_user_id),
+             "on_behalf": bool(a.original_user_id),
+             "acted_by": (_name(a.original_user_id) if a.original_user_id else None),
              "decision": a.decision, "note": a.note, "at": a.decided_at} for a in approvals
         ]
         data["documents"] = [
