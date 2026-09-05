@@ -113,3 +113,22 @@ def test_the_worker_shows_only_what_the_server_sent():
     # ولا تركيب: لا قوالب نصّية تضيف إلى ما وصل.
     assert "payload.data.employee" not in text
     assert "d.link" in text, "الرابط لا يُقرأ من البيانات"
+
+
+def test_the_preferences_screen_is_reachable_from_every_sidebar():
+    """**صفحة بلا رابط غير موجودة عملًيا** مهما عملت.
+
+    الشريط الجانبي مكتوب **مرّتين** في ``App.tsx``، وكان رابط تفضيلات
+    الإشعارات في النسخة المختصرة وحدها. فمدير الشركة — ومعظم الأدوار —
+    لا يجد إليها طريًقا، والشاشة تعمل.
+
+    وهو نمط تكرّر في هذه الجولة بصيغ أخرى: عمود بلا قارئ، وقالب بلا
+    مسار، وبلاغ يُقتل قبل أن يُقرأ.
+    """
+    app = (FRONT / "src" / "App.tsx").read_text(encoding="utf-8")
+    feet = app.count('className="sb-foot"')
+    assert feet >= 2, f"تغيّرت بنية الشريط الجانبي — أعد القياس ({feet})"
+    links = app.count('to="/notification-prefs"')
+    assert links >= feet, (
+        f"{feet} شريط جانبي و{links} رابط — نسخة بلا طريق إلى الشاشة"
+    )

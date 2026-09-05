@@ -197,6 +197,11 @@ function Sidebar({ open }: { open: boolean }) {
           <Item to="/select-company" icon="companies" label={t("switch_company") || "تبديل الشركة"} />
         )}
         <Item to="/change-password" icon="key" label={t("change_password")} />
+        {/* الشريط الجانبي مكتوب مرّتين في هذا الملف، والرابط كان في
+            النسخة المختصرة وحدها. فالشاشة تعمل والطريق إليها غير
+            معروض لمعظم الأدوار — والصفحة التي لا رابط لها غير موجودة
+            عملًيا مهما عملت. */}
+        <Item to="/notification-prefs" icon="bell" label={t("notif_prefs_nav")} />
       </div>
     </aside>
   );
