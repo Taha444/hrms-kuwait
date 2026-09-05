@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
+import { enablePush, permissionState } from "../push";
+import { fmtKuwaitDateTime } from "../utils/datetime";
 import { useI18n } from "../i18n";
 
 // V2.2 §20 — تفضيلات إشعارات المستخدم (فئة × قناة)
@@ -23,6 +25,8 @@ export default function NotificationPrefs() {
   const isEn = lang === "en";
   const [rows, setRows] = useState<Pref[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [pushBusy, setPushBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,7 +38,31 @@ export default function NotificationPrefs() {
   const loadChannels = () => api.get("/notifications/channels")
     .then(r => setChannels(r.data)).catch(() => setChannels([]));
 
-  useEffect(() => { load(); loadChannels(); }, []);
+  const loadDevices = () => api.get("/notifications/devices")
+    .then(r => setDevices(r.data)).catch(() => setDevices([]));
+
+  useEffect(() => { load(); loadChannels(); loadDevices(); }, []);
+
+  // P-FCM — الإذن يُطلب **بضغطة صريحة** لا عند فتح الصفحة: متصفّح يسأل
+  // قبل أن يفهم المستخدم لماذا يُرفض غالًبا، والرفض في Chrome دائم ولا
+  // يُعاد سؤاله.
+  const askPush = async () => {
+    setErr(""); setMsg(""); setPushBusy(true);
+    const why = await enablePush();
+    setPushBusy(false);
+    if (why) { setErr(why); return; }
+    setMsg(isEn ? "Device registered" : "سُجّل هذا الجهاز");
+    loadDevices();
+  };
+
+  const dropDevice = async (id: number) => {
+    setErr(""); setMsg("");
+    try {
+      await api.delete(`/notifications/devices/${id}`);
+      setMsg(isEn ? "Device removed" : "أُلغي الجهاز");
+      loadDevices();
+    } catch (e: any) { setErr(errMsg(e, isEn ? "Failed" : "تعذّر الإلغاء")); }
+  };
 
   const categories = Array.from(new Set(rows.map(r => r.category)));
 
@@ -74,6 +102,64 @@ export default function NotificationPrefs() {
 
       {msg && <div className="ok" role="status" aria-live="polite">{msg}</div>}
       {err && <div className="err" role="alert" aria-live="assertive">{err}</div>}
+
+      {/* P-FCM — الأجهزة المسجَّلة. الإشعار الفوري يصل **جهاًزا** لا
+          مستخدًما: الهاتف والحاسب لكلٍّ رمزه، فيُعرضان ليعرف صاحبهما
+          أيّهما يُلغي. */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>
+          {isEn ? "Push notifications" : "الإشعارات الفورية"}
+        </h3>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+          {isEn
+            ? "Get notified on your phone or browser even when HRMS is closed."
+            : "تصلك التنبيهات على هاتفك أو متصفّحك حتى والنظام مغلق. "
+              + "ولا تحمل بيانات حسّاسة — التفاصيل بعد تسجيل الدخول."}
+        </div>
+
+        {permissionState() === "unsupported" ? (
+          <div className="muted">
+            {isEn ? "This browser does not support push."
+                  : "هذا المتصفّح لا يدعم الإشعارات الفورية"}
+          </div>
+        ) : (
+          <button onClick={askPush} disabled={pushBusy}>
+            {pushBusy
+              ? (isEn ? "Registering..." : "جارٍ التسجيل...")
+              : (isEn ? "Enable on this device" : "فعّل على هذا الجهاز")}
+          </button>
+        )}
+
+        {devices.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse",
+                          marginTop: 12 }}>
+            <thead><tr>
+              <th style={{ textAlign: "right", padding: 6 }}>
+                {isEn ? "Device" : "الجهاز"}</th>
+              <th style={{ padding: 6 }}>{isEn ? "Platform" : "المنصّة"}</th>
+              <th style={{ padding: 6 }}>{isEn ? "Last seen" : "آخر وصول"}</th>
+              <th style={{ padding: 6 }} />
+            </tr></thead>
+            <tbody>
+              {devices.map((d) => (
+                <tr key={d.id} style={{ borderTop: "1px solid var(--border, #e2e8f0)" }}>
+                  <td style={{ padding: 6, fontSize: 12 }}>{d.label || "—"}</td>
+                  <td style={{ padding: 6, textAlign: "center" }}>{d.platform}</td>
+                  <td style={{ padding: 6, textAlign: "center", fontSize: 12 }}>
+                    {d.last_seen_at
+                      ? fmtKuwaitDateTime(d.last_seen_at, lang) : "—"}
+                  </td>
+                  <td style={{ padding: 6, textAlign: "center" }}>
+                    <button className="ghost" onClick={() => dropDevice(d.id)}>
+                      {isEn ? "Remove" : "إلغاء"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       {categories.length === 0 ? (
         <div className="card"><p>{isEn ? "Loading..." : "جارٍ التحميل..."}</p></div>

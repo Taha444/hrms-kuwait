@@ -35,6 +35,36 @@ def notification_categories(db: Session = Depends(get_db),
     return sorted(rows)
 
 
+@router.get("/push-config")
+def push_config(user: models.User = Depends(get_current_user)):
+    """إعدادات Firebase للويب — تقرؤها الواجهة ولا تُثبَّت وقت البناء.
+
+    هذه القيم **علنية بطبعها**: تُشحن في حزمة أي تطبيق ويب يستعمل
+    Firebase، وأمنُها من قواعد المشروع لا من إخفائها. أما المفتاح
+    الخاص لحساب الخدمة فلا يخرج من الخادم أبًدا.
+
+    و``enabled`` يقول **هل يُسلَّم فعًلا**: مفتاح ويب بلا اعتماد خادم
+    يعني رمز جهاز يُسجَّل ولا يصله شيء.
+    """
+    from .. import fcm
+    from ..config import settings as _s
+
+    web = {"apiKey": _s.fcm_web_api_key,
+           "projectId": _s.fcm_project_id,
+           "appId": _s.fcm_web_app_id,
+           "messagingSenderId": _s.fcm_messaging_sender_id}
+    ready = fcm.is_configured() and all(web.values()) and bool(_s.fcm_vapid_key)
+    return {
+        "enabled": ready,
+        "vapid_key": _s.fcm_vapid_key if ready else "",
+        "firebase": web if ready else {},
+        # سبب مقروء بدل صمت: من يفتح الشاشة ولا يجد زًرا يحتاج أن يعرف.
+        "reason": None if ready else (
+            "الإشعارات الفورية غير مضبوطة — يلزم اعتماد Firebase على "
+            "الخادم ومفتاح الويب ومفتاح شهادة الدفع (VAPID)"),
+    }
+
+
 class DeviceIn(BaseModel):
     """رمز جهاز من Firebase — يُسجّله المتصفّح بعد إذن المستخدم."""
     token: str

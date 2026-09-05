@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     fcm_private_key: str = ""          # -----BEGIN PRIVATE KEY----- ...
     fcm_credentials_file: str = ""     # بديل: مسار ملف حساب الخدمة
 
+    # إعدادات Firebase **للويب** — علنية بطبعها (تُشحن في حزمة أي تطبيق
+    # ويب)، فتُقدَّم للواجهة من الخادم بدل تثبيتها وقت البناء. وبذلك
+    # يصير تفعيل الدفع متغيّر بيئة لا نشرة واجهة جديدة.
+    #
+    # و``fcm_vapid_key`` مفتاح «شهادة الدفع» من لوحة Firebase — بدونه
+    # لا يُصدر المتصفّح رمز جهاز أصًلا.
+    fcm_web_api_key: str = ""
+    fcm_web_app_id: str = ""
+    fcm_messaging_sender_id: str = ""
+    fcm_vapid_key: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

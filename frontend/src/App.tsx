@@ -232,6 +232,42 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
     };
   }, [user?.has_avatar, user?.avatar_updated_at]);
 
+  // P-FCM — الرسالة الواصلة والتطبيق **مفتوح** لا يعرضها النظام:
+  // يتلقّاها التطبيق. وبلا هذا يبدو الدفع معطًَّلا لمن يجلس أمام الشاشة،
+  // فيُبلَّغ عن عطل في مسار سليم.
+  //
+  // ولا يُطلب إذن هنا: الطلب بضغطة صريحة من شاشة التفضيلات — سؤال عند
+  // فتح الصفحة يُرفض غالًبا، والرفض في Chrome دائم.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    import("./push").then(({ listenInApp }) => {
+      if (!alive) return;
+      listenInApp((title, body, link) => {
+        // إشعار داخل الصفحة: يظهر ولا يقاطع، ويفتح ما يخصّه.
+        const el = document.createElement("div");
+        el.setAttribute("role", "status");
+        el.className = "toast-push";
+        el.style.cssText = "position:fixed;inset-block-start:16px;"
+          + "inset-inline-start:16px;z-index:9999;max-width:340px;"
+          + "background:var(--card,#fff);border:1px solid var(--border,#e2e8f0);"
+          + "border-radius:8px;padding:10px 14px;box-shadow:0 4px 16px #0002;"
+          + "cursor:pointer;font:13px/1.7 system-ui";
+        el.innerHTML = "";
+        const h = document.createElement("strong");
+        h.textContent = title;
+        const p = document.createElement("div");
+        p.className = "muted";
+        p.textContent = body;
+        el.append(h, p);
+        el.onclick = () => { window.location.href = link; };
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 8000);
+      });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user?.is_cross_company) return;
     if (activeCompanyId === "all") { setCompanyName(t("all_companies")); return; }
