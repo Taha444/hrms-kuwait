@@ -3641,7 +3641,14 @@ def test_retest_reqsig_visible_to_employee(client):
         "REQSIG معروض في «طلب جديد» — وهو باب يُعتمد ولا يغيّر التوقيع"
     )
     # والطريق العامل قائم ومفتوح للموظف: الغياب أعلاه ليس إغلاًقا للحاجة.
-    info = client.get("/api/me/signature", headers=emp)
+    #
+    # ورمز دخول جديد لهذا النداء لا الرمز المأخوذ في أول الاختبار: حساب
+    # البذرة هذا تتشاركه عشرات الاختبارات، وبعضها يُبطل رموزه
+    # (``tokens_valid_after`` أو إبطال صريح). فمرّ النداء الأول ورُدّ
+    # الثاني 401 بالترويسة نفسها — تلوّث في الحالة العامّة لا عطل في
+    # المسار الذي يقيسه هذا السطر.
+    fresh = auth_headers(login(client, "100000000101", "emp12345"))
+    info = client.get("/api/me/signature", headers=fresh)
     assert info.status_code == 200, info.text
 
 

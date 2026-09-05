@@ -756,6 +756,14 @@ def create_request(db: Session, employee: models.Employee, requester: models.Use
             "where": _owned.get("where"),
         })
 
+    # P6-27 — طلب يبدأ خروًجا لا يُفتح بجانب خروج قائم.
+    #
+    # وهنا لا في الراوتر: كل منفذ إنشاء يمرّ بهذه الدالة، فلا يبقى باب
+    # رابع يُنسى — وهو ما جعل الأبواب الثلاثة تتجاهل بعضها أصًلا.
+    from . import exit_guard
+    if rt.code in exit_guard.EXIT_REQUEST_TYPES:
+        exit_guard.assert_single_exit(db, employee.id)
+
     status = (employee.status or "").strip().lower()
     if status in BLOCKED_EMPLOYEE_STATUSES:
         raise HTTPException(

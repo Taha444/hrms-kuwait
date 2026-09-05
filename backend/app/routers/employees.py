@@ -12,6 +12,7 @@ from .. import leave_balance as leave_balance_service
 from .. import models, schemas
 from ..storage import file_response, save_at_key
 from ..database import get_db
+from .. import exit_guard
 from ..deps import (
     assert_same_company,
     audit,
@@ -662,6 +663,10 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
     if emp.pending_termination_json:
         raise HTTPException(status_code=409,
                             detail="يوجد مسودة إنهاء خدمة معلقة — الغِها أولاً قبل تحضير غيرها")
+    # P6-27 — وكل باب كان يحرس نفسه ويجهل الآخرَين. الشرط أعلاه يمنع
+    # مسودتين، ولا يمنع مسودًة بجانب حالة نهاية خدمة أو طلب REQEOS —
+    # قِستُه ففُتحت الثلاثة للموظف نفسه بثلاثة تواريخ وحسابين.
+    exit_guard.assert_single_exit(db, emp.id)
     if used_leave_days is not None and used_leave_days < 0:
         raise HTTPException(status_code=400, detail="أيام الإجازة المستهلكة لا يمكن أن تكون سالبة")
     _validate_termination_inputs(emp, end_date, reason)

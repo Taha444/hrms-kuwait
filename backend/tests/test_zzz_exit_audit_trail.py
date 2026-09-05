@@ -22,9 +22,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 
-from app import models
+from app import exit_guard, models
 from app.database import SessionLocal
 from tests.conftest import auth_headers, login
 
@@ -36,6 +36,24 @@ OWNER = ("111111111111", "owner123")   # الرقابة: يملك view_audit
 
 def _drive_to_settled(client, emp_id: int, emp_login: tuple[str, str]):
     """يسوق حالة نهاية خدمة كاملة حتى الصرف، ويعيد رقم الحالة."""
+    # P6-27 — الشرط المسبق يُثبَّت لا يُفترَض: «لا خروج آخر مفتوح».
+    #
+    # هذا الاختبار يقيس **أثر الصرف على سجلّ الموظف**، لا قاعدة الخروج
+    # الواحد. واختبار آخر يترك طلب خروج مفتوًحا على موظف البذرة نفسه —
+    # فكان يسقط هنا بسبب ليس ما يقيسه.
+    db = SessionLocal()
+    try:
+        for ex in exit_guard.open_exits(db, emp_id):
+            if ex["kind"] == "request":
+                db.execute(sa_delete(models.Task).where(
+                    models.Task.related_entity_type == "request",
+                    models.Task.related_entity_id == ex["id"]))
+                db.execute(sa_delete(models.Request).where(
+                    models.Request.id == ex["id"]))
+        db.commit()
+    finally:
+        db.close()
+
     hdr = auth_headers(login(client, *HR))
     r = client.post("/api/eos/cases", headers=hdr, params={
         "employee_id": emp_id, "termination_date": "2026-10-01",

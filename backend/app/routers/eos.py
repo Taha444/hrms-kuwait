@@ -10,6 +10,7 @@ from ..clock import today as kuwait_today
 from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
+from .. import exit_guard
 from ..deps import (assert_same_company, audit, get_current_user, require_perm,
                     require_super_admin)
 
@@ -213,6 +214,8 @@ def initiate_case(request: Request, employee_id: int,
     assert_same_company(user, emp.company_id, db=db)
     # QA-18 — سجل وصول/صلاحية لا وظيفة: لا مستحق نهاية خدمة عليه، فحسابه
     # يخلق التزاًما ماليا لا وجود له.
+    # P6-27 — لا يُفتح خروج ثانٍ بجانب خروج قائم: تاريخان لمغادرة واحدة.
+    exit_guard.assert_single_exit(db, emp.id)
     if getattr(emp, "non_payroll", False):
         raise HTTPException(status_code=409, detail=(
             "هذا السجل للوصول/الصلاحية فقط وليس وظيفة على كشف الرواتب — "

@@ -70,6 +70,26 @@ def test_hr_can_submit_request_on_employees_behalf(client):
     })
     assert r.status_code == 201, r.text
 
+    # P6-27 — يُغلق ما فُتح. هذا الاختبار يقيس **صلاحية** HR في التقديم
+    # نيابًة، لا دورة حياة الخروج. وتركُ طلب خروج مفتوًحا على موظف
+    # مشترك يمنع اختباًرا لاحًقا في هذا الملف نفسه من فتح خروجه —
+    # وهو ما كشفه حارس «خروج واحد» حين أُضيف.
+    from sqlalchemy import delete as _del
+
+    from app import models as _m
+    from app.database import SessionLocal as _S
+
+    _db = _S()
+    try:
+        _rid = r.json()["id"]
+        _db.execute(_del(_m.Task).where(
+            _m.Task.related_entity_type == "request",
+            _m.Task.related_entity_id == _rid))
+        _db.execute(_del(_m.Request).where(_m.Request.id == _rid))
+        _db.commit()
+    finally:
+        _db.close()
+
 
 def test_generated_document_has_working_verification_code(client):
     """P2-01: كل مستند مُولَّد يحمل رمز تحقق يمكن لأي طرف خارجي (بلا حساب) التأكد منه
