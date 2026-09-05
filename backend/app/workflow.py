@@ -270,8 +270,16 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQOT", "طلب عمل إضافي", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False,
            default_template_code="HRMS-PR-038"),
+    # كان يُنتج مستنًدا **بلا قالب إطلاًقا** — فأثره بلا صنف ولا نصّ
+    # مثبَّت. ومساره WF-018 يعلن OD-005، والسجلّ يقول المستند ولا يقول
+    # أيّ قالب من ثمانية تشير إليه. فلم أختر بالاسم (وهو الخطأ الذي وقع
+    # في V-A)، وحسمه المالك: HRMS-PR-017 «قرار تكليف بفرع أو موقع عمل».
+    #
+    # والاختيار موافق للسجلّ لا للاسم وحده: PR-017 → OD-005، وهو ما
+    # يعلنه المسار بالضبط — فيدخل النوع تحت فحص P1-02 بعد أن كان يفلت.
     _simple("REQWLOC", "تكليف مؤقت بموقع أو فرع", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager", "hr"], requires_physical_signature=False, produces_document=True),
+           ["branch_supervisor", "company_manager", "hr"], requires_physical_signature=False,
+           produces_document=True, default_template_code="HRMS-PR-017"),
     _simple("REQMIS", "طلب مهمة عمل خارجية", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-036"),

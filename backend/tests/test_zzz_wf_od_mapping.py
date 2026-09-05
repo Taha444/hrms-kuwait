@@ -187,16 +187,12 @@ def test_declared_workflow_documents_all_exist():
 
 #: أنواع **تُنتج مستنًدا** ولا يقطع السجلّ في خريطتها.
 KNOWN_UNVERIFIABLE = {
-    # لا قالب له إطلاًقا. ومساره WF-018 يعلن OD-005 — فالسجلّ يقول
-    # المستند ولا يقول أيّ قالب من ثمانية تشير إليه. والاختيار بالاسم
-    # هو الخطأ الذي وقع في V-A وصحّحه هذا الجسر.
-    "REQWLOC",
     # مساره WF-029 لا يعلن مستنًدا، فلا شيء يُقارَن به.
     "REQMIS",
-    # ليس في سجلّ V1.5 (canonical=None) فلا مسار يُقارَن به. وكان يشير
-    # إلى «إنذار موظف» فيُصنَّف أثرُه تأديبًيا — أُزيل التصنيف الخاطئ
-    # (ترحيل b2c3d4e5f6a) ولم يُستبدَل: لا قالب لتجديد مستند شركة، ومحرّك
-    # العرض كلّه موجَّه للموظف. فبقي بلا قالب كـREQWLOC.
+    # ليس في سجلّ V1.5 (canonical=None) فلا مسار يُقارَن به — **وهذا
+    # وحده سبب بقائه هنا**. أما قالبه فصار صحيًحا: كان «إنذار موظف»
+    # فيُصنَّف أثرُه تأديبًيا، فبُني له HRMS-PR-043 (ترحيل b2c3d4e5f6a)
+    # وصنفه OD-013 مشتقّ من فئة البذرة.
     "ADMLIC",
 }
 
@@ -312,3 +308,39 @@ def test_the_engine_now_has_a_company_path_too():
     assert 'entity_type="company"' in src, (
         "مستند الشركة لا يُحفَظ ككيان شركة"
     )
+
+
+def test_the_location_assignment_now_has_a_template_that_matches_its_workflow():
+    """REQWLOC — حسمه المالك، والاختيار موافق للسجلّ لا للاسم وحده.
+
+    كان يُنتج مستنًدا **بلا قالب إطلاًقا**: فأثره يخرج بلا صنف ولا نصّ
+    مثبَّت. ومساره ``WF-018`` يعلن ``OD-005`` — والسجلّ يقول أيّ مستند
+    ولا يقول أيّ قالب من ثمانية تشير إليه، فلم يُختَر بالاسم.
+
+    و``HRMS-PR-017 → OD-005`` بالضبط، فدخل النوع تحت فحص P1-02 بعد أن
+    كان يفلت منه.
+    """
+    rt = next(r for r in workflow.DEFAULT_REQUEST_TYPES if r["code"] == "REQWLOC")
+    tpl = rt.get("default_template_code")
+    assert tpl == "HRMS-PR-017", f"REQWLOC يشير إلى {tpl}"
+
+    entry = R.LEGACY_REQUEST_ALIASES.get("REQWLOC") or {}
+    declared = set((R.CANONICAL_WORKFLOWS.get(entry.get("canonical")) or {}
+                    ).get("od") or [])
+    assert R.LEGACY_PRN_ALIASES.get(tpl) in declared, (
+        f"القالب يشير إلى مستند لا يعلنه المسار: "
+        f"{R.LEGACY_PRN_ALIASES.get(tpl)} ليس في {sorted(declared)}"
+    )
+
+
+def test_the_unverifiable_set_shrank():
+    """**والقياس على العدد**: ثلاثة صارت اثنين — لا واحًدا.
+
+    ``REQWLOC`` خرج بقرار المالك، وصار قالبه موافًقا لما يعلنه مساره.
+
+    و``ADMLIC`` **بقي** رغم أن قالبه صار صحيًحا (HRMS-PR-043 → OD-013):
+    ليس في سجلّ V1.5 (``canonical=None``) فلا مسار يُقارَن به. فصحّةُ
+    قالبه مقيسة بفئة البذرة لا بالسجلّ — وهو ما يوثّقه اختبار مستقلّ.
+    كتبتُ أوًلا أنها صارت واحًدا، وهو خطأ صحّحه هذا القياس.
+    """
+    assert KNOWN_UNVERIFIABLE == {"REQMIS", "ADMLIC"}, sorted(KNOWN_UNVERIFIABLE)
