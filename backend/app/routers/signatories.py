@@ -25,6 +25,7 @@ from .. import models
 from ..database import get_db
 from ..deps import assert_same_company, audit, require_perm, scope_company_id
 from ..clock import today as kuwait_today
+from ..storage import key_exists
 
 router = APIRouter(prefix="/signatories", tags=["signatories"])
 
@@ -68,14 +69,32 @@ class SignatoryOut(BaseModel):
     effective_from: Optional[date] = None
     effective_to: Optional[date] = None
     is_active: bool
+    #: هل لهذا المخوّل صورة توقيع محفوظة فعًلا؟
+    #:
+    #: **الفخّ الصامت**: التوليد يشترط ``signature_path`` وملًفا موجوًدا،
+    #: فمخوّل بلا صورة **يسقط إلى الاحتياط** (توقيع آخر معتمِد) بلا خطأ
+    #: ولا تنبيه. فيقرأ المالك سجًلا مكتمًلا والمستندات تخرج بتوقيع غيره
+    #: وبلا عنوان وظيفي أصًلا.
+    has_signature: bool = False
 
 
-def _to_out(s: models.AuthorizedSignatory, user_name: str | None = None) -> SignatoryOut:
+def _has_signature(u: models.User | None) -> bool:
+    """نفس شرط التوليد حرًفا — لا شرط يشبهه.
+
+    ``generate_document`` يفحص ``signature_path`` **ووجود الملف**. وفحص
+    العمود وحده هنا كان سيقول «جاهز» عن مسار يشير إلى ملف محذوف.
+    """
+    return bool(u and u.signature_path and key_exists(u.signature_path))
+
+
+def _to_out(s: models.AuthorizedSignatory, user_name: str | None = None,
+            signer: models.User | None = None) -> SignatoryOut:
     return SignatoryOut(
         id=s.id, company_id=s.company_id, user_id=s.user_id, user_name=user_name,
         title_ar=s.title_ar, title_en=s.title_en, scope_type=s.scope_type,
         scope_value=s.scope_value, effective_from=s.effective_from,
         effective_to=s.effective_to, is_active=s.is_active,
+        has_signature=_has_signature(signer),
     )
 
 
@@ -93,7 +112,7 @@ def list_signatories(company_id: int | None = None, include_inactive: bool = Fal
     out = []
     for s in rows:
         u = db.get(models.User, s.user_id)
-        out.append(_to_out(s, u.full_name if u else None))
+        out.append(_to_out(s, u.full_name if u else None, u))
     return out
 
 
@@ -133,7 +152,7 @@ def create_signatory(data: SignatoryIn, request: Request,
           detail=f"user={data.user_id} scope={data.scope_type}:{data.scope_value or '-'}",
           request=request)
     db.commit(); db.refresh(s)
-    return _to_out(s, signer.full_name)
+    return _to_out(s, signer.full_name, signer)
 
 
 @router.put("/{sig_id}")
@@ -154,7 +173,7 @@ def update_signatory(sig_id: int, data: SignatoryIn, request: Request,
     audit(db, user, "update_signatory", "signatory", s.id, request=request)
     db.commit(); db.refresh(s)
     signer = db.get(models.User, s.user_id)
-    return _to_out(s, signer.full_name if signer else None)
+    return _to_out(s, signer.full_name if signer else None, signer)
 
 
 @router.delete("/{sig_id}", status_code=200)

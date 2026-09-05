@@ -30,6 +30,7 @@ import Kiosk from "./pages/Kiosk";
 import Eos from "./pages/Eos";
 import EosCases from "./pages/EosCases";
 import Templates from "./pages/Templates";
+import Signatories from "./pages/Signatories";
 import Payroll from "./pages/Payroll";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
@@ -173,6 +174,10 @@ function Sidebar({ open }: { open: boolean }) {
         )}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
+        {/* SEC2-15 — سجل المخوّلين بالتوقيع: يُقرأ عند توليد كل مستند
+            رسمي، وكان بلا شاشة تكتب فيه. الرابط لمن يُهيّئ (manage_users)،
+            والمسار مفتوح لمن يقرأ المستندات كما يسمح الخادم. */}
+        {can("manage_users") && <Item to="/signatories" icon="doc" label={t("sig_nav")} />}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} tour="nav-payroll" />}
         {can("view_employee") && (
           <Item to="/eos/cases" icon="eos" label={t("eos_cases_nav")} />
@@ -551,6 +556,7 @@ export default function App() {
           أرخى، فشاشة تُعرض ويرفضها الخادم عيبٌ، والعكس عيبٌ آخر. */}
       <Route path="/eos/cases" element={<Guarded need={(a) => a.can("view_employee")}><EosCases /></Guarded>} />
       <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")}><Templates /></Guarded>} />
+      <Route path="/signatories" element={<Guarded need={(a) => a.can("view_documents")}><Signatories /></Guarded>} />
       <Route path="/payroll" element={<Guarded need={(a) => a.can("view_payroll")}><Payroll /></Guarded>} />
       <Route path="/reports" element={<Guarded need={(a) => a.can("export_reports")}><Reports /></Guarded>} />
       <Route path="/audit" element={<Guarded need={(a) => a.can("view_audit")}><Audit /></Guarded>} />
