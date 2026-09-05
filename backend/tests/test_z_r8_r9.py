@@ -528,9 +528,10 @@ def _setup_cross_company_user(client) -> dict:
         existing = db.scalar(select(models.User).where(models.User.civil_id == civ))
         if existing:
             # لو باقٍ من تست سابق، امسحه لبداية نظيفة
-            db.execute(models.UserCompanyLink.__table__.delete().where(
-                models.UserCompanyLink.user_id == existing.id))
-            db.delete(existing); db.commit()
+            from tests.conftest import purge as _purge
+
+            _purge(db, "users", [existing.id])
+            db.commit()
 
         pw = "farouq123"
         user = models.User(
@@ -562,11 +563,12 @@ def _cleanup_cross_company_user(uid: int):
     from app import models
     db = SessionLocal()
     try:
-        db.execute(models.UserCompanyLink.__table__.delete().where(
-            models.UserCompanyLink.user_id == uid))
-        u = db.get(models.User, uid)
-        if u:
-            db.delete(u)
+        # F-003 — الحذف بترتيب مشتقّ من المخطّط: المستخدم له أبناء أكثر
+        # من روابط الشركات (جلسات، تدقيق، تفضيلات)، وحذفه قبلها يرفضه
+        # فرض المفاتيح الأجنبية.
+        from tests.conftest import purge
+
+        purge(db, "users", [uid])
         db.commit()
     finally:
         db.close()

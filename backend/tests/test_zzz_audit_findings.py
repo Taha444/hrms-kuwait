@@ -155,16 +155,22 @@ def test_the_default_limit_is_still_reported_in_megabytes():
 
 
 # ---------------------------------------------------------------------------
-# F-003 — **مفتوحة**: SQLite لا تفرض المفاتيح الأجنبية
+# F-003 — **أُغلقت**، والتشخيص الذي أبقاها مفتوحة كان خاطًئا
 # ---------------------------------------------------------------------------
-# لا حارس هنا لأن العطل قائم بقصد موثَّق. والاختبار أدناه يحرس **حجم
-# المشكلة** لا حلّها: إن قلّت المراجع بلا سياسة حذف فقد اقترب التفعيل،
-# وإن زادت فقد ابتعد. ورقم يتحرّك خيرٌ من تعليق ساكن يُنسى.
-def test_the_scale_of_the_open_finding_is_recorded():
-    """كم مرجًعا إلى ``users`` بلا سياسة حذف؟
+def test_the_absence_of_a_delete_policy_is_the_right_policy():
+    """المراجع الاثنان والستون بلا ``ondelete`` — وهذا **صواب** لا نقص.
 
-    هذا ما يمنع تفعيل ``PRAGMA foreign_keys=ON``: تفعيله بلا سياسات
-    ينقل العطل من «لا يُفرَض» إلى «يُفرَض فيمنع كل حذف».
+    كان مكتوًبا أن غيابها يمنع التفعيل، وأن التفعيل بلا سياسات «ينقل
+    العطل من لا يُفرَض إلى يُفرَض فيمنع كل حذف».
+
+    **والقياس نقض المقدّمة**: لا مسار في التطبيق يحذف مستخدًما — لا
+    نقطة نهاية ``DELETE /users`` ولا ``db.delete(user)``. المستخدم
+    يُعطَّل (``is_active=False``) ولا يُحذَف، لأن سجلّه دليل على ما
+    فعله.
+
+    فـ«يمنع كل حذف» هو **المطلوب بعينه**، وغياب ``ondelete`` يعني
+    ``RESTRICT`` وهو الافتراض. لم يكن الناقص سياسًة بل ترتيب حذف في
+    تنظيف الاختبارات.
     """
     from app.database import Base
 
@@ -175,17 +181,52 @@ def test_the_scale_of_the_open_finding_is_recorded():
         if fk.column.table.name == "users" and fk.ondelete is None
     ]
     assert users_refs, "لا مراجع إلى users — راجع الفحص نفسه"
-    # الرقم وقت المراجعة: 62. لا يُثبَّت رقًما بعينه كي لا يسقط الاختبار
-    # مع كل إضافة مشروعة، لكن انهياره إلى الصفر يعني أن السياسات كُتبت
-    # وأن وقت التفعيل حان.
-    assert len(users_refs) > 0
 
 
-def test_foreign_keys_are_still_unenforced_on_sqlite():
-    """توثيق الحال لا الرضا به.
+def test_no_code_path_deletes_a_user():
+    """**والمقدّمة التي بُني عليها الإغلاق**، محروسة.
 
-    من يقرأ التقرير يجد النتيجة مفتوحة، ومن يقرأ الشيفرة يجد السبب.
-    ويوم تُفعَّل، يسقط هذا الاختبار فيُحذف — وهو إعلان بأن العطل زال.
+    لو أُضيف غًدا مسار يحذف مستخدًما، لصار غياب ``ondelete`` عيًبا
+    حقيقًيا: حذف يُرفض في وجه من يحتاجه. فيسقط هذا الاختبار عندئذٍ،
+    وهو الوقت الصحيح لمراجعة السياسات — لا اليوم.
+    """
+    import re
+    from pathlib import Path
+
+    # الشيفرة وحدها لا التعليقات: أول كتابة أمسكت التعليق الذي يشرح
+    # هذه القاعدة نفسها في ``database.py`` — حارس يتّهم توثيقه.
+    pattern = re.compile(r"db\.delete\(\s*user|delete\(models\.User\)"
+                         r"|models\.User\.__table__\.delete")
+    root = Path(__file__).resolve().parents[1] / "app"
+    hits = []
+    for path in root.rglob("*.py"):
+        for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if pattern.search(line):
+                hits.append(f"{path.name}:{lineno}")
+    assert not hits, (
+        "صار التطبيق يحذف مستخدمين — راجع سياسات ondelete للمراجع الـ62: "
+        + ", ".join(hits)
+    )
+
+
+def test_foreign_keys_are_enforced_on_sqlite():
+    """F-003 أُغلقت — والتشخيص الذي أبقاها مفتوحة كان خاطًئا.
+
+    كان مكتوًبا: «اثنان وستون مفتاًحا أجنبًيا يشير إلى ``users`` بلا
+    سياسة ``ondelete``، فتُراجَع أوًلا ثم يُفعَّل الفرض». وحين قِستُ
+    وجدت أن **لا مسار في التطبيق يحذف مستخدًما** — لا نقطة نهاية ولا
+    ``db.delete``. المستخدم يُعطَّل ولا يُحذَف.
+
+    فالسياسة الصحيحة للمراجع الاثنين والستين هي **الرفض** — وهي
+    افتراض SQL، أي أنها كانت صحيحة أصًلا. ولم يكن الناقص سياسًة، بل
+    **ترتيب حذف في تنظيف الاختبارات**: تحذف الأب قبل أبنائه.
+
+    وسبعة عشر اختباًرا صارت تسعة بعد إصلاحات هذه الجولة، وكلها من
+    ذلك السبب وحده — أُصلحت بمُساعد ``purge`` يشتقّ الترتيب من
+    ``metadata`` لا من قائمة تُكتب باليد وتتقادم.
     """
     from sqlalchemy import text
 
@@ -195,9 +236,35 @@ def test_foreign_keys_are_still_unenforced_on_sqlite():
         return
     with engine.connect() as conn:
         enforced = conn.execute(text("PRAGMA foreign_keys")).scalar()
-    assert enforced == 0, (
-        "فُعِّل فرض المفاتيح الأجنبية — احذف هذا الاختبار وأغلق F-003"
+    assert enforced == 1, (
+        "عاد فرض المفاتيح الأجنبية معطًَّلا — بيانات يقبلها الاختبار "
+        "ويرفضها الإنتاج"
     )
+
+
+def test_the_enforcement_actually_bites():
+    """ولا يكفي أن يقول ``PRAGMA`` نعم: يُجرَّب انتهاك فعلي.
+
+    راية مضبوطة على اتصال لا تعني أنها مضبوطة على كل اتصال — وجلسة
+    واحدة بلا فرض تكفي لتمرير ما يرفضه الإنتاج.
+    """
+    import pytest as _pytest
+    from sqlalchemy.exc import IntegrityError
+
+    from app import models
+    from app.database import SessionLocal, engine
+
+    if not str(engine.url).startswith("sqlite"):
+        return
+    db = SessionLocal()
+    try:
+        db.add(models.Task(company_id=999999, type="probe_fk",
+                           assignee_user_id=999999, title="انتهاك مقصود"))
+        with _pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.close()
 
 
 # ---------------------------------------------------------------------------

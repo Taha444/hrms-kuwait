@@ -52,16 +52,18 @@ def clean_company():
         db.commit()
         yield company_id, created
     finally:
-        for u in db.scalars(select(models.User).where(
-                models.User.company_id == company_id)).all():
-            db.delete(u)
-        for eid in created:
-            obj = db.get(models.Employee, eid)
-            if obj:
-                db.delete(obj)
-        comp = db.get(models.Company, company_id) if company_id else None
-        if comp:
-            db.delete(comp)
+        # F-003 — الحذف بترتيب مشتقّ من المخطّط لا بترتيب مكتوب باليد.
+        #
+        # كان التنظيف يحذف المستخدم ثم الموظف ثم الشركة — والمستخدم له
+        # أبناء (تدقيق، جلسات، مهام، تفضيلات) فيرفضه فرضُ المفاتيح
+        # الأجنبية. وهو أحد الأسباب التسعة التي أبقت F-003 مفتوحة.
+        from tests.conftest import purge
+
+        uids = [u.id for u in db.scalars(select(models.User).where(
+            models.User.company_id == company_id)).all()]
+        purge(db, "users", uids)
+        purge(db, "employees", created)
+        purge(db, "companies", [company_id] if company_id else [])
         db.commit()
         db.close()
 

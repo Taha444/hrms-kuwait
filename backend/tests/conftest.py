@@ -41,3 +41,35 @@ def login(client, civil_id, password):
 
 def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def purge(db, table_name: str, ids) -> None:
+    """يحذف صفوًفا **وكل ما يشير إليها**، بترتيب مشتقّ من المخطّط.
+
+    F-003 — تنظيف الاختبارات كان يحذف الأب قبل أبنائه، فسقط سبعة عشر
+    اختباًرا حين جُرّب فرض المفاتيح الأجنبية. وقُرئ ذلك على أنه «اثنان
+    وستون مفتاًحا بلا سياسة ``ondelete``» فتُركت النتيجة مفتوحة.
+
+    **والقياس يقول غير ذلك**: لا مسار في التطبيق يحذف مستخدًما — لا
+    نقطة نهاية ولا ``db.delete``. المستخدم يُعطَّل ولا يُحذَف. فالسياسة
+    الصحيحة للمراجع الاثنين والستين هي **الرفض** (افتراض SQL)، وهي
+    القائمة فعًلا. ولم يكن الناقص سياسًة بل ترتيب حذف في الاختبارات.
+
+    والترتيب يُشتقّ من ``metadata`` لا يُعدّ يدًوا: جدول يُضاف غًدا يشير
+    إلى ``users`` يُنظَّف من تلقائه، ولا يُنسى حتى يسقط اختبار بعيد.
+    """
+    ids = [i for i in (ids or []) if i is not None]
+    if not ids:
+        return
+    meta = Base.metadata
+    parent = meta.tables[table_name]
+    pk = list(parent.primary_key.columns)[0]
+
+    # الأبناء أوًلا: كل عمود في أي جدول يشير إلى مفتاح هذا الجدول.
+    for table in reversed(meta.sorted_tables):
+        if table is parent:
+            continue
+        for col in table.columns:
+            if any(fk.column is pk for fk in col.foreign_keys):
+                db.execute(table.delete().where(col.in_(ids)))
+    db.execute(parent.delete().where(pk.in_(ids)))
