@@ -193,6 +193,21 @@ def test_reqeos_and_reqclr_complete_with_full_pdf(client):
     assert client.get(f"/api/requests/{rid2}", headers=auth_headers(hr)
                       ).json()["status"] == "completed"
 
+    # P6-27 — اكتمال REQEOS صار يفتح حالة نهاية خدمة (المرجع). وهذا
+    # الاختبار يقيس اكتمال الطلب وإخراج المستند، لا دورة حياة الخروج —
+    # فتركُ المرجع مفتوًحا يمنع اختباًرا لاحًقا من فتح خروج للموظف نفسه.
+    from sqlalchemy import delete as _del
+
+    from app import models as _m
+    from app.database import SessionLocal as _S
+
+    _db = _S()
+    try:
+        _db.execute(_del(_m.EosCase).where(_m.EosCase.employee_id == emp_id))
+        _db.commit()
+    finally:
+        _db.close()
+
 
 def test_generated_document_body_has_no_raw_payload_keys_or_role_codes(client):
     """P0-03/P0-04: نص المستند المولَّد يستخدم تسميات عربية للحقول وأدوار الاعتماد،

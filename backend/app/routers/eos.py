@@ -10,7 +10,7 @@ from ..clock import today as kuwait_today
 from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
-from .. import exit_guard
+from .. import exit_case, exit_guard
 from ..deps import (assert_same_company, audit, get_current_user, require_perm,
                     require_super_admin)
 
@@ -216,34 +216,11 @@ def initiate_case(request: Request, employee_id: int,
     # يخلق التزاًما ماليا لا وجود له.
     # P6-27 — لا يُفتح خروج ثانٍ بجانب خروج قائم: تاريخان لمغادرة واحدة.
     exit_guard.assert_single_exit(db, emp.id)
-    if getattr(emp, "non_payroll", False):
-        raise HTTPException(status_code=409, detail=(
-            "هذا السجل للوصول/الصلاحية فقط وليس وظيفة على كشف الرواتب — "
-            "لا تُفتح له حالة نهاية خدمة"
-        ))
-    if reason not in eos_engine.TERMINATION_REASONS:
-        raise HTTPException(status_code=400, detail=(
-            f"سبب غير معروف — المسموح: {list(eos_engine.TERMINATION_REASONS.keys())}"
-        ))
-    # منع فتح حالتين مفتوحتين لنفس الموظف
-    open_case = db.scalar(select(models.EosCase).where(
-        models.EosCase.employee_id == employee_id,
-        models.EosCase.status != "filed",
-    ))
-    if open_case:
-        raise HTTPException(status_code=409, detail=(
-            f"توجد حالة مفتوحة بالفعل لهذا الموظف (#{open_case.id}، الحالة: {open_case.status})"
-        ))
-
-    now = datetime.now(timezone.utc)
-    case = models.EosCase(
-        company_id=emp.company_id, employee_id=emp.id, status="initiated",
-        termination_date=termination_date, termination_reason=reason,
-        initiated_by=user.id, initiated_at=now,
-    )
-    db.add(case)
-    db.flush()
-    case.reference_no = f"EOS/{emp.company_id}/{now:%Y%m}/{case.id:04d}"
+    # P6-27 — الإنشاء من مصدر واحد يستدعيه هذا الراوتر ومسار الطلبات
+    # مًعا. كان مكتوًبا هنا وحده، فربطُ الطلبات به كان يعني نسخة ثانية.
+    case = exit_case.open_case(
+        db, emp, termination_date=termination_date, reason=reason,
+        actor_user_id=user.id)
     audit(db, user, "eos_initiated", "eos_case", case.id,
           detail=f"employee={emp.id} reason={reason} date={termination_date}",
           request=request, company_id=emp.company_id,

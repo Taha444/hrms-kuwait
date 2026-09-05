@@ -1297,8 +1297,14 @@ def _finalize(db: Session, req: models.Request) -> None:
     # مسار apply_failed، فلا يوجد طريقان لتطبيق أثر.
     from .request_effects import FIELD_EFFECTS, apply_field_effect
 
+    # P6-27 — طلب الخروج يفتح المرجع عند اكتماله. كان يُختم «مكتمل» ولا
+    # حالة نهاية خدمة تُفتح ولا يتغيّر شيء في ملف الموظف.
+    from .exit_case import open_from_request as _open_exit_case
+
     _effect = {"REQATT": _apply_attendance_correction,
-               "REQLV": _apply_leave, "leave": _apply_leave}.get(req.request_type_code)
+               "REQLV": _apply_leave, "leave": _apply_leave,
+               "REQRESIGN": _open_exit_case,
+               "REQEOS": _open_exit_case}.get(req.request_type_code)
     if _effect is None and req.request_type_code in FIELD_EFFECTS:
         _effect = apply_field_effect
     if _effect:

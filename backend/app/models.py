@@ -183,6 +183,13 @@ class EosCase(Base):
     filed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     filed_at: Mapped[datetime | None] = mapped_column(DateTime)
     filing_location: Mapped[str | None] = mapped_column(String(200))
+    # P6-27 — من أين جاءت هذه الحالة: الطلب الذي ترتّبت عليه، إن وُجد.
+    #
+    # قرار المالك أن حالة نهاية الخدمة هي المرجع. وبلا هذا الرابط يبقى
+    # المرجع قائًما وأصلُه مجهوًلا: من يقرأ الحالة لا يعرف أن استقالة
+    # وُقّعت خلفها، ومن يقرأ الطلب لا يصل إلى ما ترتّب عليه.
+    source_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
