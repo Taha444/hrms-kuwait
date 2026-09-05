@@ -31,6 +31,7 @@ import Eos from "./pages/Eos";
 import EosCases from "./pages/EosCases";
 import Templates from "./pages/Templates";
 import Signatories from "./pages/Signatories";
+import Delegations from "./pages/Delegations";
 import Payroll from "./pages/Payroll";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
@@ -178,6 +179,12 @@ function Sidebar({ open }: { open: boolean }) {
             رسمي، وكان بلا شاشة تكتب فيه. الرابط لمن يُهيّئ (manage_users)،
             والمسار مفتوح لمن يقرأ المستندات كما يسمح الخادم. */}
         {can("manage_users") && <Item to="/signatories" icon="doc" label={t("sig_nav")} />}
+        {/* V1.5 §3 — التفويض المؤقت: يخصّ **من يعتمد**، وأي دور غير
+            الموظف العادي قد يكون معتمًِدا في مرحلة. وإخفاؤه عمّن يحتاجه
+            أسوأ من إظهاره لمن لا يحتاجه: من يسافر تقف طلباته عنده. */}
+        {user?.role !== "employee" && (
+          <Item to="/delegations" icon="users" label={t("dlg_nav")} />
+        )}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} tour="nav-payroll" />}
         {can("view_employee") && (
           <Item to="/eos/cases" icon="eos" label={t("eos_cases_nav")} />
@@ -557,6 +564,7 @@ export default function App() {
       <Route path="/eos/cases" element={<Guarded need={(a) => a.can("view_employee")}><EosCases /></Guarded>} />
       <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")}><Templates /></Guarded>} />
       <Route path="/signatories" element={<Guarded need={(a) => a.can("view_documents")}><Signatories /></Guarded>} />
+      <Route path="/delegations" element={<Delegations />} />
       <Route path="/payroll" element={<Guarded need={(a) => a.can("view_payroll")}><Payroll /></Guarded>} />
       <Route path="/reports" element={<Guarded need={(a) => a.can("export_reports")}><Reports /></Guarded>} />
       <Route path="/audit" element={<Guarded need={(a) => a.can("view_audit")}><Audit /></Guarded>} />

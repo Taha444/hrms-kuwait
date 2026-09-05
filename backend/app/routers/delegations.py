@@ -50,13 +50,50 @@ def list_delegations(only_active: bool = True,
             models.ApprovalDelegation.ends_at >= now,
         )
     rows = db.scalars(q.order_by(models.ApprovalDelegation.starts_at.desc())).all()
+    # الأسماء لا الأرقام: صفٌّ يقول «12 ← 7» لا يُقرأ. وكانت القائمة
+    # تُعيد المعرّفات وحدها لأن لا شاشة تقرؤها.
+    names: dict[int, str | None] = {}
+    for r in rows:
+        for uid in (r.delegator_user_id, r.delegate_user_id):
+            if uid not in names:
+                u = db.get(models.User, uid)
+                names[uid] = (u.full_name or u.civil_id) if u else None
+    now = datetime.utcnow()
     return [
         {"id": r.id, "delegator_user_id": r.delegator_user_id,
-         "delegate_user_id": r.delegate_user_id, "reason": r.reason,
+         "delegator_name": names.get(r.delegator_user_id),
+         "delegate_user_id": r.delegate_user_id,
+         "delegate_name": names.get(r.delegate_user_id),
+         "reason": r.reason,
          "starts_at": r.starts_at, "ends_at": r.ends_at, "scope": r.scope,
-         "is_active": r.is_active, "revoked_at": r.revoked_at}
+         "is_active": r.is_active, "revoked_at": r.revoked_at,
+         # **سارٍ الآن** لا «فعّال»: صفٌّ لم تبدأ مدّته أو انقضت يبقى
+         # ``is_active`` صحيًحا بينما المحرّك لا يعتدّ به — والفرق يظهر
+         # للمستخدم تفويًضا لا يعمل بلا سبب ظاهر.
+         "in_effect": bool(r.is_active and r.starts_at <= now <= r.ends_at)}
         for r in rows
     ]
+
+
+@router.get("/candidates")
+def delegation_candidates(user: models.User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    """من يمكن تفويضه: زملاء الشركة النشطون، بلا المستخدم نفسه.
+
+    **ولماذا نقطة خاصة**: ``/users`` محجوزة لـ``manage_users``، فمسؤول
+    الفرع الذي يسافر لا يجد زميًلا يفوّضه رغم أن الخادم يسمح له بالتفويض
+    عن نفسه. وهي أضيق ما يكفي: معرّف واسم ودور — لا بريد ولا هاتف ولا
+    رقم مدني.
+    """
+    if not user.company_id:
+        return []
+    rows = db.scalars(select(models.User).where(
+        models.User.company_id == user.company_id,
+        models.User.id != user.id,
+        models.User.is_active.is_(True),
+    ).order_by(models.User.full_name)).all()
+    return [{"id": u.id, "full_name": u.full_name or u.civil_id, "role": u.role}
+            for u in rows]
 
 
 @router.post("", status_code=201)
