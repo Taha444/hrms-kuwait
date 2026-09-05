@@ -1331,7 +1331,8 @@ def test_required_enforcement_coverage_is_deliberate(client):
     # مستثنون بأسباب مذكورة في form_schemas.py
     EXPECTED_UNENFORCED = {
         "REQEOS", "REQCLR",   # تُنشأ برمجيًا بحمولة خاصة
-        "REQTRAVEL",          # إذن مغادرة البلاد — لا نوع طلب يستخدمه بعد
+        # وحُذف REQTRAVEL بقرار المالك: لا طلب إذن مغادرة مستقلّ —
+        # المغادرة مرحلة داخل طلب الإجازة، مسار واحد لا مساران.
     }
     unenforced = {k for k, v in SCHEMAS.items()
                   if not (v.get("meta") or {}).get("enforce_required")}

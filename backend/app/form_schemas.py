@@ -399,22 +399,17 @@ SCHEMAS: dict[str, dict] = {
         "meta": {"legacy_aliases": ["government_transaction"]},
     },
     # ------------------------- إذن مغادرة البلاد (سفر) -------------------------
-    # المفتاح كان "REQEXIT" فيتصادم مع نوع الطلب REQEXIT — واسمه "طلب مغادرة
-    # مبكرة" ونصّه في workflow.py يقول صراحة: «لا يستخدم هذا النموذج لإذن خروج
-    # السفر». التصادم كان يفرض على طالب الانصراف المبكر إدخال جواز ووجهة سفر.
-    # سُمّي باسم محتواه، وبقيت كنيته exit_permit عاملة. لا نوع طلب يستخدمه
-    # حاليًا — يبقى جاهزًا لنوع "إذن مغادرة البلاد" إن أُضيف.
-    "REQTRAVEL": {
-        "fields": [
-            _field("travel_date", "تاريخ السفر", "date", required=True),
-            _field("return_date", "تاريخ العودة", "date", required=True),
-            _field("destination", "الوجهة", "text", required=True),
-            _field("passport_no", "رقم الجواز", "text", required=True),
-            REASON,
-        ],
-        "attachments": {"required": ["passport_copy"], "optional": []},
-        "meta": {"legacy_aliases": ["exit_permit"]},
-    },
+    # حُذف نموذج ``REQTRAVEL`` بقرار المالك: لا حاجة لطلب إذن مغادرة
+    # **مستقلّ** عن الإجازة. وإذن المغادرة يبقى مرحلًة داخل طلب الإجازة
+    # (``delegate_exit``، مشروطة بـ``travel_required``) — مسار واحد لا
+    # مساران ببيانات مختلفة، وهو ما يحذّر منه بند P9-32.
+    #
+    # وكان النموذج غير موصول أصًلا: لا نوع طلب يستخدمه، ولا كنية حيّة،
+    # ولا ذكر في سجلّ V1.5. وبقاؤه كان يعني أن أول من يوصّله يُنشئ
+    # مسار سفر ثانًيا يسأل عن رقم الجواز ولا يسأله المسار القائم.
+    #
+    # ولا يُخلط بـ``exit_permit`` **نوع المستند** على الطلبات — وهو حيّ
+    # ومستعمَل (يرفعه المندوب في مرحلة المغادرة).
     # ------------------------- طلب مستند -------------------------
     "REQDOC": {
         "fields": [
@@ -899,8 +894,7 @@ def validate_payload(code: str, payload: dict, strict: bool | None = None) -> li
     #
     # (وقد ظننتُ أوًلا أن ``REQLV`` غير صارمة اعتماًدا على تعليق في
     # تعريفها — وهو قديم: الكتلة التي تُفعّل ``_VERIFIED_ENFORCE_REQUIRED``
-    # تتجاوزه. لكن ثلاثة نماذج غير صارمة فعًلا — REQEOS وREQCLR
-    # وREQTRAVEL — والقاعدة تحميها كلها.)
+    # تتجاوزه. ونماذج غير صارمة فعًلا موجودة — والقاعدة تحميها كلها.)
     for code_ in sorted(hidden):
         val = payload.get(code_)
         if val is None or val is False or (isinstance(val, str) and not val.strip()):

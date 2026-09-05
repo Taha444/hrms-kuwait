@@ -16,14 +16,16 @@
 فقيمةٌ فيه إما واجهة قديمة أو طلب مباشر، وكلاهما يُنتج مساًرا خاطًئا.
 
 **وتُفحَص خارج بوّابة ``strict``** للسبب الذي تُفحَص لأجله المرفقات:
-مسار خاطئ ليس اختيارًيا. وثلاثة نماذج غير صارمة فعًلا — REQEOS وREQCLR
-وREQTRAVEL — والقاعدة تحميها كلها.
+مسار خاطئ ليس اختيارًيا. ونماذج غير صارمة فعًلا موجودة — والقاعدة
+تحميها كلها.
 
 (وظننتُ أوًلا أن ``REQLV`` نفسها غير صارمة، اعتماًدا على تعليق في
 تعريفها. وهو قديم: كتلة ``_VERIFIED_ENFORCE_REQUIRED`` أدناه تتجاوزه
 وتُفعّل الصرامة. صُحّح التعليق — تعليق يخالف ما يقع يُقرأ ويُصدَّق.)
 """
 from __future__ import annotations
+
+import inspect
 
 from sqlalchemy import select
 
@@ -163,32 +165,42 @@ def test_some_schemas_really_are_lax():
     assert lax, "لا نموذج غير صارم — راجع موضع القاعدة، فالبوّابة تكفي"
 
 
-def test_the_orphan_travel_form_stays_unreachable():
-    """**والسفر له نموذجان، أحدهما لا يصل** — ولم أوصّفه بالتخمين.
+def test_there_is_exactly_one_travel_path():
+    """**قرار المالك**: لا طلب إذن مغادرة مستقلّ — حُذف ``REQTRAVEL``.
 
-    ``REQTRAVEL`` (alias ``exit_permit``) يطلب ``travel_date``
-    و``passport_no`` — حقلان لا يسألهما مسار الإجازة. ولا نوع طلب
-    يصل إليه، ولا alias حيّ، ولا ذكر في سجلّ V1.5: شيفرة ميتة.
+    كان نموذج سفر ثانًيا في الشيفرة: يسأل عن ``travel_date``
+    و``passport_no`` — حقلين لا يسألهما مسار الإجازة — وغير موصول بأي
+    نوع طلب. وبقاؤه كان يعني أن أول من يوصّله يُنشئ مساًرا ثانًيا
+    لإذن مغادرة واحد ببيانات مختلفة، وهو التناقض الذي يحذّر منه هذا
+    البند بعينه.
 
-    وتوصيلُه يخلق مسارين لطلب إذن مغادرة واحد، ببيانات مختلفة —
-    وهو التناقض الذي يحذّر منه هذا البند بعينه.
-
-    وحذفُه يُلقي بمعلومة لا أملكها: لماذا سُئل عن رقم الجواز هنا ولا
-    يُسأل هناك؟ وهل تحتاج الشركة طلب إذن مغادرة **مستقًلا** عن
-    الإجازة (سفر عمل مثًلا)؟ ذلك قرار عمل.
-
-    فيسقط هذا الاختبار يوم يصير النموذج حًيا — وهو الوقت الصحيح
-    لحسم السؤال، لا يوم يُقدَّم طلبان متناقضان لنفس السفرة.
+    فإذن المغادرة يبقى **مرحلًة داخل طلب الإجازة**، مشروطًة بتأشير
+    السفر — مسار واحد لا مساران.
     """
-    from app import workflow
-
-    codes = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES}
-    aliases = (form_schemas.SCHEMAS["REQTRAVEL"].get("meta") or {}).get(
-        "legacy_aliases", [])
-    reachable = ("REQTRAVEL" in codes
-                 or "REQTRAVEL" in form_schemas.REQUEST_TYPE_SCHEMA_MAP.values()
-                 or any(a in codes for a in aliases))
-    assert not reachable, (
-        "صار REQTRAVEL قابًلا للوصول — احسم أوًلا: هل إذن المغادرة طلب "
-        "مستقلّ أم مرحلة داخل الإجازة؟ وجودهما مًعا مساران لسفرة واحدة."
+    assert "REQTRAVEL" not in form_schemas.SCHEMAS, (
+        "عاد نموذج سفر ثانٍ — والمالك قرّر مساًرا واحًدا"
     )
+    assert form_schemas.get_schema("exit_permit") is None, (
+        "كنية النموذج المحذوف ما زالت تُرجع نموذًجا"
+    )
+
+    # ولم يُمسّ ما يحمل الاسم نفسه بمعنى آخر: ``exit_permit`` **نوع
+    # مستند** على الطلبات، يرفعه المندوب في مرحلة المغادرة.
+    from app.routers import requests as req_router
+
+    src = inspect.getsource(req_router.upload_request_document)
+    assert '"exit_permit"' in src, (
+        "حُذف نوع مستند إذن المغادرة — وهو حيّ ومستعمَل، غير النموذج"
+    )
+
+
+def test_the_delegate_stage_is_still_the_travel_path(client):
+    """والمسار الباقي يعمل: تأشير السفر يُدخل مرحلة المندوب."""
+    hdr = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=hdr, json={
+        "employee_id": _emp_id(), "request_type_code": "REQLV",
+        "payload_json": {**BASE, "travel_required": True,
+                         "destination": "القاهرة"}})
+    assert r.status_code == 201, r.text[:200]
+    body = client.get(f"/api/requests/{r.json()['id']}", headers=hdr).json()
+    assert "delegate" in [s.get("role") for s in body.get("stages", [])]
