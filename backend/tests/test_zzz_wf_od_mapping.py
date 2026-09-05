@@ -268,41 +268,47 @@ def test_the_warning_notice_template_is_what_we_think_it_is():
 
 
 def test_no_company_document_is_classified_as_a_disciplinary_one():
-    """**ما نُفِّذ من قرار المالك**: التصنيف التأديبي أُزيل عن تجديد الترخيص.
+    """تجديد ترخيص الشركة لا يُصنَّف إجراًء تأديبًيا.
 
-    والقالب لا يُرسَم منه جسم المستند — ذلك من ``render_request_pdf``.
-    لكنه يُشتقّ منه ``od_code`` ويُختَم ``template_code`` على الأثر، فكان
-    أثرُ تجديد ترخيص شركة يُحفَظ تحت فئة «الإجراءات التأديبية».
+    كان يشير إلى ``HRMS-PR-022`` («إنذار موظف»، فئة «الإجراءات
+    التأديبية»)، فيُصنَّف أثرُه ``OD-006``. والقالب لا يُرسَم منه جسم
+    المستند — لكن التصنيف يبقى على الأثر في الأرشيف وفي كل تقرير يجمع
+    بالفئة.
 
-    **ولم يُستبدَل بتخمين**: أمر المالك «استخدم قالب تجديد الترخيص»
-    لا يمكن تنفيذه — لا وجود لذلك القالب، ومحرّك العرض يطلب
-    ``employee_id`` ويغلّف بشبكة بيانات موظف ويحفظ ``entity_type
-    ="employee"``. فبلا تصنيف أصدق من تصنيف كاذب.
+    **وأول إصلاح كان إزالة التصنيف بلا بديل** — إذ لا قالب لمستند
+    شركة، ومحرّك العرض كلّه موجَّه للموظف. ثم أمر المالك ببناء القالب،
+    فبُني ``HRMS-PR-043`` ومعه مسار عرض يقبل كيان شركة. فصار الادّعاء:
+    **له قالب، وقالبه ليس تأديبًيا**.
     """
     admlic = next(rt for rt in workflow.DEFAULT_REQUEST_TYPES
                   if rt["code"] == "ADMLIC")
-    assert not admlic.get("default_template_code"), (
-        "عاد تجديد الترخيص يحمل قالًبا — تحقّق أنه ليس قالب موظف: "
-        f"{admlic.get('default_template_code')}"
+    tpl = admlic.get("default_template_code")
+    assert tpl == "HRMS-PR-043", f"ADMLIC يشير إلى {tpl}"
+
+    od = R.LEGACY_PRN_ALIASES.get(tpl)
+    assert od == "OD-013", f"صنف غير صنف المعاملات الحكومية: {od}"
+    assert od != R.LEGACY_PRN_ALIASES.get("HRMS-PR-022"), (
+        "عاد يشترك في صنف قالب الإنذار"
     )
 
 
-def test_the_template_engine_is_employee_only():
-    """**وأساس القرار**: لا يمكن بناء القالب المطلوب كسطر بذرة.
+def test_the_engine_now_has_a_company_path_too():
+    """**وما بُني بأمر المالك**: مسار عرض يقبل كيان شركة.
 
-    محرّك العرض كلّه موجَّه للموظف. فقالب شركة يحتاج مساًرا لا يوجد —
-    وهو ميزة تُقرَّر، لا تعيين حقل.
+    كان المحرّك كلّه موجًَّها للموظف — يطلب ``employee_id``، ويغلّف
+    بشبكة بيانات موظف، ويحفظ ``entity_type="employee"``. فقالب شركة
+    كان يحتاج مساًرا لا يوجد.
 
-    ويسقط هذا الاختبار يوم يصير المحرّك يقبل كيان شركة — وهو الوقت
-    الصحيح لإعادة فتح السؤال.
+    والمسار الموظفيّ باقٍ كما كان: الإضافة لا تُلغي ما يعمل.
     """
     import inspect
 
     from app.routers import templates as tpl_router
 
     src = inspect.getsource(tpl_router)
-    assert "data.employee_id" in src, "تغيّر مدخل العرض — أعد قياس القرار"
-    assert 'entity_type="employee"' in src, (
-        "لم يعد المستند المولَّد من قالب يُحفَظ ككيان موظف — أعد فتح "
-        "سؤال قالب الشركة"
+    assert "data.employee_id" in src, "زال المسار الموظفيّ"
+    assert 'entity_type="employee"' in src, "زال حفظ مستند الموظف ككيان موظف"
+    assert "def generate_company_template" in src, "لا مسار لمستند الشركة"
+    assert 'entity_type="company"' in src, (
+        "مستند الشركة لا يُحفَظ ككيان شركة"
     )

@@ -442,11 +442,13 @@ DEFAULT_REQUEST_TYPES = [
     # ``employee_id`` ويغلّف كل مستند بشبكة بيانات موظف ويحفظه
     # ``entity_type="employee"``. فبناؤه ميزة لا سطر بذرة.
     #
-    # فأُزيل التصنيف الخاطئ ولم يُستبدَل بتخمين: بلا تصنيف أصدق من
-    # تصنيف كاذب. والسجلّ نفسه يقول عن هذا النوع «كيانه الشركة لا
-    # الموظف؛ مكانه الأرشيف».
+    # فأُزيل التصنيف الخاطئ أوًلا، ثم بُني القالب الناقص بأمر المالك:
+    # ``HRMS-PR-043`` أول قالب موضوعه الشركة لا موظف، ومعه مسار عرض
+    # يقبل كيان شركة (``/company-generate``) وغلاف يعرض بيانات المنشأة
+    # بدل شبكة الموظف.
     _simple("ADMLIC", "تجديد مستند شركة أو ترخيص", CAT_ADMIN,
-           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=True),
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False,
+           produces_document=True, default_template_code="HRMS-PR-043"),
     _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
            ["company_manager", "hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-040"),

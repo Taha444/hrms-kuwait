@@ -472,6 +472,16 @@ class TemplateRenderIn(BaseModel):
     save: bool = True
 
 
+class CompanyTemplateRenderIn(BaseModel):
+    """مستند موضوعه الشركة لا موظف — تجديد ترخيص أو مستند رسمي للمنشأة.
+
+    مخطّط منفصل عمًدا: حقل ``employee_id`` إلزامي في الآخر، وجعلُه
+    اختيارًيا هناك يفتح باب توليد مستند موظف بلا موظف.
+    """
+    company_id: int
+    extra: dict[str, str] = {}
+
+
 class DocumentMetaIn(BaseModel):
     entity_type: str = "employee"
     entity_id: int

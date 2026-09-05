@@ -492,6 +492,35 @@ def _prune_unfilled(html_text: str) -> str:
     return text.replace(_UNFILLED, "—")
 
 
+def _resolve_company_data(db: Session, company: models.Company,
+                          extras: dict) -> dict:
+    """سياق مستند موضوعه **الشركة** لا موظف.
+
+    ``entity_kind`` هو ما يقرؤه الغلاف ليختار الشبكة — فالكيان يُعلَن
+    في السياق ولا يُستنتَج من غياب حقول الموظف.
+    """
+    from ..clock import today as _today
+
+    ctx = {
+        "entity_kind": "company",
+        "company_name": company.name or "",
+        "company_name_en": company.name_en or "",
+        "commercial_reg": company.commercial_reg or "",
+        "file_number": company.file_number or "",
+        "entity_type": company.entity_type or "",
+        "representative_name": company.representative_name or "",
+        "representative_name_en": company.representative_name_en or "",
+        "representative_civil_id": company.representative_civil_id or "",
+        "branch_name": "",
+        "date_today": str(_today()),
+    }
+    # ما يُدخله المستخدم (رقم الترخيص، تاريخ الانتهاء…) لا يطغى على
+    # البيانات المرجعية: القيم الرسمية أعلى من المُدخَل اليدوي.
+    for k, v in (extras or {}).items():
+        ctx.setdefault(k, v)
+    return ctx
+
+
 def _fill_html(t: models.DocumentTemplate, ctx: dict) -> str:
     def repl(m):
         key = m.group(1)
@@ -629,6 +658,105 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
     }
 
 
+@router.post("/{tpl_id}/company-preview")
+def preview_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn,
+                             request: Request,
+                             user: models.User = Depends(require_perm("manage_templates")),
+                             db: Session = Depends(get_db)):
+    """معاينة مستند موضوعه الشركة — بلا كتابة ولا مرجع رسمي."""
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    company = db.get(models.Company, data.company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+    assert_same_company(user, company.id, db=db)
+    if t.company_id is not None:
+        assert_same_company(user, t.company_id, db=db)
+
+    ctx = _resolve_company_data(db, company, data.extra or {})
+    rendered = _fill_html(t, ctx)
+    audit(db, user, "preview_company_template", "company", company.id,
+          detail=f"{t.name} (preview only, not stored)", request=request)
+    db.commit()
+    return {"html": rendered, "is_preview": True, "is_issued": False}
+
+
+@router.post("/{tpl_id}/company-generate")
+def generate_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn,
+                              request: Request,
+                              user: models.User = Depends(require_perm("manage_templates")),
+                              db: Session = Depends(get_db)):
+    """يُصدر مستنًدا رسمًيا **موضوعه الشركة** ويحفظه في أرشيف الشركة.
+
+    المسار كلّه كان موجًَّها للموظف: ``employee_id`` إلزامي، وشبكة بيانات
+    موظف في كل غلاف، والناتج يُحفَظ ``entity_type="employee"``. فمستند
+    موضوعه المنشأة — تجديد ترخيص مثًلا — لم يكن له طريق.
+
+    ويرث ما يرثه أخوه: رقم مرجعي فريد، وبصمة، وختم إصدار غير قابل
+    للتعديل. فلا يصير مستند الشركة أضعف حجّية من مستند الموظف.
+    """
+    import hashlib
+
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    company = db.get(models.Company, data.company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+    assert_same_company(user, company.id, db=db)
+    if t.company_id is not None:
+        assert_same_company(user, t.company_id, db=db)
+
+    ctx = _resolve_company_data(db, company, data.extra or {})
+    reference_no = _generate_reference_no(db, t.code, company.id, t.version or 1)
+    ctx["ref_no"] = reference_no
+
+    rendered = _fill_html(t, ctx)
+    payload = rendered.encode("utf-8")
+    checksum = hashlib.sha256(payload).hexdigest()
+    safe_ref = reference_no.replace("/", "-")
+    # نفس مسار الكتابة الذي يسلكه مستند الموظف — لا طبقة ثانية.
+    fpath = save_at_key(payload, f"forms/{safe_ref}.html")
+
+    prev = db.scalars(select(models.Document).where(
+        models.Document.entity_type == "company",
+        models.Document.entity_id == company.id,
+        models.Document.document_type_code == f"form_{t.code or t.id}",
+        models.Document.is_current == True,  # noqa: E712
+    )).all()
+    for d in prev:
+        d.is_current = False
+
+    doc = models.Document(
+        company_id=company.id, entity_type="company", entity_id=company.id,
+        document_type_code=f"form_{t.code or t.id}", title=t.name, file_path=fpath,
+        mime="text/html", version=len(prev) + 1, is_current=True,
+        uploaded_by=user.id,
+        is_issued=True,
+        reference_no=reference_no,
+        template_version=t.version or 1,
+        checksum_sha256=checksum,
+        generated_at=datetime.utcnow(),
+        generated_by=user.id,
+    )
+    db.add(doc)
+    db.flush()
+    audit(db, user, "generate_company_template", "company", company.id,
+          detail=f"{t.name} → {reference_no}", request=request,
+          after={"reference_no": reference_no, "checksum_sha256": checksum,
+                "template_version": t.version or 1})
+    db.commit()
+
+    return {
+        "html": rendered, "is_preview": False, "is_issued": True,
+        "document_id": doc.id, "reference_no": reference_no,
+        "template_version": t.version or 1, "checksum_sha256": checksum,
+        "generated_at": doc.generated_at.isoformat() + "Z",
+        "filename": f"{safe_ref}.html",
+    }
+
+
 @router.post("/{tpl_id}/render")
 def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Request,
                     user: models.User = Depends(require_perm("manage_templates")),
@@ -658,7 +786,26 @@ def _wrap_printable(t: "models.DocumentTemplate", ctx: dict, body: str) -> str:
         v = html.escape(str(value)) if value else "—"
         return f"<td><span class='muted'>{ar_label} / {en_label}</span><br>{v}</td>"
 
-    info_grid = f"""
+    # كيان المستند يحكم الشبكة — **غلاف واحد لا غلافان**.
+    #
+    # كان المحرّك كلّه موجًَّها للموظف: كل مستند يُغلَّف بشبكة بيانات
+    # موظف. فمستند موضوعه الشركة (تجديد ترخيص مثًلا) كان يخرج بشبكة
+    # فارغة عن شخص لا علاقة له بالموضوع.
+    #
+    # ونسخة ثانية من الغلاف كانت ستنحرف عن الأولى في الترويسة والتذييل
+    # ورمز التحقّق — فيصير للمستندات شكلان.
+    if ctx.get("entity_kind") == "company":
+        info_grid = f"""
+<table class="info-grid">
+<tr>{cell('اسم الشركة', 'Company', ctx.get('company_name'))}
+{cell('السجل التجاري', 'Commercial Reg.', ctx.get('commercial_reg'))}</tr>
+<tr>{cell('رقم الملف', 'File No.', ctx.get('file_number'))}
+{cell('نوع الكيان', 'Entity Type', ctx.get('entity_type'))}</tr>
+<tr>{cell('المفوَّض بالتوقيع', 'Authorized Rep.', ctx.get('representative_name'))}
+{cell('الرقم المدني للمفوَّض', 'Rep. Civil ID', ctx.get('representative_civil_id'))}</tr>
+</table>"""
+    else:
+        info_grid = f"""
 <table class="info-grid">
 <tr>{cell('اسم الموظف', 'Employee Name', ctx.get('employee_name'))}
 {cell('الرقم المدني', 'Civil ID', ctx.get('civil_id'))}</tr>

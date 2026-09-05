@@ -367,6 +367,24 @@ DEFAULT_TEMPLATES = [
           "Electronic signature record for document {{document_reference}} (hash {{document_hash}}): signers {{signers}}, timestamps {{timestamps}}, and session/device metadata {{technical_metadata}} where available. Subsequent changes require a new version.",
           [("[ ] رقم المستند [ ] نوع المستند", "Document Type . Document No"), ("[ ] رمز التحقق [ ] الإصدار", "1.0 ........................"), ("", "Version Verification Code"), ("[Approved/Rejected] حالة االعتماد [DD/MM/YYYYHHMM] تاريخ الإنشاء", ":"), ("", "Created At Approval Status")],
           [("Electronic Creator", "منشئ إلكتروني"), ("Electronic Reviewer", "المراجع الإلكتروني"), ("Electronic Approver", "المعتمد الإلكتروني")], has_ack=False)),
+    # القالب الوحيد الذي موضوعه **الشركة** لا موظف.
+    #
+    # الاثنان والأربعون قبله كلّها موجَّهة للموظف، ومحرّك العرض كان يطلب
+    # ``employee_id`` ويغلّف كل مستند بشبكة بيانات موظف. فتجديد ترخيص
+    # المنشأة — وهو إجراء قائم في الكتالوج (ADMLIC) — لم يكن له قالب،
+    # فأُسنِد إليه «إنذار موظف» وصار أثره يُصنَّف تأديبًيا.
+    #
+    # وحقوله من بيانات الشركة المرجعية (السجل التجاري، رقم الملف،
+    # المفوَّض) لا من مُدخَل يدوي — فما يُكتب باليد يُخطئ ويتقادم.
+    ("HRMS-PR-043", "تجديد مستند أو ترخيص شركة", "Company Document / License Renewal", "المعاملات الحكومية والمستندات",
+     _tpl("HRMS-PR-043", "تجديد مستند أو ترخيص شركة", "Company Document / License Renewal",
+          "تتقدم {{company_name}} (سجل تجاري {{commercial_reg}}، ملف رقم {{file_number}}، نوع الكيان {{entity_type}}) بطلب تجديد المستند/الترخيص رقم {{license_no}} المنتهي في {{expiry_date}} لدى الجهة {{government_entity}}. المفوَّض بالتوقيع {{representative_name}} (رقم مدني {{representative_civil_id}})، ويكلَّف المندوب {{delegate_name}} باستكمال الإجراء ورفع النتيجة في النظام. الرسوم المقدرة {{estimated_fees}}.",
+          "{{company_name}} (Commercial Reg. {{commercial_reg}}, File No. {{file_number}}, Entity {{entity_type}}) requests renewal of document/license {{license_no}} expiring {{expiry_date}} at {{government_entity}}. Authorized representative: {{representative_name}} (Civil ID {{representative_civil_id}}). Delegate {{delegate_name}} shall complete the procedure and upload the outcome. Estimated fees: {{estimated_fees}}.",
+          [("[ ] رقم المستند/الترخيص [DD/MM/YYYY] تاريخ الانتهاء", "License No. Expiry Date"),
+           ("[ ] الجهة الحكومية [ ] الرسوم المقدرة", "Government Entity Estimated Fees"),
+           ("[ ] المندوب المكلف [DD/MM/YYYY] موعد الإنجاز", "Assigned Delegate Target Completion"),
+           ("المرفقات [ ] نسخة الترخيص [ ] السجل التجاري [ ] أخرى", "Attachments: License copy / Commercial Reg. / Other")],
+          [("Legal Affairs", "الشؤون القانونية"), ("Company Manager", "مدير الشركة"), ("Delegate", "المندوب")], has_ack=False)),
 ]
 
 
