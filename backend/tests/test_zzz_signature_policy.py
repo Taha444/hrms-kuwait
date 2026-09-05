@@ -36,8 +36,13 @@ from app import exit_guard, models, workflow
 from app.database import SessionLocal
 from tests.conftest import auth_headers, login
 
-#: قرار المالك: هذه تُوقَّع. و``leave`` كانت تعمل أصًلا.
-SIGNED = {"leave", "REQRESIGN", "REQEOS", "REQCLR"}
+#: قرار المالك: **العقود وحدها** تُوقَّع توقيًعا يدوًيا.
+#:
+#: و``leave`` خرجت بقرار لاحق: توقيع الموظف مدموج في المستند أصًلا،
+#: فكان الانتظار يطلب توقيًعا ثانًيا باليد على ورقة تحمل توقيعه مطبوًعا.
+#: وبقاؤها قبل ذلك لم يكن اختياًرا — كانت النوع الوحيد الذي يقف، فاستمرّ
+#: بحكم الحال.
+SIGNED = {"REQRESIGN", "REQEOS", "REQCLR"}
 
 EMP = ("100000000101", "emp12345")
 HR = ("100000000002", "hr12345")
@@ -99,7 +104,11 @@ def test_the_engine_reads_the_declaration_not_the_chain_shape():
 
 
 def test_exactly_the_owners_three_still_require_a_signature():
-    """قرار المالك مثبَّت بالأسماء: الاستقالة والتسوية وإخلاء الطرف."""
+    """قرار المالك مثبَّت بالأسماء: الاستقالة والتسوية وإخلاء الطرف.
+
+    والشهادات والخطابات كانت خارج الانتظار من قبل — والإجازة خرجت
+    بقرار لاحق.
+    """
     declared = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
                 if _declares(rt)}
     assert declared == SIGNED, (
@@ -204,19 +213,42 @@ def test_the_decision_reaches_existing_databases():
     انتظاًرا لتوقيع لم يقرّره أحد.
     """
     versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-    # الترحيل الذي **يضبط القيم** لا الذي يذكر العمود: أول كتابة أمسكت
+    # الترحيلات التي **تضبط القيم** لا التي تذكر العمود: أول كتابة أمسكت
     # ترحيل المخطّط الابتدائي لأن CREATE TABLE فيه يذكر العمود.
+    #
+    # والقياس على **اجتماعها** لا على أوّلها: كتابة سابقة أخذت
+    # ``setters[0]``، فجاء ترحيل الإجازة لاحًقا يذكر الأكواد الثلاثة في
+    # شرحه، فسبق المقصود أبجدًيا والتقطه الحارس فسقط بلا عيب. والمهمّ
+    # أن كل كود **يصله** ترحيل، لا أن يصله ترحيل بعينه.
     setters = [p for p in versions.glob("*.py")
                if "requires_physical_signature" in (
                    text := p.read_text(encoding="utf-8"))
-               and "REQRESIGN" in text]
+               and "op.execute" in text]
     assert setters, "لا ترحيل يوصّل قرار التوقيع إلى القواعد القائمة"
 
-    text = setters[0].read_text(encoding="utf-8")
+    reached = "\n".join(p.read_text(encoding="utf-8") for p in setters)
     for code in ("REQEOS", "REQCLR"):
-        assert code in text, f"{code} غائب عن الترحيل"
+        assert code in reached, f"{code} غائب عن الترحيلات"
     for code in ("REQTRF", "ADMWARN", "REQPROMO"):
-        assert code in text, f"{code} غائب عن الترحيل — تبقى رايته مرفوعة"
+        assert code in reached, f"{code} غائب عن الترحيلات — تبقى رايته مرفوعة"
+
+
+def test_the_leave_decision_reaches_existing_databases():
+    """وقرار الإصدار الفوري نفسه يحتاج ترحيًلا — للسبب ذاته.
+
+    القاعدة القائمة تحمل ``True`` للإجازة. وتغيير البذر لا يمسّها،
+    فتظلّ كل إجازة على الإنتاج واقفًة عند «بانتظار التوقيع» بينما
+    الاختبارات خضراء على قاعدة مبنيّة من الصفر.
+    """
+    versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    lowered = [p for p in versions.glob("*.py")
+               if "requires_physical_signature=False" in
+               p.read_text(encoding="utf-8")]
+    assert lowered, "قرار الإجازة لا يصل إلى القواعد القائمة"
+    text = "\n".join(p.read_text(encoding="utf-8") for p in lowered)
+    assert "REQLV" in text and '"leave"' in text, (
+        "الترحيل لا يغطّي كودَي الإجازة — أحدهما يبقى واقًفا"
+    )
 
 
 def test_certificates_were_never_in_the_gap():

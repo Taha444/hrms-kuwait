@@ -283,24 +283,17 @@ def test_full_leave_workflow(client):
                          json={"decision": "approved"})
     assert denied.status_code in (403, 404), denied.text
 
-    # 3) HR يحدّث الرصيد → الحالة awaiting_signature
+    # 3) HR يحدّث الرصيد → ينتقل مباشرًة لمرحلة المندوب
+    #
+    # **قرار المالك**: قرار الإجازة يصدر فوًرا. كان الطلب يقف هنا عند
+    # ``awaiting_signature`` ليحضر الموظف ويوقّع باليد ورقًة تحمل توقيعه
+    # مطبوًعا فيها أصًلا. وخطوتا الموعد ورفع النسخة الموقّعة لم تُحذَفا من
+    # النظام — انتقل قياسهما إلى ``REQRESIGN`` حيث التوقيع اليدوي مقصود.
     hr = login(client, "100000000002", "hr12345")
     r = client.post(f"/api/requests/{req_id}/decide", headers=auth_headers(hr),
                     json={"decision": "approved"})
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "awaiting_signature"
-
-    # HR يحدد موعد التوقيع
-    r = client.post(f"/api/requests/{req_id}/appointment", headers=auth_headers(hr),
-                    json={"scheduled_at": "2026-07-20T10:00:00", "location": "مقر الشركة"})
-    assert r.status_code == 200
-
-    # 5) HR يرفع النسخة الموقّعة → ينتقل لمرحلة المندوب (awaiting_delegate)
-    files = {"file": ("signed.pdf", io.BytesIO(b"signed-content"), "application/pdf")}
-    r = client.post(f"/api/requests/{req_id}/documents", headers=auth_headers(hr),
-                    data={"kind": "signed_scan"}, files=files)
-    assert r.status_code == 200, r.text
-    assert r.json()["status"] == "awaiting_delegate"
+    assert r.json()["status"] == "awaiting_delegate", r.json()["status"]
 
     # 6) المندوب يرفع إذن المغادرة → completed
     delegate = login(client, "100000000004", "deleg123")
