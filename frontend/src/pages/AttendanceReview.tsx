@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
+import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { attAr } from "../labels";
 
@@ -15,17 +16,56 @@ function thisMonth() {
 
 export default function AttendanceReview() {
   const { t, lang } = useI18n();
+  const { can } = useAuth();
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  // ATT-07 — حالة إقفال الشهر: المسيّر يُمنع على فترة مفتوحة، وكانت
+  // رسالته تحيل إلى «مراجعة الحضور» ولا شيء هنا يُغلق. بوابة بلا مخرج.
+  const [close, setClose] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const loadClose = () =>
+    api.get("/attendance/close-status", { params: { period: month } })
+      .then((r) => setClose(r.data))
+      .catch(() => setClose(null));
 
   const load = () => {
     setLoading(true);
+    setMsg(""); setErr("");
     api.get("/attendance/review", { params: { month } })
       .then((r) => setData(r.data))
       .finally(() => setLoading(false));
+    loadClose();
   };
   useEffect(() => { load(); }, [month]);
+
+  const act = async (fn: () => Promise<any>, done: string) => {
+    setBusy(true); setMsg(""); setErr("");
+    try { await fn(); setMsg(done); await loadClose(); }
+    catch (e: any) { setErr(errMsg(e, t("error"))); }
+    finally { setBusy(false); }
+  };
+
+  // الإقفال إقرار على رقم، لا زرّ شكلي: العدد يُعرض في السؤال نفسه.
+  const closeMonth = () => {
+    const n = close?.unrecorded_days ?? 0;
+    if (!window.confirm(t("att_close_confirm").replace("{n}", String(n))
+                                             .replace("{m}", month))) return;
+    act(() => api.post("/attendance/close-month", null,
+                       { params: { period: month } }), t("att_close_done"));
+  };
+
+  const reopenMonth = () => {
+    // السبب إلزامي على الخادم — فيُطلَب هنا بدل أن يُردّ الطلب بخطأ.
+    const reason = window.prompt(t("att_reopen_reason"));
+    if (!reason || !reason.trim()) return;
+    act(() => api.post("/attendance/reopen-month", null,
+                       { params: { period: month, reason: reason.trim() } }),
+        t("att_reopen_done"));
+  };
 
   const WD = lang === "ar" ? WD_AR : WD_EN;
   const dayMeta = (iso: string) => {
@@ -48,6 +88,55 @@ export default function AttendanceReview() {
           <button className="ghost" onClick={load}>{t("refresh")}</button>
         </div>
       </div>
+
+      {msg && <div className="ok">{msg}</div>}
+      {err && <div className="err">{err}</div>}
+
+      {/* ATT-07 / DLV-01 — حالة الشهر والمخرج منها.
+          الرواتب لا تُشغَّل على فترة مفتوحة، وهذا هو الموضع الذي تحيل
+          إليه رسالة المنع. وعدد الأيام بلا سجل معروض لأن الإقفال إقرار
+          عليه: من أقرّ ومتى وعلى كم يوم — جواب مكتوب بعد شهور. */}
+      {close && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between",
+                                        flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <span className={`pill ${close.closed ? "completed" : "pending"}`}>
+                {close.closed ? t("att_period_closed") : t("att_period_open")}
+              </span>
+              <span style={{ marginInlineStart: 10, fontSize: 13 }}>
+                {t("att_unrecorded_days")}: <b>{close.unrecorded_days ?? 0}</b>
+              </span>
+              {/* التاريخ في سطره: بجوار العدد كان الرقمان يلتصقان بصرًيا
+                  في الاتجاه العربي فيُقرآن رقًما واحًدا («360» ثم سنة). */}
+              {close.closed_at && (
+                <div className="sub" style={{ marginTop: 4 }}>
+                  {t("att_closed_at")}: {close.closed_at.slice(0, 16).replace("T", " ")}
+                </div>
+              )}
+              {close.status === "reopened" && close.reopen_reason && (
+                <div className="sub" style={{ marginTop: 4 }}>
+                  {t("att_reopen_reason_label")}: {close.reopen_reason}
+                </div>
+              )}
+            </div>
+            {can("manage_attendance") && (
+              <div className="row">
+                {close.closed
+                  ? <button className="ghost" disabled={busy} onClick={reopenMonth}>
+                      {t("att_reopen_month")}
+                    </button>
+                  : <button disabled={busy} onClick={closeMonth}>
+                      {t("att_close_month")}
+                    </button>}
+              </div>
+            )}
+          </div>
+          {!close.closed && (
+            <div className="sub" style={{ marginTop: 6 }}>{t("att_close_hint")}</div>
+          )}
+        </div>
+      )}
 
       <div className="att-legend">
         <span className="lg"><span className="sw" style={{ background: "var(--success-bg)" }} /> {t("att_legend_present")}</span>
