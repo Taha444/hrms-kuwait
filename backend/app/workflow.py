@@ -431,9 +431,22 @@ DEFAULT_REQUEST_TYPES = [
     _simple("ADMMISS", "إشعار نقص مستندات", CAT_ADMIN,
            ["hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-020"),
+    # P1-02/خريطة القوالب — كان يشير إلى ``HRMS-PR-022`` وهو **«إنذار
+    # موظف»**، فئته «الإجراءات التأديبية». والقالب لا يُرسَم منه جسم
+    # المستند (ذلك من ``render_request_pdf``)، لكنه يُشتقّ منه
+    # ``od_code`` ويُختَم ``template_code`` على الأثر — فكان أثرُ تجديد
+    # ترخيص شركة يُصنَّف ويُحفَظ تحت فئة تأديبية.
+    #
+    # وقرار المالك: «استخدم قالب تجديد الترخيص». **ولا وجود له**: كل
+    # القوالب الاثنين والأربعين موجَّهة للموظف، ومحرّك العرض نفسه يطلب
+    # ``employee_id`` ويغلّف كل مستند بشبكة بيانات موظف ويحفظه
+    # ``entity_type="employee"``. فبناؤه ميزة لا سطر بذرة.
+    #
+    # فأُزيل التصنيف الخاطئ ولم يُستبدَل بتخمين: بلا تصنيف أصدق من
+    # تصنيف كاذب. والسجلّ نفسه يقول عن هذا النوع «كيانه الشركة لا
+    # الموظف؛ مكانه الأرشيف».
     _simple("ADMLIC", "تجديد مستند شركة أو ترخيص", CAT_ADMIN,
-           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=True,
-           default_template_code="HRMS-PR-022"),
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=True),
     _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
            ["company_manager", "hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-040"),

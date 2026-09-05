@@ -193,9 +193,10 @@ KNOWN_UNVERIFIABLE = {
     "REQWLOC",
     # مساره WF-029 لا يعلن مستنًدا، فلا شيء يُقارَن به.
     "REQMIS",
-    # ليس في سجلّ V1.5 (canonical=None) فلا مسار يُقارَن به. ويشير إلى
-    # «إنذار موظف» (HRMS-PR-022 → OD-006) — **وهو يُنتج مستنًدا فعًلا**،
-    # فتجديد ترخيص شركة يُصدر خطاب إنذار. خطأ مُثبَت، وجوابه قرار عمل.
+    # ليس في سجلّ V1.5 (canonical=None) فلا مسار يُقارَن به. وكان يشير
+    # إلى «إنذار موظف» فيُصنَّف أثرُه تأديبًيا — أُزيل التصنيف الخاطئ
+    # (ترحيل b2c3d4e5f6a) ولم يُستبدَل: لا قالب لتجديد مستند شركة، ومحرّك
+    # العرض كلّه موجَّه للموظف. فبقي بلا قالب كـREQWLOC.
     "ADMLIC",
 }
 
@@ -263,3 +264,45 @@ def test_the_warning_notice_template_is_what_we_think_it_is():
         "تغيّر تعريف HRMS-PR-022 — أعد قياس الخريطة قبل الاعتماد عليها"
     )
     assert R.LEGACY_PRN_ALIASES.get("HRMS-PR-022") == "OD-006"
+
+
+
+def test_no_company_document_is_classified_as_a_disciplinary_one():
+    """**ما نُفِّذ من قرار المالك**: التصنيف التأديبي أُزيل عن تجديد الترخيص.
+
+    والقالب لا يُرسَم منه جسم المستند — ذلك من ``render_request_pdf``.
+    لكنه يُشتقّ منه ``od_code`` ويُختَم ``template_code`` على الأثر، فكان
+    أثرُ تجديد ترخيص شركة يُحفَظ تحت فئة «الإجراءات التأديبية».
+
+    **ولم يُستبدَل بتخمين**: أمر المالك «استخدم قالب تجديد الترخيص»
+    لا يمكن تنفيذه — لا وجود لذلك القالب، ومحرّك العرض يطلب
+    ``employee_id`` ويغلّف بشبكة بيانات موظف ويحفظ ``entity_type
+    ="employee"``. فبلا تصنيف أصدق من تصنيف كاذب.
+    """
+    admlic = next(rt for rt in workflow.DEFAULT_REQUEST_TYPES
+                  if rt["code"] == "ADMLIC")
+    assert not admlic.get("default_template_code"), (
+        "عاد تجديد الترخيص يحمل قالًبا — تحقّق أنه ليس قالب موظف: "
+        f"{admlic.get('default_template_code')}"
+    )
+
+
+def test_the_template_engine_is_employee_only():
+    """**وأساس القرار**: لا يمكن بناء القالب المطلوب كسطر بذرة.
+
+    محرّك العرض كلّه موجَّه للموظف. فقالب شركة يحتاج مساًرا لا يوجد —
+    وهو ميزة تُقرَّر، لا تعيين حقل.
+
+    ويسقط هذا الاختبار يوم يصير المحرّك يقبل كيان شركة — وهو الوقت
+    الصحيح لإعادة فتح السؤال.
+    """
+    import inspect
+
+    from app.routers import templates as tpl_router
+
+    src = inspect.getsource(tpl_router)
+    assert "data.employee_id" in src, "تغيّر مدخل العرض — أعد قياس القرار"
+    assert 'entity_type="employee"' in src, (
+        "لم يعد المستند المولَّد من قالب يُحفَظ ككيان موظف — أعد فتح "
+        "سؤال قالب الشركة"
+    )
