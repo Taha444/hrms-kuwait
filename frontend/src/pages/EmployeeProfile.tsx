@@ -11,7 +11,7 @@ import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number; onChanged?: () => void } = {}) {
   const params = useParams();
   const id = idProp ?? (params.id ? Number(params.id) : undefined);
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { t, lang } = useI18n();
   const [tab, setTab] = useState("personal");
   const [p, setP] = useState<any>(null);
@@ -30,6 +30,14 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [timeline, setTimeline] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);  // R3-C — سجل التعديلات الحرجة
+  // R7-G — اقتراحات تغيير الحقول الحرجة: تُقترَح ولا تُطبَّق حتى يعتمدها
+  // **غير مقترِحها**. كان المسار مبنًيا بلا مدخل من الواجهة.
+  const [changeReqs, setChangeReqs] = useState<any[]>([]);
+  const [prop, setProp] = useState({ field_name: "basic_salary", new_value: "",
+                                     effective_date: "", reason: "" });
+  const [propBusy, setPropBusy] = useState(false);
+  const [propErr, setPropErr] = useState("");
+  const [propMsg, setPropMsg] = useState("");
   const [evForm, setEvForm] = useState({ kind: "warning", title: "", amount: "" });
   // QA-28 — النسخ السابقة: الخادم يحفظها ويعرضها عبر /documents/history،
   // لكن لا واجهة كانت تستدعيها ولا نقطة تنزيل تقبل معرّف إصدار — فكانت
@@ -57,10 +65,58 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const kwd = t("kwd_currency");
   const genderLabel = (g: string) => g === "male" ? t("gender_male") : g === "female" ? t("gender_female") : "—";
 
+  /** تسمية بشرية للحقل — الجدول يعرض العمود الخام وإلا (درس QA-14). */
+  const FIELD_LABEL: Record<string, string> = {
+    basic_salary: "الراتب الأساسي", actual_salary: "الراتب الفعلي",
+    hire_date: "تاريخ التعيين", job_title: "المسمى الوظيفي",
+    contract_type: "نوع العقد",
+  };
+
+  const loadChangeReqs = () =>
+    api.get(`/employees/${id}/salary-change-requests`)
+      .then((r) => setChangeReqs(r.data))
+      .catch(() => setChangeReqs([]));
+
+  const proposeChange = async () => {
+    setPropErr(""); setPropMsg("");
+    if (!prop.new_value.trim()) { setPropErr("القيمة الجديدة مطلوبة"); return; }
+    if (!prop.effective_date) { setPropErr("تاريخ السريان مطلوب"); return; }
+    // الخادم يشترطه صراحًة — يُطلَب هنا بدل أن يُردّ الطلب بخطأ.
+    if (!prop.reason.trim()) { setPropErr("سبب التغيير إلزامي"); return; }
+    setPropBusy(true);
+    try {
+      await api.post(`/employees/${id}/salary-change-request`, null, {
+        params: { field_name: prop.field_name, new_value: prop.new_value.trim(),
+                  effective_date: prop.effective_date, reason: prop.reason.trim() },
+      });
+      setPropMsg("أُرسل الاقتراح — ينتظر اعتماد غيرك");
+      setProp({ ...prop, new_value: "", reason: "" });
+      loadChangeReqs();
+    } catch (e: any) { setPropErr(errMsg(e, t("error"))); }
+    finally { setPropBusy(false); }
+  };
+
+  const decideChange = async (reqId: number, decision: string) => {
+    const note = decision === "rejected"
+      ? window.prompt("سبب الرفض (اختياري):") ?? "" : "";
+    if (decision === "approved"
+        && !window.confirm("اعتماد التغيير؟ يُطبَّق على ملف الموظف فوًرا ويُقيَّد في السجل.")) return;
+    setPropBusy(true); setPropErr(""); setPropMsg("");
+    try {
+      await api.post(`/employees/salary-change-requests/${reqId}/decide`, null,
+                     { params: { decision, note: note || undefined } });
+      setPropMsg(decision === "approved" ? "طُبِّق التغيير" : "رُفض الاقتراح");
+      loadChangeReqs(); loadExtras(); load();
+      window.dispatchEvent(new Event("tasks:changed"));
+    } catch (e: any) { setPropErr(errMsg(e, t("error"))); }
+    finally { setPropBusy(false); }
+  };
+
   const loadExtras = () => {
     api.get(`/employees/${id}/timeline`).then((r) => setTimeline(r.data.timeline)).catch(() => {});
     api.get(`/employees/${id}/events`).then((r) => setEvents(r.data)).catch(() => {});
     api.get(`/employees/${id}/change-history`).then((r) => setHistory(r.data)).catch(() => {});
+    loadChangeReqs();
   };
   const load = () => api.get(`/employees/${id}/profile`).then((r) => setP(r.data));
   useEffect(() => {
@@ -727,6 +783,114 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
 
       {/* R3-C — سجل التعديلات الحرجة (راتب/تعيين/عقد/مسمى) */}
       {tab === "history" && (
+        <>
+        {/* R7-G — الاقتراحات: تُقترَح ولا تُطبَّق حتى يعتمدها **غير
+            مقترِحها**. المسار كان مبنًيا ومقاًسا على الخادم وبلا مدخل من
+            الواجهة، فلم يكن أحد يستطيع اقتراح تغيير راتب ولا اعتماده. */}
+        <div className="card">
+          <h3>اقتراحات تغيير الحقول الحرجة</h3>
+          <p className="muted" style={{ fontSize: 12 }}>
+            الراتب وتاريخ التعيين والمسمى والعقد لا تُعدَّل مباشرًة: تُقترَح
+            بسبب مكتوب، ويعتمدها مدير الشركة أو الإدارة العليا — ولا يعتمد
+            أحٌد اقتراحه.
+          </p>
+          {propMsg && <div className="ok">{propMsg}</div>}
+          {propErr && <div className="err">{propErr}</div>}
+
+          {!changeReqs.length ? (
+            <div className="muted">لا اقتراحات.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>الحقل</th><th>من</th><th>إلى</th><th>السريان</th>
+                    <th>السبب</th><th>المُقترِح</th><th>الحالة</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {changeReqs.map((r) => (
+                    <tr key={r.id}>
+                      <td><span className="pill neutral">{FIELD_LABEL[r.field_name] || r.field_name}</span></td>
+                      <td className="muted"><code>{r.old_value ?? "—"}</code></td>
+                      <td><code style={{ color: "#065f46", fontWeight: 600 }}>{r.new_value}</code></td>
+                      <td>{r.effective_date}</td>
+                      <td className="muted">{r.reason}</td>
+                      <td className="muted">{r.proposed_by_name || `#${r.proposed_by}`}</td>
+                      <td>
+                        <span className={`pill ${r.status === "applied" ? "completed"
+                                          : r.status === "rejected" ? "rejected" : "pending"}`}>
+                          {r.status === "applied" ? "طُبِّق"
+                            : r.status === "rejected" ? "مرفوض" : "بانتظار الاعتماد"}
+                        </span>
+                        {r.status === "rejected" && r.rejected_reason && (
+                          <div className="sub">{r.rejected_reason}</div>
+                        )}
+                      </td>
+                      <td>
+                        {/* ولا يُعرَض زرٌّ سيُرفض: الخادم يمنع اعتماد المرء
+                            اقتراحه، ويحصر القرار في المدير/الإدارة العليا. */}
+                        {r.status === "pending"
+                          && ["company_manager", "company_owner", "super_admin"].includes(user?.role || "")
+                          && r.proposed_by !== user?.id && (
+                          <div className="row">
+                            <button className="sm" disabled={propBusy}
+                                    onClick={() => decideChange(r.id, "approved")}>اعتماد</button>
+                            <button className="ghost sm" disabled={propBusy}
+                                    style={{ color: "var(--danger)" }}
+                                    onClick={() => decideChange(r.id, "rejected")}>رفض</button>
+                          </div>
+                        )}
+                        {r.status === "pending" && r.proposed_by === user?.id && (
+                          <span className="sub">ينتظر اعتماد غيرك</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {can("edit_employee") && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              <h4>اقتراح تغيير</h4>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="scr-field">الحقل</label>
+                  <select id="scr-field" value={prop.field_name}
+                          onChange={(e) => setProp({ ...prop, field_name: e.target.value })}>
+                    <option value="basic_salary">الراتب الأساسي</option>
+                    <option value="actual_salary">الراتب الفعلي</option>
+                    <option value="hire_date">تاريخ التعيين</option>
+                    <option value="job_title">المسمى الوظيفي</option>
+                    <option value="contract_type">نوع العقد</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="scr-value">القيمة الجديدة *</label>
+                  <input id="scr-value"
+                         type={prop.field_name === "hire_date" ? "date"
+                               : prop.field_name.includes("salary") ? "number" : "text"}
+                         value={prop.new_value}
+                         onChange={(e) => setProp({ ...prop, new_value: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="scr-eff">تاريخ السريان *</label>
+                  <input id="scr-eff" type="date" value={prop.effective_date}
+                         onChange={(e) => setProp({ ...prop, effective_date: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="scr-reason">السبب *</label>
+                  <input id="scr-reason" value={prop.reason}
+                         onChange={(e) => setProp({ ...prop, reason: e.target.value })} />
+                </div>
+              </div>
+              <button disabled={propBusy} onClick={proposeChange}>إرسال الاقتراح</button>
+            </div>
+          )}
+        </div>
+
         <div className="card">
           <h3>سجل التعديلات على البيانات الحرجة</h3>
           <p className="muted" style={{ fontSize: 12 }}>
@@ -752,7 +916,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <tbody>
                   {history.map((h) => (
                     <tr key={h.id}>
-                      <td><span className="pill neutral">{h.field_name}</span></td>
+                      <td><span className="pill neutral">{FIELD_LABEL[h.field_name] || h.field_name}</span></td>
                       <td className="muted"><code>{h.old_value ?? "—"}</code></td>
                       <td><code style={{ color: "#065f46", fontWeight: 600 }}>{h.new_value ?? "—"}</code></td>
                       <td>{h.effective_date}</td>
@@ -766,6 +930,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             </div>
           )}
         </div>
+        </>
       )}
     </div>
   );

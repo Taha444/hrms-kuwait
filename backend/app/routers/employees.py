@@ -909,6 +909,17 @@ def list_employees_without_policy(company_id: int | None = None,
 CHANGEABLE_FIELDS = {"basic_salary", "actual_salary", "hire_date", "job_title",
                     "contract_type"}
 
+#: تسمية بشرية لكل حقل — بلاغ يقول ``basic_salary`` يخاطب الجدول لا
+#: القارئ. وهو درس QA-14 نفسه: الاسم لا الكود. (قِستُه في المتصفّح:
+#: عنوان المهمة ظهر بالعمود الخام.)
+_FIELD_LABEL = {
+    "basic_salary": "الراتب الأساسي",
+    "actual_salary": "الراتب الفعلي",
+    "hire_date": "تاريخ التعيين",
+    "job_title": "المسمى الوظيفي",
+    "contract_type": "نوع العقد",
+}
+
 
 @router.post("/{emp_id}/salary-change-request", status_code=201)
 def propose_salary_change(emp_id: int, field_name: str, new_value: str,
@@ -936,10 +947,51 @@ def propose_salary_change(emp_id: int, field_name: str, new_value: str,
     )
     db.add(req)
     db.flush()
+
+    # **اقتراح لا يعلم به أحد ورقة في درج.**
+    #
+    # كان يُسجَّل ويُدقَّق ثم يصمت: لا بلاغ ولا طابور، والقائمة الوحيدة
+    # داخل ملف الموظف. فلا يعلم المعتمِد إلا إن فتح ذلك الملف مصادفًة —
+    # وراتب ينتظر اعتماًدا لا يجده أحد يبقى معلًَّقا إلى الأبد.
+    #
+    # والمبلَّغون هم من يملك القرار فعًلا (انظر ``decide_salary_change``):
+    # بلاغ لمن لا يملك الإجراء خبر لا عمل.
+    from ..notifications import create_task, users_by_role
+
+    for u in users_by_role(db, emp.company_id,
+                           ["company_manager", "company_owner"]):
+        if u.id == user.id:
+            continue  # فصل الواجبات: المقترِح لا يعتمد اقتراحه
+        create_task(
+            db, company_id=emp.company_id, type="approvals",
+            assignee_user_id=u.id,
+            title=f"اعتماد تغيير حقل حرج: {_FIELD_LABEL.get(field_name, field_name)}",
+            detail=(f"{emp.name} — {_FIELD_LABEL.get(field_name, field_name)}: "
+                    f"{old} ← {new_value} "
+                    f"(اعتباًرا من {effective_date}). السبب: {reason.strip()}"),
+            related_entity_type="employee", related_entity_id=emp.id,
+            severity="warning", dedup_key=f"salary_change:{req.id}",
+        )
+
     audit(db, user, "propose_salary_change", "employee", emp.id,
           detail=f"{field_name}: {old} → {new_value}", request=request)
     db.commit()
     return {"ok": True, "request_id": req.id, "status": "pending"}
+
+
+def _close_change_tasks(db: Session, req: models.SalaryChangeRequest) -> None:
+    """يغلق بلاغ الاعتماد بعد القرار.
+
+    ومهمة تبقى مفتوحة بعد انتهاء عملها تُعلّم قارئها أن الصندوق يكذب
+    فيتوقّف عن قراءته — وهو الدرس نفسه من ``_close_open_tasks``.
+    """
+    for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "employee",
+            models.Task.related_entity_id == req.employee_id,
+            models.Task.status.in_(("open", "in_progress")),
+    )).all():
+        if (t.dedup_key or "") == f"salary_change:{req.id}":
+            t.status = "done"
 
 
 @router.get("/{emp_id}/salary-change-requests")
@@ -965,6 +1017,40 @@ def list_salary_change_requests(emp_id: int,
         "approved_at": r.approved_at.isoformat() + "Z" if r.approved_at else None,
         "rejected_reason": r.rejected_reason,
     } for r in rows]
+
+
+@router.get("/salary-change-requests/pending")
+def pending_salary_changes(user: models.User = Depends(require_perm("view_employee")),
+                           db: Session = Depends(get_db)):
+    """المعلَّق من تغييرات الحقول الحرجة في الشركة — طابور المعتمِد.
+
+    **ولماذا لزم**: القائمة الوحيدة كانت داخل ملف الموظف، فمن يملك
+    القرار لا يجد ما ينتظره إلا بفتح الملفات واحًدا واحًدا. والبلاغ
+    يقول إن هناك عًملا؛ وهذه تقول **ما هو** مجموًعا.
+    """
+    cid = user.company_id
+    q = select(models.SalaryChangeRequest).where(
+        models.SalaryChangeRequest.status == "pending")
+    if cid is not None:
+        q = q.where(models.SalaryChangeRequest.company_id == cid)
+    rows = db.scalars(q.order_by(
+        models.SalaryChangeRequest.proposed_at.desc())).all()
+    out = []
+    for r in rows:
+        emp = db.get(models.Employee, r.employee_id)
+        who = db.get(models.User, r.proposed_by) if r.proposed_by else None
+        out.append({
+            "id": r.id, "employee_id": r.employee_id,
+            "employee_name": emp.name if emp else None,
+            "field_name": r.field_name,
+            "old_value": r.old_value, "new_value": r.new_value,
+            "effective_date": r.effective_date.isoformat(),
+            "reason": r.reason,
+            "proposed_by": r.proposed_by,
+            "proposed_by_name": who.full_name if who else None,
+            "proposed_at": r.proposed_at.isoformat() + "Z",
+        })
+    return out
 
 
 @router.post("/salary-change-requests/{req_id}/decide")
@@ -997,6 +1083,7 @@ def decide_salary_change(req_id: int, decision: str, request: Request = None,
         req.rejected_reason = (note or "").strip() or None
         req.approved_by = user.id  # نسجل من رفض
         req.approved_at = datetime.utcnow()
+        _close_change_tasks(db, req)
         audit(db, user, "reject_salary_change", "employee", req.employee_id,
               detail=f"{req.field_name} rejected: {req.rejected_reason}", request=request)
         db.commit()
@@ -1033,6 +1120,7 @@ def decide_salary_change(req_id: int, decision: str, request: Request = None,
     req.approved_by = user.id
     req.approved_at = datetime.utcnow()
     req.applied_change_id = change.id
+    _close_change_tasks(db, req)
     audit(db, user, "apply_salary_change", "employee", emp.id,
           detail=f"{req.field_name}: {req.old_value} → {req.new_value} (approved)",
           request=request)
