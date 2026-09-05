@@ -271,17 +271,17 @@ DEFAULT_REQUEST_TYPES = [
            ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False,
            default_template_code="HRMS-PR-038"),
     _simple("REQWLOC", "تكليف مؤقت بموقع أو فرع", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager", "hr"], produces_document=True),
+           ["branch_supervisor", "company_manager", "hr"], requires_physical_signature=False, produces_document=True),
     _simple("REQMIS", "طلب مهمة عمل خارجية", CAT_ATTENDANCE,
-           ["branch_supervisor", "company_manager"], produces_document=True,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-036"),
 
     # الإقامة والمعاملات الحكومية
     _simple("REQRESE", "طلب تجديد إقامة مبكر", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], produces_document=True, visible_to_employee=True,
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=True, visible_to_employee=True,
            default_template_code="HRMS-PR-034"),
     _simple("REQRESN", "طلب تجديد إقامة عادي", CAT_RESIDENCY,
-           ["delegate", "hr"], produces_document=True,
+           ["delegate", "hr"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-034"),
     _simple("REQPASS", "طلب تحديث أو تجديد جواز السفر", CAT_RESIDENCY,
            ["hr"], requires_physical_signature=False,
@@ -293,12 +293,12 @@ DEFAULT_REQUEST_TYPES = [
     # العامة للقوى العاملة، وأي ورقة يولّدها النظام بشكله ليست إذًنا بل انتحال
     # صفة جهة حكومية. المندوب يرفع المستند الرسمي بعد استخراجه.
     _simple("REQWP", "طلب تجديد إذن عمل", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], produces_document=False,
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=False,
            default_template_code="HRMS-PR-022"),
     _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
            ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
-           ["branch_supervisor", "hr", "company_manager"], produces_document=True,
+           ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-016"),
 
     # بيانات الموظف والمستندات
@@ -371,15 +371,15 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQTRN", "طلب تدريب", CAT_CAREER,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRF", "طلب نقل داخلي", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], produces_document=True,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-016"),
     _simple("REQPROMO", "طلب ترقية أو تعديل راتب", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], produces_document=True, visible_to_employee=True,
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False, produces_document=True, visible_to_employee=True,
            default_template_code="HRMS-PR-018"),
 
     # العقود وإنهاء الخدمة
     _simple("REQCON", "تجديد عقد أو عدم تجديد", CAT_CONTRACTS,
-           ["hr", "company_manager"], produces_document=True,
+           ["hr", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-012"),
     _simple("REQRESIGN", "طلب استقالة", CAT_CONTRACTS,
            ["company_manager", "hr"], produces_document=True, visible_to_employee=True,
@@ -423,7 +423,7 @@ DEFAULT_REQUEST_TYPES = [
            ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False,
            default_template_code="HRMS-PR-013"),
     _simple("ADMWARN", "إصدار إنذار", CAT_ADMIN,
-           ["hr", "company_manager"], produces_document=True,
+           ["hr", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-022"),
     _simple("ADMTASK", "تكليف مندوب أو مهمة إدارية", CAT_ADMIN,
            ["company_manager", "delegate", "hr"], requires_physical_signature=False,
@@ -432,7 +432,7 @@ DEFAULT_REQUEST_TYPES = [
            ["hr"], requires_physical_signature=False,
            default_template_code="HRMS-PR-020"),
     _simple("ADMLIC", "تجديد مستند شركة أو ترخيص", CAT_ADMIN,
-           ["hr", "company_manager", "delegate"], produces_document=True,
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-022"),
     _simple("ADMSIGN", "اعتماد وتوقيع إلكتروني", CAT_ADMIN,
            ["company_manager", "hr"], requires_physical_signature=False,
@@ -973,7 +973,31 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
 
     # اعتماد
     kind = stage.get("kind", "approval")
-    if kind == "hr_review":
+
+    # V2.2 §13.10 (AC-10) — مرحلة متوازية: الجهة تحسم نصيبها ولا تتقدّم
+    # المرحلة إلا باكتمال كل الجهات المنطبقة (All-of). الإغلاق قبل ذلك يعني
+    # مخالصة نهائية وجهة لم تُقرّ بعد — وهو ما يمنعه DOC-12 صراحًة.
+    if stage.get("kind") == "parallel" and not parallel_stage_complete(db, req, stage):
+        db.commit()
+        db.refresh(req)
+        return req
+
+    # P5-23 — **السياسة تُقرأ من إعلانها**، لا من بنية السلسلة.
+    #
+    # كان التوقّف للتوقيع مشروًطا بـ``kind == "hr_review"`` وحده، بينما
+    # ``requires_physical_signature`` معلَنة على 54 نوًعا ولها عمود في
+    # القاعدة ولا يقرؤها أحد. فانحرف الاثنان: أربعة عشر نوًعا تُعلن
+    # «توقيع مطلوب» ولا تطلبه أبًدا — ومنها الاستقالة وتسوية نهاية
+    # الخدمة وإخلاء الطرف، تُصدَر ويُغلق طلبها «مكتمل» بلا توقيع.
+    #
+    # وقرار المالك: الثلاثة تُوقَّع، والباقي تُرفَع عنه الراية. فلم
+    # تُضَف مراحل للثلاثة — بل صارت الراية هي المشغّل، فيستحيل الانحراف
+    # بنيوًيا لا في ثلاث حالات تُصلَح ثم يعود غيرها.
+    #
+    # و``hr_review`` تبقى مرادًفا للمرحلة المُصدِرة توافًقا مع سلاسل
+    # قائمة لا تُعلن ``produces_document`` صراحًة.
+    issuing_stage = bool(stage.get("produces_document")) or kind == "hr_review"
+    if issuing_stage and bool(getattr(rt, "requires_physical_signature", False)):
         # يولّد المستند وينتقل لحالة انتظار التوقيع (لا يتقدّم حتى رفع الموقّع)
         generate_document(db, req, rt, kind="generated_pdf", actor=user)
         req.status = "awaiting_signature"
@@ -985,15 +1009,7 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
         db.refresh(req)
         return req
 
-    # V2.2 §13.10 (AC-10) — مرحلة متوازية: الجهة تحسم نصيبها ولا تتقدّم
-    # المرحلة إلا باكتمال كل الجهات المنطبقة (All-of). الإغلاق قبل ذلك يعني
-    # مخالصة نهائية وجهة لم تُقرّ بعد — وهو ما يمنعه DOC-12 صراحًة.
-    if stage.get("kind") == "parallel" and not parallel_stage_complete(db, req, stage):
-        db.commit()
-        db.refresh(req)
-        return req
-
-    if stage.get("produces_document"):
+    if issuing_stage:
         generate_document(db, req, rt, kind="generated_pdf", actor=user)
 
     _advance(db, req, rt)

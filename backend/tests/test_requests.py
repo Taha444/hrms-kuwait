@@ -144,10 +144,21 @@ def test_reqeos_and_reqclr_complete_with_full_pdf(client):
     client.post(f"/api/requests/{rid}/decide", headers=auth_headers(hr), json={"decision": "approved"})
     client.post(f"/api/requests/{rid}/decide", headers=auth_headers(acc), json={"decision": "approved"})
     r = client.post(f"/api/requests/{rid}/decide", headers=auth_headers(mgr), json={"decision": "approved"})
-    assert r.status_code == 200 and r.json()["status"] == "completed"
+    # P5-23 — قرار المالك: تسوية نهاية الخدمة تُوقَّع. فالاكتمال صار بعد
+    # رفع النسخة الموقّعة لا عند آخر اعتماد. والادّعاء نفسه باقٍ —
+    # «يكتمل فعًلا ولا يتوقّف عند المحاسب» — لكن خطّ نهايته تحرّك.
+    assert r.status_code == 200 and r.json()["status"] == "awaiting_signature", r.text
 
     detail = client.get(f"/api/requests/{rid}", headers=auth_headers(hr)).json()
     assert any(d["kind"] == "generated_pdf" for d in detail["documents"])
+
+    signed = client.post(f"/api/requests/{rid}/documents", headers=auth_headers(hr),
+                         data={"kind": "signed_scan"},
+                         files={"file": ("signed.pdf", b"%PDF-1.4 signed",
+                                         "application/pdf")})
+    assert signed.status_code in (200, 201), signed.text[:200]
+    after = client.get(f"/api/requests/{rid}", headers=auth_headers(hr)).json()
+    assert after["status"] == "completed", after["status"]
 
     rid2 = client.post("/api/requests", headers=auth_headers(hr), json={
         "request_type_code": "REQCLR", "employee_id": emp_id,
@@ -172,7 +183,15 @@ def test_reqeos_and_reqclr_complete_with_full_pdf(client):
                 json={"decision": "approved"})
     r2 = client.post(f"/api/requests/{rid2}/decide", headers=auth_headers(hr),
                      json={"decision": "approved"})
-    assert r2.status_code == 200 and r2.json()["status"] == "completed"
+    # P5-23 — وإخلاء الطرف يُوقَّع أيًضا بقرار المالك.
+    assert r2.status_code == 200 and r2.json()["status"] == "awaiting_signature", r2.text
+    signed2 = client.post(f"/api/requests/{rid2}/documents", headers=auth_headers(hr),
+                          data={"kind": "signed_scan"},
+                          files={"file": ("signed2.pdf", b"%PDF-1.4 signed",
+                                          "application/pdf")})
+    assert signed2.status_code in (200, 201), signed2.text[:200]
+    assert client.get(f"/api/requests/{rid2}", headers=auth_headers(hr)
+                      ).json()["status"] == "completed"
 
 
 def test_generated_document_body_has_no_raw_payload_keys_or_role_codes(client):

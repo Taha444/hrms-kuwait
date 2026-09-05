@@ -1,151 +1,227 @@
 # -*- coding: utf-8 -*-
-"""P5-23 — سياسة التوقيع معلَنة ولا يقرؤها أحد.
+"""P5-23 — سياسة التوقيع تُقرأ من إعلانها، والانحراف صار مستحيًلا بنيوًيا.
 
-**ما ظهر بالقياس:**
+**ما كان بالقياس:**
 
-``requires_physical_signature`` راية على **كل** نوع طلب (54 نوًعا)،
-ولها عمود في القاعدة — و**لا موضع واحد يقرؤها**: لا المحرّك، ولا
-الواجهة، ولا تقرير. النمط نفسه الذي ظهر في ``detail`` بخطّ زمن
-التجديد و``original_user_id`` في التدقيق: بيانات تُكتب ولا تُقرأ.
+``requires_physical_signature`` راية على 54 نوًعا ولها عمود في القاعدة —
+و**لا موضع واحد يقرؤها**. والسلوك يأتي من بنية السلسلة:
+``stage.kind == "hr_review"`` هو ما يوقف الطلب للتوقيع.
 
-والسلوك يأتي من مكان آخر تماًما: ``decide`` يوقف الطلب على
-``awaiting_signature`` حين يكون ``stage.kind == "hr_review"`` — أي أن
-**بنية السلسلة** هي السياسة الفعلية، والراية زينة.
+فانحرف الاثنان: **14 نوًعا** تُعلن «توقيع مادّي مطلوب» ولا تطلبه أبًدا —
+ومنها الاستقالة وتسوية نهاية الخدمة وإخلاء الطرف، تُصدَر ويُغلق طلبها
+«مكتمل» بلا أن يوقّع الموظف شيًئا.
 
-**والانحراف مقيس**: 14 نوًعا من 54 تُعلن «توقيع مادّي مطلوب» وليس في
-سلسلتها مرحلة توقيع أصًلا. ومنها ما لا يُحتمل فيه ذلك:
+**وقرار المالك**: الاستقالة والتسوية وإخلاء الطرف **تُوقَّع**، وتُرفَع
+الراية عن الباقي.
 
-* ``REQRESIGN`` — استقالة
-* ``REQEOS`` — تسوية نهاية خدمة
-* ``REQCLR`` — إخلاء طرف
-* ``ADMWARN`` — إنذار
-* ``REQPROMO`` — ترقية أو تعديل راتب
-* ``REQCON`` — تجديد عقد
+**ولم تُضَف مراحل للثلاثة.** لو أُصلحت ثلاث حالات لعاد الانحراف مع
+رابعة تُضاف غًدا. فصارت **الراية هي المشغّل**: الطلب يقف للتوقيع حين
+يُعلن نوعه ذلك عند المرحلة المُصدِرة للمستند — فالمعلَن هو الواقع، ولا
+يبقى موضعان ينحرفان.
 
-فيُصدر النظام تسوية نهاية خدمة ويُغلق الطلب «مكتمل» بلا أن يوقّع
-الموظف شيًئا — بينما تعريف النوع يقول إن توقيعه مطلوب.
-
-**وأي الطرفين يُصحَّح قرار عمل**: هل تُرفَع الراية عن الأربعة عشر (لا
-توقيع مطلوب فعًلا)، أم تُضاف لها مرحلة توقيع (والراية محقّة)؟ لكلٍّ
-أثر مختلف تماًما على إجراءات الشركة، ولا يُستنتج من الشيفرة.
-
-**أما أن يتناقض المعلَن والواقع فليس سؤاًلا.** فيُقاس هنا ويُثبَّت عدده،
-فلا ينمو صامًتا ولا يُنسى.
+**والبذر يُدرج ولا يُحدِّث** (درس QA-07 مع ``REQSIG``): فالترحيل
+``f0a1b2c3d4e`` يبلّغ القرار إلى القواعد القائمة. وإهماله هنا لا يترك
+عيًبا صامًتا بل **يُعطّل** الأنواع الأحد عشر على الإنتاج — تقف طلباتها
+عند ``awaiting_signature`` انتظاًرا لتوقيع لم يقرّره أحد.
 """
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
-from app import workflow
+import pytest
+from sqlalchemy import delete as sa_delete, select
 
-#: الأنواع التي تُعلن توقيًعا ولا تطلبه — **حالة معلومة تنتظر قرار المالك**.
-#:
-#: تُثبَّت هنا بالاسم لا بالعدد وحده: نوع يُضاف غًدا بالعيب نفسه يسقط
-#: الاختبار، ونوع يُصحَّح يسقطه أيًضا — وكلاهما وقت مراجعة صحيح.
-KNOWN_DIVERGENT = {
-    "REQWLOC", "REQMIS", "REQRESE", "REQRESN", "REQWP", "REQTRFLIC",
-    "REQTRF", "REQPROMO", "REQCON", "REQRESIGN", "REQEOS", "REQCLR",
-    "ADMWARN", "ADMLIC",
-}
+from app import exit_guard, models, workflow
+from app.database import SessionLocal
+from tests.conftest import auth_headers, login
+
+#: قرار المالك: هذه تُوقَّع. و``leave`` كانت تعمل أصًلا.
+SIGNED = {"leave", "REQRESIGN", "REQEOS", "REQCLR"}
+
+EMP = ("100000000101", "emp12345")
+HR = ("100000000002", "hr12345")
+MGR = ("100000000001", "manager123")
+
+RESIGN = {"submitted_at": "2027-01-05", "proposed_last_day": "2027-02-05",
+          "notice_period_days": 30, "reason": "ظروف شخصية"}
 
 
-def _declares_signature(rt: dict) -> bool:
+@pytest.fixture
+def resigning_employee():
+    """موظف تُفتح له استقالة ثم تُغلق.
+
+    حارس «خروج واحد» (P6-27) يمنع فتح استقالة ثانية للموظف نفسه —
+    فاختباران يفتحانها بلا تنظيف يسقط ثانيهما بسبب ليس ما يقيسه.
+    """
+    db = SessionLocal()
+    try:
+        eid = db.scalar(select(models.Employee.id).where(
+            models.Employee.civil_id == EMP[0]))
+        yield eid
+    finally:
+        rows = [r for (r,) in db.execute(select(models.Request.id).where(
+            models.Request.employee_id == eid,
+            models.Request.request_type_code.in_(
+                exit_guard.EXIT_REQUEST_TYPES))).all()]
+        if rows:
+            db.execute(sa_delete(models.Task).where(
+                models.Task.related_entity_type == "request",
+                models.Task.related_entity_id.in_(rows)))
+            db.execute(sa_delete(models.RequestApproval).where(
+                models.RequestApproval.request_id.in_(rows)))
+            db.execute(sa_delete(models.RequestDocument).where(
+                models.RequestDocument.request_id.in_(rows)))
+            db.execute(sa_delete(models.Request).where(
+                models.Request.id.in_(rows)))
+            db.commit()
+        db.close()
+
+
+def _declares(rt: dict) -> bool:
     return bool(rt.get("requires_physical_signature"))
 
 
-def _has_signature_stage(rt: dict) -> bool:
-    """السياسة الفعلية: مرحلة ``hr_review`` هي ما يوقف الطلب للتوقيع."""
-    return any(s.get("kind") == "hr_review"
+def _issuing(rt: dict) -> bool:
+    return any(s.get("produces_document") or s.get("kind") == "hr_review"
                for s in (rt.get("approval_chain_json") or []))
 
 
-def test_the_stage_kind_is_what_actually_stops_for_a_signature():
-    """خطّ الأساس: السلوك من بنية السلسلة لا من الراية."""
+def test_the_engine_reads_the_declaration_not_the_chain_shape():
+    """**جوهر الإصلاح**: المشغّل صار الإعلان لا بنية السلسلة."""
     src = inspect.getsource(workflow.decide)
-    assert 'kind == "hr_review"' in src, "تغيّر ما يوقف الطلب — راجع القياس"
-    assert "awaiting_signature" in src
-    assert "requires_physical_signature" not in src, (
-        "صارت الراية تُقرأ في القرار — أعد قياس الانحراف، فقد تغيّر أساسه"
+    assert "requires_physical_signature" in src, (
+        "المحرّك ما زال لا يقرأ السياسة المعلَنة"
+    )
+    assert 'if kind == "hr_review":' not in src, (
+        "بقي مشغّل ثانٍ من بنية السلسلة — وموضعان ينحرفان"
     )
 
 
-def test_the_declared_flag_is_read_nowhere():
-    """**جوهر البند**: سياسة معلَنة على 54 نوًعا ولا قارئ لها.
+def test_exactly_the_owners_three_still_require_a_signature():
+    """قرار المالك مثبَّت بالأسماء: الاستقالة والتسوية وإخلاء الطرف."""
+    declared = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
+                if _declares(rt)}
+    assert declared == SIGNED, (
+        f"زائد: {sorted(declared - SIGNED)} · ناقص: {sorted(SIGNED - declared)}"
+    )
 
-    ولو كانت تُقرأ لَظهر الانحراف عند أول استعمال. وهي لا تُقرأ، فبقي
-    التناقض صامًتا: التعريف يقول شيًئا والنظام يفعل غيره.
+
+def test_the_divergence_is_gone_not_merely_smaller():
+    """**والانحراف صفر**: كل نوع يُعلن توقيًعا له مرحلة تُصدر مستنًدا.
+
+    ونوع يُعلن توقيًعا بلا مستند يُصدره يقف للأبد على توقيع ورقة لا
+    وجود لها — وهو ما كان ``REQWP`` يفعله لو قُرئت رايته.
     """
-    from pathlib import Path
+    orphans = [rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
+               if _declares(rt) and not _issuing(rt)]
+    assert not orphans, f"تُعلن توقيًعا بلا مستند يُصدَر: {orphans}"
 
-    root = Path(workflow.__file__).resolve().parent
-    readers = []
-    for path in root.rglob("*.py"):
-        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if "requires_physical_signature" not in line:
-                continue
-            # التعريف والإعلان ليسا قراءة
-            if any(tok in line for tok in ("requires_physical_signature=",
-                                           '"requires_physical_signature":',
-                                           "requires_physical_signature: ")):
-                continue
-            readers.append(f"{path.name}:{i}")
-    assert not readers, (
-        "صارت الراية تُقرأ — احذف هذا الاختبار وأعد قياس الانحراف: "
-        + ", ".join(readers)
+
+def test_a_signed_type_stops_and_waits(client, resigning_employee):
+    """الاستقالة تقف عند التوقيع ولا تُغلق «مكتملة» بلا توقيع."""
+    eid = resigning_employee
+    hdr = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=hdr, json={
+        "employee_id": eid, "request_type_code": "REQRESIGN",
+        "payload_json": RESIGN})
+    assert r.status_code == 201, r.text[:250]
+    rid = r.json()["id"]
+
+    for who in (MGR, HR):
+        h = auth_headers(login(client, *who))
+        d = client.post(f"/api/requests/{rid}/decide", headers=h,
+                        json={"decision": "approved"})
+        assert d.status_code == 200, d.text[:200]
+
+    body = client.get(f"/api/requests/{rid}", headers=hdr).json()
+    assert body["status"] == "awaiting_signature", (
+        f"أُغلقت الاستقالة بلا توقيع: {body['status']}"
     )
 
 
-def test_the_divergence_is_exactly_the_known_set():
-    """والانحراف مثبَّت بالاسم: لا ينمو صامًتا ولا يُنسى.
+def test_the_document_is_generated_before_the_wait(client, resigning_employee):
+    """ولا يُنتظَر توقيع ورقة لم تُولَّد بعد."""
+    eid = resigning_employee
+    hdr = auth_headers(login(client, *EMP))
+    rid = client.post("/api/requests", headers=hdr, json={
+        "employee_id": eid, "request_type_code": "REQRESIGN",
+        "payload_json": RESIGN}).json()["id"]
+    for who in (MGR, HR):
+        client.post(f"/api/requests/{rid}/decide",
+                    headers=auth_headers(login(client, *who)),
+                    json={"decision": "approved"})
 
-    نوع يُضاف غًدا يُعلن توقيًعا بلا مرحلة يسقط هنا؛ ونوع يُصحَّح يسقط
-    هنا أيًضا. وكلاهما وقت مراجعة صحيح — بخلاف عدٍّ يُحدَّث بلا قراءة.
+    db = SessionLocal()
+    try:
+        docs = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid)).all()
+    finally:
+        db.close()
+    assert any(d.lifecycle_status == "GENERATED" and d.file_path for d in docs), (
+        f"وقف للتوقيع بلا مستند: {[(d.kind, d.lifecycle_status) for d in docs]}"
+    )
+
+
+def test_a_lifted_type_no_longer_waits(client):
+    """وما رُفعت رايته لا يقف: خطوة يدوية بلا سبب هي ما يعالجه البند.
+
+    ولولا رفع الراية لتوقّفت الأنواع الأحد عشر كلها بعد أن صار المحرّك
+    يقرأ الإعلان — أي أن القراءة بلا القرار كانت ستُعطّلها.
     """
-    divergent = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
-                 if _declares_signature(rt) and not _has_signature_stage(rt)}
-    added = divergent - KNOWN_DIVERGENT
-    fixed = KNOWN_DIVERGENT - divergent
-    assert not added, (
-        f"أنواع جديدة تُعلن توقيًعا ولا تطلبه: {sorted(added)}"
+    db = SessionLocal()
+    try:
+        eid = db.scalar(select(models.Employee.id).where(
+            models.Employee.civil_id == EMP[0]))
+    finally:
+        db.close()
+    hdr = auth_headers(login(client, *EMP))
+    r = client.post("/api/requests", headers=hdr, json={
+        "employee_id": eid, "request_type_code": "REQTRF",
+        "payload_json": {"current_branch": "الفرع الأول",
+                         "target_branch": "الفرع الثاني",
+                         "effective_date": "2027-03-01",
+                         "reason": "إعادة توزيع"}})
+    assert r.status_code == 201, r.text[:250]
+    rid = r.json()["id"]
+    for who in (MGR, HR):
+        h = auth_headers(login(client, *who))
+        d = client.post(f"/api/requests/{rid}/decide", headers=h,
+                        json={"decision": "approved"})
+        if d.status_code != 200:
+            break
+    body = client.get(f"/api/requests/{rid}", headers=hdr).json()
+    assert body["status"] != "awaiting_signature", (
+        "نوع رُفعت رايته ما زال يقف للتوقيع"
     )
-    assert not fixed, (
-        f"صُحّحت أنواع — احذفها من KNOWN_DIVERGENT: {sorted(fixed)}"
-    )
 
 
-def test_no_type_stops_for_a_signature_it_never_declared():
-    """والاتّجاه الآخر نظيف — وهو ما يجعل الأول انحراًفا لا فوضى.
+def test_the_decision_reaches_existing_databases():
+    """**والبذر يُدرج ولا يُحدِّث**: بلا ترحيل يبقى الإنتاج على قيمته.
 
-    لا نوع يوقف الطلب للتوقيع بينما تعريفه يقول إنه لا يحتاجه. فالعيب
-    في اتّجاه واحد: إعلان بلا تنفيذ، لا تنفيذ بلا إعلان.
+    وهنا لا يترك الإهمالُ عيًبا صامًتا بل يُعطّل: بعد أن صار المحرّك
+    يقرأ الراية، تقف الأنواع الأحد عشر عند ``awaiting_signature``
+    انتظاًرا لتوقيع لم يقرّره أحد.
     """
-    rogue = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
-             if _has_signature_stage(rt) and not _declares_signature(rt)}
-    assert not rogue, (
-        f"يوقف الطلب للتوقيع بلا إعلان: {sorted(rogue)}"
-    )
+    versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    # الترحيل الذي **يضبط القيم** لا الذي يذكر العمود: أول كتابة أمسكت
+    # ترحيل المخطّط الابتدائي لأن CREATE TABLE فيه يذكر العمود.
+    setters = [p for p in versions.glob("*.py")
+               if "requires_physical_signature" in (
+                   text := p.read_text(encoding="utf-8"))
+               and "REQRESIGN" in text]
+    assert setters, "لا ترحيل يوصّل قرار التوقيع إلى القواعد القائمة"
+
+    text = setters[0].read_text(encoding="utf-8")
+    for code in ("REQEOS", "REQCLR"):
+        assert code in text, f"{code} غائب عن الترحيل"
+    for code in ("REQTRF", "ADMWARN", "REQPROMO"):
+        assert code in text, f"{code} غائب عن الترحيل — تبقى رايته مرفوعة"
 
 
-def test_the_most_consequential_documents_are_in_the_gap():
-    """وليس الانحراف في هوامش الكتالوج.
-
-    استقالة، وتسوية نهاية خدمة، وإخلاء طرف، وإنذار — أربعة يُحتجّ بها
-    على الطرفين، وتُصدَر بلا توقيع الموظف بينما تعريفها يشترطه.
-    """
-    heavy = {"REQRESIGN", "REQEOS", "REQCLR", "ADMWARN"}
-    assert heavy <= KNOWN_DIVERGENT, sorted(heavy - KNOWN_DIVERGENT)
-
-
-def test_a_type_that_needs_a_signature_has_something_to_sign():
-    """**وفجوة ثانية مستقلّة**: توقيع على مستند لا وجود له.
-
-    ``REQWLOC`` يُعلن توقيًعا مطلوًبا و``default_template_code`` فيه
-    ``None`` — فحتى لو قرّر المالك أن التوقيع مطلوب، لا ورقة تُوقَّع.
-    والقرار في مسار واحد لا يُغني عن الآخر.
-    """
-    naked = [rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
-             if _declares_signature(rt) and rt.get("produces_document")
-             and not rt.get("default_template_code")]
-    assert naked == ["REQWLOC"], (
-        f"تغيّرت الفجوة: {naked} — راجعها بدل تحديث الرقم"
-    )
+def test_certificates_were_never_in_the_gap():
+    """والشهادات لم تكن جزًءا من الانحراف — تُصدرها الشركة وتوقّعها هي."""
+    certs = {"salary_certificate", "REQCERTSAL", "REQCERTEMP", "REQCERTEXP"}
+    declared = {rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
+                if _declares(rt)}
+    assert not (certs & declared), sorted(certs & declared)
