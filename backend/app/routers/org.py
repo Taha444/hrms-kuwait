@@ -273,9 +273,17 @@ def list_shifts(company_id: int | None = None,
     if cid is not None:
         q = q.where(models.Shift.company_id == cid)
     rows = db.scalars(q).all()
+    # **وردية لا أحد عليها لا تفعل شيًئا**: التأخير والانصراف المبكّر
+    # يُحسبان من ``emp.shift_id``، ومن لا وردية له «حاضر» دائًما. فالعدد
+    # معروض ليرى المعرِّف أن ما عرّفه بلا أثر.
+    counts = dict(db.execute(
+        select(models.Employee.shift_id, func.count(models.Employee.id))
+        .where(models.Employee.shift_id.is_not(None))
+        .group_by(models.Employee.shift_id)).all())
     return [{"id": s.id, "name": s.name, "start_time": str(s.start_time),
              "end_time": str(s.end_time), "work_days": s.work_days,
-             "grace_minutes": s.grace_minutes} for s in rows]
+             "grace_minutes": s.grace_minutes,
+             "employee_count": counts.get(s.id, 0)} for s in rows]
 
 
 @router.post("/shifts", status_code=201)
@@ -288,6 +296,32 @@ def create_shift(data: schemas.ShiftIn, request: Request,
     db.add(shift)
     db.flush()
     audit(db, user, "create_shift", "shift", shift.id, request=request)
+    db.commit()
+    return {"ok": True, "id": shift.id}
+
+
+@router.put("/shifts/{shift_id}")
+def update_shift(shift_id: int, data: schemas.ShiftIn, request: Request,
+                 user: models.User = Depends(require_perm("manage_attendance")),
+                 db: Session = Depends(get_db)):
+    """تعديل وردية قائمة.
+
+    **ولماذا لزم**: السجل كان إنشاًء بلا تعديل، فخطأ في وقت البدء يبقى
+    إلى الأبد ويُخطئ في وسم كل حضور بعده — والعلاج الوحيد إنشاء وردية
+    ثانية وإعادة إسناد كل من عليها.
+    """
+    shift = db.get(models.Shift, shift_id)
+    if not shift:
+        raise HTTPException(status_code=404, detail="الوردية غير موجودة")
+    assert_same_company(user, shift.company_id, db=db)
+    before = {"name": shift.name, "start_time": str(shift.start_time),
+              "end_time": str(shift.end_time), "work_days": shift.work_days,
+              "grace_minutes": shift.grace_minutes}
+    for k, v in data.model_dump().items():
+        setattr(shift, k, v)
+    # التعديل يمسّ وسم حضور من عليها — فيُقيَّد بما كان وما صار.
+    audit(db, user, "update_shift", "shift", shift.id, request=request,
+          before=before, after=data.model_dump(mode="json"))
     db.commit()
     return {"ok": True, "id": shift.id}
 

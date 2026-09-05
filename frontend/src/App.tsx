@@ -32,6 +32,7 @@ import EosCases from "./pages/EosCases";
 import Templates from "./pages/Templates";
 import Signatories from "./pages/Signatories";
 import Delegations from "./pages/Delegations";
+import Shifts from "./pages/Shifts";
 import Payroll from "./pages/Payroll";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
@@ -165,6 +166,8 @@ function Sidebar({ open }: { open: boolean }) {
         {canStructure && <Item to="/structure" icon="branches" label={t("structure")} />}
         {canArchive && <Item to="/archive" icon="doc" label={t("archive")} tour="nav-archive" />}
         {canReview && <Item to="/attendance-review" icon="attendance" label={t("attendance_review")} tour="nav-attendance-review" />}
+        {/* الورديات: يُقاس عليها الحضور، ويعرّفها من يديره. */}
+        {can("manage_attendance") && <Item to="/shifts" icon="attendance" label={t("sh_nav")} />}
         {canRenewals && <Item to="/renewals" icon="attendance" label={t("rnw_nav")} tour="nav-renewals" />}
         {/* R8 §1 — الروابط الحكومية: المندوب والأدوار الإدارية.
             QA-29 — للمندوب (PRO) وحده: المعاملات الحكومية اختصاصه، وغيره
@@ -552,6 +555,7 @@ export default function App() {
       <Route path="/attendance" element={
         <Guarded need={(a) => a.isEmployee && a.can("record_attendance")}><Attendance /></Guarded>} />
       <Route path="/attendance-review" element={<Guarded need={(a) => a.canReview}><AttendanceReview /></Guarded>} />
+      <Route path="/shifts" element={<Guarded need={(a) => a.canReview}><Shifts /></Guarded>} />
       {/* V2.2 §16 — redirect legacy /pro to /renewals (سوف يحول تلقائيًا للصفحة الجديدة) */}
       <Route path="/pro" element={<Navigate to="/renewals" replace />} />
       <Route path="/operations" element={<Guarded need={(a) => a.canOperations}><Operations /></Guarded>} />

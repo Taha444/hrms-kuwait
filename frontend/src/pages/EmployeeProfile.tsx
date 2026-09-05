@@ -33,6 +33,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   // R7-G — اقتراحات تغيير الحقول الحرجة: تُقترَح ولا تُطبَّق حتى يعتمدها
   // **غير مقترِحها**. كان المسار مبنًيا بلا مدخل من الواجهة.
   const [changeReqs, setChangeReqs] = useState<any[]>([]);
+  // **وردية الموظف**: التأخير والانصراف المبكّر يُحسبان منها، ومن لا
+  // وردية له يُوسَم «حاضر» دائًما. وكان الحقل يقبله الخادم بلا مدخل.
+  const [shifts, setShifts] = useState<any[]>([]);
   const [prop, setProp] = useState({ field_name: "basic_salary", new_value: "",
                                      effective_date: "", reason: "" });
   const [propBusy, setPropBusy] = useState(false);
@@ -71,6 +74,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     hire_date: "تاريخ التعيين", job_title: "المسمى الوظيفي",
     contract_type: "نوع العقد",
   };
+
+  useEffect(() => {
+    api.get("/shifts").then((r) => setShifts(r.data)).catch(() => setShifts([]));
+  }, []);
 
   const loadChangeReqs = () =>
     api.get(`/employees/${id}/salary-change-requests`)
@@ -151,6 +158,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       nationality: e.nationality ?? "", nationality_en: e.nationality_en ?? "",
       phone: e.phone ?? "", email: e.email ?? "",
       job_title: e.job_title ?? "", actual_job_title: e.actual_job_title ?? "",
+      shift_id: e.shift_id ?? "",
       job_title_en: e.job_title_en ?? "",
       basic_salary: e.basic_salary ?? 0,
       hire_date: e.hire_date ?? "", contract_type: e.contract_type ?? "indefinite",
@@ -461,6 +469,22 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <option value="indefinite">{contractTypeAr("indefinite")}</option>
                   <option value="definite">{contractTypeAr("definite")}</option>
                 </select>
+              </div>
+              <div className="field">
+                <label htmlFor="epf-edit-shift">{t("sh_employee_shift")}</label>
+                <select id="epf-edit-shift" value={editForm.shift_id ?? ""}
+                  onChange={(ev) => setEditForm({ ...editForm,
+                    shift_id: ev.target.value ? Number(ev.target.value) : null })}>
+                  <option value="">{t("sh_none_option")}</option>
+                  {shifts.map((sh: any) => (
+                    <option key={sh.id} value={sh.id}>
+                      {sh.name} ({sh.start_time.slice(0, 5)}–{sh.end_time.slice(0, 5)})
+                    </option>
+                  ))}
+                </select>
+                {!editForm.shift_id && (
+                  <div className="sub">{t("sh_employee_none_hint")}</div>
+                )}
               </div>
               <div className="field">
                 <label htmlFor="epf-edit-hours-type">{t("fld_work_hours_type")}</label>
