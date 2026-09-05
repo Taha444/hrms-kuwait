@@ -157,18 +157,49 @@ def test_omitting_the_action_still_works(client):
     assert r.status_code == 200, r.text[:200]
 
 
-def test_acknowledgement_is_unused_and_its_meaning_unsettled():
-    """**الحارس**: أول سلسلة تستعمل الإقرار تُوقظ سؤاًلا غير محسوم.
+def test_an_objection_is_recorded_and_the_path_continues():
+    """**قرار المالك**: اعتراض الموظف يُسجَّل والمسار يكمل.
 
-    ``dispute`` مربوط بـ``rejected``: معناه أن اعتراض موظف على إنذار
-    **يُسقط الطلب كلّه**. وقد يكون ذلك مقصوًدا وقد يكون العكس —
-    والجواب قرار عمل لا استنتاج شيفرة.
+    كان ``dispute`` مربوًطا بـ``rejected`` — أي أن اعتراض موظف على إنذار
+    **يُسقط الطلب كلّه**. فيُلغى الإنذار باعتراض من وُجّه إليه، ولا يبقى
+    منه أثر يُراجَع.
 
-    فيُحسم يوم يصير حقيقًيا، لا يوم يعترض موظف فيجد إنذاره قد أُلغي.
+    وهذا ما يتيحه فصلُ P11-35: ``decision`` أثرٌ على المسار،
+    و``action`` ما فعله الإنسان. فالمسار يتقدّم والاعتراض مسجَّل بلفظه.
     """
-    assert "ACKNOWLEDGEMENT" not in _stage_types(), (
-        "سلسلة صارت تستعمل ACKNOWLEDGEMENT — احسم أوًلا: هل «اعتراض» "
-        "يُسقط الطلب (dispute→rejected) أم يُسجَّل ويمضي المسار؟"
+    assert request_actions.ACTION_DECISION["dispute"] == "approved", (
+        "الاعتراض ما زال يُسقط الطلب"
+    )
+    assert "dispute" in request_actions.ACTION_LABELS
+    assert request_actions.ACTION_LABELS["dispute"]["ar"] == "اعتراض"
+
+
+def test_the_objection_is_not_confused_with_agreement():
+    """ولا يصير الاعتراض موافقًة: الفعل يبقى مميًَّزا عن أثره.
+
+    لولا عمود ``action`` لَكان تسجيل الاعتراض ``approved`` طمًسا له —
+    فيُقرأ بعد شهور أن الموظف وافق على إنذاره.
+    """
+    same_effect = [a for a, d in request_actions.ACTION_DECISION.items()
+                   if d == "approved"]
+    assert {"acknowledge", "dispute"} <= set(same_effect), same_effect
+    labels = {request_actions.ACTION_LABELS[a]["ar"] for a in same_effect}
+    assert len(labels) == len(same_effect), (
+        f"أفعال بأثر واحد وتسمية واحدة — لا تُميَّز بعد التسجيل: {labels}"
+    )
+
+
+def test_the_acknowledgement_step_is_now_safe_to_use():
+    """ولا مفاجأة فيه يوم يُستعمَل.
+
+    كان معلًَّقا لأن معناه غير محسوم — والحارس السابق يُسقط الاختبار
+    أول سلسلة تستعمله. وقد حُسم، فصار الاستعمال قراًرا لا مخاطرة.
+    """
+    actions = request_actions.ACTIONS_BY_STEP_TYPE["ACKNOWLEDGEMENT"]
+    assert set(actions) == {"acknowledge", "dispute"}, actions
+    effects = {request_actions.ACTION_DECISION[a] for a in actions}
+    assert effects == {"approved"}, (
+        f"خطوة الإقرار ما زال أحد أفعالها يُسقط الطلب: {effects}"
     )
 
 

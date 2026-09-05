@@ -132,8 +132,12 @@ export default function RequestDetail() {
           <div className="row">
             {(req.allowed_actions || []).map((a: any) => (
               <button key={a.action}
+                      /* P11-35 — الاعتراض يمضي بالمسار (قرار المالك) لكنه
+                         ليس موافقة: لونُه لون التحفّظ لا لون الاعتماد.
+                         والتلوين على الفعل لا على أثره وحده. */
                       className={a.decision === "rejected" ? "danger"
-                                 : a.decision === "returned" ? "warn" : ""}
+                                 : a.decision === "returned" ? "warn"
+                                 : a.action === "dispute" ? "warn" : ""}
                       onClick={() => decide(a.decision, a.action)}>
                 {lang === "en" ? a.label_en : a.label_ar}
               </button>
