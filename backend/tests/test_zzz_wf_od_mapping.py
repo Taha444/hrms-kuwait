@@ -165,3 +165,101 @@ def test_declared_workflow_documents_all_exist():
     bad = [(wf, od) for wf, body in R.CANONICAL_WORKFLOWS.items()
            for od in (body.get("od") or []) if od not in R.CANONICAL_DOCUMENTS]
     assert not bad, f"مستندات معلَنة وغير معرَّفة: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# ما لا يفحصه الحارس أعلاه — وقد قِسته فوجدت التصفية صائبة
+# ---------------------------------------------------------------------------
+#
+# ظننتُ أن الشرط ``if actual and declared`` نقطة عمياء، وأن تصفية
+# «الأنواع المنتِجة» تُخفي مخالفات. **والقياس نقض ذلك:**
+#
+# تسعة وثلاثون نوًعا تُعلن ``default_template_code``، وثمانية عشر منها
+# يشير إلى مستند لا يعلنه مساره — **وكلّها بلا استثناء ``produces_document
+# = False``**. أي أن الحقل على النوع غير المولِّد تصنيف خامل لا ادّعاء عن
+# مستند يصدر. فتصفية الحارس على المولِّدة **صائبة**، لا قاصرة.
+#
+# وسقط بذلك اتّهام وجّهتُه لـ``REQWP`` (تجديد إذن عمل يشير إلى قالب
+# «إنذار موظف»): صحيح حرًفا، وخامل أثًرا — كأخواته السبعة عشر.
+#
+# **ويبقى ثلاثة تُنتج مستنًدا فعًلا ولا يمكن التحقّق منها**، ولكلٍّ سبب
+# مختلف. وتُثبَّت بأسمائها فلا تنمو صامتًة.
+
+#: أنواع **تُنتج مستنًدا** ولا يقطع السجلّ في خريطتها.
+KNOWN_UNVERIFIABLE = {
+    # لا قالب له إطلاًقا. ومساره WF-018 يعلن OD-005 — فالسجلّ يقول
+    # المستند ولا يقول أيّ قالب من ثمانية تشير إليه. والاختيار بالاسم
+    # هو الخطأ الذي وقع في V-A وصحّحه هذا الجسر.
+    "REQWLOC",
+    # مساره WF-029 لا يعلن مستنًدا، فلا شيء يُقارَن به.
+    "REQMIS",
+    # ليس في سجلّ V1.5 (canonical=None) فلا مسار يُقارَن به. ويشير إلى
+    # «إنذار موظف» (HRMS-PR-022 → OD-006) — **وهو يُنتج مستنًدا فعًلا**،
+    # فتجديد ترخيص شركة يُصدر خطاب إنذار. خطأ مُثبَت، وجوابه قرار عمل.
+    "ADMLIC",
+}
+
+
+def test_the_unverifiable_set_is_exactly_what_was_measured():
+    """**الحارس على الحارس**: ما لا يُفحَص مثبَّت بالاسم.
+
+    نوع يُنتج مستنًدا ويفلت من الفحص غًدا يسقط هنا يوم يُضاف. ونوع
+    يُحسم يسقط هنا أيًضا — وكلاهما وقت مراجعة صحيح.
+    """
+    escaping = set()
+    for rt in _types_producing_documents():
+        entry = R.LEGACY_REQUEST_ALIASES.get(rt["code"]) or {}
+        canonical = entry.get("canonical") if isinstance(entry, dict) else None
+        declared = set((R.CANONICAL_WORKFLOWS.get(canonical) or {}).get("od") or [])
+        actual = R.LEGACY_PRN_ALIASES.get(rt.get("default_template_code"))
+        if not (actual and declared):
+            escaping.add(rt["code"])
+
+    added = escaping - KNOWN_UNVERIFIABLE
+    fixed = KNOWN_UNVERIFIABLE - escaping
+    assert not added, f"أنواع منتِجة جديدة تفلت من الفحص: {sorted(added)}"
+    assert not fixed, f"حُسمت أنواع — احذفها من KNOWN_UNVERIFIABLE: {sorted(fixed)}"
+
+
+def test_the_template_field_is_inert_on_non_producing_types():
+    """**وأساس اطمئناننا للتصفية**، مقيس لا مفترَض.
+
+    كل مخالفة خارج الأنواع المنتِجة لا يقع لها أثر — لأن التوليد لا يمرّ
+    بها أصًلا. ولو أصبح نوع غير منتِج يولّد غًدا، صار تصنيفه ادّعاًء
+    يُصدر ورقة خاطئة — ويسقط هذا الاختبار عندئذٍ.
+    """
+    producing = {rt["code"] for rt in _types_producing_documents()}
+    mismatched_non_producing = []
+    for rt in workflow.DEFAULT_REQUEST_TYPES:
+        if rt["code"] in producing or not rt.get("default_template_code"):
+            continue
+        entry = R.LEGACY_REQUEST_ALIASES.get(rt["code"]) or {}
+        canonical = entry.get("canonical") if isinstance(entry, dict) else None
+        declared = set((R.CANONICAL_WORKFLOWS.get(canonical) or {}).get("od") or [])
+        actual = R.LEGACY_PRN_ALIASES.get(rt["default_template_code"])
+        if actual and declared and actual not in declared:
+            mismatched_non_producing.append(rt["code"])
+
+    assert mismatched_non_producing, (
+        "لا مخالفة خارج المنتِجة — راجع هذا الاختبار، فأساسه زال"
+    )
+    assert not (set(mismatched_non_producing) & producing), (
+        "مخالفة صارت في نوع يولّد مستنًدا — صار التصنيف ادّعاًء له أثر: "
+        f"{sorted(set(mismatched_non_producing) & producing)}"
+    )
+
+
+def test_the_warning_notice_template_is_what_we_think_it_is():
+    """وأساس الحكم على ADMLIC مقيس لا مقروء بالاسم.
+
+    ``HRMS-PR-022`` في البذرة **«إنذار موظف»**، فئته «الإجراءات
+    التأديبية». فإصدار تجديد الترخيص منه خطأ مُثبَت لا رأي.
+    """
+    from pathlib import Path
+
+    seed = (Path(__file__).resolve().parents[1] / "app" / "seed.py"
+            ).read_text(encoding="utf-8")
+    assert '"HRMS-PR-022", "إنذار موظف"' in seed, (
+        "تغيّر تعريف HRMS-PR-022 — أعد قياس الخريطة قبل الاعتماد عليها"
+    )
+    assert R.LEGACY_PRN_ALIASES.get("HRMS-PR-022") == "OD-006"
