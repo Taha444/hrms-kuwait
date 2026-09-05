@@ -206,6 +206,12 @@ DEFAULT_REQUEST_TYPES = [
             {"order": 2, "label": "إجراءات إذن مغادرة البلاد (المندوب)", "role": "delegate",
              "kind": "delegate_exit",
              "when": {"field": "travel_required", "truthy": True}},
+            # بعد إلغاء انتظار التوقيع صارت الإجازة تُغلَق عند شؤون الموظفين،
+            # فيصدر المستند ولا يُقال لأحد أين يأخذه: «مكتمل» في الشاشة وورقة
+            # لم تُسلَّم. والمرحلة **بعد المندوب** لا قبله ليأخذ الموظف نموذج
+            # الإجازة وإذن المغادرة مًعا لا على دفعتين.
+            {"order": 3, "label": "جاهزة للاستلام من شؤون الموظفين", "role": "hr",
+             "kind": "pickup"},
         ],
         "template_html": None,
         "visible_to_employee": True, "default_template_code": "HRMS-PR-027",
@@ -1084,6 +1090,18 @@ def _decided_by(db: Session, req: models.Request, stage_order: int) -> int | Non
     return getattr(row, "approver_user_id", None) if row else None
 
 
+#: مراحل **تُنفَّذ** لا تُقرَّر: لا تُتخطّى لتكرار الشخص، لأن تخطّيها
+#: يُلغي عمًلا واقًعا (تسليم ورقة، استخراج إذن) لا قراًرا مكرًرا.
+ACTION_STAGE_KINDS = {"pickup", "delegate_exit"}
+
+#: **تسليم** لا أكثر: ما بعدها لا يُنتَج مستند ولا تتغيّر بيانات.
+#:
+#: وهي أضيق من ``ACTION_STAGE_KINDS`` بقصد: ``delegate_exit`` يستخرج إذن
+#: مغادرة ويقف الطلب عليه، وتوقيت أثره اليوم بعده. وتقديمه إلى ما قبله
+#: تغيير لم يُطلَب — والفرق بين القاعدتين مقصود لا سهو.
+HANDOVER_STAGE_KINDS = {"pickup"}
+
+
 def _skip_duplicate_approver(db: Session, req: models.Request,
                              rt: models.RequestType) -> bool:
     """V2.2 §13.9 (AC-09) + RW-09 — تتخطّى المرحلة إن كان معتمِدها هو نفسه من
@@ -1096,9 +1114,20 @@ def _skip_duplicate_approver(db: Session, req: models.Request,
     الشرط "وحده": لو كان للمرحلة معتمِدون آخرون فالمراجعة المستقلة ما زالت
     ممكنة، فلا نتخطّاها — نتركها لهم. والتخطّي يُسجَّل بسببه حتى لا يبدو
     القرار وقد قفز مرحلة بلا تفسير.
+
+    **والقاعدة للقرارات وحدها**: مرحلة الاستلام أو إذن المغادرة ليست
+    مراجعًة يوقّعها صاحبها مرّتين بل **عمل يقع** — ورقة تُسلَّم، وإذن
+    يُستخرَج. وتخطّيها لأن منفّذها هو نفسه من اعتمد قبله يُلغي العمل لا
+    التكرار: يُغلَق الطلب وقد صدر المستند ولم يستلمه أحد.
+
+    وكان العيب كامًنا: مراحل التنفيذ القائمة كان دورها يخالف ما قبلها
+    دائًما (المحاسب بعد المدير)، فلم يقع الشرط. وأول مرحلة استلام دورها
+    ``hr`` بعد مراجعة ``hr`` كشفته.
     """
     chain = _chain(rt, req)
     if req.current_stage <= 0 or req.current_stage >= len(chain):
+        return False
+    if chain[req.current_stage].get("kind") in ACTION_STAGE_KINDS:
         return False
     previous = _decided_by(db, req, req.current_stage - 1)
     if not previous:
@@ -1128,10 +1157,20 @@ def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
     # قد تتوالى مراحل لنفس الشخص، فنتخطّى ما دام الشرط قائًما
     while _skip_duplicate_approver(db, req, rt):
         req.current_stage += 1
-    if req.current_stage >= len(_chain(rt, req)):
+    chain = _chain(rt, req)
+    if req.current_stage >= len(chain):
         _finalize(db, req)
-    else:
-        enter_stage(db, req, rt)
+        return
+
+    # **الأثر يقع عند انتهاء العمل لا عند تسليم الورقة**: ما بقي تسليٌم
+    # لا أكثر. ولولا هذا لتأخّر خصم الرصيد وتسجيل الإجازة إلى أن يسجّل
+    # أحدهم الاستلام — وقد يسافر الموظف قبله. وفشل التطبيق يوقف الطلب
+    # هنا: لا يُدعى أحد ليستلم ورقًة أثرُها لم يقع.
+    if all(s.get("kind") in HANDOVER_STAGE_KINDS for s in chain[req.current_stage:]):
+        if not _apply_effects(db, req, rt):
+            return
+
+    enter_stage(db, req, rt)
 
 
 # الإجازة السنوية وحدها تُخصم من الرصيد؛ المرضية والطارئة وبدون راتب لها
@@ -1296,9 +1335,15 @@ def retry_apply(db: Session, req: models.Request) -> None:
     ولافتة تقول «يحتاج إجراء» بلا إجراء موجود. والإلغاء محجوز للمدير
     العام، فلمن تلقّى المهمة (الشؤون القانونية) الطلبُ جدار.
 
-    **وهو الباب نفسه لا باب ثانٍ**: يستدعي ``_finalize`` التي تطبّق الأثر
-    وتُكمل أو تُفشل. طريق ثانٍ لتطبيق الأثر يعني قاعدتين تنحرفان — وهو
-    ما يحذّر منه تعليق ``_finalize`` نفسه.
+    **وهو الباب نفسه لا باب ثانٍ**: يستدعي ``_advance`` التي تطبّق الأثر
+    ثم تُكمل المسار. طريق ثانٍ لتطبيق الأثر يعني قاعدتين تنحرفان — وهو
+    ما يحذّر منه تعليق ``_apply_effects`` نفسه.
+
+    **ولماذا ``_advance`` لا ``_finalize``**: صار الأثر قد يقع قبل مرحلة
+    الاستلام. فالنداء المباشر على ``_finalize`` كان — بعد إضافتها —
+    يُغلق الطلب «مكتمًلا» ويقفز فوق التسليم: ورقة صدرت ولم يستلمها أحد.
+    و``_advance`` تُعيده إلى حيث توقّف: تطبّق ثم تُدخل المرحلة التالية،
+    فإن لم يبقَ شيء أغلقت.
 
     والفشل المتكرّر يبقى ``apply_failed`` بسببه المحدَّث: إعادة المحاولة
     لا تُخفي العطل، بل تُتيح تصحيح سببه ثم المضيّ.
@@ -1307,13 +1352,41 @@ def retry_apply(db: Session, req: models.Request) -> None:
         raise HTTPException(
             status_code=409,
             detail=f"إعادة التطبيق تخصّ الطلبات المتعثّرة وحدها — حالته «{req.status}»")
-    _finalize(db, req)
+    rt = get_request_type(db, req.company_id, req.request_type_code)
+    _advance(db, req, rt)
     db.commit()
     db.refresh(req)
 
 
-def _finalize(db: Session, req: models.Request) -> None:
-    rt = get_request_type(db, req.company_id, req.request_type_code)
+def _effects_applied(db: Session, req: models.Request) -> bool:
+    """هل وقع الأثر فعًلا؟ سطر النظام «معتمَد» هو أثره الوحيد في السجل.
+
+    و``apply_failed`` **لا يُحتسَب**: إعادة المحاولة تحتاج أن تعيد
+    التطبيق، فلو حُسب لأُغلق الطلب «مكتمًلا» بلا أثر وقع.
+    """
+    return db.scalar(select(models.RequestApproval.id).where(
+        models.RequestApproval.request_id == req.id,
+        models.RequestApproval.approver_role == "system",
+        models.RequestApproval.decision == "approved",
+    )) is not None
+
+
+def _apply_effects(db: Session, req: models.Request,
+                   rt: models.RequestType | None) -> bool:
+    """يطبّق أثر الطلب — يعيد True إن وقع (أو لا أثر له)، False إن فشل.
+
+    **ولماذا انفصل عن الإغلاق**: الأثر يقع عند انتهاء **القرارات** لا عند
+    تسليم الورقة. فمرحلة الاستلام أُضيفت بعد سلسلة الإجازة، ولو بقي الأثر
+    مربوًطا بالإغلاق لتأخّر خصم الرصيد وتسجيل الإجازة إلى أن يسجّل أحدهم
+    الاستلام: يسافر الموظف ولا صفّ إجازة له ولا رصيد نقص. وأسوأ منه أن
+    ``apply_failed`` — كنقص الرصيد — كان يظهر بعد أن قيل للموظف «جاهز
+    للاستلام».
+
+    **وهو الباب نفسه لا باب ثانٍ**: تعريف واحد يُستدعى من موضعين،
+    ويحرسه ``_effects_applied`` فلا يقع الأثر مرّتين.
+    """
+    if _effects_applied(db, req):
+        return True
 
     # P0-#6 — Apply Effect atomicity:
     # - Success → status="completed", current_stage stays at len(chain) (past-end).
@@ -1347,8 +1420,12 @@ def _finalize(db: Session, req: models.Request) -> None:
         if not applied:
             # roll back current_stage — نجعله يشير للمرحلة الأخيرة اللي اعتُمدت فعلاً
             # (بدل من len(chain) = past-end الحالة التناقضية)
+            #
+            # والحساب من الموضع الحالي لا من طول السلسلة: صار الأثر يقع
+            # قبل مرحلة الاستلام أيًضا، فالطرح من الطول كان يقفز بالطلب
+            # **إلى الأمام** عند الفشل — إلى مرحلة لم يبلغها.
             if chain_len > 0:
-                req.current_stage = chain_len - 1
+                req.current_stage = max(0, min(req.current_stage, chain_len) - 1)
             req.status = "apply_failed"
             req.closed_at = None  # ما نغلقه — يحتاج إجراء
             db.add(models.RequestApproval(
@@ -1396,7 +1473,7 @@ def _finalize(db: Session, req: models.Request) -> None:
                     related_entity_type="request", related_entity_id=req.id,
                     dedup_key=f"req_apply_failed:{req.id}", severity="critical",
                 )
-            return
+            return False
         # نجح التطبيق — نسجّل ملاحظة قبل/بعد كـ approval trail
         db.add(models.RequestApproval(
             request_id=req.id, stage_order=req.current_stage,
@@ -1414,6 +1491,18 @@ def _finalize(db: Session, req: models.Request) -> None:
             entity_id=req.id, detail=note,
             correlation_id=f"req:{req.id}",
         ))
+    return True
+
+
+def _finalize(db: Session, req: models.Request) -> None:
+    """يُغلق الطلب — بعد أن يقع أثره.
+
+    والأثر قد يكون وقع قبل مرحلة الاستلام، فـ``_apply_effects`` تحرس
+    نفسها ولا تُكرّره.
+    """
+    rt = get_request_type(db, req.company_id, req.request_type_code)
+    if not _apply_effects(db, req, rt):
+        return
 
     req.status = "completed"
     req.closed_at = datetime.now(timezone.utc)

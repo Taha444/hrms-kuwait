@@ -173,12 +173,18 @@ def test_the_effect_goes_through_the_same_door():
 
     فيرث ذرّيته ومسار ``apply_failed`` — فلو تعذّر فتح المرجع صار
     الطلب متعثًّرا بسببه المكتوب، لا «مكتمًلا» بلا أثر.
+
+    وانفصل الباب عن الإغلاق حين أُضيفت مرحلة الاستلام: صار الأثر يقع
+    عند انتهاء العمل و``_finalize`` تُغلق وحدها. والدعوى واحدة —
+    **جدول آثار واحد** — وموضعها هو الذي تغيّر.
     """
-    src = inspect.getsource(workflow._finalize)
+    src = inspect.getsource(workflow._apply_effects)
     assert "REQRESIGN" in src and "REQEOS" in src, (
         "طلبات الخروج ليست في جدول الآثار"
     )
     assert "_open_exit_case" in src
+    # ولا جدول ثانٍ في الإغلاق.
+    assert "_apply_effects" in inspect.getsource(workflow._finalize)
 
 
 def test_a_failure_to_open_the_master_is_not_silent(client, leaver, monkeypatch):

@@ -295,13 +295,22 @@ def test_full_leave_workflow(client):
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "awaiting_delegate", r.json()["status"]
 
-    # 6) المندوب يرفع إذن المغادرة → completed
+    # 6) المندوب يرفع إذن المغادرة → جاهز للاستلام
     delegate = login(client, "100000000004", "deleg123")
     files = {"file": ("exit.pdf", io.BytesIO(b"exit-permit"), "application/pdf")}
     r = client.post(f"/api/requests/{req_id}/documents", headers=auth_headers(delegate),
                     data={"kind": "exit_permit"}, files=files)
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "completed"
+    assert r.json()["status"] == "ready_for_pickup", r.json()["status"]
+
+    # 7) الموظف يستلم نموذج الإجازة وإذن المغادرة مًعا → completed
+    #
+    # قرار المالك: كان الطلب يُغلَق هنا فيصدر المستند ولا يُقال لأحد أين
+    # يأخذه — «مكتمل» في الشاشة وورقة لم تُسلَّم.
+    r = client.post(f"/api/requests/{req_id}/received", headers=auth_headers(hr))
+    assert r.status_code == 200, r.text
+    assert client.get(f"/api/requests/{req_id}",
+                      headers=auth_headers(hr)).json()["status"] == "completed"
 
     # المستند المُولَّد متاح، وهو PDF حقيقي (FIX-007)
     r = client.get(f"/api/requests/{req_id}/document/generated_pdf", headers=auth_headers(hr))

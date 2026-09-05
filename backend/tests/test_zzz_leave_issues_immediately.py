@@ -79,7 +79,9 @@ def test_a_leave_request_completes_without_a_signature_step(client):
     assert "awaiting_signature" not in seen, (
         f"ما زال يقف للتوقيع: {seen}"
     )
-    assert seen[-1] == "completed", f"لم يكتمل — استقرّ عند {seen[-1]}"
+    # ويستقرّ عند الاستلام لا عند التوقيع: المستند صدر، ويُقال أين يُؤخَذ.
+    # (مرحلة الاستلام قرار لاحق للمالك — انظر ``test_zzz_leave_pickup_stage``)
+    assert seen[-1] == "ready_for_pickup", f"استقرّ عند {seen[-1]}"
 
 
 def test_the_document_is_issued_and_carries_the_signature(client):
@@ -117,9 +119,11 @@ def test_the_document_is_issued_and_carries_the_signature(client):
 
 
 def test_the_leave_effect_still_applies(client):
-    """والأثر يقع: الرصيد يُخصَم عند الاكتمال لا عند رفع التوقيع.
+    """والأثر يقع: الرصيد يُخصَم عند الاعتماد لا عند رفع التوقيع.
 
-    فنقل خطّ النهاية لم يُسقط ما كان يقع عنده.
+    فنقل خطّ النهاية لم يُسقط ما كان يقع عنده. ثم أُضيفت مرحلة الاستلام،
+    فبقي الأثر عند **انتهاء العمل** لا عند تسليم الورقة: لو انتظر
+    التسليم لسافر الموظف بلا صفّ إجازة ولا رصيد نقص.
     """
     eid = _emp_id()
     hdr = auth_headers(login(client, *EMP))
@@ -139,9 +143,11 @@ def test_the_leave_effect_still_applies(client):
             models.RequestApproval.request_id == rid)).all()
     finally:
         db.close()
-    assert req.status == "completed", req.status
-    # أثر الإجازة يُسجَّل سطًرا في سلسلة الاعتماد باسم النظام.
-    assert any(a.approver_role == "system" for a in approvals), (
+    assert req.status == "ready_for_pickup", req.status
+    # أثر الإجازة يُسجَّل سطًرا في سلسلة الاعتماد باسم النظام — **قبل**
+    # التسليم لا بعده.
+    assert any(a.approver_role == "system" and a.decision == "approved"
+               for a in approvals), (
         f"لم يُسجَّل أثر الإجازة: {[(a.approver_role, a.decision) for a in approvals]}"
     )
 
