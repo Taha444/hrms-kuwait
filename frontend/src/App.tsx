@@ -28,6 +28,7 @@ import Operations from "./pages/Operations";
 import Branches from "./pages/Branches";
 import Kiosk from "./pages/Kiosk";
 import Eos from "./pages/Eos";
+import EosCases from "./pages/EosCases";
 import Templates from "./pages/Templates";
 import Payroll from "./pages/Payroll";
 import Reports from "./pages/Reports";
@@ -173,6 +174,9 @@ function Sidebar({ open }: { open: boolean }) {
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
         {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} tour="nav-payroll" />}
+        {can("view_employee") && (
+          <Item to="/eos/cases" icon="eos" label={t("eos_cases_nav")} />
+        )}
         {can("calculate_eos") && <Item to="/eos" icon="eos" label={t("eos")} />}
         {can("export_reports") && <Item to="/reports" icon="doc" label={t("reports")} tour="nav-reports" />}
       </div>
@@ -500,6 +504,11 @@ export default function App() {
       <Route path="/operations" element={<Guarded need={(a) => a.canOperations}><Operations /></Guarded>} />
       <Route path="/branches" element={<Guarded need={(a) => a.can("manage_branches")}><Branches /></Guarded>} />
       <Route path="/eos" element={<Guarded need={(a) => a.can("calculate_eos")}><Eos /></Guarded>} />
+      {/* P6-27 — المرجع الرسمي لمسار الخروج. كان بلا شاشة إطلاًقا: ثمانية
+          نقاط نهاية تسوق المعاملة، ولا واجهة تصل إليها. والحارس هنا هو
+          صلاحية القائمة على الخادم نفسها (view_employee) — لا أشدّ ولا
+          أرخى، فشاشة تُعرض ويرفضها الخادم عيبٌ، والعكس عيبٌ آخر. */}
+      <Route path="/eos/cases" element={<Guarded need={(a) => a.can("view_employee")}><EosCases /></Guarded>} />
       <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")}><Templates /></Guarded>} />
       <Route path="/payroll" element={<Guarded need={(a) => a.can("view_payroll")}><Payroll /></Guarded>} />
       <Route path="/reports" element={<Guarded need={(a) => a.can("export_reports")}><Reports /></Guarded>} />

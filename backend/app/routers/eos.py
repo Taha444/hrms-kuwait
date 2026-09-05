@@ -184,6 +184,9 @@ def _serialize_case(db: Session, case: models.EosCase) -> dict:
         "printed_by": case.printed_by, "printed_at": case.printed_at,
         "filed_by": case.filed_by, "filed_at": case.filed_at,
         "filing_location": case.filing_location,
+        # P6-27 — من أين جاء هذا المرجع: الطلب الذي ترتّب عليه، إن وُجد.
+        # عمود بلا قارئ يعيد العطل نفسه الذي أُصلح.
+        "source_request_id": case.source_request_id,
         "created_at": case.created_at,
     }
 
@@ -428,6 +431,28 @@ def file_case(case_id: int, request: Request, filing_location: str,
           detail=filing_location.strip(), request=request)
     db.commit()
     return _serialize_case(db, case)
+
+
+@router.get("/cases/stage-roles")
+def stage_roles(user: models.User = Depends(get_current_user)):
+    """الأدوار المخوّلة لكل خطوة — تقرؤها الشاشة ولا تحسبها.
+
+    APP-01 — أي منطق صلاحيات مكرَّر في مكانين ينحرف أحدهما عن الآخر.
+    فالشاشة تعرض ما يقبله الخادم بالضبط: لا زرّ بلا صلاحية، ولا
+    صلاحية بلا زرّ.
+    """
+    # والتسميات العربية من مصدرها لا من نسخة في الواجهة: شاشة عربية
+    # تقول «accountant» و«resignation» نصف مكتملة، وترجمتها في الواجهة
+    # قائمة ثانية تتقادم مع أول دور يُضاف.
+    from ..permissions import ROLE_LABEL_AR
+
+    return {"flow": EOS_FLOW,
+            "roles": {k: list(v) for k, v in _STAGE_ROLES.items()},
+            "role_labels": {r: ROLE_LABEL_AR.get(r, r)
+                            for v in _STAGE_ROLES.values() for r in v},
+            "reasons": eos_engine.TERMINATION_REASONS,
+            "you": user.role,
+            "you_label": ROLE_LABEL_AR.get(user.role, user.role)}
 
 
 @router.get("/cases")

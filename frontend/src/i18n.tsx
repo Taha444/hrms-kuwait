@@ -427,6 +427,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   emp_permits: { ar: "الإقامات وأذونات العمل", en: "Residencies & Work Permits" },
   emp_recent_att: { ar: "آخر سجلات الحضور", en: "Recent Attendance" },
   emp_terminate: { ar: "إنهاء الخدمة وحساب المكافأة", en: "End of Service & Settlement" },
+  // P6-27 — المرجع الرسمي لمسار الخروج، تمييًزا عن الحاسبة التقديرية.
+  eos_cases_nav: { ar: "معاملات نهاية الخدمة", en: "End-of-Service Cases" },
   emp_leave_bal: { ar: "رصيد الإجازات (حساب تلقائي حسب مدة الخدمة)", en: "Leave Balance (auto by service)" },
   leave_consumed: { ar: "الأيام المستهلَكة", en: "Days Used" }, leave_calc: { ar: "احسب الرصيد المتبقي", en: "Calculate Remaining" },
   leave_accrued: { ar: "المستحق", en: "Accrued" }, leave_remaining: { ar: "المتبقي", en: "Remaining" },

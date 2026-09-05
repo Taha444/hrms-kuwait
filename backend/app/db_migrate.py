@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import sys
 
+from sqlalchemy import text
+
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
@@ -36,10 +38,26 @@ def run() -> None:
     insp = inspect(engine)
     tables = set(insp.get_table_names())
 
-    if "alembic_version" not in tables and tables:
+    # الشرط على **وجود إصدار مسجَّل** لا على وجود الجدول.
+    #
+    # كان يفحص ``"alembic_version" not in tables`` وحده. وقاعدة فيها
+    # الجدول **فاًرغا** — ختم انقطع، أو ``downgrade base``، أو أداة
+    # أنشأت الجدول بلا صفّ — تتخطّى الختم، ثم يصطدم ``upgrade`` بجداول
+    # قائمة ويفشل الإقلاع. قِستُها على قاعدة تطوير: خمسون جدوًلا،
+    # و``alembic_version`` موجود وصفوفه صفر.
+    #
+    # وهذا مسار إقلاع الإنتاج نفسه — يفشل بصوت مسموع (وهو صواب) على
+    # حالة قابلة للإصلاح، فيوقف النشر بلا سبب حقيقي.
+    stamped = None
+    if "alembic_version" in tables:
+        with engine.connect() as conn:
+            stamped = conn.execute(
+                text("SELECT version_num FROM alembic_version")).scalar()
+
+    if tables - {"alembic_version"} and not stamped:
         # قاعدة قديمة أُنشئت بـcreate_all: نختمها عند الأساس لا الرأس، فتُطبَّق
         # كل الترحيلات اللاحقة عليها بدل تخطّيها.
-        print(f"[migrate] قاعدة قائمة بلا alembic_version — ختم الأساس "
+        print(f"[migrate] قاعدة قائمة بلا إصدار مسجَّل — ختم الأساس "
               f"{BASELINE_REVISION} ثم الترقية", flush=True)
         command.stamp(cfg, BASELINE_REVISION)
 
