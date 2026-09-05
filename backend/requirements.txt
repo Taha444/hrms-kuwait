@@ -6,6 +6,8 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 python-multipart==0.0.20
 pyjwt==2.10.1
+# FCM HTTP v1 يوقّع رمز الخدمة بـRS256 — وpyjwt يحتاج هذه للتوقيع
+cryptography==43.0.3
 apscheduler==3.11.0
 python-dotenv==1.0.1
 openpyxl==3.1.5

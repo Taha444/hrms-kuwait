@@ -170,7 +170,12 @@ def create_task(
         if assignee_user_id:
             u = db.get(models.User, assignee_user_id)
             recipient = (u.phone or u.email) if u else None
-        dispatch(recipient, title, detail or "")
+        # يُمرَّر ما يعرفه هذا الموضع أصًلا: المستخدم والنوع والكيان.
+        # كان يُرمى عند العبور، فيستحيل الإشعار الفوري بلا سبب حقيقي.
+        dispatch(recipient, title, detail or "",
+                 user_id=assignee_user_id, kind=type,
+                 entity_type=related_entity_type,
+                 entity_id=related_entity_id, db=db)
     except Exception:
         import logging
         logging.getLogger("hrms.notifications").exception(

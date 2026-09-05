@@ -116,13 +116,35 @@ def configure_from_settings(settings) -> None:
     logger.info("Twilio: تم تفعيل قنوات SMS/واتساب الفعلية.")
 
 
-def dispatch(to: str | None, title: str, body: str) -> None:
-    """يرسل الإشعار عبر كل القنوات الفعّالة (best-effort، لا يكسر العملية)."""
+def dispatch(to: str | None, title: str, body: str, *,
+             user_id: int | None = None, kind: str | None = None,
+             entity_type: str | None = None, entity_id: int | None = None,
+             db=None) -> None:
+    """يرسل الإشعار عبر كل القنوات الفعّالة (best-effort، لا يكسر العملية).
+
+    **والمعطيات الجديدة كانت متاحة في موضع النداء وتُهمَل**: هذه الدالة
+    كانت تستقبل هاتًفا ونًصا فقط، بينما مُنشئ الإشعار يعرف المستخدم
+    ونوع الإشعار والكيان المرتبط. فالإشعار الفوري لم يكن ممكًنا لا لأن
+    البيانات غائبة بل لأنها تُرمى عند العبور.
+
+    وكلّها اختيارية: مستدعٍ قديم بثلاثة معاملات يعمل كما كان.
+    """
     for ch in _channels:
         try:
             ch.send(to or "", title, body or "")
         except Exception:  # pragma: no cover
             logger.exception("فشل إرسال إشعار عبر القناة %s", getattr(ch, "name", "?"))
+
+    # الدفع بعد القنوات النصّية وبمعزل عنها: يحتاج مستخدًما وقاعدة، وله
+    # قاعدة «هل يُدفَع؟» خاصّة به. وفشله لا يمنع ما سبقه.
+    if user_id and db is not None:
+        try:
+            from .push import push_to_user
+
+            push_to_user(db, user_id, kind=kind, title=title, body=body,
+                         entity_type=entity_type, entity_id=entity_id)
+        except Exception:  # pragma: no cover
+            logger.exception("فشل الإشعار الفوري للمستخدم %s", user_id)
 
 
 def register_channel(channel: NotificationChannel) -> None:
@@ -151,6 +173,9 @@ CHANNEL_CATALOG: dict[str, dict] = {
                      "و TWILIO_SMS_FROM"},
     "email": {"label": "بريد", "implemented": False, "needs_provider": True,
               "setup": "قناة البريد غير مُنفَّذة بعد — لا مزوّد ولا صنف قناة"},
+    "push": {"label": "إشعار فوري", "implemented": True, "needs_provider": True,
+             "setup": "يلزم ضبط اعتماد Firebase — FCM_CREDENTIALS_FILE أو "
+                      "FCM_PROJECT_ID و FCM_CLIENT_EMAIL و FCM_PRIVATE_KEY"},
 }
 
 
@@ -170,6 +195,14 @@ def channel_availability() -> dict[str, dict]:
             ok, why = False, meta.get("setup")
         elif not meta["needs_provider"]:
             ok, why = True, None
+        elif name == "push":
+            # الدفع لا يُسجَّل في ``_channels``: بقيّة القنوات تُرسل إلى
+            # «مستلِم» نصّي (هاتف/بريد)، والدفع يُرسل إلى **أجهزة
+            # مستخدم**. فتوفّره يُقاس من اعتماد المزوّد مباشرة.
+            from .fcm import is_configured
+
+            ok = is_configured()
+            why = None if ok else meta.get("setup")
         else:
             ok = name in live
             why = None if ok else meta.get("setup")

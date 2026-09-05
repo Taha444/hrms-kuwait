@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     twilio_sms_from: str = ""          # رقم Twilio المرسِل لل SMS، مثل +1XXXXXXXXXX
     twilio_whatsapp_from: str = ""     # رقم واتساب المفعَّل على Twilio، مثل whatsapp:+1XXXXXXXXXX
 
+    # الإشعارات الفورية عبر Firebase Cloud Messaging (HTTP v1).
+    #
+    # تُترك فارغة فتبقى القناة **معلَنة وغير متاحة** — لا مفتاح يُعرَض
+    # للمستخدم يَعِد بتسليم لا يقع (P10-33).
+    #
+    # والمفتاح الخاص **لا يُكتب في .env كسطر واحد**: يُوضع محتوى ملف
+    # حساب الخدمة كما هو، أو يُشار إلى مساره. وسرّ يمرّ في متغيّر بيئة
+    # يظهر في كل لقطة سجلّ وكل نسخة احتياطية.
+    fcm_project_id: str = ""
+    fcm_client_email: str = ""
+    fcm_private_key: str = ""          # -----BEGIN PRIVATE KEY----- ...
+    fcm_credentials_file: str = ""     # بديل: مسار ملف حساب الخدمة
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

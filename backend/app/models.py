@@ -1118,6 +1118,37 @@ class NotificationPreference(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class DeviceToken(Base):
+    """جهاز مسجَّل لاستقبال الإشعارات الفورية (FCM).
+
+    **جهاز لا مستخدم**: الموظف الواحد قد يفتح النظام على هاتفه وحاسبه،
+    ولكلٍّ رمزه. فالإرسال إلى «المستخدم» يعني الإرسال إلى كل أجهزته —
+    وصفّ واحد لكل مستخدم يجعل آخر جهاز يُسجَّل يُلغي ما قبله بصمت.
+
+    و``token`` فريد عالمًيا لا لكل مستخدم: Firebase قد يعيد الرمز نفسه
+    لجهاز انتقل بين حسابين على المتصفّح ذاته. فالتسجيل الجديد **ينقل
+    ملكيّة** الرمز ولا يُنشئ صًفا ثانًيا — وإلا وصل إشعار زيد إلى جهاز
+    يستعمله عمرو.
+
+    و``revoked_at`` بدل الحذف: رمز رفضته Firebase (``UNREGISTERED``)
+    يُوسَم ولا يُمحى، فيبقى في السجلّ أثرُ أن الجهاز كان مسجًَّلا.
+    """
+    __tablename__ = "device_tokens"
+    __table_args__ = (UniqueConstraint("token", name="uq_device_token"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token: Mapped[str] = mapped_column(String(255))
+    #: web / android / ios — يُعلَن ولا يُستنتَج من شكل الرمز.
+    platform: Mapped[str] = mapped_column(String(20), default="web")
+    #: وصف يقرؤه صاحب الجهاز في شاشة «أجهزتي» ليعرف أيّها يُلغي.
+    label: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_reason: Mapped[str | None] = mapped_column(String(60))
+
+
 class JobRun(Base):
     """جولة مهمة مجدولة — القفل والدليل في صفّ واحد.
 
