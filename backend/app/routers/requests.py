@@ -1020,6 +1020,14 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         # ولمن لا أفعال له: السبب بدل الصمت — من ينتظر دوره يحتاج أن يعرف
         # أنه ينتظر لا أن يظنّ الشاشة معطَّلة.
         "no_actions_reason": request_actions.why_not(db, req, viewer),
+        # P11-34 — ومن يُقال له «أعد التطبيق» يحتاج زًرا يفعله.
+        #
+        # ``retry-apply`` بُنيت لتفتح مخرج ``apply_failed``، ثم بقيت بلا
+        # طريق من الواجهة: الرسالة تأمر بفعل والشاشة لا تملكه. والرايةمن
+        # هنا لا من حساب دور في الواجهة — القاعدة الواحدة في مكانين تنحرف.
+        "can_retry_apply": bool(
+            viewer is not None and req.status == "apply_failed"
+            and viewer.role in workflow.APPLY_RETRY_ROLES),
     }
     if full:
         approvals = db.scalars(select(models.RequestApproval).where(

@@ -151,6 +151,20 @@ export default function RequestDetail() {
           </div>
         )}
 
+        {/* P11-34 — مخرج «فشل التطبيق».
+            الرسالة أعلاه تقول «صحّح سبب الفشل ثم أعد التطبيق»، وكانت
+            الشاشة لا تملك الفعل: أمٌر بلا زرّ. والرايةمن الخادم لا من
+            حساب دور هنا — القاعدة الواحدة في مكانين تنحرف. */}
+        {req.can_retry_apply && (
+          <div className="card" style={{ background: "#fff5f5", borderInlineStart: "3px solid var(--danger)" }}>
+            <h4>{t("rd_retry_title")}</h4>
+            <p className="muted">{t("rd_retry_hint")}</p>
+            <button onClick={() => act(() => api.post(`/requests/${id}/retry-apply`), t("rd_retry_done"))}>
+              {t("rd_retry_apply")}
+            </button>
+          </div>
+        )}
+
         {req.status === "returned" && req.requester_user_id === user?.id && (
           <div className="card" style={{ background: "#fffbea", borderInlineStart: "3px solid var(--gold)" }}>
             <h4>{t("rd_resubmit_title")}</h4>

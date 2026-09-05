@@ -700,6 +700,14 @@ const dict: Record<string, { ar: string; en: string }> = {
   rd_resubmit_title: { ar: "الطلب بحاجة معلومات إضافية", en: "Request needs additional information" },
   rd_resubmit_hint: { ar: "عدّل الحقول اللازمة ثم أعد التقديم — سيعود الطلب للمرحلة الأولى دون إنشاء طلب جديد.", en: "Update the required fields then resubmit — the request returns to the first approval stage without creating a new one." },
   rd_resubmitted: { ar: "تمت إعادة التقديم", en: "Resubmitted" },
+  // P11-34 — مخرج «فشل التطبيق»: الطلب اعتُمد ولم يقع أثره.
+  rd_retry_title: { ar: "أثر الطلب لم يُطبَّق", en: "The request's effect was not applied" },
+  rd_retry_hint: {
+    ar: "اعتُمد الطلب ولم يقع أثره — راجع سبب الفشل في سجل القرارات أدناه، صحّحه، ثم أعد التطبيق.",
+    en: "The request was approved but its effect did not take place — check the failure reason in the decisions log below, correct it, then retry.",
+  },
+  rd_retry_apply: { ar: "إعادة التطبيق", en: "Retry" },
+  rd_retry_done: { ar: "أُعيد تطبيق الأثر", en: "Effect reapplied" },
   rd_received_done: { ar: "تم تسجيل الاستلام", en: "Receipt recorded" },
   rd_doc_uploaded: { ar: "تم رفع المستند", en: "Document uploaded" },
   rd_print_status: { ar: "حالة الطباعة", en: "Print Status" },
