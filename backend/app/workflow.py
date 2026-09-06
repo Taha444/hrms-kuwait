@@ -18,11 +18,12 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy import or_ as sa_or
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models, module_owned
@@ -781,6 +782,46 @@ def _employee_name(db: Session, req: models.Request) -> str:
 BLOCKED_EMPLOYEE_STATUSES = ("terminated", "archived", "resigned")
 
 
+def request_fingerprint(employee_id: int, type_code: str, payload: dict | None) -> str:
+    """بصمة الطلب: موظف + نوع + حمولة، مستقرّة على ترتيب المفاتيح.
+
+    ``json.dumps`` بـ``sort_keys`` يجعل حمولتين متطابقتين بترتيب مختلف
+    بصمًة واحدة — وإلا لأفلت التكرار من فرق في الترتيب لا معنى له.
+    """
+    import hashlib
+    import json as _json
+
+    body = _json.dumps(payload or {}, sort_keys=True, ensure_ascii=False,
+                       separators=(",", ":"), default=str)
+    raw = f"{employee_id}|{type_code}|{body}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+#: نافذة التكرار: ضغطة مزدوجة أو إعادة محاولة تقع في ثوانٍ لا في ساعات.
+DUPLICATE_WINDOW_MINUTES = 15
+
+
+def _is_untouched_duplicate(db: Session, req: models.Request) -> bool:
+    """هل هذا الطلب نسخة ثانية من إرسال واحد؟
+
+    **الضغطة المزدوجة تُنتج دائًما طلًبا لم يمسّه أحد**: في مرحلته الأولى،
+    بلا قرار مسجَّل، وقبل دقائق. وما تجاوز ذلك طلٌب حيٌّ قائم بذاته —
+    وإعادته للمستخدم كأنه جديد تُوصله طلًبا لا يستطيع أحد التعامل معه.
+    """
+    if (req.status or "") != "pending" or (req.current_stage or 0) != 0:
+        return False
+    created = req.created_at
+    if created is not None:
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - created
+        if age > timedelta(minutes=DUPLICATE_WINDOW_MINUTES):
+            return False
+    decided = db.scalar(select(models.RequestApproval.id).where(
+        models.RequestApproval.request_id == req.id))
+    return decided is None
+
+
 def create_request(db: Session, employee: models.Employee, requester: models.User,
                    rt: models.RequestType, payload: dict) -> models.Request:
     # P3-15 — موضوع يملكه غير هذه الوحدة لا يُفتح هنا.
@@ -821,14 +862,52 @@ def create_request(db: Session, employee: models.Employee, requester: models.Use
         [s.get("when", {}).get("policy_gt") for s in (rt.approval_chain_json or [])
          if isinstance(s.get("when"), dict) and s["when"].get("policy_gt")],
     )
+    # **إرسالان متطابقان لا يصيران طلبين.**
+    #
+    # قِيس: ثلاث ضغطات على الزرّ نفسه أنتجت ثلاثة طلبات حيّة. والسبب
+    # المعتاد ليس سوء نية: ضغطة مزدوجة، أو إعادة محاولة بعد انقطاع
+    # شبكة، أو تحديث الصفحة بعد الإرسال.
+    #
+    # والحماية على **الطلب القائم** لا على نافذة زمنية: ما دام طلب
+    # بالبصمة نفسها مفتوًحا فهو الطلب. وبعد رفضه أو إلغائه يخرج من
+    # القيد، فإعادة التقديم مسموحة — وهي حالة مشروعة.
+    fp = request_fingerprint(employee.id, rt.code, payload)
+    existing = db.scalar(select(models.Request).where(
+        models.Request.dedup_fingerprint == fp,
+        models.Request.closed_at.is_(None)))
+    if existing is not None and _is_untouched_duplicate(db, existing):
+        # يُعاد الطلب القائم لا خطأ: إعادة المحاولة بعد انقطاع يجب أن
+        # تنجح، ورسالة فشل تدفع المستخدم إلى محاولة ثالثة.
+        return existing
+    if existing is not None:
+        # **طلب تقدّم في مساره ليس تكراًرا لضغطة مزدوجة.**
+        #
+        # أول كتابة لهذا الحارس أعادت الطلب القديم كأنه جديد، فوصل
+        # المستخدم طلٌب في مرحلته الثالثة ولا يمكن اتخاذ قرار فيه.
+        # فتُرفَع بصمته ليخرج من القيد، ويُنشأ الجديد.
+        existing.dedup_fingerprint = None
+        db.flush()
+
     req = models.Request(
         company_id=employee.company_id, employee_id=employee.id,
         requester_user_id=requester.id, request_type_code=rt.code,
         payload_json=payload, status="pending", current_stage=0,
         policy_snapshot_json=snapshot or None,
+        dedup_fingerprint=fp,
     )
     db.add(req)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # **السباق**: طلبان في اللحظة نفسها يجتازان الفحص أعلاه معًا،
+        # فيحسم القيد الفريد. والفحص وحده لا يكفي — لذلك القيد موجود.
+        db.rollback()
+        winner = db.scalar(select(models.Request).where(
+            models.Request.dedup_fingerprint == fp,
+            models.Request.closed_at.is_(None)))
+        if winner is not None:
+            return winner
+        raise
     enter_stage(db, req, rt)
     db.commit()
     db.refresh(req)

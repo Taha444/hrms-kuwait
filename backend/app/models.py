@@ -671,6 +671,22 @@ class RequestType(Base):
 class Request(Base):
     __tablename__ = "requests"
 
+    # **القيد يُعلَن هنا لا في الترحيل وحده.**
+    #
+    # قاعدة الاختبار تُبنى من هذا النموذج، والإنتاج من الترحيل. فقيٌد
+    # مكتوب في أحدهما يعني حمايًة تعمل في مكان وتغيب في الآخر — وأول
+    # كتابة وقعت فيها: مرّت الاختبارات والقاعدة تقبل التكرار.
+    #
+    # وهو **جزئي**: يشمل الطلب المفتوح وحده، فإعادة التقديم بعد رفض
+    # أو إلغاء تبقى مسموحة.
+    __table_args__ = (
+        Index("uq_request_open_fingerprint", "dedup_fingerprint", unique=True,
+              sqlite_where=text("dedup_fingerprint IS NOT NULL "
+                                "AND closed_at IS NULL"),
+              postgresql_where=text("dedup_fingerprint IS NOT NULL "
+                                    "AND closed_at IS NULL")),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
@@ -686,6 +702,10 @@ class Request(Base):
     current_stage: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    #: بصمة الطلب: موظف + نوع + حمولة. يحرسها قيد فريد **جزئي** يشمل
+    #: المفتوح وحده — فإرسالان متطابقان في اللحظة نفسها لا يصيران طلبين،
+    #: وإعادة التقديم بعد رفض تبقى مسموحة لأن الصفّ المغلق يخرج من القيد.
+    dedup_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
     # V2.2/§5 Workflow Engine: needs_info + cancel + return_to_submitter
     needs_info_note: Mapped[str | None] = mapped_column(Text)
     cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
