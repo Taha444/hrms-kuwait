@@ -135,7 +135,14 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
         net = round(gross - total_ded, 3)
 
         payslips.append({
-            "employee_id": e.id, "name": e.name, "job_title": e.job_title,
+            "employee_id": e.id,
+            # **الرقم الوظيفي لا معرّف القاعدة.**
+            #
+            # ``employee_id`` رقم داخلي يتغيّر بين البيئات ولا يعرفه أحد
+            # خارج القاعدة. والورقة التي يقرأها الموظف أو المدقّق تُنسَب
+            # برقمه الوظيفي. ويبقى الأول للربط البرمجي لا للعرض.
+            "employee_no": e.employee_no,
+            "name": e.name, "job_title": e.job_title,
             "basic_salary": round(basic, 3),
             # الراتب المستحق وعدد أيام التوظيف في الفترة: رقٌم يخالف
             # الراتب الأساسي يحتاج تفسيًرا في الورقة نفسها لا في الذاكرة.

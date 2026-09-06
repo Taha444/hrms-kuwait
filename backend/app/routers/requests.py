@@ -909,6 +909,16 @@ def mark_document_filed(req_id: int, kind: str, request: Request,
     doc.print_status = "filed"
     doc.filed_at = datetime.now()
     doc.filed_by = user.id
+    # **ودورة حياة المستند تكتمل هنا.**
+    #
+    # ``ARCHIVED`` كانت تُقرأ ولا تُكتَب أبًدا: يمرّ المستند بالطباعة
+    # والحفظ ويبقى ``GENERATED`` إلى الأبد، فلا حالة نهائية له في السجل.
+    #
+    # وموضعها الحفظ لا التوليد: التوليد يُدخل المستند أرشيف الموظف
+    # (P1-03) لكن نسخًة أحدث قد تعلوه، وحارس التوليد لا يخفض ``ARCHIVED``
+    # إلى ``SUPERSEDED``. فلو وُسمت عند الصدور لَما صار مستنٌد مستبدًَلا
+    # أبًدا — والحفظ هو الفعل النهائي فعًلا.
+    doc.lifecycle_status = "ARCHIVED"
     audit(db, user, "file_document", "request", req.id, detail=kind, request=request, company_id=req.company_id)
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     if rt:
