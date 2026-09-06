@@ -113,7 +113,14 @@ app.add_middleware(
 # 'unsafe-inline' في style-src لأن React styled inline attributes تحتاجها.
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    # **الإشعارات الفورية**: عامل الخدمة يستورد مكتبتَي Firebase من
+    # ``gstatic``، و``script-src 'self'`` كانت تحجبهما — فيُرمى استثناء
+    # ويفشل تقييم العامل برسالة «ServiceWorker script evaluation failed».
+    # فيضغط المستخدم «فعّل على هذا الجهاز» ولا يحدث شيء.
+    #
+    # والمصدر محدَّد بالاسم لا بـ``*``: إذٌن لخادم مكتبات معروف، لا فتح
+    # للسياسة كلها. وهو المبدأ نفسه المتَّبع مع خطوط جوجل أدناه.
+    "script-src 'self' https://www.gstatic.com; "
     # خطوط جوجل: index.html يطلب Tajawal و IBM Plex Sans Arabic، وسياسة
     # 'self' وحدها كانت تحجبهما — فالنظام يمنع خطوطه هو. النتيجة واجهة عربية
     # بخط بديل تختلف مقاساته، وتخطيط يُحسب على خط لم يصل. المصدران محدَّدان
@@ -121,7 +128,11 @@ _CSP = (
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "img-src 'self' data: blob:; "
     "font-src 'self' data: https://fonts.gstatic.com; "
-    "connect-src 'self'; "
+    # ولا يكفي استيراد المكتبة: ``getToken`` يُسجّل الجهاز لدى Firebase،
+    # فبلا هذين المصدرين يُستورَد العامل ثم يفشل التسجيل — عطٌل ثانٍ خلف
+    # الأول، ولا يظهر إلا بعد إصلاحه.
+    "connect-src 'self' https://fcmregistrations.googleapis.com "
+    "https://firebaseinstallations.googleapis.com; "
     "media-src 'self' blob:; "
     "worker-src 'self' blob:; "
     "manifest-src 'self'; "
