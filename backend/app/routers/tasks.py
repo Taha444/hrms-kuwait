@@ -47,10 +47,19 @@ from ..task_kinds import NOTIFICATION_TYPES, inbox_query, is_notification  # noq
 
 @router.get("/my")
 def my_tasks(status: str | None = "open", category: str | None = None,
-             kind: str | None = None,
+             kind: str | None = None, company_id: int | None = None,
+             all_companies: bool = False,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """``kind=task`` للصندوق، ``kind=notification`` لمركز الإشعارات."""
-    q = inbox_query(user.id, status, kind)
+    """``kind=task`` للصندوق، ``kind=notification`` لمركز الإشعارات.
+
+    **والنطاق شركة الفاعل**: من يخدم شركتين كان يرى الصندوق نفسه في
+    كلتيهما، بجانب عدادات مقصورة على المختارة — فيُقرأ على أنها له.
+    و``all_companies=true`` مخرج صريح لمن يريد الكل، لا سلوك ضمني.
+    """
+    from ..deps import scope_company_id
+
+    cid = None if all_companies else scope_company_id(user, company_id)
+    q = inbox_query(user.id, status, kind, company_id=cid)
     rows = db.scalars(q.order_by(models.Task.created_at.desc())).all()
     out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
             "detail": t.detail, "status": t.status, "severity": t.severity,
@@ -65,16 +74,23 @@ def my_tasks(status: str | None = "open", category: str | None = None,
 
 
 @router.get("/count")
-def my_open_count(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def my_open_count(company_id: int | None = None,
+                  user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
     """TSK-03 — رقمان لا رقم واحد: ما يحتاج إجراًء، وما يُقرأ.
 
     ``open`` يبقى المجموع كما كان (لا نكسر من يقرأه)، والفصل يُضاف
     بجانبه. وكلها مشتقّة من ``inbox_query`` نفسها التي تُغذّي القائمة،
     فيستحيل أن يعدّ الرقم شيًئا وتعرض القائمة تحته شيًئا آخر.
     """
-    def _n(kind):
+    from ..deps import scope_company_id
+
+    cid = scope_company_id(user, company_id)
+
+    def _n(kind, scope=True):
         return db.scalar(select(func.count()).select_from(
-            inbox_query(user.id, "open", kind).subquery())) or 0
+            inbox_query(user.id, "open", kind,
+                        company_id=cid if scope else None).subquery())) or 0
 
     total = _n(None)
     return {
@@ -86,6 +102,9 @@ def my_open_count(user: models.User = Depends(get_current_user), db: Session = D
         "open_tasks": _n("task"),
         "notifications": _n("notification"),
         "unread_notifications": _n("notification"),
+        # والمجموع عبر الشركات معروض صراحًة باسمه: لا يختفي عمٌل بل
+        # يُنسَب إلى مكانه. ومن يخدم شركة واحدة يتساوى الرقمان.
+        "open_tasks_all_companies": _n("task", scope=False),
     }
 
 

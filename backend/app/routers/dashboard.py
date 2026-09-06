@@ -38,13 +38,19 @@ def dashboard(company_id: int | None = None,
     # «44» والصندوق يعرض ستة. وهو العيب نفسه الذي أُصلح في /tasks/count،
     # ظهر ثانيةً هنا لأن القاعدة كانت مكتوبة في موضعين.
     from ..task_kinds import inbox_query
+    # **والنطاق نفسه**: اللوحة عدادات شركة، فرقٌم عبر الشركات بينها
+    # يُقرأ على أنه لها. وهي القاعدة الواحدة في موضعين مرًة أخرى —
+    # قِستُها فسقط اختبار الاتساق حين قيّدتُ الصندوق ولم أقيّد اللوحة.
+    # و``cid`` محسوبة أعلاه لكل عدادات اللوحة — حسابها ثانيًة يفتح
+    # باب انحراف بين رقمين على الشاشة نفسها.
     my_open_tasks = db.scalar(select(func.count()).select_from(
-        inbox_query(user.id, "open", "task").subquery())) or 0
+        inbox_query(user.id, "open", "task", company_id=cid).subquery())) or 0
     # والرقم الثاني رقم آخر. كان الحقل «notifications» في ثلاث لوحات
     # يحمل عدد **المهام** — اسم يصف شيًئا وقيمة تصف غيره، فيقرأ المستخدم
     # عدد أخباره وهو عدد ما عليه أن يفعله.
     my_notifications = db.scalar(select(func.count()).select_from(
-        inbox_query(user.id, "open", "notification").subquery())) or 0
+        inbox_query(user.id, "open", "notification",
+                    company_id=cid).subquery())) or 0
 
     role = user.role
     data: dict = {"role": role}

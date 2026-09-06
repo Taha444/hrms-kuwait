@@ -36,6 +36,17 @@ REASON_DUPLICATE = "أُغلقت آلًيا: نسخة مكرَّرة من مهم
 REASON_CLOSED_REQUEST = "أُغلقت آلًيا: الطلب المرتبط بلغ حالة نهائية."
 REASON_RENEWED = "أُغلقت آلًيا: التصريح جُدِّد وتاريخ انتهائه لم يعد قريًبا."
 REASON_ORPHAN = "أُغلقت آلًيا: الكيان المرتبط لم يعد موجوًدا."
+REASON_STALE_DIGEST = "أُغلقت آلًيا: خلاصة يومية انقضى وقتها."
+
+#: الأنواع المعلوماتية **الدورية**: قيمتها في يومها.
+#:
+#: ولا تشمل كل إشعار: خبر نتيجة طلب يُقرأ متى فُتح الملف، أما خلاصة
+#: يوم مضى فلا معنى لبقائها مفتوحة — وعشرة منها تُغرق الصندوق وتُعلّم
+#: قارئه ألّا يقرأه.
+PERIODIC_TYPES = ("digest",)
+
+#: بعد كم يوم تُعدّ الخلاصة منقضية. أسبوع: ما بعده لا يُقرأ.
+STALE_AFTER_DAYS = 7
 
 
 def _dismiss(task: models.Task, reason: str) -> None:
@@ -114,6 +125,32 @@ def _stale_permit_tasks(db: Session, company_id: int | None) -> list[models.Task
     return out
 
 
+def _stale_periodic(db: Session, company_id: int | None) -> list[models.Task]:
+    """خلاصات دورية انقضى وقتها.
+
+    **ولا تُحذف**: تُغلَق بسببها ويبقى نصّها في السجل. والقياس على
+    تاريخها لا على عددها — فخلاصة اليوم تبقى مفتوحة.
+    """
+    from datetime import timedelta
+
+    q = select(models.Task).where(
+        models.Task.status.in_(OPEN),
+        models.Task.type.in_(PERIODIC_TYPES))
+    if company_id is not None:
+        q = q.where(models.Task.company_id == company_id)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=STALE_AFTER_DAYS)
+    out = []
+    for t in db.scalars(q).all():
+        made = t.created_at
+        if made is None:
+            continue
+        if made.tzinfo is None:
+            made = made.replace(tzinfo=timezone.utc)
+        if made < cutoff:
+            out.append(t)
+    return out
+
+
 def _orphans(db: Session, company_id: int | None) -> list[models.Task]:
     """مهام تشير إلى كيان لم يعد موجوًدا — لا سبيل إلى إنجازها."""
     kinds = {"request": models.Request, "permit": models.Permit,
@@ -142,6 +179,7 @@ def run(db: Session, *, company_id: int | None = None,
          REASON_CLOSED_REQUEST),
         ("renewed_permits", _stale_permit_tasks(db, company_id), REASON_RENEWED),
         ("orphans", _orphans(db, company_id), REASON_ORPHAN),
+        ("stale_digests", _stale_periodic(db, company_id), REASON_STALE_DIGEST),
     ]
     report: dict[str, object] = {"apply": apply}
     seen: set[int] = set()
@@ -174,7 +212,8 @@ def main() -> None:
         db.close()
 
     print("تنظيف المهام —", "تنفيذ" if args.apply else "تقرير فقط (بلا كتابة)")
-    for key in ("duplicates", "closed_requests", "renewed_permits", "orphans"):
+    for key in ("duplicates", "closed_requests", "renewed_permits", "orphans",
+                "stale_digests"):
         info = rep[key]
         print(f"  {key:<18} {info['count']}")
     print(f"  {'المجموع':<18} {rep['total']}")

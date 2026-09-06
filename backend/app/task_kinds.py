@@ -35,7 +35,7 @@ def is_notification(task_type: str | None) -> bool:
 
 
 def inbox_query(user_id: int, status: str | None = "open",
-                kind: str | None = None):
+                kind: str | None = None, company_id: int | None = None):
     """استعلام صندوق مستخدم. **العدّاد والقائمة يستعملانه معًا.**
 
     TSK-03 — العدّاد كان يعدّ كل صفوف المستخدم المفتوحة، والصندوق يعرضها
@@ -51,6 +51,16 @@ def inbox_query(user_id: int, status: str | None = "open",
     from . import models
 
     q = select(models.Task).where(models.Task.assignee_user_id == user_id)
+    # **ورقٌم لا يتغيّر بتغيّر الشركة يُقرأ خطًأ.**
+    #
+    # المندوب الذي يخدم شركتين كان يرى العدد نفسه في كلتيهما، بجانب
+    # عدادات مقصورة على الشركة المختارة — فيقرأ الرقم على أنه لها.
+    # قِيس: 7 مهام على شركة، و7 على أخرى ليس فيها معاملة واحدة.
+    #
+    # والنطاق اختياري: المجموع عبر الشركات يبقى متاًحا صريًحا، فلا
+    # يختفي عمٌل بل يُنسَب إلى مكانه.
+    if company_id is not None:
+        q = q.where(models.Task.company_id == company_id)
     if status:
         q = q.where(models.Task.status == status)
     if kind == "task":
