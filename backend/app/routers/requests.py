@@ -180,8 +180,38 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
     # على مستوى الهوية: نوعان يحملان نفس canonical أو نفس الاسم هما نوع واحد
     # للمستخدم. يقتصر ذلك على كتالوج الإنشاء؛ الكتالوج الكامل يبقى كما هو
     # للقراءة وعرض الطلبات التاريخية.
+    # **المظلّة القديمة تُخفى متى وُجدت أنواعها الفرعية.**
+    #
+    # ``REQADV`` كود جامع «طلب سلفة أو قرض» بلا نوع فرعي، و``advance``
+    # و``loan`` هما تفصيله. فيقف المستخدم أمام ثلاثة خيارات لخدمتين:
+    # «سلفة»، «قرض»، «سلفة أو قرض». ودمج الهوية لا يمسكها لأن مفتاحها
+    # ``(WF-009, None)`` لا يساوي ``(WF-009, ADVANCE)``.
+    #
+    # والقاعدة تُشتقّ من السجلّ لا تُكتب باسم كود: أي مسار له مظلّة
+    # وأنواع فرعية تُخفى مظلّته. قِستُ أثرها على الكتالوج كلّه قبل
+    # تطبيقها — حالة واحدة في النظام، فلا تُخفي خدمًة قائمة بذاتها.
+    _umbrella_hidden: set[str] = set()
+    if creatable_only:
+        from collections import defaultdict as _dd
+
+        _fam = _dd(lambda: {"umbrella": [], "subtyped": 0})
+        for _rt in rows:
+            _i = v15_registry.resolve_request(_rt.code)
+            _c = _i.get("canonical")
+            if not _c:
+                continue
+            if _i.get("subtype"):
+                _fam[_c]["subtyped"] += 1
+            else:
+                _fam[_c]["umbrella"].append(_rt.code)
+        for _c, _v in _fam.items():
+            if _v["subtyped"] and _v["umbrella"]:
+                _umbrella_hidden.update(_v["umbrella"])
+
     seen, seen_identity, out = set(), set(), []
     for rt in sorted(rows, key=lambda r: (r.code, r.company_id is None)):
+        if creatable_only and rt.code in _umbrella_hidden:
+            continue
         if rt.company_id not in (None, cid):
             continue
         if rt.code in seen:

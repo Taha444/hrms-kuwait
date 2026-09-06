@@ -1076,9 +1076,15 @@ def test_creation_catalog_is_not_empty_and_covers_core_types(client):
     assert r.status_code == 200
     codes = {t["code"] for t in r.json()}
     assert len(codes) >= 10, f"creation catalog nearly empty: {sorted(codes)}"
-    # الأنواع الأساسية للموظف لازم تكون متاحة للإنشاء
-    for core in ("leave", "REQATT", "REQCERTSAL", "REQADV"):
+    # الأنواع الأساسية للموظف لازم تكون متاحة للإنشاء.
+    #
+    # و``advance``/``loan`` بدل ``REQADV``: الأخيرة **مظلّة قديمة** بلا
+    # نوع فرعي، وهذان تفصيلها. فالخدمة مغطّاة تحت كوديها القانونيين،
+    # وعرض الثلاثة كان يضع أمام المستخدم ثلاثة خيارات لخدمتين. والدعوى
+    # هنا «الكتالوج يغطّي الأساسيات» لا «هذا الكود بعينه معروض».
+    for core in ("leave", "REQATT", "REQCERTSAL", "advance", "loan"):
         assert core in codes, f"core request type missing from creation catalog: {core}"
+    assert "REQADV" not in codes, "عادت المظلّة القديمة إلى كتالوج الإنشاء"
 
 
 def test_spec_request_types_have_real_schemas(client):
