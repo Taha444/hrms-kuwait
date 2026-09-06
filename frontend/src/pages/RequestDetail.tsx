@@ -92,7 +92,14 @@ export default function RequestDetail() {
             {/* QA-07 — تفاصيل مقروءة من الـschema بدل JSON خام */}
             <PayloadView typeCode={req.type} payload={req.payload} />
           </div>
-          {genDoc && (
+          {/* **لا وعد بورقة مفقودة**: الملف قد يضيع والسجلّ يبقى، فتقول
+              الشاشة «جاهز» ويرجع التنزيل 410 — ويقف الموظف أمام من لا
+              يجد ما يسلّمه. الحقيقة معروضة، وأزرار الطباعة والأرشفة
+              تُخفى لأنها تصف عمًلا لا يمكن أن يقع. */}
+          {genDoc?.file_missing && (
+            <div className="err" style={{ marginTop: 8 }}>{t("rd_doc_missing")}</div>
+          )}
+          {genDoc && !genDoc.file_missing && (
             <div className="row" style={{ flexWrap: "wrap" }}>
               <button onClick={() => downloadDoc("generated_pdf")}>{t("rd_print_doc")}</button>
               {isManager && genDoc.print_status === "ready_to_print" && (

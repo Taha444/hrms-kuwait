@@ -628,9 +628,44 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
         items.append({"at": (ev.date or ev.created_at.date()).isoformat() + "T00:00:00",
                       "category": ev.kind, "text": ev.title + (f" — {ev.amount} د.ك" if ev.amount else "")})
 
+    # **قصة الخروج في التايملاين الرئيسية.**
+    #
+    # سجلّ حالة نهاية الخدمة كان جيًدا وسجلّ الإنهاء كذلك، وكلٌّ في
+    # مكانه. لكن من يفتح ملف الموظف ليقرأ سيرته لا يجد فيها خروجه:
+    # يرى إجازاته ومستنداته ثم يتوقّف الخيط. والحدث الأهمّ في حياة
+    # الملف غائب عن الشاشة التي تُقرأ فيها.
+    #
+    # والأحداث من مصدرها لا من نسخة: أعمدة الحالة نفسها التي تُملأ
+    # عند كل خطوة، فلا يوجد سجٌل ثانٍ ينحرف.
+    for case in db.scalars(select(models.EosCase).where(
+            models.EosCase.employee_id == emp.id)).all():
+        ref = case.reference_no or f"#{case.id}"
+        src = (f" (من الطلب #{case.source_request_id})"
+               if case.source_request_id else "")
+        for at, text in (
+            (case.initiated_at, f"فُتحت حالة نهاية خدمة {ref}{src}"),
+            (case.calculated_at, f"حُسبت مكافأة نهاية الخدمة — {ref}"),
+            (case.approved_at, f"اعتُمدت التسوية — {ref}"),
+            (case.clearance_at, f"تمّ إخلاء الطرف — {ref}"),
+            (case.acknowledged_at, f"أقرّ الموظف بالتسوية — {ref}"),
+            (case.settled_at, f"صُرفت التسوية — {ref}"),
+            (case.filed_at, f"أُرشفت ملفات نهاية الخدمة — {ref}"),
+        ):
+            if at:
+                items.append({"at": at.isoformat(), "category": "exit",
+                              "text": text})
+    if emp.termination_date:
+        # وإنهاء الخدمة نفسه حدث: تاريخ آخر يوم عمل وسببه.
+        items.append({
+            "at": emp.termination_date.isoformat() + "T00:00:00",
+            "category": "exit",
+            "text": (f"انتهت الخدمة ({emp.termination_reason or '—'}) — "
+                     f"آخر يوم عمل {emp.termination_date}")})
+
     # R2-D — تنقية الـtimeline حسب دور العارض (فصل الواجبات)
     if is_accountant:
-        ACC_CATS = {"create", "bonus", "promotion", "penalty"}  # لا مستندات/إقامات/إجازات/إنذارات
+        # ``exit`` ضمنها: التسوية والصرف شأن محاسبي بطبعه.
+        ACC_CATS = {"create", "bonus", "promotion", "penalty", "exit"}
         items = [x for x in items if x["category"] in ACC_CATS]
     elif is_pro:
         PRO_CATS = {"create", "document", "permit"}  # لا إجازات/راتب/إنذارات
@@ -816,12 +851,45 @@ def execute_termination(emp_id: int, request: Request = None,
     emp.pending_termination_cleared_at = None
     emp.pending_termination_clearance_note = None
     emp.pending_termination_acknowledged_at = None
+    # **بابا الخروج يفتحان المرجع نفسه.**
+    #
+    # كان الإنهاء من الإدارة يختم الحالة ويحسب التسوية ثم يقف: لا حالة
+    # نهاية خدمة تُفتَح، بينما الاستقالة (REQRESIGN) و طلب التسوية
+    # (REQEOS) يفتحانها عبر ``exit_case.open_from_request``. فينتهي
+    # موظف من باب ولا يجد من يفتّش أثًرا لخروجه في المرجع.
+    #
+    # والفشل لا يُسقط الإنهاء: القرار وقع والتسوية حُسبت. يُسجَّل السبب
+    # وتُفتَح مهمة — «تمّ الإنهاء ولم يُفتَح المرجع» خبر يحتاج إجراًء لا
+    # استثناء يُبتلَع.
+    from .. import exit_case as _exit_case
+
+    exit_case_id = None
+    try:
+        case = _exit_case.open_case(
+            db, emp, termination_date=emp.termination_date,
+            reason=reason, actor_user_id=user.id)
+        exit_case_id = case.id
+    except HTTPException as exc:
+        from ..notifications import create_task, users_by_role
+
+        why = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        for u in users_by_role(db, emp.company_id, ["hr", "company_manager"]):
+            create_task(
+                db, company_id=emp.company_id, type="config_gap",
+                assignee_user_id=u.id,
+                title="أُنهيت الخدمة ولم يُفتح مرجع نهاية الخدمة",
+                detail=f"{emp.name}: {why}",
+                related_entity_type="employee", related_entity_id=emp.id,
+                dedup_key=f"exit_case_missing:{emp.id}", severity="critical")
+
     audit(db, user, "terminate_employee", "employee", emp.id,
           detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD (executed)",
           request=request)
     db.commit()
     return {"ok": True, "employee_id": emp.id, "status": "terminated",
-            "stage": "executed", "settlement": settlement}
+            "stage": "executed", "settlement": settlement,
+            # الرابط في الردّ: من ينفّذ يعرف رقم المرجع فوًرا.
+            "exit_case_id": exit_case_id}
 
 
 @router.post("/{emp_id}/terminate/cancel")

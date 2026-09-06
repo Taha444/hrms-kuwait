@@ -1132,7 +1132,16 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
              "print_status": d.print_status, "printed_at": d.printed_at, "filed_at": d.filed_at,
              # V1.5 Phase 4: canonical OD code + lifecycle status (منفصل عن print_status)
              "od_code": d.od_code,
-             "lifecycle_status": d.lifecycle_status}
+             "lifecycle_status": d.lifecycle_status,
+             # **الواجهة لا تَعِد بورقة مفقودة.**
+             #
+             # الملف قد يضيع (قرص مؤقّت يُمحى مع النشرة) والسجلّ يبقى،
+             # فتقول الشاشة «جاهز للاستلام» ويرجع التنزيل 410. ومن يقف
+             # أمام الموظف بهذا الوعد لا يجد ما يسلّمه.
+             #
+             # والفحص من نفس دالة التنزيل (``key_exists``) لا من شرط
+             # يشبهها — قاعدتان لحالة واحدة تنحرفان.
+             "file_missing": bool(not d.file_path or not key_exists(d.file_path))}
             for d in docs
         ]
     return data

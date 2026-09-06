@@ -837,6 +837,10 @@ const dict: Record<string, { ar: string; en: string }> = {
     en: "The request was approved but its effect did not take place — check the failure reason in the decisions log below, correct it, then retry.",
   },
   rd_retry_apply: { ar: "إعادة التطبيق", en: "Retry" },
+  rd_doc_missing: {
+    ar: "ملف المستند مفقود من التخزين رغم وجود سجلّه — لا يمكن طباعته ولا تسليمه. يلزم إعادة توليده.",
+    en: "The document file is missing from storage though its record remains — it cannot be printed or handed over. It must be regenerated.",
+  },
   rd_retry_done: { ar: "أُعيد تطبيق الأثر", en: "Effect reapplied" },
   rd_received_done: { ar: "تم تسجيل الاستلام", en: "Receipt recorded" },
   rd_doc_uploaded: { ar: "تم رفع المستند", en: "Document uploaded" },
