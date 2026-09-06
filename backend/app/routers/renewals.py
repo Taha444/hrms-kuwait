@@ -49,7 +49,8 @@ ESSENTIAL_FIELDS = {
 }
 
 
-def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
+def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str,
+                  renewal_id: int | None = None) -> None:
     """يقرأ آخر مستند مرفوع من هذا النوع ويحفظ الاقتراح — ولا يطبّقه.
 
     الفشل يُحفَظ بسببه الظاهر: العطل الموثَّق سابًقا لم يكن أن القراءة فشلت، بل
@@ -90,6 +91,16 @@ def _ocr_proposal(db, entity_type: str, entity_id: int, doc_kind: str) -> None:
     audit(db, None, "renewal_ocr_read", entity_type, entity_id,
           detail=f"{doc_kind}: {outcome} ({conf:.2f})",
           company_id=getattr(doc, "company_id", None))
+    # **والحدث في قصّته**: التايملاين يقرأ ما سُجِّل باسم المعاملة،
+    # وهذا كان يُسجَّل باسم الموظف وحده. فقراءة النظام للمستند — وهي
+    # نصف قصّة التجديد: ماذا قرأ وبأي ثقة — لا تظهر في خطّ المعاملة.
+    #
+    # ولا يُنزَع من ملف الموظف: مستنده وقراءته تخصّانه أيًضا. سطران
+    # لحدث واحد أصدق من سطر في المكان الخطأ.
+    if renewal_id is not None and entity_type != "renewal":
+        audit(db, None, "renewal_ocr_read", "renewal", renewal_id,
+              detail=f"{doc_kind}: {outcome} ({conf:.2f})",
+              company_id=getattr(doc, "company_id", None))
 
 
 
@@ -671,7 +682,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
             raise _stage_conflict(rn, "رفع إذن العمل", R.RENEWING)
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_WORK_PERMIT, "إذن العمل الجديد", file)
-        _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
+        _ocr_proposal(db, "employee", emp.id, doc_kind, renewal_id=rn.id)
         rn.status = R.AWAITING_CIVIL_CARD
         _notify_stage(db, rn)
 
@@ -684,7 +695,7 @@ async def upload_renewal_doc(rid: int, doc_kind: str = Form(..., alias="doc_type
         await _save_doc(db, user, request, "employee", emp.id, rn.company_id,
                         R.DOC_CIVIL_CARD, "البطاقة المدنية الجديدة", file)
         # R4-A — بدل التنقّل المباشر لـCOMPLETED، نمرّ عبر PENDING_HR_VERIFY
-        _ocr_proposal(db, "employee", emp.id, doc_kind)  # RNW-12 — اقتراح لا تطبيق
+        _ocr_proposal(db, "employee", emp.id, doc_kind, renewal_id=rn.id)
         # RNW-D1 — الانتقال مشروط ببيانات الحكومة. المستند يُحفَظ في الحالتين:
         # الموظف رفع ما عليه، ولا يُعاقَب بضياع رفعه لأن المندوب لم يُدخل
         # بياناته بعد. تبقى المعاملة في مرحلتها حتى يُكملها المندوب.
