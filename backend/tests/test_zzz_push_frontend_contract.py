@@ -37,7 +37,10 @@ def test_the_config_endpoint_never_leaks_the_service_account(client):
     for secret in ("PRIVATE KEY", "private_key", "client_email",
                    "fcm_private_key"):
         assert secret not in flat, f"تسرّب «{secret}»: {flat[:200]}"
-    assert set(body) == {"enabled", "vapid_key", "firebase", "reason"}, sorted(body)
+    assert set(body) == {"enabled", "vapid_key", "firebase", "reason",
+                         "missing"}, sorted(body)
+    # وأسماء المتغيّرات ليست سًرا — القيم هي السرّ، ولا تخرج.
+    assert all(isinstance(x, str) for x in body["missing"])
 
 
 def test_it_says_why_when_push_is_not_ready(client):
@@ -132,3 +135,31 @@ def test_the_preferences_screen_is_reachable_from_every_sidebar():
     assert links >= feet, (
         f"{feet} شريط جانبي و{links} رابط — نسخة بلا طريق إلى الشاشة"
     )
+
+
+def test_the_reason_names_what_is_missing(client):
+    """**«غير مضبوطة» جملة تصف الحال ولا تدلّ على عمل.**
+
+    فيفتح المالك لوحة المتغيّرات ويقارن سبعة أسماء بعينه. والاسم وحده
+    يكفي — وهو ليس سًرا: أسماء المتغيّرات في المستودع، والقيم لا تخرج.
+    """
+    hdr = auth_headers(login(client, *EMP))
+    body = client.get("/api/notifications/push-config", headers=hdr).json()
+    if body["enabled"]:
+        assert body["missing"] == [], body["missing"]
+        return
+    assert body["missing"], "غير مضبوطة بلا تسمية الناقص"
+    assert all(m.startswith("FCM_") for m in body["missing"]), body["missing"]
+    for name in body["missing"]:
+        assert name.split()[0] in body["reason"], (name, body["reason"])
+
+
+def test_the_client_says_why_the_request_itself_failed():
+    """**ولا ``catch`` صامت**: فشل الطلب يُنسَب إليه لا إلى الإعداد.
+
+    كان الفشل يُبتلَع فتقول الشاشة «غير مضبوطة على الخادم» أًيا كان
+    السبب — فيبحث المالك في متغيّرات البيئة عن عطل قد يكون 401 أو 500.
+    """
+    text = CLIENT.read_text(encoding="utf-8")
+    assert "lastConfigError" in text, "فشل القراءة ما زال مبتلًَعا"
+    assert "e?.response?.status" in text, "لا يُنقَل رمز الحالة"

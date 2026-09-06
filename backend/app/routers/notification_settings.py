@@ -54,14 +54,34 @@ def push_config(user: models.User = Depends(get_current_user)):
            "appId": _s.fcm_web_app_id,
            "messagingSenderId": _s.fcm_messaging_sender_id}
     ready = fcm.is_configured() and all(web.values()) and bool(_s.fcm_vapid_key)
+
+    # **يُسمّى الناقص بالاسم.**
+    #
+    # «غير مضبوطة» جملة تصف الحال ولا تدلّ على عمل: يفتح المالك لوحة
+    # المتغيّرات ويقارن سبعة أسماء بعينه. والاسم وحده يكفي — وهو ليس
+    # سًرا: أسماء المتغيّرات في المستودع، والقيم لا تخرج من الخادم.
+    missing = [name for name, value in (
+        ("FCM_PROJECT_ID", _s.fcm_project_id),
+        ("FCM_WEB_API_KEY", _s.fcm_web_api_key),
+        ("FCM_WEB_APP_ID", _s.fcm_web_app_id),
+        ("FCM_MESSAGING_SENDER_ID", _s.fcm_messaging_sender_id),
+        ("FCM_VAPID_KEY", _s.fcm_vapid_key),
+    ) if not value]
+    if not fcm.is_configured():
+        # اعتماد الخادم قد يأتي من ملف أو من متغيّرين — فيُذكر البديلان.
+        missing.append("FCM_CLIENT_EMAIL + FCM_PRIVATE_KEY "
+                       "(أو FCM_SERVICE_ACCOUNT_FILE)")
+
     return {
         "enabled": ready,
         "vapid_key": _s.fcm_vapid_key if ready else "",
         "firebase": web if ready else {},
         # سبب مقروء بدل صمت: من يفتح الشاشة ولا يجد زًرا يحتاج أن يعرف.
         "reason": None if ready else (
-            "الإشعارات الفورية غير مضبوطة — يلزم اعتماد Firebase على "
-            "الخادم ومفتاح الويب ومفتاح شهادة الدفع (VAPID)"),
+            "الإشعارات الفورية غير مضبوطة على الخادم. الناقص: "
+            + "، ".join(missing)),
+        # وقائمة مُهيكَلة بجانب النصّ: تُقرأ آلًيا ولا تُستخرَج من جملة.
+        "missing": missing,
     }
 
 

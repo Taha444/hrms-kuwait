@@ -26,11 +26,24 @@ export function permissionState(): NotificationPermission | "unsupported" {
   return Notification.permission;
 }
 
+/** آخر سبب فشل في قراءة الإعدادات — يُقرأ لا يُخمَّن. */
+let lastConfigError = "";
+
 export async function loadConfig(): Promise<PushConfig | null> {
   try {
     const r = await api.get("/notifications/push-config");
+    lastConfigError = "";
     return r.data as PushConfig;
-  } catch {
+  } catch (e: any) {
+    // **لا ``catch`` صامت.** كان الفشل هنا يُبتلَع، فتقول الشاشة
+    // «غير مضبوطة على الخادم» أًيا كان السبب — وهي رسالة تتّهم الإعداد
+    // بينما قد يكون الطلب نفسه رُدّ بـ401 أو 500. فيبحث المالك في
+    // متغيّرات البيئة عن عطل ليس فيها.
+    const status = e?.response?.status;
+    const detail = e?.response?.data?.detail;
+    lastConfigError = status
+      ? `تعذّر قراءة إعدادات الإشعارات من الخادم (${status}${detail ? ": " + detail : ""})`
+      : "تعذّر الوصول إلى الخادم لقراءة إعدادات الإشعارات";
     return null;
   }
 }
@@ -59,8 +72,10 @@ export async function enablePush(label?: string): Promise<string | null> {
   }
 
   const cfg = await loadConfig();
-  if (!cfg || !cfg.enabled) {
-    return cfg?.reason || "الإشعارات الفورية غير مضبوطة على الخادم";
+  if (!cfg) return lastConfigError || "تعذّر قراءة إعدادات الإشعارات";
+  if (!cfg.enabled) {
+    // سبب الخادم أدقّ من أي نصّ نكتبه هنا: يسمّي الناقص بعينه.
+    return cfg.reason || "الإشعارات الفورية غير مضبوطة على الخادم";
   }
 
   const granted = state === "granted"
