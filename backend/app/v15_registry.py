@@ -439,6 +439,36 @@ def resolve_request(code: str) -> dict:
     return LEGACY_REQUEST_ALIASES.get(code, {})
 
 
+#: تحويلات مشروطة بالحمولة: (كود ← شرط ← المسار الذي يصير إليه).
+#:
+#: **القاعدة كانت مكتوبة في السجل ولم تُنفَّذ**: كنية ``leave`` تقول
+#: حرفًيا «قد يتحول إلى WF-002 لو travel_required=true»، و``resolve_request``
+#: لا ترى الحمولة أصًلا — تحلّ من الكود وحده. فإجازة السفر تُقرأ
+#: «إجازة عادية» في كل ما يعرض المسار القانوني.
+_PAYLOAD_PROMOTIONS: list[tuple[str, str, str]] = [
+    ("WF-001", "travel_required", "WF-002"),
+]
+
+
+def resolve_request_for(code: str, payload: dict | None = None) -> dict:
+    """المسار القانوني للطلب **بحمولته** لا بكوده وحده.
+
+    ``resolve_request`` تبقى للكود المجرَّد (الكتالوج، الاستبدال). وهذه
+    لطلب قائم له حمولة — وهما سؤالان مختلفان لا تعريفان لسؤال واحد.
+    """
+    info = dict(resolve_request(code))
+    canonical = info.get("canonical")
+    if not canonical or not payload:
+        return info
+    for base, field, promoted in _PAYLOAD_PROMOTIONS:
+        if canonical == base and payload.get(field):
+            info["canonical"] = promoted
+            info["promoted_from"] = base
+            info["name_ar"] = CANONICAL_WORKFLOWS[promoted]["name_ar"]
+            break
+    return info
+
+
 def resolve_template(code: str) -> str | None:
     """يعيد الـ canonical OD/RPT/SYS لكود قالب قديم (PRN-XXX أو HRMS-PR-XXX).
 

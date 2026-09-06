@@ -977,7 +977,11 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
     st = workflow.status_info(req.status)
     # V1.5 canonical resolver: يعرض الكود الجديد للطلب بجانب الكود القديم في seed
     from .. import v15_registry
-    canonical_info = v15_registry.resolve_request(req.request_type_code)
+    # **بحمولته لا بكوده**: إجازة السفر مسارها WF-002 كما ينصّ السجل،
+    # وحلُّها من الكود وحده كان يقرؤها «إجازة عادية» في كل ما يعرض
+    # المسار — بينما مسارها الفعلي يمرّ بالمندوب.
+    canonical_info = v15_registry.resolve_request_for(
+        req.request_type_code, req.payload_json or {})
     # PILOT-P0-3 + P0-#14: إخفاء تواريخ الإجازة من عرض الشخص صاحب الطلب.
     # يشمل الموظف العادي + الأدوار الإدارية اللي مربوطة بـEmployee record
     # وبتقدّم طلب لنفسها (self-request) — HR/Manager/Supervisor.
