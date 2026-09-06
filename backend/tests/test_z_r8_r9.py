@@ -3174,7 +3174,15 @@ def test_qa04_no_absence_before_hire_date(client):
         assert s_late["unrecorded_days"] < s_early["unrecorded_days"], \
             f"لم تُقَص الفترة على تاريخ التعيين: {s_late} vs {s_early}"
         assert s_late["absence_deduction"] == 0
-        assert s_late["net"] == 2500
+        # **والراتب صار بالتناسب** (P0 من تقرير المراجعة): من عُيّن يوم 5
+        # يستحق 27 يوًما من 31 لا شهًرا كامًلا. ودعوى هذا الاختبار عن
+        # **الغياب** لا عن قيمة الراتب — و``net == 2500`` كانت لازمًة
+        # عرَضية للسلوك القديم، لا حكًما مقصوًدا.
+        assert s_late["partial_month"] is True, s_late
+        assert s_late["employed_days"] == 27, s_late["employed_days"]
+        assert abs(s_late["net"] - 2500 * 27 / 30) < 1, s_late["net"]
+        # ومن عُيّن قبل الشهر يأخذ كامله — العلاج لا يخصم ممّن يستحق.
+        assert s_early["partial_month"] is False and s_early["net"] == 2500
     finally:
         for i in (early_id, late_id):
             if i:

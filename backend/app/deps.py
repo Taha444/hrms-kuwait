@@ -512,3 +512,27 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
         after_json=after,
     )
     db.add(log)
+
+
+#: حالات الموظف التي لا يُفتَح معها عمل جديد.
+#:
+#: **قاعدة واحدة لكل الأبواب**: كان كل باب يحرس نفسه — فأُغلق باب إنشاء
+#: الطلبات أمام المؤرشَف وبقي باب استبدال التوقيع مفتوًحا. ومن انتهت
+#: خدمته لا يبدأ معاملة موارد بشرية جديدة، وإن بقيت ملفاته للاطلاع.
+INACTIVE_EMPLOYMENT = ("archived", "terminated")
+
+
+def assert_employment_active(db: Session, user, *, action: str = "هذا الإجراء"):
+    """يمنع الأعمال الذاتية الجديدة على من انتهت خدمته أو أُرشِف.
+
+    ولا يمسّ القراءة: الملف والمستندات تبقى متاحة بحسب السياسة — الممنوع
+    أن **يبدأ** معاملة جديدة.
+    """
+    emp_id = getattr(user, "employee_id", None)
+    if not emp_id:
+        return  # مستخدم بلا ملف موظف (إداري) — لا حالة توظيف تُفحَص
+    emp = db.get(models.Employee, emp_id)
+    if emp and (emp.status or "") in INACTIVE_EMPLOYMENT:
+        raise HTTPException(
+            status_code=409,
+            detail=f"خدمة الموظف منتهية — لا يمكن {action}")

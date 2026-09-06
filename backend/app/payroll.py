@@ -36,6 +36,20 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
         or_(models.Employee.non_payroll.is_(False),
             models.Employee.non_payroll.is_(None)))).all()
 
+    # **الأهلية تُقاس بمدة التوظيف لا بالحالة وحدها.**
+    #
+    # كانت التصفية على الشركة والحالة فقط، فيدخل الموظف كشف **أي** شهر
+    # بكامل راتبه — بما فيه شهور تسبق تعيينه بسنوات. قِيس فعًلا: مسيّر
+    # 2010 و2018 و2026 يعطي الأسماء نفسها والإجمالي نفسه.
+    #
+    # والشرط تداخل بسيط: من بدأ بعد نهاية الفترة، أو انتهت خدمته قبل
+    # بدايتها، لم يعمل فيها يوًما.
+    p_start = date(year, month, 1)
+    p_end = date(year, month, days_in_month)
+    employees = [e for e in employees
+                 if not (e.hire_date and e.hire_date > p_end)
+                 and not (e.termination_date and e.termination_date < p_start)]
+
     payslips = []
     totals = {"gross": 0.0, "deductions": 0.0, "net": 0.0, "overtime": 0.0}
     for e in employees:
@@ -106,13 +120,29 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
 
         overtime_pay = round(hourly * OVERTIME_RATE * (overtime_minutes / 60), 3)
         absence_deduction = round(daily * absent_days, 3)
-        gross = round(basic + overtime_pay, 3)
+
+        # **والشهر الجزئي يُحسب بالتناسب**: من عُيّن يوم 28 لا يستحق راتب
+        # شهر كامل، ومن انتهت خدمته يوم 5 كذلك. المعدّل اليومي هو نفسه
+        # المستعمل في خصم الغياب (basic/30) — فلا معياران للقيمة نفسها.
+        emp_from = max(p_start, e.hire_date) if e.hire_date else p_start
+        emp_to = min(p_end, e.termination_date) if e.termination_date else p_end
+        employed_days = (emp_to - emp_from).days + 1
+        partial = employed_days < days_in_month
+        earned_basic = (round(daily * employed_days, 3) if partial else basic)
+
+        gross = round(earned_basic + overtime_pay, 3)
         total_ded = round(absence_deduction + other_deductions, 3)
         net = round(gross - total_ded, 3)
 
         payslips.append({
             "employee_id": e.id, "name": e.name, "job_title": e.job_title,
-            "basic_salary": round(basic, 3), "present_days": present_days,
+            "basic_salary": round(basic, 3),
+            # الراتب المستحق وعدد أيام التوظيف في الفترة: رقٌم يخالف
+            # الراتب الأساسي يحتاج تفسيًرا في الورقة نفسها لا في الذاكرة.
+            "earned_basic": round(earned_basic, 3),
+            "employed_days": employed_days,
+            "partial_month": partial,
+            "present_days": present_days,
             "absent_days": absent_days, "overtime_minutes": overtime_minutes,
             # QA-03 — أيام عمل بلا سجل حضور: تُعرَض لـHR ولا تُخصم. وجودها بعدد
             # كبير يعني خلًلا في التسجيل يستحق مراجعة، لا خصًما من الراتب.

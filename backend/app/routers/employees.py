@@ -200,11 +200,27 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     تُسجَّل بتاريخ سريان مستقبلي (مفيد لزيادة راتب تسري الشهر القادم).
     الافتراضي: effective_date = اليوم = تسري فورًا."""
     emp = _get_emp(db, user, emp_id)
-    payload = data.model_dump()
+
+    # **تدمير بيانات**: كان ``model_dump()`` يُنتج **كل** حقول المخطّط —
+    # المُرسَل منها والغائب — فيكتب الغائب بقيمته الافتراضية. فطلب فيه
+    # أربعة حقول كان يمحو أحد عشر غيرها: ``hire_date`` إلى ``None``،
+    # و``basic_salary`` إلى ``0.0``، والفرع والجنسية والوردية والقسم.
+    # قِستُه على البناء الحالي فوقع، ولم يكن أي اختبار يمسّه.
+    #
+    # و``exclude_unset`` يقصر الكتابة على ما أرسله العميل فعًلا: الحقل
+    # الذي لم يُذكَر يبقى كما هو، والذي أُرسل فارًغا يُفرَّغ بقصد. وهو
+    # دمج صحيح للـPUT بلا تغيير عقد الواجهة.
+    payload = data.model_dump(exclude_unset=True)
     payload.pop("company_id", None)  # لا يُغيَّر انتماء الشركة عبر التعديل العادي
-    _assert_no_duplicates(db, emp.company_id, payload.get("civil_id"),
-                          payload.get("passport_number"), exclude_id=emp.id)
-    _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
+    _assert_no_duplicates(db, emp.company_id,
+                          payload.get("civil_id", emp.civil_id),
+                          payload.get("passport_number", emp.passport_number),
+                          exclude_id=emp.id)
+    # والفحوص تقرأ القيمة **بعد الدمج** لا المُرسَلة وحدها: حقل لم يُرسَل
+    # يبقى على قيمته، فيُفحَص بها لا بـ``None``.
+    _assert_branch_in_scope(db, user,
+                            payload.get("branch_id", emp.branch_id),
+                            payload.get("actual_branch_id", emp.actual_branch_id))
 
     # PERM-02 — إعدادات الحضور تُعدَّل من هنا أيًضا، فتسري عليها نفس ضوابط
     # endpoint السياسة المخصص بدل أن يكون الـPUT بابًا خلفيًا يتخطّاها:
@@ -213,7 +229,11 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     #     يكفي edit_employee وحدها (وإلا صار من يعدّل الأسماء يُعفي من البصم)
     _ATT_FIELDS = ("attendance_mode", "attendance_exempt", "attendance_exempt_reason",
                    "shift_id")
-    att_changed = any(getattr(emp, f, None) != payload.get(f) for f in _ATT_FIELDS)
+    # ولا يُحتسب تغيًيرا إلا ما أُرسل فعًلا واختلف: بعد قصر الكتابة على
+    # المُرسَل، صار حقل غائب يعني «لا تمسّه» — فمقارنته بـ``None`` كانت
+    # ستطلب صلاحية إدارة حضور من كل من يعدّل اسًما.
+    att_changed = any(f in payload and getattr(emp, f, None) != payload[f]
+                      for f in _ATT_FIELDS)
     if att_changed:
         from ..deps import get_user_perms
         from ..permissions import has_permission
@@ -221,9 +241,10 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
             raise HTTPException(
                 status_code=403,
                 detail="تعديل إعدادات الحضور يتطلب صلاحية إدارة الحضور")
-        if payload.get("attendance_mode") == "none" and not (
-                payload.get("attendance_exempt")
-                and (payload.get("attendance_exempt_reason") or "").strip()):
+        mode = payload.get("attendance_mode", emp.attendance_mode)
+        exempt = payload.get("attendance_exempt", emp.attendance_exempt)
+        why = payload.get("attendance_exempt_reason", emp.attendance_exempt_reason)
+        if mode == "none" and not (exempt and (why or "").strip()):
             raise HTTPException(
                 status_code=400,
                 detail="نمط 'بدون حضور' يتطلب إعفاًء صريًحا مع سبب موثّق")

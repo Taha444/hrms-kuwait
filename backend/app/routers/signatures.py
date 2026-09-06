@@ -312,6 +312,12 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     - HR/super_admin يستبدلون توقيع أنفسهم مباشرة (ثقة إدارية)
 
     القبول: PNG/JPG ≤500KB. الإخراج دائمًا PNG بغض النظر عن الإدخال."""
+    # وبوابة حالة التوظيف: من انتهت خدمته لا يبدأ معاملة جديدة. كان
+    # باب إنشاء الطلبات مغلًقا أمامه وهذا الباب مفتوًحا — والقاعدة واحدة
+    # فتُقرأ من موضع واحد.
+    from ..deps import assert_employment_active
+
+    assert_employment_active(db, user, action="استبدال التوقيع")
     if file.content_type not in _ALLOWED_MIME:
         raise HTTPException(status_code=415, detail="نوع الملف يجب أن يكون PNG أو JPG فقط")
     ext = os.path.splitext(file.filename or "")[1].lower()

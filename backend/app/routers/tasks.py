@@ -76,8 +76,17 @@ def my_open_count(user: models.User = Depends(get_current_user), db: Session = D
         return db.scalar(select(func.count()).select_from(
             inbox_query(user.id, "open", kind).subquery())) or 0
 
-    return {"open": _n(None), "tasks": _n("task"),
-            "notifications": _n("notification")}
+    total = _n(None)
+    return {
+        # ``open`` مجموع الصندوق — اسٌم يضلّل من يقرأ «عندي 54 مهمة»
+        # وأمامه 9 تحتاج إجراًء. يبقى للتوافق، والاسم الصادق بجانبه.
+        "open": total,
+        "total_inbox_items": total,
+        "tasks": _n("task"),
+        "open_tasks": _n("task"),
+        "notifications": _n("notification"),
+        "unread_notifications": _n("notification"),
+    }
 
 
 @router.post("/{task_id}/status")
