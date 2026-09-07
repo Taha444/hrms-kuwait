@@ -392,6 +392,44 @@ def resolve_scope(user: models.User, db: Session) -> DataScope:
     return DataScope(cid, None, None)  # company
 
 
+def branch_supervisor_users(db: Session, company_id: int | None,
+                            branch_id: int | None) -> list[models.User]:
+    """**من يشرف على هذا الفرع — الجواب الوحيد في النظام.**
+
+    كان للسؤال جوابان: ``branch_supervisors`` يقرأه توجيه مرحلة «اعتماد
+    مسؤول الفرع»، و``users.scope_branch_id`` يقرأه ``resolve_scope``.
+    و``/users/{id}/scope`` يكتب في الأول عند المستوى ``multi`` وحده،
+    ويمسح صفوفه عند المستوى ``branch``.
+
+    فمن أسند مسؤول فرع إلى **فرع واحد** — وهو الاختيار الطبيعي لمن يشرف
+    على فرع واحد — حصل على مشرف يرى فرعه ولا يصله منه طلب أبًدا. وهذا
+    أسوأ من غياب الإسناد: المهمة الحرجة تقول «لا مسؤول مرتبط بفرع
+    الموظف» بينما الشاشة تُظهره مسنًدا، فيُقرأ التنبيه خطًأ في النظام لا
+    نقًصا في الإعداد، ويُهمَل.
+
+    والجواب هنا مشتقٌّ من ``resolve_scope`` نفسه: **مسؤول فرع نشط يشمل
+    نطاقُه هذا الفرع** — أًيا كان الحقل الذي ضبطه المسؤول.
+
+    ولا يشمل من ليس دوره مسؤول فرع: **النطاق يحدّد ما يُرى، والدور يحدّد
+    ما يُعتمَد.** وكان تقييد محاسب بفرعين — وهو إعداد رؤية — يجعله
+    معتمِد مرحلة مسؤول الفرع فيهما، فتُمنَح سلطة اعتماد من حيث أُريد حجب
+    رؤية.
+    """
+    if not branch_id:
+        return []
+    users = db.scalars(select(models.User).where(
+        models.User.company_id == company_id,
+        models.User.role == "branch_supervisor",
+        models.User.is_active.is_(True))).all()
+    out = []
+    for u in users:
+        ids = resolve_scope(u, db).branch_ids
+        # ``None`` = بلا تقييد فرع، ولا يُعدّ إسناًدا لفرع بعينه.
+        if ids and branch_id in ids:
+            out.append(u)
+    return out
+
+
 def get_branch_scope(user: models.User, db: Session) -> set[int] | None:
     """توافق خلفي: نطاق الفروع فقط (مجموعة معرّفات أو None). يفوّض لـ resolve_scope."""
     return resolve_scope(user, db).branch_ids

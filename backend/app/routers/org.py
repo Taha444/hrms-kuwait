@@ -72,12 +72,15 @@ def org_structure(company_id: int | None = None,
     if scope_bids is not None:  # مسؤول الفرع: فروعه فقط
         bq = bq.where(models.Branch.id.in_(scope_bids))
     branches = db.scalars(bq.order_by(models.Branch.name)).all()
-    sup_rows = db.scalars(select(models.BranchSupervisor).where(
-        models.BranchSupervisor.company_id == cid)).all()
-    user_names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
-    sup_by_branch: dict[int, list[str]] = {}
-    for s in sup_rows:
-        sup_by_branch.setdefault(s.branch_id, []).append(user_names.get(s.user_id, "—"))
+    # BR-27 — ما تعرضه الشاشة مسنًدا هو ما يُوجَّه إليه الطلب: مصدر واحد.
+    # كانت تقرأ ``branch_supervisors`` مباشرة، والتوجيه يقرأها كذلك — ثم
+    # يفترقان عن نيّة الإسناد حين يُضبَط النطاق على فرع واحد.
+    from ..deps import branch_supervisor_users
+
+    sup_by_branch = {
+        b.id: [u.full_name for u in branch_supervisor_users(db, cid, b.id)]
+        for b in branches
+    }
 
     out = [{
         "id": b.id, "name": b.name, "address": b.address,
@@ -214,6 +217,13 @@ def add_supervisor(branch_id: int, user_id: int, request: Request,
     target = db.get(models.User, user_id)
     if not target or target.company_id != branch.company_id:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    # BR-27 — الدور يحدّد ما يُعتمَد. وربط من ليس مسؤول فرع كان يُكتَب
+    # ويبدو ناجًحا ثم لا يصله طلب — إسناٌد صامت بلا أثر. يُردّ صراحًة.
+    if target.role != "branch_supervisor":
+        raise HTTPException(
+            status_code=400,
+            detail=(f"«{target.full_name}» دوره ليس مسؤول فرع، فلا تصله "
+                    "طلبات هذه المرحلة. غيّر دوره أوًلا ثم أسنِده للفرع."))
     exists = db.scalar(select(models.BranchSupervisor).where(
         models.BranchSupervisor.branch_id == branch_id,
         models.BranchSupervisor.user_id == user_id))

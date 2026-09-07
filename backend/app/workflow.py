@@ -650,15 +650,13 @@ def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> li
     if role == "branch_supervisor":
         emp = db.get(models.Employee, req.employee_id)
         if emp and emp.branch_id:
-            sup_ids = [
-                bs.user_id for bs in db.scalars(
-                    select(models.BranchSupervisor).where(
-                        models.BranchSupervisor.branch_id == emp.branch_id
-                    )
-                ).all()
-            ]
-            users = [db.get(models.User, uid) for uid in sup_ids]
-            users = [u for u in users if u and u.is_active]
+            # BR-27 — «من يشرف على هذا الفرع؟» سؤاٌل بجواب واحد في النظام.
+            # كان يُقرأ هنا من ``branch_supervisors`` مباشرة، وتُكتَب صفوفه
+            # عند المستوى ``multi`` وحده — فمن أُسنِد إلى فرع واحد من شاشة
+            # المستخدمين لم يصله طلب قط، والشاشة تُظهره مسنًدا.
+            from .deps import branch_supervisor_users
+
+            users = branch_supervisor_users(db, req.company_id, emp.branch_id)
             if users:
                 # V1.5 Phase 3: يوسّع القائمة لتشمل أي مفوَّض إليهم نشطين
                 from .delegation import expand_approvers_with_delegates

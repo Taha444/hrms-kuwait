@@ -467,6 +467,12 @@ const dict: Record<string, { ar: string; en: string }> = {
 
   // الفروع / الهيكل / الأرشيف
   branch_name: { ar: "الفرع", en: "Branch" }, supervisor: { ar: "مسؤول الفرع", en: "Branch Supervisor" },
+  // BR-27 — غياب المسؤول يُعرَض كما يُعرَض وجوده. فرٌع بلا مسؤول تقف عنده كل
+  // مرحلة «اعتماد مسؤول الفرع»، وكان لا يظهر منه على الشاشة شيء: سطر
+  // المسؤولين يُخفى عند الفراغ، فيستوي الفرع المُسنَد وغير المُسنَد.
+  no_supervisor: { ar: "بلا مسؤول — تقف عنده طلبات مرحلة مسؤول الفرع",
+                   en: "No supervisor — its approval stage stalls here" },
+  assign_supervisor: { ar: "أسنِد مسؤوًلا", en: "Assign a supervisor" },
   view_branch_emps: { ar: "عرض موظفي الفرع", en: "View branch employees" },
   view_all_emps: { ar: "عرض كل الموظفين (كل الفروع)", en: "View all employees" },
   present_today: { ar: "حضور اليوم", en: "Present Today" }, on_leave_now: { ar: "في إجازة", en: "On Leave" },

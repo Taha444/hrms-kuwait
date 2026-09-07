@@ -57,9 +57,19 @@ export default function CompanyStructure() {
                 </div>
                 <span className="pill neutral">{b.employee_count}</span>
               </div>
-              {b.supervisors?.length > 0 && (
+              {b.supervisors?.length > 0 ? (
                 <div className="muted" style={{ fontSize: 12, margin: "6px 0" }}>
                   {t("supervisor")}: {b.supervisors.join("، ")}
+                </div>
+              ) : (
+                // BR-27 — الغياب يُعرَض كما يُعرَض الوجود. كان السطر يُخفى عند
+                // الفراغ، فيستوي على الشاشة الفرعُ المُسنَد وغير المُسنَد —
+                // ولا يُكتشف النقص إلا حين يقف طلب عند مرحلة بلا معتمِد.
+                <div style={{ fontSize: 12, margin: "6px 0", color: "var(--danger)" }}>
+                  {t("supervisor")}: {t("no_supervisor")}
+                  {can("manage_users") && (
+                    <> — <Link to="/users">{t("assign_supervisor")}</Link></>
+                  )}
                 </div>
               )}
               <div className="row" style={{ justifyContent: "space-around", margin: "12px 0", padding: "10px 0",
