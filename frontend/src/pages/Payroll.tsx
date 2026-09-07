@@ -5,6 +5,12 @@ import { useI18n } from "../i18n";
 import { statusAr } from "../labels";
 import Icon from "../Icon";
 
+//: لون كل حالة من دورة المسيّر. المقفل وحده «نجاح» — وما قبله عمٌل باقٍ.
+const RUN_PILL: Record<string, string> = {
+  prepared: "warning", approved: "info", finalized: "info",
+  locked: "success", adjustment_run: "neutral",
+};
+
 function thisMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -22,6 +28,26 @@ export default function Payroll() {
 
   const loadRuns = () => api.get("/payroll/runs").then((r) => setRuns(r.data)).catch(() => {});
   useEffect(() => { loadRuns(); }, []);
+
+  // PR-UI — دورة المسيّر لم يكن لها مخرج من الشاشة: يُجهَّز ولا يُعتمَد ولا
+  // يُقفَل ولا يُقفل نهائًيا. والخادم يفرض الدورة كاملة، فتبقى مسيّرات
+  // العميل عند «مجهَّز» إلى الأبد — وهي عملية الشهر الأساسية عنده.
+  //
+  // والأعلام تأتي من الخادم ولا تُحسب هنا: شرط فصل السلطات مكتوب مرّة في
+  // المنع، وزٌر يظهر ثم يفشل بـ403 أسوأ من زرّ غائب.
+  const act = async (runId: number, path: string, params?: any) => {
+    setErr(""); setMsg("");
+    try {
+      const r = await api.post(`/payroll/runs/${runId}/${path}`, null, { params });
+      setMsg(`${t("payroll_state_now")} ${statusAr(r.data.status)}`);
+      loadRuns();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  const askReason = (prompt: string): string | null => {
+    const reason = window.prompt(prompt);
+    return reason && reason.trim() ? reason.trim() : null;
+  };
 
   // QA-24 — حقل الشهر يبدأ بقيمة، لكن المستخدم يستطيع مسحه. بلا هذا الفحص
   // يُرسَل period فارًغا فيعود خطأ خادم غامض بدل رسالة تقول ما ينقص.
@@ -102,17 +128,43 @@ export default function Payroll() {
       <div className="card">
         <h3>{t("payroll_runs")}</h3>
         <table>
-          <thead><tr><th>{t("payroll_period")}</th><th>{t("payroll_count")}</th><th>{t("payroll_net")}</th><th>{t("status")}</th><th></th></tr></thead>
+          <thead><tr><th>{t("payroll_period")}</th><th>{t("payroll_count")}</th><th>{t("payroll_net")}</th><th>{t("status")}</th><th>{t("payroll_trail")}</th><th></th></tr></thead>
           <tbody>
             {runs.map((r) => (
               <tr key={r.id}>
                 <td>{r.period}</td><td className="num">{r.employees_count}</td>
                 <td className="num">{r.totals?.net}</td>
-                <td><span className="pill success">{statusAr(r.status)}</span></td>
-                <td>{can("export_reports") && <button className="ghost sm" onClick={() => downloadSensitiveReport(`/reports/payroll/${r.id}`, { fmt: "xlsx" }, "payroll.xlsx", t("export_reason_prompt"))}>Excel</button>}</td>
+                {/* PR-UI — لكل حالة لونها. كانت كلّها «نجاح»، فيستوي مسيٌّر
+                    مجهَّز لم يعتمده أحد ومسيٌّر مقفل صُرف — واللون هو أول ما
+                    يُقرأ من الجدول. */}
+                <td><span className={`pill ${RUN_PILL[r.status] || "neutral"}`}>{statusAr(r.status)}</span></td>
+                <td className="muted" style={{ fontSize: 11 }}>
+                  {/* من جهّز ومن اعتمد: فصل السلطات لا يُثبَت بغير أسماء. */}
+                  {r.prepared_by && <>{t("payroll_prepared_by")}: {r.prepared_by}<br /></>}
+                  {r.approved_by && <>{t("payroll_approved_by")}: {r.approved_by}</>}
+                  {r.adjustment_reason && <><br />{r.adjustment_reason}</>}
+                </td>
+                <td>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    {r.can_approve && <button className="sm" onClick={() => act(r.id, "approve")}>{t("payroll_approve")}</button>}
+                    {r.can_finalize && <button className="sm" onClick={() => act(r.id, "finalize")}>{t("payroll_finalize")}</button>}
+                    {r.can_lock && <button className="sm" onClick={() => act(r.id, "lock")}>{t("payroll_lock")}</button>}
+                    {r.can_reopen && <button className="ghost sm" onClick={() => {
+                      const reason = askReason(t("payroll_reopen_reason"));
+                      if (reason) act(r.id, "reopen", { reason });
+                    }}>{t("payroll_reopen")}</button>}
+                    {r.can_adjust && <button className="ghost sm" onClick={() => {
+                      const reason = askReason(t("payroll_adjust_reason"));
+                      if (reason) act(r.id, "adjustment", { reason });
+                    }}>{t("payroll_adjust")}</button>}
+                    {can("export_reports") && <button className="ghost sm" onClick={() => downloadSensitiveReport(`/reports/payroll/${r.id}`, { fmt: "xlsx" }, "payroll.xlsx", t("export_reason_prompt"))}>Excel</button>}
+                  </div>
+                  {/* وصفٌّ بلا زرّ يقول لماذا — لا يُترَك المستخدم يخمّن. */}
+                  {r.blocked_reason && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{r.blocked_reason}</div>}
+                </td>
               </tr>
             ))}
-            {!runs.length && <tr><td colSpan={5} className="empty">لا توجد مسيّرات محفوظة</td></tr>}
+            {!runs.length && <tr><td colSpan={6} className="empty">لا توجد مسيّرات محفوظة</td></tr>}
           </tbody>
         </table>
       </div>

@@ -33,8 +33,10 @@ const EMPTY = {
 
 export default function Signatories() {
   const { t, lang } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const manage = can("manage_users");
+  // SIG-REPL — اعتماد استبدال التوقيع مقتصر على الموارد البشرية في الخادم.
+  const isHr = user?.role === "hr" || user?.role === "super_admin";
 
   const [rows, setRows] = useState<Sig[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -55,6 +57,17 @@ export default function Signatories() {
     api.get("/users").then((r) => setUsers(r.data.filter((u: any) => u.is_active)))
       .catch(() => {});
   }, [manage]);
+
+  // SIG-REPL — استبدال التوقيع ينشئ **مهمة حرجة** للموارد البشرية تقول
+  // «راجِع الاستبدال واعتمده»، ولم تكن في النظام شاشة تعتمده. فالمهمة
+  // تأمر بفعل لا سبيل إليه، والتوقيع القديم يبقى نشًطا بلا قرار.
+  const [pending, setPending] = useState<any[]>([]);
+  const [pendingImg, setPendingImg] = useState<Record<number, string>>({});
+  const loadPending = () => {
+    if (!isHr) return;
+    api.get("/signatures/pending").then((r) => setPending(r.data)).catch(() => {});
+  };
+  useEffect(() => { loadPending(); }, [isHr]);
 
   const reset = () => { setForm(EMPTY); setEditing(null); };
 
@@ -110,6 +123,29 @@ export default function Signatories() {
     s.scope_type === "any" ? t("sig_scope_any")
       : `${t(`sig_scope_${s.scope_type}`)}: ${s.scope_value}`;
 
+  const showPending = async (uid: number) => {
+    if (pendingImg[uid]) { setPendingImg({ ...pendingImg, [uid]: "" }); return; }
+    try {
+      const r = await api.get(`/signatures/pending/${uid}/image`, { responseType: "blob" });
+      setPendingImg({ ...pendingImg, [uid]: URL.createObjectURL(r.data) });
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  const decidePending = async (uid: number, action: "approve" | "reject") => {
+    setErr(""); setMsg("");
+    let params: any = undefined;
+    if (action === "reject") {
+      const reason = window.prompt(t("sig_reject_reason"));
+      if (!reason || !reason.trim()) return;
+      params = { reason: reason.trim() };
+    }
+    try {
+      await api.post(`/signatures/pending/${uid}/${action}`, null, { params });
+      setMsg(t(action === "approve" ? "sig_pending_approved" : "sig_pending_rejected"));
+      loadPending();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
   return (
     <div>
       <div className="page-head">
@@ -132,6 +168,56 @@ export default function Signatories() {
 
       {msg && <div className="ok">{msg}</div>}
       {err && <div className="err">{err}</div>}
+
+      {/* SIG-REPL — طابور الاستبدالات: المهمة الحرجة تُرسَل إلى الموارد
+          البشرية وتقول «اعتمِد»، وكان الاعتماد بلا شاشة. */}
+      {isHr && pending.length > 0 && (
+        <div className="card" style={{ borderInlineStart: "3px solid var(--warning)" }}>
+          <h3 style={{ marginTop: 0 }}>{t("sig_pending_title")} ({pending.length})</h3>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("sig_pending_hint")}</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>{t("col_employee")}</th><th>{t("sig_pending_reason")}</th>
+                <th>{t("sig_pending_at")}</th><th></th>
+              </tr></thead>
+              <tbody>
+                {pending.map((p) => (
+                  <tr key={p.user_id}>
+                    <td><b>{p.full_name}</b><br /><span className="muted">{p.civil_id}</span></td>
+                    <td>
+                      {p.reason || "—"}
+                      {pendingImg[p.user_id] && (
+                        <div style={{ marginTop: 6 }}>
+                          <img src={pendingImg[p.user_id]} alt={t("sig_pending_view")}
+                               style={{ maxHeight: 80, background: "#fff",
+                                        border: "1px solid var(--line)", padding: 4 }} />
+                        </div>
+                      )}
+                    </td>
+                    <td className="muted">{p.uploaded_at?.slice(0, 16).replace("T", " ")}</td>
+                    <td>
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                        {/* القرار على صورة تُرى لا على اسم يُقرأ. والصورة
+                            تُجلَب بالرمز: رابٌط مباشر يعود 401 صامًتا. */}
+                        <button className="ghost sm" onClick={() => showPending(p.user_id)}>
+                          {t("sig_pending_view")}
+                        </button>
+                        <button className="sm" onClick={() => decidePending(p.user_id, "approve")}>
+                          {t("sig_pending_approve")}
+                        </button>
+                        <button className="ghost sm" onClick={() => decidePending(p.user_id, "reject")}>
+                          {t("sig_pending_reject")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ما يحدث بلا سجل — مكتوب لا مفترَض */}
       {rows.filter((s) => s.is_active).length === 0 && (

@@ -179,9 +179,12 @@ function Sidebar({ open }: { open: boolean }) {
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
         {/* SEC2-15 — سجل المخوّلين بالتوقيع: يُقرأ عند توليد كل مستند
-            رسمي، وكان بلا شاشة تكتب فيه. الرابط لمن يُهيّئ (manage_users)،
-            والمسار مفتوح لمن يقرأ المستندات كما يسمح الخادم. */}
-        {can("manage_users") && <Item to="/signatories" icon="doc" label={t("sig_nav")} />}
+            رسمي، وكان بلا شاشة تكتب فيه.
+            SIG-REPL — والرابط بشرط المسار نفسه لا بشرط أضيق: كان
+            ``manage_users`` والمسار ``view_documents``، فالموارد البشرية —
+            وهي **وحدها** من يعتمد استبدالات التوقيع — تفتح الشاشة بالعنوان
+            ولا ترى لها رابًطا. شرطان لباب واحد ينحرفان. */}
+        {can("view_documents") && <Item to="/signatories" icon="doc" label={t("sig_nav")} />}
         {/* V1.5 §3 — التفويض المؤقت: يخصّ **من يعتمد**، وأي دور غير
             الموظف العادي قد يكون معتمًِدا في مرحلة. وإخفاؤه عمّن يحتاجه
             أسوأ من إظهاره لمن لا يحتاجه: من يسافر تقف طلباته عنده. */}

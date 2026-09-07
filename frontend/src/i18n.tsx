@@ -160,6 +160,25 @@ const dict: Record<string, { ar: string; en: string }> = {
     ar: "المستندات الرسمية تخرج موقَّعة بتوقيع آخر من اعتمد الطلب، وبلا عنوان وظيفي.",
     en: "Official documents go out signed by whoever approved the request last, with no job title.",
   },
+  // SIG-REPL — استبدال التوقيع يُنشئ مهمة حرجة للموارد البشرية تقول
+  // «راجِع الاستبدال»، ولم يكن في النظام شاشة تعتمده: أمٌر بفعل بلا باب.
+  sig_pending_title: { ar: "استبدالات توقيع بانتظار الاعتماد",
+                       en: "Signature replacements awaiting approval" },
+  sig_pending_hint: {
+    ar: "التوقيع الجديد لا يُستعمَل قبل الاعتماد، والقديم يبقى نشًطا حتى تقرّر.",
+    en: "The new signature is not used until approved; the old one stays active until you decide.",
+  },
+  sig_pending_reason: { ar: "سبب الاستبدال", en: "Reason" },
+  sig_pending_at: { ar: "رُفع في", en: "Uploaded" },
+  sig_pending_view: { ar: "اعرض الصورة", en: "View image" },
+  sig_pending_approve: { ar: "اعتماد", en: "Approve" },
+  sig_pending_reject: { ar: "رفض", en: "Reject" },
+  sig_reject_reason: { ar: "سبب الرفض (يصل صاحب التوقيع ويُسجَّل):",
+                       en: "Reason for rejection (sent to the owner and recorded):" },
+  sig_pending_approved: { ar: "اعتُمد التوقيع الجديد وصار هو النشط",
+                          en: "The new signature is approved and now active" },
+  sig_pending_rejected: { ar: "رُفض الاستبدال — التوقيع القديم باقٍ",
+                          en: "Replacement rejected — the old signature stands" },
   payroll: { ar: "الرواتب", en: "Payroll" },
   eos: { ar: "نهاية الخدمة", en: "End of Service" },
   reports: { ar: "التقارير", en: "Reports" },
@@ -493,6 +512,21 @@ const dict: Record<string, { ar: string; en: string }> = {
   payroll_absent: { ar: "غياب", en: "Absent" }, payroll_overtime: { ar: "الإضافي", en: "Overtime" },
   payroll_net: { ar: "الصافي", en: "Net" }, payroll_runs: { ar: "المسيّرات السابقة", en: "Previous Runs" },
   payroll_export: { ar: "تصدير Excel", en: "Export Excel" },
+  // PR-UI — دورة المسيّر: prepared → approved → finalized → locked.
+  // الخادم يفرضها كاملة، ولم يكن في الشاشة زرٌّ واحد يتقدّم بها خطوة.
+  payroll_approve: { ar: "اعتماد", en: "Approve" },
+  payroll_finalize: { ar: "إقفال", en: "Finalize" },
+  payroll_lock: { ar: "قفل نهائي", en: "Lock" },
+  payroll_reopen: { ar: "إعادة فتح", en: "Reopen" },
+  payroll_adjust: { ar: "مسيّر تسوية", en: "Adjustment run" },
+  payroll_trail: { ar: "من جهّز ومن اعتمد", en: "Prepared / approved by" },
+  payroll_prepared_by: { ar: "جهّزه", en: "Prepared by" },
+  payroll_approved_by: { ar: "اعتمده", en: "Approved by" },
+  payroll_state_now: { ar: "صارت حالة المسيّر:", en: "Run status is now:" },
+  payroll_reopen_reason: { ar: "سبب إعادة الفتح (يُسجَّل في التدقيق):",
+                           en: "Reason for reopening (recorded in the audit log):" },
+  payroll_adjust_reason: { ar: "سبب التسوية (يُسجَّل في التدقيق):",
+                           en: "Reason for the adjustment (recorded in the audit log):" },
 
   // التدقيق
   audit_eyebrow: { ar: "الأمان", en: "Security" }, audit_title: { ar: "سجل التدقيق", en: "Audit Log" },

@@ -20,6 +20,13 @@ export const statusAr = M({
   locked: { ar: "مقفل", en: "Locked" }, resigned: { ar: "مستقيل", en: "Resigned" },
   retired: { ar: "متقاعد", en: "Retired" }, vacation: { ar: "في إجازة", en: "On Vacation" },
   returned: { ar: "أُعيد للتصحيح", en: "Returned for Correction" },
+  // PR-UI — حالات مسيّر الرواتب. كانت تُعرض بأكوادها الإنجليزية الخام
+  // (``prepared`` · ``finalized``) لأن الخريطة لا تعرفها — والدالة تُعيد
+  // المفتاح نفسه عند الغياب، فيبدو الكود تسميًة مقصودة.
+  prepared: { ar: "مجهَّز — بانتظار الاعتماد", en: "Prepared — awaiting approval" },
+  finalized: { ar: "مُعتمَد ومُقفَل — بانتظار القفل النهائي",
+               en: "Finalized — awaiting lock" },
+  adjustment_run: { ar: "مسيّر تسوية", en: "Adjustment run" },
 });
 
 export const roleAr = M({

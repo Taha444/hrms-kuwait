@@ -49,6 +49,17 @@ def _company(user: models.User, company_id: int | None) -> int:
     return cid
 
 
+#: PR-UI — رسالة فصل السلطات: **مكتوبة مرّة** ويقرؤها المنع والشاشة معًا.
+#: كتابتها في الخادم وحده يجعل الشاشة تعرض زًرا يفشل؛ وكتابتها في
+#: الشاشة وحدها يجعل نصّين لقاعدة واحدة ينحرفان.
+SELF_APPROVAL_BLOCK = "لا يمكنك اعتماد مسيّر جهّزته بنفسك — فصل السلطات إلزامي"
+
+
+def _self_approval_blocked(user: models.User, pr: models.PayrollRun) -> bool:
+    """هل يمنعه فصل السلطات من اعتماد هذا المسيّر؟"""
+    return pr.prepared_by_user_id == user.id and user.role != "super_admin"
+
+
 @router.get("/preview")
 def preview(period: str, request: Request, company_id: int | None = None,
             user: models.User = Depends(require_perm("view_payroll")),
@@ -140,9 +151,8 @@ def approve_run(run_id: int, request: Request,
     if pr.status != "prepared":
         raise HTTPException(status_code=409,
                             detail=f"لا يمكن اعتماد مسيّر في حالة '{pr.status}' — يجب أن يكون prepared")
-    if pr.prepared_by_user_id == user.id and user.role != "super_admin":
-        raise HTTPException(status_code=403,
-                            detail="لا يمكنك اعتماد مسيّر جهّزته بنفسك — فصل السلطات إلزامي")
+    if _self_approval_blocked(user, pr):
+        raise HTTPException(status_code=403, detail=SELF_APPROVAL_BLOCK)
     pr.status = "approved"
     pr.approved_by_user_id = user.id
     pr.approved_at = datetime.utcnow()
@@ -296,10 +306,49 @@ def list_runs(company_id: int | None = None,
     if cid is not None:
         q = q.where(models.PayrollRun.company_id == cid)
     rows = db.scalars(q.order_by(models.PayrollRun.period.desc())).all()
-    return [{"id": r.id, "period": r.period, "status": r.status,
-             "totals": (r.totals_json or {}).get("totals"),
-             "employees_count": (r.totals_json or {}).get("employees_count"),
-             "created_at": r.created_at} for r in rows]
+
+    # PR-UI — الصفّ يحمل ما يكفي الشاشة لتعرض **خطوة تالية أو سبب توقّف**.
+    #
+    # كانت القائمة تعيد الحالة وحدها ولا شيء غيرها، والشاشة تعرضها كلها
+    # بلون النجاح بلا زرّ واحد. فالمسيّر يُجهَّز ولا يُعتمَد ولا يُقفَل ولا
+    # يُقفل نهائًيا — دورة حياة كاملة بلا مخرج من الواجهة.
+    #
+    # والأعلام تُحسب من نفس الشروط التي يفرضها المنع (``_self_approval_blocked``)
+    # لا من نسخة ثانية منها: زرٌّ يظهر ثم يفشل بـ403 أسوأ من زرّ غائب.
+    from ..deps import get_user_perms
+    from ..permissions import has_permission
+
+    perms = get_user_perms(user, db)
+    may_run = has_permission(user.role, perms, "run_payroll")
+    names = {u.id: u.full_name for u in db.scalars(select(models.User).where(
+        models.User.company_id == (cid or user.company_id)))}
+
+    out = []
+    for r in rows:
+        self_blocked = may_run and r.status == "prepared" and _self_approval_blocked(user, r)
+        out.append({
+            "id": r.id, "period": r.period, "status": r.status,
+            "totals": (r.totals_json or {}).get("totals"),
+            "employees_count": (r.totals_json or {}).get("employees_count"),
+            "created_at": r.created_at,
+            "prepared_by": names.get(r.prepared_by_user_id),
+            "prepared_at": r.prepared_at,
+            "approved_by": names.get(r.approved_by_user_id),
+            "approved_at": r.approved_at,
+            "finalized_at": r.finalized_at,
+            "locked_at": r.locked_at,
+            "adjustment_of_run_id": r.adjustment_of_run_id,
+            "adjustment_reason": r.adjustment_reason,
+            "can_approve": bool(may_run and r.status == "prepared" and not self_blocked),
+            "can_finalize": bool(may_run and r.status == "approved"),
+            "can_lock": bool(may_run and r.status == "finalized"),
+            "can_reopen": bool(user.role == "super_admin"
+                               and r.status in ("approved", "finalized")),
+            "can_adjust": bool(may_run and r.status == LOCKED_STATUS),
+            # سبب التوقّف يُسمّى، فلا يقف المستخدم أمام صفٍّ بلا زرّ ولا تفسير.
+            "blocked_reason": SELF_APPROVAL_BLOCK if self_blocked else None,
+        })
+    return out
 
 
 @router.get("/runs/{run_id}")
