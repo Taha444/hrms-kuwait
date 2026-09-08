@@ -29,6 +29,17 @@ export const statusAr = M({
   adjustment_run: { ar: "مسيّر تسوية", en: "Adjustment run" },
 });
 
+// SCR-Q — أسماء الحقول الحرجة. كانت خريطًة محلّية عربية داخل ملف الموظف،
+// فلمّا لزمت شاشًة ثانية كان الخيار: نسخها (قاعدة في موضعين تنحرفان) أو
+// نقلها إلى مصدرها. وهذا مكان التسميات كلّها، وثنائي اللغة كغيره.
+export const fieldAr = M({
+  basic_salary: { ar: "الراتب الأساسي", en: "Basic salary" },
+  actual_salary: { ar: "الراتب الفعلي", en: "Actual salary" },
+  hire_date: { ar: "تاريخ التعيين", en: "Hire date" },
+  job_title: { ar: "المسمى الوظيفي", en: "Job title" },
+  contract_type: { ar: "نوع العقد", en: "Contract type" },
+});
+
 export const roleAr = M({
   super_admin: { ar: "إدارة عليا", en: "Super Admin" }, company_owner: { ar: "صاحب الشركات", en: "Company Owner" },
   company_manager: { ar: "مدير شركة", en: "Manager" }, branch_supervisor: { ar: "مسؤول فرع", en: "Branch Supervisor" },

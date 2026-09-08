@@ -105,6 +105,35 @@ export default function Users() {
     openPerms(sel);
   };
 
+  // ORPH-01 — الحسابات المكسورة: كل دور داخلي يجب أن يكون مربوًطا بسجل
+  // موظف (شرط المالك: الحساب والموظف رابٌط واحد). والربط الآلي يطابق
+  // بالرقم المدني **ويُخلّف من لا مطابق له**، ويقول في تقريره «يحتاج
+  // إنشاء Employee record» — ثم لا شيء في الشاشة يربط.
+  //
+  // وكانت القائمة لا تُرى إلا بعد ضغط زرّ الربط الآلي: فمن لم يضغطه لا
+  // يعرف أن في شركته حساًبا مكسوًرا أصًلا.
+  const [orphans, setOrphans] = useState<any[]>([]);
+  const [pickEmp, setPickEmp] = useState<Record<number, string>>({});
+  const [empList, setEmpList] = useState<any[]>([]);
+  const loadOrphans = () => {
+    api.get("/users/orphaned").then((r) => setOrphans(r.data)).catch(() => setOrphans([]));
+    api.get("/employees", { params: { limit: 500 } })
+      .then((r) => setEmpList(r.data)).catch(() => {});
+  };
+  useEffect(() => { loadOrphans(); }, []);
+
+  const linkOne = async (userId: number) => {
+    const empId = pickEmp[userId];
+    if (!empId) return;
+    setErr(""); setMsg("");
+    try {
+      await api.post(`/users/${userId}/link-employee`, null,
+                     { params: { employee_id: +empId } });
+      setMsg(t("orph_linked"));
+      loadOrphans(); load();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
   // R9 §14 — auto-link report state
   const [linkReport, setLinkReport] = useState<any | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
@@ -135,6 +164,53 @@ export default function Users() {
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
+
+      {/* ORPH-01 — حسابات بلا سجل موظف. تُعرَض دائًما لا بعد ضغط زرّ،
+          ولكلٍّ ربٌط يدوي: الربط الآلي يطابق بالرقم المدني ويُخلّف من
+          لا مطابق له، وكان تقريره يقول «يحتاج إنشاء Employee record»
+          ولا يربط — **وإنشاء موظف وهمي ممنوع**، فالمخرج هو الربط بسجل
+          قائم لا اختراع سجل. */}
+      {orphans.length > 0 && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--warning)",
+                                       marginBottom: 12 }}>
+          <h4 style={{ marginTop: 0 }}>{t("orph_title")} ({orphans.length})</h4>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("orph_hint")}</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>{t("user_name")}</th><th>{t("user_role")}</th>
+                <th>{t("orph_link_to")}</th><th></th>
+              </tr></thead>
+              <tbody>
+                {orphans.map((o) => (
+                  <tr key={o.id}>
+                    <td><b>{o.full_name}</b><br /><span className="muted">{o.civil_id}</span></td>
+                    <td>{roleAr(o.role)}</td>
+                    <td>
+                      <select aria-label={t("orph_link_to")}
+                              value={pickEmp[o.id] || ""}
+                              onChange={(e) => setPickEmp({ ...pickEmp, [o.id]: e.target.value })}
+                              style={{ minWidth: 200 }}>
+                        <option value="">{t("orph_pick")}</option>
+                        {empList.map((e: any) => (
+                          <option key={e.id} value={e.id}>
+                            {e.name}{e.employee_no ? ` — ${e.employee_no}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button className="sm" disabled={!pickEmp[o.id]}
+                              onClick={() => linkOne(o.id)}>{t("orph_link")}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {linkReport && (
         <div className="card" style={{ borderInlineStart: "4px solid var(--brand)", marginBottom: 12 }}>
           <div className="row" style={{ justifyContent: "space-between" }}>

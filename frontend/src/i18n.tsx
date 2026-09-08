@@ -379,6 +379,21 @@ const dict: Record<string, { ar: string; en: string }> = {
   fld_name: { ar: "الاسم", en: "Name" }, fld_civil_id: { ar: "الرقم المدني", en: "Civil ID" },
   fld_nationality: { ar: "الجنسية", en: "Nationality" }, kwd_currency: { ar: "د.ك", en: "KWD" },
   emp_new_btn: { ar: "+ موظف جديد", en: "+ New Employee" },
+  // SCR-Q — طابور تغييرات الحقول الحرجة: نقطٌة بُنيت ليجد المعتمِد ما
+  // ينتظره مجموًعا، ثم بقيت بلا طريق — فالبلاغ يقول إن هناك عمًلا ولا
+  // يقول أين، والقائمة الوحيدة داخل ملف كل موظف على حدة.
+  scr_title: { ar: "تغييرات تنتظر قرارك", en: "Changes awaiting your decision" },
+  scr_hint: {
+    ar: "اقتراحات على حقول حرجة لا تُطبَّق حتى يعتمدها غير مقترِحها. الاعتماد يُطبّقها على الملف فوًرا ويُقيَّد في السجل.",
+    en: "Proposals on critical fields that are not applied until someone other than the proposer approves. Approval applies them at once and is recorded.",
+  },
+  scr_field: { ar: "الحقل", en: "Field" },
+  scr_change: { ar: "من ← إلى", en: "From → to" },
+  scr_by: { ar: "اقترحه", en: "Proposed by" },
+  scr_approve: { ar: "اعتماد", en: "Approve" },
+  scr_reject: { ar: "رفض", en: "Reject" },
+  scr_reject_reason: { ar: "سبب الرفض (يصل مقترِحه ويُسجَّل):",
+                       en: "Reason for rejection (sent to the proposer and recorded):" },
   // التخطيط الرئيسي-التفصيلي + التبويبات
   tab_personal: { ar: "البيانات الشخصية", en: "Personal Info" },
   tab_employment: { ar: "التوظيف والعقد", en: "Employment & Contract" },
@@ -968,6 +983,18 @@ const dict: Record<string, { ar: string; en: string }> = {
   rd_marked_filed: { ar: "تم تسجيل الأرشفة", en: "Filing recorded" },
   // المستخدمون والصلاحيات — مفاتيح إضافية
   users_title: { ar: "المستخدمون والصلاحيات", en: "Users & Permissions" },
+  // ORPH-01 — حساٌب داخلي بلا سجل موظف يكسر شرط «الحساب والموظف رابط
+  // واحد». والربط الآلي يطابق بالرقم المدني ويُخلّف من لا مطابق له،
+  // وكان تقريره يقول «يحتاج إنشاء Employee record» ولا يربط.
+  orph_title: { ar: "حسابات بلا سجل موظف", en: "Accounts with no employee record" },
+  orph_hint: {
+    ar: "كل دور داخلي يجب أن يُربَط بسجل موظف. اربطه بسجل قائم — ولا يُنشأ موظف وهمي لأجل الربط.",
+    en: "Every internal role must be linked to an employee record. Link to an existing one — never create a placeholder employee for the sake of linking.",
+  },
+  orph_link_to: { ar: "اربطه بـ", en: "Link to" },
+  orph_pick: { ar: "اختر موظًفا…", en: "Choose an employee…" },
+  orph_link: { ar: "اربط", en: "Link" },
+  orph_linked: { ar: "رُبط الحساب بسجل الموظف", en: "Account linked to the employee record" },
   user_civil_id: { ar: "الرقم المدني", en: "Civil ID" }, user_name: { ar: "الاسم", en: "Name" },
   user_default_pw_hint: { ar: "كلمة المرور الافتراضية تُطلب تغييرها عند أول دخول.", en: "The default password must be changed at first login." },
   user_scope_set: { ar: "تم ضبط نطاق البيانات", en: "Data scope set" },

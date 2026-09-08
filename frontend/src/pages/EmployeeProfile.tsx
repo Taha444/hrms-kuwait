@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import api, { downloadSensitiveReport, errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { attAr, attModeAr, statusAr, contractTypeAr, permitKindAr } from "../labels";
+import { attAr, attModeAr, statusAr, contractTypeAr, permitKindAr, fieldAr } from "../labels";
 import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
@@ -72,13 +72,6 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   };
   const kwd = t("kwd_currency");
   const genderLabel = (g: string) => g === "male" ? t("gender_male") : g === "female" ? t("gender_female") : "—";
-
-  /** تسمية بشرية للحقل — الجدول يعرض العمود الخام وإلا (درس QA-14). */
-  const FIELD_LABEL: Record<string, string> = {
-    basic_salary: "الراتب الأساسي", actual_salary: "الراتب الفعلي",
-    hire_date: "تاريخ التعيين", job_title: "المسمى الوظيفي",
-    contract_type: "نوع العقد",
-  };
 
   useEffect(() => {
     api.get("/shifts").then((r) => setShifts(r.data)).catch(() => setShifts([]));
@@ -939,7 +932,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <tbody>
                   {changeReqs.map((r) => (
                     <tr key={r.id}>
-                      <td><span className="pill neutral">{FIELD_LABEL[r.field_name] || r.field_name}</span></td>
+                      <td><span className="pill neutral">{fieldAr(r.field_name)}</span></td>
                       <td className="muted"><code>{r.old_value ?? "—"}</code></td>
                       <td><code style={{ color: "#065f46", fontWeight: 600 }}>{r.new_value}</code></td>
                       <td>{r.effective_date}</td>
@@ -1044,7 +1037,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <tbody>
                   {history.map((h) => (
                     <tr key={h.id}>
-                      <td><span className="pill neutral">{FIELD_LABEL[h.field_name] || h.field_name}</span></td>
+                      <td><span className="pill neutral">{fieldAr(h.field_name)}</span></td>
                       <td className="muted"><code>{h.old_value ?? "—"}</code></td>
                       <td><code style={{ color: "#065f46", fontWeight: 600 }}>{h.new_value ?? "—"}</code></td>
                       <td>{h.effective_date}</td>
