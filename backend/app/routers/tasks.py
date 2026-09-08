@@ -61,12 +61,35 @@ def my_tasks(status: str | None = "open", category: str | None = None,
     cid = None if all_companies else scope_company_id(user, company_id)
     q = inbox_query(user.id, status, kind, company_id=cid)
     rows = db.scalars(q.order_by(models.Task.created_at.desc())).all()
+
+    # TSK-CLM — من يعمل على المهمة الآن. المهمة تُوزَّع على مجموعة، ولها
+    # التقاٌط يمنع أن يعملها اثنان — وكان لا يُقرأ من الشاشة ولا يُلتقَط
+    # منها: حقٌل يُكتَب بالواجهة البرمجية ولا يُقرأ، والتكرار الذي بُني
+    # الالتقاط لمنعه يقع كأنه غير مبنيّ.
+    names: dict[int, str | None] = {}
+    for t in rows:
+        uid = t.claimed_by_user_id
+        if uid and uid not in names:
+            u = db.get(models.User, uid)
+            names[uid] = u.full_name if u else None
+
     out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
             "detail": t.detail, "status": t.status, "severity": t.severity,
             "due_date": t.due_date, "related_entity_type": t.related_entity_type,
             "related_entity_id": t.related_entity_id, "created_at": t.created_at,
             # QA-12 — الواجهة تعرف من هنا أيّهما إجراء وأيّهما خبر
             "kind": "notification" if is_notification(t.type) else "task",
+            "claimed_by_user_id": t.claimed_by_user_id,
+            "claimed_by": names.get(t.claimed_by_user_id),
+            "claimed_at": t.claimed_at,
+            # والأعلام من شرط المنع نفسه — لا زرٌّ يظهر ثم يفشل.
+            "can_claim": bool(t.status in ("open", "in_progress")
+                              and not is_notification(t.type)
+                              and (not t.claimed_by_user_id
+                                   or t.claimed_by_user_id == user.id)),
+            "can_release": bool(t.claimed_by_user_id
+                                and (t.claimed_by_user_id == user.id
+                                     or user.role in ("hr", "super_admin"))),
             "template_code": t.template_code, "channel": t.channel} for t in rows]
     if category:
         out = [x for x in out if x["category"] == category]

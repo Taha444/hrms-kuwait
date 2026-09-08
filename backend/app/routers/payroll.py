@@ -189,8 +189,11 @@ def finalize_run(run_id: int, request: Request,
         if unresolved:
             raise HTTPException(
                 status_code=409,
+                # ATT-POL — كانت الرسالة تسمّي **مساًرا خاًما** لا شاشة له:
+                # نصٌّ داخلي يتسرّب للمستخدم، وأمٌر بفعل بلا باب. صارت
+                # تسمّي الشاشة التي تفعله فعًلا.
                 detail=(f"لا finalize قبل توثيق سياسة حضور كل الموظفين (مثال: {unresolved.name}). "
-                        "راجع /employees/attendance-policy/pending")
+                        "افتح «مراجعة الحضور» ← «موظفون بلا سياسة حضور» وثبّت سياسة كلٍّ منهم.")
             )
     pr.status = "finalized"
     pr.finalized_by_user_id = user.id

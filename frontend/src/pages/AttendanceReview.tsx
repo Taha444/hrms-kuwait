@@ -32,6 +32,13 @@ export default function AttendanceReview() {
       .then((r) => setClose(r.data))
       .catch(() => setClose(null));
 
+  // ATT-POL — موظف نشط بنمط ``none`` بلا إعفاء موثَّق يوقف إقفال المسيّر،
+  // وكانت رسالة الرفض تسمّي **مساًرا خاًما** لا شاشة له. وهذه هي الشاشة:
+  // نفس المكان الذي يُراجَع فيه الحضور ويُقفَل شهره.
+  const [gaps, setGaps] = useState<any[]>([]);
+  const loadGaps = () => api.get("/employees/attendance-policy/pending")
+    .then((r) => setGaps(r.data)).catch(() => setGaps([]));
+
   const load = () => {
     setLoading(true);
     setMsg(""); setErr("");
@@ -39,6 +46,7 @@ export default function AttendanceReview() {
       .then((r) => setData(r.data))
       .finally(() => setLoading(false));
     loadClose();
+    loadGaps();
   };
   useEffect(() => { load(); }, [month]);
 
@@ -56,6 +64,19 @@ export default function AttendanceReview() {
                                              .replace("{m}", month))) return;
     act(() => api.post("/attendance/close-month", null,
                        { params: { period: month } }), t("att_close_done"));
+  };
+
+  // والسياسة تُثبَّت من هنا: نمٌط فعليّ، أو إعفاٌء **بسبب مكتوب** — فالإعفاء
+  // بلا سبب هو الحال نفسها التي جاء المنع من أجلها.
+  const setPolicy = (empId: number, mode: string) => {
+    let params: any = { mode };
+    if (mode === "none") {
+      const reason = window.prompt(t("att_pol_exempt_reason"));
+      if (!reason || !reason.trim()) return;
+      params = { mode, exempt: true, exempt_reason: reason.trim() };
+    }
+    act(() => api.post(`/employees/${empId}/attendance-policy`, null, { params })
+          .then(loadGaps), t("att_pol_done"));
   };
 
   const reopenMonth = () => {
@@ -91,6 +112,40 @@ export default function AttendanceReview() {
 
       {msg && <div className="ok">{msg}</div>}
       {err && <div className="err">{err}</div>}
+
+      {/* ATT-POL — موظفون نشطون بلا سياسة حضور موثَّقة. يوقفون إقفال
+          المسيّر في الوضع الصارم، وكانت رسالة المنع تحيل إلى **مسار
+          خام** لا شاشة له — أمٌر بفعل بلا باب. وهذا الباب. */}
+      {gaps.length > 0 && (
+        <div className="card" style={{ marginBottom: 12,
+                                       borderInlineStart: "3px solid var(--warning)" }}>
+          <h3 style={{ marginTop: 0 }}>{t("att_pol_title")} ({gaps.length})</h3>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("att_pol_hint")}</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>{t("col_employee")}</th><th>{t("fld_hire_date")}</th><th></th>
+              </tr></thead>
+              <tbody>
+                {gaps.map((g) => (
+                  <tr key={g.id}>
+                    <td><b>{g.name}</b>{g.employee_no && <><br /><span className="muted">{g.employee_no}</span></>}</td>
+                    <td className="muted">{g.hire_date || "—"}</td>
+                    <td>
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                        <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "qr")}>{t("att_pol_qr")}</button>
+                        <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "gps")}>{t("att_pol_gps")}</button>
+                        <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "both")}>{t("att_pol_both")}</button>
+                        <button className="ghost sm" disabled={busy} onClick={() => setPolicy(g.id, "none")}>{t("att_pol_exempt")}</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ATT-07 / DLV-01 — حالة الشهر والمخرج منها.
           الرواتب لا تُشغَّل على فترة مفتوحة، وهذا هو الموضع الذي تحيل

@@ -205,6 +205,11 @@ const dict: Record<string, { ar: string; en: string }> = {
   loading: { ar: "جارِ التحميل…", en: "Loading…" },
   // QA-12 — سطر معلومة لا إجراء عليه
   tasks_info_only: { ar: "للعلم فقط", en: "For your information" },
+  // TSK-CLM — الالتقاط بُني ليمنع أن يعمل المهمَة الواحدة اثنان، وكان
+  // يُكتَب بالواجهة البرمجية ولا يُقرأ من الشاشة ولا يُلتقَط منها.
+  tasks_claim: { ar: "التقطها", en: "Claim" },
+  tasks_release: { ar: "أطلِقها", en: "Release" },
+  tasks_claimed_by: { ar: "عليها الآن", en: "Being handled by" },
   tasks_kind_task: { ar: "يحتاج إجراء", en: "Needs action" },
   sig_history: { ar: "سجل نسخ التوقيع", en: "Signature version history" },
   sig_history_none: { ar: "لا نسخ سابقة — هذه أول نسخة", en: "No previous versions" },
@@ -591,6 +596,20 @@ const dict: Record<string, { ar: string; en: string }> = {
 
   // ملف الموظف
   emp_status: { ar: "الحالة", en: "Status" }, emp_personal: { ar: "البيانات الشخصية", en: "Personal" },
+  // TRF-01 — النقل بين الشركات: نقطٌة كانت بلا طريق، وكانت تترك الحساب
+  // والقسم والوردية معلَّقة في الشركة القديمة.
+  emp_transfer: { ar: "نقل إلى شركة أخرى", en: "Transfer to another company" },
+  emp_transfer_pick: { ar: "اختر الشركة…", en: "Choose a company…" },
+  emp_transfer_hint: {
+    ar: "ينتقل معه حسابه، ويُفكّ ارتباطه بفرع الشركة القديمة وقسمها ووردِيتها — تُسنَد له من جديد.",
+    en: "The account moves with them; branch, department and shift of the old company are unlinked and must be set again.",
+  },
+  emp_transfer_confirm: {
+    ar: "نقل هذا الموظف إلى «{c}»؟ ينتقل حسابه معه، ويفقد فرعه وقسمه ووردِيته الحالية.",
+    en: "Transfer this employee to \"{c}\"? Their account moves with them, and their current branch, department and shift are cleared.",
+  },
+  emp_transfer_done: { ar: "نُقل الموظف — أسنِد له فرًعا وقسًما ووردية في شركته الجديدة",
+                       en: "Transferred — assign a branch, department and shift in the new company" },
   emp_hr_log: { ar: "سجل الموارد البشرية (إنذارات · جزاءات · مكافآت · ترقيات)", en: "HR Log (warnings · penalties · bonuses · promotions)" },
   emp_timeline: { ar: "الخط الزمني للموظف", en: "Employee Timeline" },
   emp_documents: { ar: "المستندات (أحدث نسخة)", en: "Documents (latest version)" },
@@ -813,6 +832,23 @@ const dict: Record<string, { ar: string; en: string }> = {
   att_reopen_reason: { ar: "سبب إعادة الفتح (يُسجَّل في التدقيق):", en: "Reason for reopening (recorded in the audit log):" },
   att_reopen_reason_label: { ar: "سبب إعادة الفتح", en: "Reopen reason" },
   att_reopen_done: { ar: "أُعيد فتح الشهر", en: "Month reopened" },
+  // ATT-POL — موظف نشط بلا سياسة حضور موثَّقة يوقف إقفال المسيّر، وكانت
+  // رسالة المنع تحيل إلى مسار خام (`/employees/attendance-policy/pending`)
+  // لا شاشة له: أمٌر بفعل بلا باب، ونصٌّ داخلي يتسرّب للمستخدم.
+  att_pol_title: { ar: "موظفون بلا سياسة حضور", en: "Employees without an attendance policy" },
+  att_pol_hint: {
+    ar: "هؤلاء نشطون ولا يبصمون ولا إعفاء موثًَّقا لهم — ويوقفون إقفال مسيّر الرواتب. ثبّت لكلٍّ نمًطا، أو أعفِه بسبب مكتوب.",
+    en: "Active, not recording attendance, and with no documented exemption — they block payroll finalization. Set a mode for each, or exempt them with a written reason.",
+  },
+  att_pol_qr: { ar: "رمز QR", en: "QR" },
+  att_pol_gps: { ar: "الموقع", en: "GPS" },
+  att_pol_both: { ar: "الاثنان", en: "Both" },
+  att_pol_exempt: { ar: "إعفاء بسبب", en: "Exempt with reason" },
+  att_pol_exempt_reason: {
+    ar: "سبب إعفاء هذا الموظف من البصم (يُحفَظ ويُنسَب إليك):",
+    en: "Reason this employee is exempt from attendance (recorded and attributed to you):",
+  },
+  att_pol_done: { ar: "ثُبّتت سياسة الحضور", en: "Attendance policy set" },
   att_self_title: { ar: "الحضور والانصراف (خدمة ذاتية)", en: "Attendance (Self-Service)" },
   att_no_records: { ar: "لا يوجد", en: "No records" },
   att_cam_err: { ar: "تعذّر الوصول إلى الكاميرا (يلزم HTTPS أو localhost)", en: "Cannot access camera (HTTPS or localhost required)" },

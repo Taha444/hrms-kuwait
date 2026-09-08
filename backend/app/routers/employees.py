@@ -3,7 +3,7 @@
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..clock import today as kuwait_today
@@ -338,10 +338,29 @@ def set_actual_salary(emp_id: int, amount: float, request: Request = None,
 def set_attendance_mode(emp_id: int, mode: str, request: Request,
                         user: models.User = Depends(require_perm("manage_attendance")),
                         db: Session = Depends(get_db)):
+    """نمط الحضور — **بابٌ ضيّق على القاعدة نفسها** لا باٌب ثانٍ بجانبها.
+
+    ATT-POL — كان هذا الباب يقبل ``mode='none'`` بلا إعفاء ولا سبب، وباب
+    ``/attendance-policy`` يرفضه بالضبط. فقاعدٌة واحدة مكتوبة في موضعين
+    بحكمين متضادّين: من دخل من هنا وضع موظًفا في الحال التي بُني عليها
+    منع ``finalize`` — «موظف نشط بلا سياسة حضور موثَّقة» — ثم لا يستطيع
+    الخروج منها من الباب نفسه.
+
+    فصار الإعفاء يمرّ من بابه وحده، ورسالة الرفض تسمّي الباب الصحيح.
+    """
     if mode not in ("none", "qr", "gps", "both"):
         raise HTTPException(status_code=400, detail="نمط حضور غير صالح")
+    if mode == "none":
+        raise HTTPException(
+            status_code=400,
+            detail=("إعفاء موظف من البصم يحتاج توثيًقا: استخدم «سياسة الحضور» "
+                    "وسجّل سبب الإعفاء. وموظف نشط بلا سياسة موثَّقة يوقف "
+                    "إقفال مسيّر الرواتب."))
     emp = _get_emp(db, user, emp_id)
     emp.attendance_mode = mode
+    # ونمٌط فعليّ يُلغي إعفاًء سابًقا: بقاؤهما معًا يعني موظًفا يبصم ويُعدّ معفًى.
+    emp.attendance_exempt = False
+    emp.attendance_exempt_reason = None
     audit(db, user, "set_attendance_mode", "employee", emp.id, detail=mode, request=request)
     db.commit()
     return {"ok": True, "attendance_mode": mode}
@@ -1318,14 +1337,44 @@ def transfer_employee(emp_id: int, to_company_id: int, note: str | None = None,
     if not target:
         raise HTTPException(status_code=404, detail="الشركة الهدف غير موجودة")
     from_company = emp.company_id
+    if to_company_id == from_company:
+        raise HTTPException(status_code=400, detail="الموظف في هذه الشركة بالفعل")
+
+    # TRF-01 — **ولا نقٌل فوق خروج مفتوح.** التسوية محسوبة على مدة خدمته
+    # في الشركة الأولى، فلو نُقل نُفِّذت من الثانية بأرقام لا تخصّها.
+    # ويُسأل عنه المصدر الواحد الذي يعرف الأبواب الثلاثة كلها.
+    exit_guard.assert_single_exit(db, emp.id)
+
     db.add(models.Transfer(employee_id=emp_id, from_company_id=from_company,
                            to_company_id=to_company_id, transferred_by=user.id, note=note))
     emp.company_id = to_company_id
+    # TRF-01 — كل ما يشير إلى الشركة القديمة يُفكّ. كان الفرع وحده يُفرَّغ،
+    # فيبقى القسم والوردية مملوكَين لشركة المصدر: موظٌف في شركة يعمل
+    # بوردية أخرى، وحضوره يُقاس عليها وتقاريره تُبنى منها.
     emp.branch_id = None
+    emp.actual_branch_id = None
+    emp.department_id = None
+    emp.shift_id = None
+    emp.direct_manager_id = None
+
+    # TRF-01 — **والحساب ينتقل مع صاحبه.** الموظف وحسابه رابٌط واحد لا
+    # يفترق؛ وبقاؤه في الشركة القديمة يعني ملًفا في شركة ودخوًلا إلى
+    # أخرى، ونطاق بيانات لا يطابق ملفه.
+    moved_accounts = 0
+    for acct in db.scalars(select(models.User).where(
+            models.User.employee_id == emp.id)).all():
+        acct.company_id = to_company_id
+        acct.scope_branch_id = None
+        db.execute(sa_delete(models.BranchSupervisor).where(
+            models.BranchSupervisor.user_id == acct.id))
+        moved_accounts += 1
+
     audit(db, user, "transfer_employee", "employee", emp_id,
-          detail=f"{from_company}->{to_company_id}", request=request)
+          detail=f"{from_company}->{to_company_id} (حسابات: {moved_accounts})",
+          request=request)
     db.commit()
-    return {"ok": True, "from": from_company, "to": to_company_id}
+    return {"ok": True, "from": from_company, "to": to_company_id,
+            "moved_accounts": moved_accounts}
 
 
 # ==========================================================================

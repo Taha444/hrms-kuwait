@@ -146,6 +146,26 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     const r = await api.post("/eos/leave-balance", null, { params: { employee_id: id, consumed_days: consumed } });
     setLeaveBal(r.data);
   };
+  // TRF-01 — النقل بين الشركات. النقطة كانت بلا طريق، وكانت تترك الحساب
+  // والقسم والوردية معلَّقة في الشركة القديمة — فأُغلقت الثغرات أوًلا ثم
+  // بُني المدخل: مدخٌل فوق تلك الحال يوسّع الضرر لا يكشفه.
+  const [companies, setCompanies] = useState<any[]>([]);
+  useEffect(() => {
+    if (!can("transfer_employee")) return;
+    api.get("/companies").then((r) => setCompanies(r.data)).catch(() => {});
+  }, []);
+
+  const transfer = async (toId: number) => {
+    if (!toId) return;
+    const target = companies.find((c: any) => c.id === toId);
+    if (!confirm(t("emp_transfer_confirm").replace("{c}", target?.name || ""))) return;
+    setMsg("");
+    try {
+      await api.post(`/employees/${id}/transfer`, null, { params: { to_company_id: toId } });
+      setMsg(t("emp_transfer_done")); load(); onChanged?.();
+    } catch (ex: any) { setMsg(errMsg(ex, t("error"))); }
+  };
+
   const changeStatus = async (status: string) => {
     if (status === "archived" && !confirm(t("epf_archive_confirm"))) return;
     await api.post(`/employees/${id}/status`, null, { params: { status } });
@@ -435,6 +455,20 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <select id="epf-status" value={e.status} onChange={(ev) => changeStatus(ev.target.value)}>
                     {Object.entries(EMP_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
+                </div>
+              )}
+              {/* TRF-01 — النقل بين الشركات: نقطٌة كانت بلا طريق. ولا يظهر
+                  المدخل إلا لمن يملكها، والقائمة من الشركات التي يراها. */}
+              {can("transfer_employee") && companies.length > 1 && (
+                <div className="field" style={{ marginTop: 12, marginBottom: 0 }}>
+                  <label htmlFor="epf-transfer">{t("emp_transfer")}</label>
+                  <select id="epf-transfer" value="" onChange={(ev) => transfer(+ev.target.value)}>
+                    <option value="">{t("emp_transfer_pick")}</option>
+                    {companies.filter((c: any) => c.id !== e.company_id)
+                      .map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {/* ما يقع فعًلا مكتوب قبل الفعل لا بعده. */}
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{t("emp_transfer_hint")}</div>
                 </div>
               )}
             </div>

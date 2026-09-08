@@ -61,7 +61,18 @@ def inbox_query(user_id: int, status: str | None = "open",
     # يختفي عمٌل بل يُنسَب إلى مكانه.
     if company_id is not None:
         q = q.where(models.Task.company_id == company_id)
-    if status:
+    if status == "open":
+        # TSK-CLM — **«مفتوحة» تعني: لم تُنجَز بعد.**
+        #
+        # كان الترشيح مطابقًة حرفية، و``claim`` يحوّل الحالة إلى
+        # ``in_progress``. فمن التقط مهمة ليقول «هذه معي» **أخفاها عن
+        # صندوقه وعن عدّاده معًا** — يختفي العمل عند بدئه، وهو عكس الغرض
+        # الذي بُني الالتقاط له.
+        #
+        # والقاعدة في موضع واحد: القائمة والعدّاد يقرآن هذا الاستعلام
+        # نفسه، فيتحرّكان معًا ولا ينحرف أحدهما عن الآخر.
+        q = q.where(models.Task.status.in_(("open", "in_progress")))
+    elif status:
         q = q.where(models.Task.status == status)
     if kind == "task":
         q = q.where(models.Task.type.notin_(tuple(NOTIFICATION_TYPES)))

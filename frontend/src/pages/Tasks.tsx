@@ -33,6 +33,22 @@ export default function Tasks() {
     // يُحدّث عداد المهام في الشريط الجانبي فورًا بدل انتظار تغيير المسار (QA-P1-TASK-01)
     window.dispatchEvent(new Event("tasks:changed"));
   };
+
+  // TSK-CLM — الالتقاط: المهمة الواحدة تُوزَّع على مجموعة أدوار، والالتقاط
+  // بُني ليمنع أن يعملها اثنان. وكان لا يُقرأ من الشاشة ولا يُلتقَط منها —
+  // فالتكرار الذي بُني لمنعه يقع كأنه غير مبنيّ، ولا يعرف أحٌد من يعمل
+  // على ماذا.
+  const claim = async (id: number, action: "claim" | "release") => {
+    setMsg("");
+    try {
+      await api.post(`/tasks/${id}/${action}`);
+      load();
+      window.dispatchEvent(new Event("tasks:changed"));
+    } catch (e: any) {
+      setMsg(e?.response?.data?.detail || t("error"));
+    }
+  };
+
   const runScan = async () => {
     const r = await api.post("/tasks/run-scan");
     setMsg(t("scan_generated", { n: r.data.generated }));
@@ -77,7 +93,15 @@ export default function Tasks() {
             {tasks.map((x) => (
               <tr key={x.id}>
                 <td><span className="pill info">{taskAr(x.type)}</span></td>
-                <td>{x.title}</td>
+                <td>
+                  {x.title}
+                  {/* TSK-CLM — من يعمل عليها الآن: بلا هذا يعملها اثنان. */}
+                  {x.claimed_by && (
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      {t("tasks_claimed_by")}: {x.claimed_by}
+                    </div>
+                  )}
+                </td>
                 <td className="muted">{x.detail}</td>
                 <td><span className={`pill ${x.severity}`}>{severityAr(x.severity)}</span></td>
                 <td>
@@ -85,7 +109,14 @@ export default function Tasks() {
                       المستخدم أن يُنجز خبًرا، وتوهمه أنه فوّت عمًلا إن تجاهله.
                       التصنيف من الخادم (kind) لا من قائمة أنواع مكرّرة هنا. */}
                   {status === "open" && x.kind !== "notification" && (
-                    <div className="row">
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {/* الالتقاط قبل العمل: يقول للبقية «هذه معي». */}
+                      {x.can_claim && !x.claimed_by_user_id && (
+                        <button className="sm" onClick={() => claim(x.id, "claim")}>{t("tasks_claim")}</button>
+                      )}
+                      {x.can_release && (
+                        <button className="ghost sm" onClick={() => claim(x.id, "release")}>{t("tasks_release")}</button>
+                      )}
                       <button className="ghost sm" onClick={() => setTaskStatus(x.id, "done")}>{t("act_complete")}</button>
                       <button className="ghost sm" onClick={() => setTaskStatus(x.id, "dismissed")}>{t("act_dismiss")}</button>
                     </div>
