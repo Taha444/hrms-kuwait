@@ -686,8 +686,46 @@ const dict: Record<string, { ar: string; en: string }> = {
   epf_accrued_yrs: { ar: "المستحق ({y} سنة خدمة)", en: "Accrued ({y} service years)" },
   epf_used: { ar: "المستهلَك", en: "Used" },
   epf_term_end_date: { ar: "تاريخ انتهاء الخدمة", en: "End-of-service Date" }, epf_reason: { ar: "السبب", en: "Reason" },
-  epf_term_btn: { ar: "إنهاء الخدمة", en: "End Service" }, epf_term_confirm: { ar: "تأكيد إنهاء خدمة الموظف؟", en: "Confirm ending this employee's service?" },
-  epf_terminated_msg: { ar: "تم إنهاء الخدمة", en: "Service ended" },
+  // EXIT-UI — الزرّ يُحضّر مسودة ولا يُنهي خدمة. والاسم والتأكيد كانا
+  // يقولان إنه يُنهيها، فيوقّع المستخدم على فعل غير الذي يقع.
+  epf_term_btn: { ar: "تحضير مسودة إنهاء الخدمة", en: "Prepare termination draft" },
+  epf_term_confirm: { ar: "تُحسَب التسوية وتُحفَظ كمسودة — ولا تنتهي خدمة الموظف الآن. متابعة؟",
+                      en: "The settlement is computed and saved as a draft — service does not end now. Continue?" },
+  // EXIT-UI — كانت هنا «تم إنهاء الخدمة» بعد **تحضير مسودة** لا غير:
+  // الخادم يُبقي الحالة ``active``، فالجملة تصف ما لم يقع. والرسالة الآن
+  // تقول ما وقع فعًلا وما بقي.
+  epf_term_drafted: {
+    ar: "أُعدّت مسودة إنهاء الخدمة — الخدمة لم تنتهِ بعد. تحتاج اعتماد غير من حضّرها، ثم إخلاء طرف، ثم إقرار الموظف، ثم تنفيًذا.",
+    en: "A termination draft was prepared — service has not ended yet. It needs approval by someone other than its preparer, then clearance, then the employee's acknowledgement, then execution.",
+  },
+  epf_term_draft_title: { ar: "مسودة إنهاء خدمة معلَّقة", en: "Pending termination draft" },
+  epf_term_draft_hint: {
+    ar: "حالة الموظف ما زالت: {status}. لا تتغيّر إلا بالتنفيذ.",
+    en: "The employee's status is still: {status}. Only execution changes it.",
+  },
+  epf_term_stage_prepared: { ar: "بانتظار الاعتماد", en: "Awaiting approval" },
+  epf_term_stage_approved: { ar: "بانتظار إخلاء الطرف", en: "Awaiting clearance" },
+  epf_term_stage_cleared: { ar: "بانتظار إقرار الموظف", en: "Awaiting employee acknowledgement" },
+  epf_term_stage_acknowledged: { ar: "جاهزة للتنفيذ", en: "Ready to execute" },
+  epf_term_approve: { ar: "اعتماد المسودة", en: "Approve draft" },
+  epf_term_clearance: { ar: "إخلاء طرف", en: "Clearance" },
+  epf_term_acknowledge: { ar: "إقرار الموظف", en: "Employee acknowledgement" },
+  epf_term_execute: { ar: "تنفيذ إنهاء الخدمة", en: "Execute termination" },
+  epf_term_cancel: { ar: "إلغاء المسودة", en: "Cancel draft" },
+  epf_term_cleared_by: { ar: "أخلى الطرف", en: "Cleared by" },
+  epf_term_clearance_note: { ar: "ملاحظة إخلاء الطرف (العهدة والمسؤوليات) — اتركها فارغة إن لم توجد:",
+                             en: "Clearance note (assets and responsibilities) — leave empty if none:" },
+  epf_term_execute_confirm: {
+    ar: "التنفيذ يُنهي خدمة الموظف فعًلا ويغيّر حالته. متأكّد؟",
+    en: "Execution actually ends the employee's service and changes their status. Are you sure?",
+  },
+  epf_term_cancel_confirm: { ar: "إلغاء المسودة يمحو الاعتماد وإخلاء الطرف والإقرار. متأكّد؟",
+                             en: "Cancelling discards the approval, clearance and acknowledgement. Sure?" },
+  epf_term_approve_done: { ar: "اعتُمدت المسودة — التالي: إخلاء الطرف", en: "Draft approved — next: clearance" },
+  epf_term_clearance_done: { ar: "سُجّل إخلاء الطرف — التالي: إقرار الموظف", en: "Clearance recorded — next: acknowledgement" },
+  epf_term_acknowledge_done: { ar: "سُجّل الإقرار — المسودة جاهزة للتنفيذ", en: "Acknowledged — the draft is ready to execute" },
+  epf_term_execute_done: { ar: "نُفِّذ إنهاء الخدمة — تغيّرت حالة الموظف", en: "Termination executed — the employee's status changed" },
+  epf_term_cancel_done: { ar: "أُلغيت المسودة — الموظف على حاله", en: "Draft cancelled — the employee is unchanged" },
   epf_settlement_title: { ar: "مكافأة نهاية الخدمة (تقديرية)", en: "End-of-Service Settlement (estimate)" },
   epf_total_settlement: { ar: "إجمالي التسوية (د.ك)", en: "Total Settlement (KWD)" },
   epf_indemnity: { ar: "المكافأة", en: "Indemnity" }, epf_leave_payout: { ar: "بدل الإجازات", en: "Leave Payout" },

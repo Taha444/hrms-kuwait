@@ -25,6 +25,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const fileRef = useRef<HTMLInputElement>(null);
   const [term, setTerm] = useState({ end_date: "", reason: "termination" });
   const [settlement, setSettlement] = useState<any>(null);
+  const [exit_, setExit] = useState<any>(null);   // EXIT-UI — مسودة إنهاء الخدمة
   const [consumed, setConsumed] = useState(0);
   const [leaveBal, setLeaveBal] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -64,6 +65,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const REASONS: Record<string, string> = {
     termination: t("rsn_termination"), contract_expiry: t("rsn_contract_expiry"), resignation: t("rsn_resignation"),
     death: t("rsn_death"), disability: t("rsn_disability"), misconduct: t("rsn_misconduct"),
+  };
+  // EXIT-UI — لكل مرحلة لونها: مسودٌة معلَّقة ليست إنجاًزا.
+  const EXIT_PILL: Record<string, string> = {
+    prepared: "warning", approved: "info", cleared: "info", acknowledged: "info",
   };
   const kwd = t("kwd_currency");
   const genderLabel = (g: string) => g === "male" ? t("gender_male") : g === "female" ? t("gender_female") : "—";
@@ -124,7 +129,12 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     api.get(`/employees/${id}/events`).then((r) => setEvents(r.data)).catch(() => {});
     api.get(`/employees/${id}/change-history`).then((r) => setHistory(r.data)).catch(() => {});
     loadChangeReqs();
+    loadExit();
   };
+  // EXIT-UI — حال مسودة إنهاء الخدمة: كانت لا تُقرأ من أي مكان، فلا يعرف
+  // أحد أنها معلَّقة ولا في أي مرحلة وقفت.
+  const loadExit = () => api.get(`/employees/${id}/termination`)
+    .then((r) => setExit(r.data)).catch(() => setExit(null));
   const load = () => api.get(`/employees/${id}/profile`).then((r) => setP(r.data));
   useEffect(() => {
     if (!id) return;
@@ -194,12 +204,28 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       kind: evForm.kind, title: evForm.title, amount: evForm.amount || undefined } });
     setEvForm({ kind: "warning", title: "", amount: "" }); loadExtras();
   };
+  // EXIT-UI — ``POST /terminate`` يُنشئ **مسودة** ولا يُنهي خدمة أحد: الحالة
+  // تبقى ``active`` حتى يعتمدها غير من حضّرها، ويُخلى الطرف، ويقرّ الموظف،
+  // ثم تُنفَّذ. وكانت الشاشة تقول «تم إنهاء الخدمة» بعد التحضير وحده —
+  // فيصدّق المستخدم أن الخدمة انتهت وهي قائمة، وتبقى المسودة معلَّقة أبًدا.
   const terminate = async () => {
     if (!term.end_date) return;
     if (!confirm(t("epf_term_confirm"))) return;
     // يُرسَل المستهلَك فقط؛ المتبقّي يُحسب آليًا في الخادم
     const r = await api.post(`/employees/${id}/terminate`, null, { params: { ...term, used_leave_days: consumed } });
-    setSettlement(r.data.settlement); setMsg(t("epf_terminated_msg")); load(); onChanged?.();
+    setSettlement(r.data.settlement); setMsg(t("epf_term_drafted")); load(); loadExit(); onChanged?.();
+  };
+
+  // ودورة المسودة كاملة من الشاشة: اعتماد ← إخلاء طرف ← إقرار ← تنفيذ،
+  // وإلغاٌء في كل وقت — فمسودٌة لا تُلغى تحبس الموظف: وجودها يمنع تحضير
+  // غيرها بـ409 يقول «الغِها أوًلا».
+  const exitAct = async (path: string, params?: any) => {
+    setMsg("");
+    try {
+      await api.post(`/employees/${id}/terminate/${path}`, null, { params });
+      setMsg(t(`epf_term_${path}_done`));
+      loadExit(); load(); onChanged?.();
+    } catch (ex: any) { setMsg(errMsg(ex, t("error"))); }
   };
 
   const applyOcr = async () => {
@@ -713,7 +739,51 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       {/* ============ نهاية الخدمة ============ */}
       {tab === "eos" && (
         <>
-          {can("terminate_employee") && e.status !== "terminated" && (
+          {/* EXIT-UI — المسودة المعلَّقة ودورتها. كانت تُحضَّر ثم تختفي:
+              خمس نقاط (اعتماد · إخلاء طرف · إقرار · تنفيذ · إلغاء) بلا
+              طريق من الواجهة، والموظف يبقى «على رأس العمل» بينما الشاشة
+              قالت إن خدمته انتهت. */}
+          {exit_?.exists && (
+            <div className="card" style={{ borderTop: "3px solid var(--warning)" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <h3 style={{ margin: 0 }}>{t("epf_term_draft_title")}</h3>
+                <span className={`pill ${EXIT_PILL[exit_.stage] || "neutral"}`}>
+                  {t(`epf_term_stage_${exit_.stage}`)}
+                </span>
+              </div>
+              {/* الحقيقة أوًلا: الحالة لم تتغيّر بعد. */}
+              <p className="muted" style={{ marginTop: 6 }}>
+                {t("epf_term_draft_hint", { status: statusAr(exit_.employee_status) })}
+              </p>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {exit_.end_date && <>{t("epf_term_end_date")}: {exit_.end_date} · </>}
+                {exit_.prepared_by && <>{t("payroll_prepared_by")}: {exit_.prepared_by} </>}
+                {exit_.approved_by && <>· {t("payroll_approved_by")}: {exit_.approved_by} </>}
+                {exit_.cleared_by && <>· {t("epf_term_cleared_by")}: {exit_.cleared_by}</>}
+                {exit_.clearance_note && <div>{exit_.clearance_note}</div>}
+              </div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {exit_.can_approve && <button className="sm" onClick={() => exitAct("approve")}>{t("epf_term_approve")}</button>}
+                {exit_.can_clear && <button className="sm" onClick={() => {
+                  const note = window.prompt(t("epf_term_clearance_note"));
+                  if (note === null) return;
+                  exitAct("clearance", note.trim() ? { clearance_note: note.trim() } : undefined);
+                }}>{t("epf_term_clearance")}</button>}
+                {exit_.can_acknowledge && <button className="sm" onClick={() => exitAct("acknowledge")}>{t("epf_term_acknowledge")}</button>}
+                {exit_.can_execute && <button className="danger sm" onClick={() => {
+                  if (confirm(t("epf_term_execute_confirm"))) exitAct("execute");
+                }}>{t("epf_term_execute")}</button>}
+                {exit_.can_cancel && <button className="ghost sm" onClick={() => {
+                  if (confirm(t("epf_term_cancel_confirm"))) exitAct("cancel");
+                }}>{t("epf_term_cancel")}</button>}
+              </div>
+              {/* وصفٌّ بلا زرّ يقول لماذا. */}
+              {exit_.blocked_reason && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{exit_.blocked_reason}</div>
+              )}
+            </div>
+          )}
+          {can("terminate_employee") && e.status !== "terminated" && !exit_?.exists && (
             <div className="card" style={{ borderTop: "3px solid var(--danger)" }}>
               <h3>{t("emp_terminate")}</h3>
               <p className="muted">{t("epf_leave_hint")}</p>

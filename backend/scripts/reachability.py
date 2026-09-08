@@ -37,6 +37,42 @@ OPERATIONAL = (
     "/seed", "/erase", "/smoke", "/__",
 )
 
+#: نقاٌط **قِيست بشًرا فوُجدت موصولة**، والأداة تعجز عن رؤيتها لأن الواجهة
+#: تبني المسار من متغيّر (``/terminate/${path}``) فيبعد المقطع الثابت عن
+#: أخيه أكثر من نافذة الجوار.
+#:
+#: وتُكتَب هنا **بمرجعها** لا تُسكَت: الغرض ألّا يُعاد فحص ما فُحص، وأن
+#: يبقى الدليل في المستودع لا في ذاكرة من فحصه — وهو الدرس الذي أوجب
+#: هذا الملف أصًلا. وأي حارس يذكره السطر هو ما يُسقِط الادّعاء إن انقطع.
+VERIFIED_REACHABLE = {
+    # EmployeeProfile.tsx → exitAct(...) — حارسها test_zzz_termination_draft_ui
+    "/employees/{emp_id}/terminate/approve",
+    "/employees/{emp_id}/terminate/clearance",
+    "/employees/{emp_id}/terminate/acknowledge",
+    "/employees/{emp_id}/terminate/execute",
+    "/employees/{emp_id}/terminate/cancel",
+    # Signatories.tsx → decidePending(...) — حارسها test_zzz_signature_replacement_ui
+    "/signatures/pending/{target_user_id}/approve",
+    "/signatures/pending/{target_user_id}/reject",
+    # Payroll.tsx → act(...) — حارسها test_zzz_payroll_lifecycle_ui
+    "/payroll/runs/{run_id}/approve",
+    "/payroll/runs/{run_id}/finalize",
+    "/payroll/runs/{run_id}/lock",
+    "/payroll/runs/{run_id}/reopen",
+    "/payroll/runs/{run_id}/adjustment",
+    # EosCases.tsx → ACTION_PATH[step]
+    "/eos/cases/{case_id}/approve",
+    "/eos/cases/{case_id}/acknowledge",
+    "/eos/cases/{case_id}/clearance",
+    "/eos/cases/{case_id}/settle",
+    "/eos/cases/{case_id}/file",
+    "/eos/cases/{case_id}/print",
+    "/eos/cases/{case_id}/calculate",
+    # EmployeeOnboarding.tsx → kind === "gov" ? ... : ...
+    "/employees/{emp_id}/gov-contract/generate",
+    "/employees/{emp_id}/company-contract/generate",
+}
+
 
 def _files() -> list[str]:
     """نصوص ملفات الواجهة، كلٌّ على حدة — الملفات مقسومة بالشاشات."""
@@ -102,6 +138,8 @@ def scan() -> tuple[list[tuple[str, str]], list[tuple[str, str]], int]:
         rest = path[len("/api"):]
         if any(op in rest for op in OPERATIONAL):
             operational.append((method, path))
+        elif rest in VERIFIED_REACHABLE:
+            continue
         elif not _reachable(rest, blob, files):
             unreachable.append((method, path))
     return unreachable, operational, len(seen)

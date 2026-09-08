@@ -759,8 +759,7 @@ def approve_termination(emp_id: int, request: Request = None,
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة معلقة")
     if emp.pending_termination_prepared_by == user.id and user.role != "super_admin":
-        raise HTTPException(status_code=403,
-                            detail="لا يمكن اعتماد مسودة حضّرتها بنفسك — فصل السلطات إلزامي")
+        raise HTTPException(status_code=403, detail=SELF_APPROVAL_BLOCK)
     emp.pending_termination_approved_by = user.id
     emp.pending_termination_approved_at = datetime.utcnow()
     audit(db, user, "approve_termination", "employee", emp.id,
@@ -890,6 +889,96 @@ def execute_termination(emp_id: int, request: Request = None,
             "stage": "executed", "settlement": settlement,
             # الرابط في الردّ: من ينفّذ يعرف رقم المرجع فوًرا.
             "exit_case_id": exit_case_id}
+
+
+#: EXIT-UI — نصّ المنع **مكتوب مرّة** يقرؤه المنع والشاشة معًا.
+SELF_APPROVAL_BLOCK = "لا يمكن اعتماد مسودة حضّرتها بنفسك — فصل السلطات إلزامي"
+
+
+def _termination_stage(emp: models.Employee) -> str:
+    """أين وصلت المسودة — مشتقٌّ من الطوابع لا محفوظ في حقل ثانٍ."""
+    if emp.pending_termination_acknowledged_at:
+        return "acknowledged"
+    if emp.pending_termination_cleared_at:
+        return "cleared"
+    if emp.pending_termination_approved_at:
+        return "approved"
+    return "prepared"
+
+
+@router.get("/{emp_id}/termination")
+def get_termination_draft(emp_id: int,
+                          user: models.User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    """EXIT-UI — حال مسودة إنهاء الخدمة، وما يستطيع هذا المستخدم فعله بها.
+
+    **العطل الذي أوجب هذه النقطة**: ``POST /terminate`` يُنشئ **مسودة**
+    ولا يُنهي خدمة أحد — والحالة تبقى ``active``. ولم يكن في النظام شيء
+    يقرأ المسودة: لا نقطة تُظهرها ولا واجهة تعرف بوجودها.
+
+    فالشاشة تقول «تم إنهاء الخدمة» بعد التحضير، والمسودة تبقى معلَّقة إلى
+    الأبد: لا اعتماد ولا إخلاء طرف ولا إقرار ولا تنفيذ ولا إلغاء —
+    خمستها بلا طريق من الواجهة. **ووجودها يمنع تحضير غيرها** بـ409 يقول
+    «الغِها أوًلا»، ولا زرّ يلغيها. طريٌق مسدود بقفل.
+
+    والأعلام هنا مشتقّة من **نفس شروط المنع** في نقاط التنفيذ، فلا يظهر
+    زٌر يفشل ولا يُخفى فعٌل مسموح.
+    """
+    emp = _get_emp(db, user, emp_id)
+    if not emp.pending_termination_json:
+        return {"exists": False, "employee_status": emp.status}
+
+    import json as _json
+
+    from ..permissions import has_permission
+
+    settlement = _json.loads(emp.pending_termination_json)
+    stage = _termination_stage(emp)
+    perms = get_user_perms(user, db)
+    may_terminate = has_permission(user.role, perms, "terminate_employee")
+    may_approve_perm = has_permission(user.role, perms, "approve_termination")
+    is_super = user.role == "super_admin"
+
+    self_blocked = (may_approve_perm and stage == "prepared"
+                    and emp.pending_termination_prepared_by == user.id and not is_super)
+    # الإقرار: الموظف نفسه أو الموارد البشرية — بنفس شرط النقطة.
+    may_ack = (user.employee_id == emp.id
+               or user.role in ("hr", "super_admin", "company_manager"))
+    names: dict[int, str | None] = {}
+    for uid in (emp.pending_termination_prepared_by,
+                emp.pending_termination_approved_by,
+                emp.pending_termination_cleared_by):
+        if uid and uid not in names:
+            u = db.get(models.User, uid)
+            names[uid] = u.full_name if u else None
+
+    return {
+        "exists": True, "stage": stage, "employee_status": emp.status,
+        "settlement": settlement,
+        "end_date": settlement.get("_end_date"),
+        "reason": settlement.get("_reason"),
+        "prepared_by": names.get(emp.pending_termination_prepared_by),
+        "prepared_at": emp.pending_termination_prepared_at,
+        "approved_by": names.get(emp.pending_termination_approved_by),
+        "approved_at": emp.pending_termination_approved_at,
+        "cleared_by": names.get(emp.pending_termination_cleared_by),
+        "cleared_at": emp.pending_termination_cleared_at,
+        "clearance_note": emp.pending_termination_clearance_note,
+        "acknowledged_at": emp.pending_termination_acknowledged_at,
+        "can_approve": bool(may_approve_perm and stage == "prepared" and not self_blocked),
+        "can_clear": bool(may_terminate and emp.pending_termination_approved_at
+                          and not emp.pending_termination_cleared_at),
+        "can_acknowledge": bool(may_ack and emp.pending_termination_cleared_at
+                                and not emp.pending_termination_acknowledged_at),
+        "can_execute": bool(may_terminate and emp.status != "terminated"
+                            and emp.pending_termination_approved_at
+                            and (is_super or (emp.pending_termination_cleared_at
+                                              and emp.pending_termination_acknowledged_at))),
+        # **ولا طريق مسدود**: الإلغاء متاح ما دامت المسودة قائمة، وإلا بقي
+        # الموظف محبوًسا بين مسودة لا تُنفَّذ وأخرى لا تُحضَّر.
+        "can_cancel": bool(may_terminate),
+        "blocked_reason": SELF_APPROVAL_BLOCK if self_blocked else None,
+    }
 
 
 @router.post("/{emp_id}/terminate/cancel")
