@@ -56,16 +56,44 @@ export default function Archive() {
     setMsg(t("arch_file_saved")); loadCompany();
   };
 
-  const upload = async (entityType: string, entityId: number, code: string, name: string, file: File, reload: () => void) => {
-    const fd = new FormData();
-    fd.append("entity_type", entityType);
-    fd.append("entity_id", String(entityId));
-    fd.append("document_type_code", code);
-    fd.append("title", name);
-    fd.append("file", file);
-    await api.post("/documents/upload", fd);
-    setMsg(t("arch_uploaded", { name })); reload();
+  // ARC-05 — الرفع كان يرسل الملف والنوع والعنوان **فقط**.
+  //
+  // فتاريخ الانتهاء يُترَك لقراءة آلية، وهي تفشل على المسح الضوئي العربي.
+  // والنتيجة: ترخيٌص مرفوع **بلا تاريخ انتهاء** — أي بلا تنبيه تجديد،
+  // وبلا ظهور في «ما يقارب على الانتهاء». وهو جذر «الإقامات السارية = 0»
+  // نفسه: حقٌل يحكم محرّك التنبيهات ولا مدخل له في الشاشة التي تملؤه.
+  //
+  // ورقم الترخيص وجهته يُعرَضان على البطاقة ولم يكن لهما مدخل كذلك.
+  const [pending, setPending] = useState<any>(null);   // null = لا رفع منتظر
+  const [meta, setMeta] = useState({ expiry_date: "", doc_number: "", issuing_authority: "" });
+
+  const askThenUpload = (entityType: string, entityId: number, code: string,
+                         name: string, file: File, reload: () => void) => {
+    setMeta({ expiry_date: "", doc_number: "", issuing_authority: "" });
+    setPending({ entityType, entityId, code, name, file, reload });
   };
+
+  const doUpload = async () => {
+    const p = pending;
+    const fd = new FormData();
+    fd.append("entity_type", p.entityType);
+    fd.append("entity_id", String(p.entityId));
+    fd.append("document_type_code", p.code);
+    fd.append("title", p.name);
+    // ما يكتبه الإنسان يفوز على القراءة الآلية — والفراغ لا يُرسَل أصًلا.
+    if (meta.expiry_date) fd.append("expiry_date", meta.expiry_date);
+    if (meta.doc_number.trim()) fd.append("doc_number", meta.doc_number.trim());
+    if (meta.issuing_authority.trim()) fd.append("issuing_authority", meta.issuing_authority.trim());
+    fd.append("notify_on_expiry", meta.expiry_date ? "true" : "false");
+    fd.append("file", p.file);
+    try {
+      await api.post("/documents/upload", fd);
+      setMsg(t("arch_uploaded", { name: p.name }));
+      setPending(null); p.reload();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  const upload = askThenUpload;
 
   const download = (entityType: string, entityId: number, code: string, name: string) =>
     downloadFile("/documents/latest", { entity_type: entityType, entity_id: entityId, document_type_code: code }, name);
@@ -224,6 +252,48 @@ export default function Archive() {
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
+
+      {/* ARC-05 — يُسأل عن تاريخ الانتهاء **قبل** الرفع لا بعده.
+          فبلا تاريخ لا تنبيه تجديد ولا ظهور في «قارب على الانتهاء» —
+          والملف يبدو مرفوًعا سليًما وهو صامت. */}
+      {pending && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--brand)",
+                                       marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0 }}>{t("arch_meta_title")}: {pending.name}</h3>
+            <button className="ghost sm" onClick={() => setPending(null)}>×</button>
+          </div>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("arch_meta_hint")}</div>
+          {err && <div className="err">{err}</div>}
+          <div className="grid cards">
+            <div className="field">
+              <label htmlFor="arch-exp">{t("arch_meta_expiry")}</label>
+              <input id="arch-exp" type="date" value={meta.expiry_date}
+                     onChange={(e) => setMeta({ ...meta, expiry_date: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="arch-num">{t("arch_meta_number")}</label>
+              <input id="arch-num" value={meta.doc_number}
+                     onChange={(e) => setMeta({ ...meta, doc_number: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="arch-auth">{t("arch_meta_authority")}</label>
+              <input id="arch-auth" value={meta.issuing_authority}
+                     onChange={(e) => setMeta({ ...meta, issuing_authority: e.target.value })} />
+            </div>
+          </div>
+          {/* ورفٌع بلا تاريخ مسموح — لكن أثره يُقال قبل وقوعه. */}
+          {!meta.expiry_date && (
+            <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 4 }}>
+              {t("arch_meta_no_expiry")}
+            </div>
+          )}
+          <div className="row" style={{ marginTop: 10 }}>
+            <button onClick={doUpload}>{t("arch_upload")}</button>
+            <button className="ghost" onClick={() => setPending(null)}>{t("cancel")}</button>
+          </div>
+        </div>
+      )}
 
       {/* QA-16 — الأرشيف يخص شركة واحدة. مع "كل الشركات" كانت الصفحة تعرض
           فراًغا برسالة "لا توجد مستندات بعد" — صحيحة نحوًيا وخاطئة معنى. */}

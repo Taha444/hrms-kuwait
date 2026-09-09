@@ -788,6 +788,21 @@ const dict: Record<string, { ar: string; en: string }> = {
   arch_file_number: { ar: "رقم ملف الشركة (القوى العاملة)", en: "Company File No (Manpower)" },
   arch_file_saved: { ar: "تم حفظ رقم الملف", en: "File number saved" },
   arch_uploaded: { ar: "تم رفع: {name}", en: "Uploaded: {name}" },
+  // ARC-05 — الرفع كان يُرسل الملف والنوع فقط، وتاريخ الانتهاء يُترَك
+  // لقراءة آلية تفشل على المسح الضوئي العربي. فيُرفع الترخيص ويبدو
+  // سليًما وهو بلا تنبيه تجديد — جذر «الإقامات السارية = 0» نفسه.
+  arch_meta_title: { ar: "بيانات المستند قبل رفعه", en: "Document details before upload" },
+  arch_meta_hint: {
+    ar: "تاريخ الانتهاء هو ما يبني عليه النظام تنبيه التجديد. اكتبه من الورقة نفسها — لا تتركه للقراءة الآلية.",
+    en: "The expiry date is what renewal alerts are built on. Enter it from the document itself — do not leave it to automatic reading.",
+  },
+  arch_meta_expiry: { ar: "تاريخ الانتهاء", en: "Expiry date" },
+  arch_meta_number: { ar: "رقم المستند / الترخيص", en: "Document / licence number" },
+  arch_meta_authority: { ar: "الجهة المصدِرة", en: "Issuing authority" },
+  arch_meta_no_expiry: {
+    ar: "بلا تاريخ انتهاء: يُرفع الملف ولا يصلك تنبيه تجديد له، ولا يظهر في «قارب على الانتهاء».",
+    en: "With no expiry date the file uploads, but no renewal alert will reach you and it will not appear in the expiring list.",
+  },
   arch_uploaded_v: { ar: "مرفوع v{v}", en: "Uploaded v{v}" }, arch_not_uploaded: { ar: "غير مرفوع", en: "Not uploaded" },
   arch_added: { ar: "أُضيف: {date}", en: "Added: {date}" }, arch_expires: { ar: "ينتهي {date}", en: "expires {date}" },
   arch_download: { ar: "تنزيل", en: "Download" }, arch_replace: { ar: "استبدال", en: "Replace" }, arch_upload: { ar: "رفع", en: "Upload" },

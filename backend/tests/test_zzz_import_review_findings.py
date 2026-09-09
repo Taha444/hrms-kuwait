@@ -151,3 +151,25 @@ def test_the_three_datasets_are_readable_and_declare_their_gaps():
         codes = [b["code"] for b in d["branches"]]
         assert len(set(codes)) == len(codes), f"{name}: كوٌد مكرَّر"
         assert all(x.get("issuing_authority") for x in d["documents"]), name
+
+
+def test_the_archive_upload_asks_for_the_expiry_date():
+    """**ARC-05 — ترخيٌص يُرفع بلا تاريخ انتهاء ترخيٌص صامت.**
+
+    كانت الشاشة ترسل الملف والنوع والعنوان فقط، والتاريخ يُترَك لقراءة
+    آلية تفشل على المسح الضوئي العربي — فيُرفع الترخيص ويبدو سليًما وهو
+    **بلا تنبيه تجديد ولا ظهور في «قارب على الانتهاء»**. وهو جذر
+    «الإقامات السارية = 0» نفسه: حقٌل يحكم محرّك التنبيهات ولا مدخل له
+    في الشاشة التي تملؤه.
+    """
+    from pathlib import Path
+
+    page = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
+            / "Archive.tsx").read_text(encoding="utf-8")
+    assert 'fd.append("expiry_date"' in page, "الرفع بلا تاريخ انتهاء"
+    assert 'fd.append("doc_number"' in page, "الرفع بلا رقم المستند"
+    assert 'fd.append("notify_on_expiry"' in page, "الرفع بلا تفعيل التنبيه"
+    # ويُسأل **قبل** الرفع لا بعده.
+    assert "askThenUpload" in page, "يرفع ثم يسأل"
+    # والأثر يُقال قبل وقوعه لا بعده.
+    assert "arch_meta_no_expiry" in page, "لا يُنبّه على أثر ترك التاريخ فارًغا"
