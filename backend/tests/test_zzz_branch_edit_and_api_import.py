@@ -223,3 +223,73 @@ def test_the_branch_screen_can_create_and_edit():
         assert f'"{field}"' in page, f"الحقل {field} ليس في النموذج"
     # وما ينقص الفرع يُقال قبل أن يقف به عمل.
     assert "br_no_gov" in page and "br_no_geo" in page, "النقص لا يُعرَض"
+
+
+def test_the_owner_of_all_companies_can_create_a_branch(client):
+    """**ومن يملك كل الشركات كان لا يستطيع إنشاء فرع في أيٍّ منها.**
+
+    ``create_branch`` يقرأ ``user.company_id`` وحده، والإدارة العليا
+    وصاحب الشركات بلا شركة بحكم دورهما — فيردّهما بـ400 «يجب أن يكون
+    المستخدم تابًعا لشركة». وهو بابٌ مغلق في وجه من له كل المفاتيح.
+    """
+    from sqlalchemy import select as _select
+
+    hdr = auth_headers(login(client, "000000000000", "admin123"))
+    db = SessionLocal()
+    try:
+        cid = db.scalars(_select(models.Company)).first().id
+    finally:
+        db.close()
+
+    # بلا تحديد الشركة: يُردّ، والرسالة تقول ما ينقص.
+    blind = client.post("/api/branches", headers=hdr,
+                        json={"name": "فرع بلا شركة", "code": "ZZNOC"})
+    assert blind.status_code == 400, blind.text
+    assert "company_id" in blind.json()["detail"], blind.json()
+
+    r = client.post(f"/api/branches?company_id={cid}", headers=hdr,
+                    json={"name": "فرع الإدارة العليا", "code": "ZZSUP1",
+                          "governorate": "العاصمة"})
+    assert r.status_code == 201, r.text
+    bid = r.json()["id"]
+    db = SessionLocal()
+    try:
+        b = db.get(models.Branch, bid)
+        assert b.company_id == cid and b.code == "ZZSUP1"
+        db.execute(sa_delete(models.Branch).where(models.Branch.id == bid))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_a_scoped_user_cannot_aim_at_another_company(client):
+    """**ونطاق من له شركته يحكمه لا اختياره**: ``company_id`` يُتجاهَل."""
+    from sqlalchemy import select as _select
+
+    hdr = auth_headers(login(client, *MANAGER))
+    db = SessionLocal()
+    try:
+        mine = db.scalar(_select(models.User).where(
+            models.User.civil_id == MANAGER[0])).company_id
+        other = db.scalars(_select(models.Company).where(
+            models.Company.id != mine)).first()
+        other_id = other.id if other else None
+    finally:
+        db.close()
+    if other_id is None:
+        import pytest as _pt
+        _pt.skip("لا شركة ثانية للقياس")
+
+    r = client.post(f"/api/branches?company_id={other_id}", headers=hdr,
+                    json={"name": "فرع موجَّه لشركة أخرى", "code": "ZZAIM1"})
+    assert r.status_code == 201, r.text
+    bid = r.json()["id"]
+    db = SessionLocal()
+    try:
+        b = db.get(models.Branch, bid)
+        landed = b.company_id
+        db.execute(sa_delete(models.Branch).where(models.Branch.id == bid))
+        db.commit()
+    finally:
+        db.close()
+    assert landed == mine, "أنشأ فرًعا في شركة خارج نطاقه"

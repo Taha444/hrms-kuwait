@@ -41,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
+from .arabic import contains_ar
 from .database import SessionLocal
 from .storage import save_at_key
 
@@ -99,8 +100,11 @@ def _company(db: Session, spec: dict) -> models.Company | None:
             return c
     needle = m.get("name_contains")
     if needle:
+        # **المطابقة على الصورة المجرَّدة**: الاسم يُكتب «الأزرق» و«الازرق»
+        # في مستندات الشركة نفسها، فالمطابقة الحرفية ترى اسمين حيث يرى
+        # القارئ اسًما واحًدا — وتقول «أنشئ الشركة» وهي قائمة.
         for c in db.scalars(select(models.Company)).all():
-            if needle in (c.name or ""):
+            if contains_ar(c.name, needle):
                 return c
     return None
 
@@ -297,7 +301,7 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
     # ---- الشركة ----------------------------------------------------------
     needle = (data["company"].get("match_by") or {}).get("name_contains", "")
     companies = _get("/companies")
-    match = [c for c in companies if needle in (c.get("name") or "")]
+    match = [c for c in companies if contains_ar(c.get("name"), needle)]
     if not match:
         raise SystemExit(
             f"لا شركة يطابق اسمها «{needle}» في هذا الموقع. "
@@ -323,7 +327,10 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
                     "governorate": b.get("governorate"),
                     "governorate_en": b.get("governorate_en"),
                     "address": b.get("address")}
-            r = s.post(api + "/branches", json=body)
+            # الشركة صريحة: صاحب الشركات والإدارة العليا لا شركة لهما،
+            # ومن له شركته يتجاهلها الخادم ويستعمل نطاقه.
+            r = s.post(api + "/branches", json=body,
+                       params={"company_id": company["id"]})
             if r.status_code >= 400:
                 report["blocked"].append(f"تعذّر إنشاء {b['code']}: {r.status_code} {r.text[:160]}")
                 continue
@@ -336,10 +343,16 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
     def _current_types(entity_type: str, entity_id: int) -> set[str]:
         key = (entity_type, entity_id)
         if key not in _seen:
-            path = ("/archive/company" if entity_type == "company"
-                    else f"/archive/branch/{entity_id}")
+            # أرشيف الشركة يشترط تحديدها لمن يرى كل الشركات — وبلا
+            # تحديد يردّ 400، فيسقط فحص «هل رُفع من قبل؟» بصمت
+            # فتُرفع نسخٌ ثانية لمستندات لم تتغيّر.
+            if entity_type == "company":
+                path, params = "/archive/company", {"company_id": entity_id}
+            else:
+                path, params = f"/archive/branch/{entity_id}", None
             try:
-                _seen[key] = {d["type"] for d in _get(path).get("documents", [])}
+                _seen[key] = {d["type"] for d in
+                              _get(path, params=params).get("documents", [])}
             except Exception:
                 _seen[key] = set()
         return _seen[key]

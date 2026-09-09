@@ -35,11 +35,28 @@ def list_branches(company_id: int | None = None,
 
 @router.post("/branches", response_model=schemas.BranchOut, status_code=201)
 def create_branch(data: schemas.BranchIn, request: Request,
+                  company_id: int | None = None,
                   user: models.User = Depends(require_perm("manage_branches")),
                   db: Session = Depends(get_db)):
-    cid = user.company_id
+    """BR-EDIT — إنشاء فرع.
+
+    **وصاحب الشركات والإدارة العليا لا شركة لهما**، فكان الإنشاء يردّهما
+    بـ400 «يجب أن يكون المستخدم تابًعا لشركة» — أي أن من يملك كل الشركات
+    وحده **لا يستطيع إنشاء فرع في أيٍّ منها**. و``company_id`` صريح
+    مخرجهما، ولا يُقبل ممّن له شركته: نطاقه يحكمه لا اختياره.
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    if company_id is not None and user.role in CROSS_COMPANY_ROLES:
+        if db.get(models.Company, company_id) is None:
+            raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+        cid = company_id
+    else:
+        cid = user.company_id
     if cid is None:
-        raise HTTPException(status_code=400, detail="يجب أن يكون المستخدم تابعًا لشركة")
+        raise HTTPException(
+            status_code=400,
+            detail="حدّد الشركة (company_id) — حسابك لا يتبع شركة بعينها")
     branch = models.Branch(company_id=cid, qr_secret=secrets.token_hex(16), **data.model_dump())
     db.add(branch)
     db.flush()
