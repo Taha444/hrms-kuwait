@@ -59,10 +59,101 @@ export default function Branches() {
     setMsg(`✓ ${label} تم نسخه`);
   };
 
+  // BR-EDIT — إنشاء الفرع وتعديله. **ولم تكن للفروع شاشٌة تُنشئ ولا
+  // نقطٌة تُعدّل**: فرٌع بخطأ في اسمه يبقى به، وفرٌع بلا إحداثيات لا
+  // يعمل فيه البصم بالموقع، وفرٌع بلا محافظة يوقف العقد الحكومي لكل
+  // موظفيه — لأن المحافظة هي إدارة العمل المختصّة فيه.
+  const EMPTY = {
+    name: "", name_en: "", code: "", governorate: "", governorate_en: "",
+    address: "", latitude: "", longitude: "", geofence_radius_m: "100",
+  };
+  const [form, setForm] = useState<any>(null);   // null = مغلق
+  const [editing, setEditing] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+
+  const openNew = () => { setForm({ ...EMPTY }); setEditing(null); setErr(""); };
+  const openEdit = (b: any) => {
+    setEditing(b.id); setErr("");
+    setForm({
+      name: b.name || "", name_en: b.name_en || "", code: b.code || "",
+      governorate: b.governorate || "", governorate_en: b.governorate_en || "",
+      address: b.address || "",
+      latitude: b.latitude ?? "", longitude: b.longitude ?? "",
+      geofence_radius_m: String(b.geofence_radius_m ?? 100),
+    });
+  };
+
+  const save = async () => {
+    setErr("");
+    if (!form.name.trim()) { setErr(t("br_name_required")); return; }
+    const body: any = {
+      name: form.name.trim(),
+      name_en: form.name_en.trim() || null,
+      code: form.code.trim() || null,
+      governorate: form.governorate.trim() || null,
+      governorate_en: form.governorate_en.trim() || null,
+      address: form.address.trim() || null,
+    };
+    // **الإحداثيات تُرسَل معًا أو لا تُرسَل**: نٌص فارغ يُقرأ صفًرا،
+    // وصفٌر وصفٌر يضع الفرع في خليج غينيا فيمنع البصم عن كل موظفيه.
+    if (form.latitude !== "" && form.longitude !== "") {
+      body.latitude = Number(form.latitude);
+      body.longitude = Number(form.longitude);
+    }
+    if (form.geofence_radius_m !== "") {
+      body.geofence_radius_m = Number(form.geofence_radius_m);
+    }
+    try {
+      if (editing) await api.put(`/branches/${editing}`, body);
+      else await api.post("/branches", body);
+      setForm(null); setEditing(null); setMsg(t("br_saved")); load();
+    } catch (e: any) { setErr(e?.response?.data?.detail || t("error")); }
+  };
+
+  const FIELDS: [string, string, string?][] = [
+    ["name", t("br_f_name")], ["name_en", t("br_f_name_en")],
+    ["code", t("br_f_code"), t("br_f_code_hint")],
+    ["governorate", t("br_f_gov"), t("br_f_gov_hint")],
+    ["governorate_en", t("br_f_gov_en")],
+    ["address", t("br_f_address")],
+    ["latitude", t("br_f_lat"), t("br_f_geo_hint")], ["longitude", t("br_f_lng")],
+    ["geofence_radius_m", t("geofence")],
+  ];
+
   return (
     <div>
-      <h2>{t("br_title")}</h2>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>{t("br_title")}</h2>
+        <button onClick={openNew}>{t("br_new")}</button>
+      </div>
       {msg && <div className="ok">{msg}</div>}
+
+      {/* BR-EDIT — نموذج الفرع: إنشاًء وتعديًلا. */}
+      {form && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--brand)" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0 }}>{editing ? t("br_edit") : t("br_new")}</h3>
+            <button className="ghost sm" onClick={() => setForm(null)}>×</button>
+          </div>
+          {err && <div className="err">{err}</div>}
+          <div className="grid cards" style={{ marginTop: 8 }}>
+            {FIELDS.map(([key, label, hint]) => (
+              <div className="field" key={key}>
+                <label htmlFor={`br-${key}`}>{label}</label>
+                <input id={`br-${key}`} value={form[key]}
+                       inputMode={key === "latitude" || key === "longitude"
+                                  || key === "geofence_radius_m" ? "decimal" : undefined}
+                       onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+                {hint && <div className="muted" style={{ fontSize: 11 }}>{hint}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button onClick={save}>{t("save")}</button>
+            <button className="ghost" onClick={() => setForm(null)}>{t("cancel")}</button>
+          </div>
+        </div>
+      )}
 
       {branches.map((b) => {
         const link = links[b.id];
@@ -71,9 +162,18 @@ export default function Branches() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div>
                 <b>{b.name}</b>
+                {b.code && <code style={{ marginInlineStart: 8, fontSize: 12 }}>{b.code}</code>}
                 <span className="muted"> · {t("geofence")} {b.geofence_radius_m}{t("meters")}</span>
+                {/* ما ينقص الفرع يُقال، فلا يُكتشَف حين يقف به عمل. */}
+                {!b.governorate && (
+                  <div style={{ fontSize: 12, color: "var(--danger)" }}>{t("br_no_gov")}</div>
+                )}
+                {(b.latitude == null || b.longitude == null) && (
+                  <div style={{ fontSize: 12, color: "var(--warning)" }}>{t("br_no_geo")}</div>
+                )}
               </div>
               <div className="row">
+                <button className="ghost" onClick={() => openEdit(b)}>{t("br_edit")}</button>
                 <button onClick={() => rotate(b)}>
                   {link?.masked ? "تدوير المفتاح" : t("br_rotate")}
                 </button>

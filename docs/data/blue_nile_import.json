@@ -1,0 +1,377 @@
+{
+  "_readme": [
+    "بيانات شركة النيل الأزرق للمجوهرات وفروعها — مستخرَجة من مستنداتها الرسمية.",
+    "كل قيمة هنا مقروءة من ملف PDF مذكور في source، ولا شيء فيها مُخترَع.",
+    "ما تعذّرت قراءته تُرك فارًغا وذُكر في review — ولم يُملأ بتخمين.",
+    "يُراجَع هذا الملف بعين بشرية قبل التنفيذ، ثم:",
+    "  python -m app.import_company_package --data docs/data/blue_nile_import.json --source <مجلد الحزمة>",
+    "بلا --apply لا يُكتب شيء: تقرير فقط."
+  ],
+  "company": {
+    "match_by": {
+      "name_contains": "النيل الأزرق"
+    },
+    "name": "شركة النيل الأزرق للمجوهرات",
+    "name_en": "Blue Nile Jewelry Company",
+    "entity_type": "شركة توصية بسيطة",
+    "file_number": "100042397",
+    "commercial_reg": "2407",
+    "address": "العاصمة — القبلة، مجمع عيدالنصار وشركاه، شارع سعود بن عبدالعزيز",
+    "_sources": {
+      "entity_type": "Company_Commercial_License_1986-221 · الكيان القانوني",
+      "file_number": "Company_Signature_Authorization_EmployerFile_100042397 · رقم الملف (ملف صاحب العمل لدى إدارة العمل)",
+      "commercial_reg": "Company_General_Import_License_28350 · «2407 رقم السجل التجاري»",
+      "address": "Company_Commercial_License_1986-221 · العنوان",
+      "civil_no": "شهادة اعتماد التوقيع + الترخيص التجاري · رقم الجهة المدني",
+      "paci_address_no": "الترخيص التجاري وشهادة التوقيع — الرقمان متطابقان"
+    },
+    "civil_no": "629377",
+    "governorate": "العاصمة",
+    "paci_address_no": "10192149",
+    "unified_no": "97988"
+  },
+  "branches": [
+    {
+      "no": "01",
+      "code": "BN01",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 1",
+      "entity_no": "1541559",
+      "license_no": "1992/405",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "governorate": "الجهراء",
+      "governorate_en": "Al Jahra",
+      "address": "الجهراء — مجمع كاظمة التجاري، شارع مرزوق العتيبي — الرقم الآلي للعنوان: 14708253",
+      "paci_address_no": "14708253",
+      "unified_no": "164142"
+    },
+    {
+      "no": "02",
+      "code": "BN02",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 2",
+      "entity_no": "1219610",
+      "license_no": "1992/563",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "governorate": "الجهراء",
+      "governorate_en": "Al Jahra",
+      "address": "الجهراء — مجمع كاظمة التجاري، شارع مرزوق العتيبي — الرقم الآلي للعنوان: 14708237",
+      "paci_address_no": "14708237",
+      "unified_no": "66811"
+    },
+    {
+      "no": "04",
+      "code": "BN04",
+      "name": "عروس المدينة للمجوهرات",
+      "entity_no": "1781524",
+      "license_no": "2000/218",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "governorate": "الجهراء",
+      "governorate_en": "Al Jahra",
+      "address": "الجهراء — مجمع كاظمة التجاري، شارع مرزوق العتيبي — الرقم الآلي للعنوان: 14708229",
+      "paci_address_no": "14708229",
+      "unified_no": "126986"
+    },
+    {
+      "no": "05",
+      "code": "BN05",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 5",
+      "entity_no": "3619810",
+      "license_no": "2015/342",
+      "issued": "2023-03-12",
+      "expiry": "2027-03-11",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — ورثة/عبدالله جاسم الدبوس، شارع عبدالله العجيل — الرقم الآلي للعنوان: 13813772",
+      "paci_address_no": "13813772",
+      "unified_no": "379951"
+    },
+    {
+      "no": "06",
+      "code": "BN06",
+      "name": "لورد الذهبي للمجوهرات",
+      "entity_no": "3984668",
+      "license_no": "2017/416",
+      "issued": "2025-06-22",
+      "expiry": "2029-06-21",
+      "governorate": "الجهراء",
+      "governorate_en": "Al Jahra",
+      "address": "الجهراء — مجمع كاظمة التجاري، شارع مرزوق العتيبي — الرقم الآلي للعنوان: 14708173",
+      "paci_address_no": "14708173",
+      "unified_no": "412744"
+    },
+    {
+      "no": "07",
+      "code": "BN07",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 7",
+      "entity_no": "4196483",
+      "license_no": "2018/4043",
+      "issued": "2022-05-10",
+      "expiry": "2026-05-09",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — ورثة/عبدالله جاسم الدبوس، شارع عبدالله العجيل — الرقم الآلي للعنوان: 13813887",
+      "paci_address_no": "13813887",
+      "unified_no": "430162"
+    },
+    {
+      "no": "09",
+      "code": "BN09",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 9",
+      "entity_no": "4454855",
+      "license_no": "2019/376",
+      "issued": "2023-03-14",
+      "expiry": "2027-03-13",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — الرقم الآلي للعنوان: 13805385",
+      "paci_address_no": "13805385",
+      "unified_no": "448810"
+    },
+    {
+      "no": "10",
+      "code": "BN10",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 10",
+      "entity_no": "4897875",
+      "license_no": "2021/31",
+      "issued": "2025-05-14",
+      "expiry": "2029-05-13",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — الرقم الآلي للعنوان: 17174525",
+      "paci_address_no": "17174525",
+      "unified_no": "480556"
+    },
+    {
+      "no": "11",
+      "code": "BN11",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 11",
+      "entity_no": "5644754",
+      "license_no": "2024/12",
+      "issued": "2024-02-06",
+      "expiry": "2028-02-05",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — الرقم الآلي للعنوان: 16603025",
+      "paci_address_no": "16603025",
+      "unified_no": "541041"
+    },
+    {
+      "no": "12",
+      "code": "BN12",
+      "name": "شركة النيل الأزرق للمجوهرات — فرع 12",
+      "entity_no": "5919120",
+      "license_no": "2024/155",
+      "issued": "2024-12-04",
+      "expiry": "2028-12-03",
+      "governorate": "الأحمدي",
+      "governorate_en": "Al Ahmadi",
+      "address": "الفحيحيل — الرقم الآلي للعنوان: 13792027",
+      "paci_address_no": "13792027",
+      "unified_no": "561380"
+    },
+    {
+      "no": "FACTORY",
+      "code": "BNFAC",
+      "name": "مصنع النيل الأزرق للمجوهرات",
+      "entity_no": "2136517",
+      "license_no": "23809",
+      "issued": null,
+      "expiry": "2027-12-07",
+      "governorate": "العاصمة",
+      "governorate_en": "Al Asima",
+      "address": "العاصمة — الرقم الآلي للعنوان: 16449005",
+      "paci_address_no": "16449005",
+      "unified_no": "235035"
+    }
+  ],
+  "documents": [
+    {
+      "file": "Company_Commercial_License_1986-221_EXPIRED_2026-05-15.pdf",
+      "entity": "company",
+      "type_code": "company_license",
+      "title": "الترخيص التجاري للشركة",
+      "number": "1986/221",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Company_General_Import_License_28350_EXPIRED_2026-05-07.pdf",
+      "entity": "company",
+      "type_code": "import_license",
+      "title": "ترخيص استيراد عام",
+      "number": "28350",
+      "issued": "2025-05-08",
+      "expiry": "2026-05-07",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Company_Signature_Authorization_EmployerFile_100042397_EXPIRED_2026-05-23.pdf",
+      "entity": "company",
+      "type_code": "signature_authorization",
+      "title": "شهادة اعتماد توقيع صاحب العمل",
+      "number": "100042397",
+      "issued": null,
+      "expiry": "2026-05-23",
+      "issuing_authority": "الهيئة العامة للقوى العاملة"
+    },
+    {
+      "file": "Branch_01_Commercial_License_1992-405_EXPIRED_2026-05-15.pdf",
+      "entity": "branch",
+      "branch_no": "01",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "1992/405",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_02_Commercial_License_1992-563_EXPIRED_2026-05-15.pdf",
+      "entity": "branch",
+      "branch_no": "02",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "1992/563",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_04_Arous_Al_Madina_Commercial_License_2000-218_EXPIRED_2026-05-15.pdf",
+      "entity": "branch",
+      "branch_no": "04",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2000/218",
+      "issued": "2022-05-16",
+      "expiry": "2026-05-15",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_05_Commercial_License_2015-342_Expires_2027-03-11.pdf",
+      "entity": "branch",
+      "branch_no": "05",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2015/342",
+      "issued": "2023-03-12",
+      "expiry": "2027-03-11",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_06_Lord_Al_Dhahabi_Commercial_License_2017-416_Expires_2029-06-21.pdf",
+      "entity": "branch",
+      "branch_no": "06",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2017/416",
+      "issued": "2025-06-22",
+      "expiry": "2029-06-21",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_07_Commercial_License_2018-4043_EXPIRED_2026-05-09.pdf",
+      "entity": "branch",
+      "branch_no": "07",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2018/4043",
+      "issued": "2022-05-10",
+      "expiry": "2026-05-09",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_09_Commercial_License_2019-376_Expires_2027-03-13.pdf",
+      "entity": "branch",
+      "branch_no": "09",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2019/376",
+      "issued": "2023-03-14",
+      "expiry": "2027-03-13",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_10_Commercial_License_2021-31_Expires_2029-05-13.pdf",
+      "entity": "branch",
+      "branch_no": "10",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2021/31",
+      "issued": "2025-05-14",
+      "expiry": "2029-05-13",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_11_Commercial_License_2024-12_Expires_2028-02-05.pdf",
+      "entity": "branch",
+      "branch_no": "11",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2024/12",
+      "issued": "2024-02-06",
+      "expiry": "2028-02-05",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Branch_12_Commercial_License_2024-155_Expires_2028-12-03.pdf",
+      "entity": "branch",
+      "branch_no": "12",
+      "type_code": "branch_license",
+      "title": "الترخيص التجاري للفرع",
+      "number": "2024/155",
+      "issued": "2024-12-04",
+      "expiry": "2028-12-03",
+      "issuing_authority": "وزارة التجارة والصناعة"
+    },
+    {
+      "file": "Factory_Industrial_License_23809_Expires_2027-12-07.pdf",
+      "entity": "branch",
+      "branch_no": "FACTORY",
+      "type_code": "custom:الترخيص الصناعي",
+      "title": "الترخيص الصناعي للمصنع",
+      "number": "23809",
+      "issued": null,
+      "expiry": "2027-12-07",
+      "issuing_authority": "الهيئة العامة للصناعة"
+    }
+  ],
+  "review": [
+    "الرقم المركزي: الترخيص التجاري يقرأ 1012201137497 وترخيص الاستيراد 2012201137497 — الفارق رقٌم واحد في أوّله. لم يُدخَل أيٌّ منهما.",
+    "رقم السجل التجاري: أُخذ 2407 من ترخيص الاستيراد حيث الوسم صريح — أكّده.",
+    "الفرع 06 (لورد الذهبي): الشهادة تقول انتهاء 2025-07-25 وترخيصه يقول 2029-06-21 بعد تجديده في 2025-06-22. أُخذ الأحدث — والشهادة أقدم من التجديد.",
+    "الترخيص الصناعي للمصنع صورٌة ممسوحة بلا نصّ: رقمه وتاريخه ومحافظته من الشهادة والبيان، لا من قراءة الملف.",
+    "لا إحداثيات لأي فرع في أي مستند — تبقى فارغة، وبلا إحداثيات لا يعمل البصم بالموقع.",
+    "المفوَّضون الثلاثة مسجَّلون في signatories_on_record ولم يُدخَلوا: السجل يربطهم بحسابات مستخدمين، والحسابات تُنشأ منك."
+  ],
+  "signatories_on_record": {
+    "_note": "المفوَّضون بالتوقيع كما في شهادة اعتماد التوقيع (صادرة 2025-05-28، سارية حتى 2026-05-23). سجلّ المخوَّلين في النظام يربط المخوَّل بحساب مستخدم، فلا يُدخَلون آلًيا: يلزم أن يكون لكلٍّ حساب أوًلا، وإنشاء الحسابات ليس عمل مستورِد مستندات.",
+    "people": [
+      {
+        "name": "وليد محمد احمد ابراهيم",
+        "civil_id": "270102000925",
+        "since": "2022-05-09"
+      },
+      {
+        "name": "خالد احمد على ابراهيم",
+        "civil_id": "262052600219",
+        "since": "2007-06-10"
+      },
+      {
+        "name": "ابراهيم خالد احمد ابراهيم",
+        "civil_id": "289092001288",
+        "since": "2023-09-20"
+      }
+    ]
+  },
+  "_verified": [
+    "بصمات SHA256: 14 من 14 مطابقة للبيان.",
+    "أرقام العناوين الآلية: 12 من 12 متطابقة بين ترخيص كل جهة وجدول شهادة اعتماد التوقيع.",
+    "المحافظات: 12 من 12 متطابقة بين المصدرين.",
+    "إجمالي التراخيص في الشهادة = 12 = الشركة + المصنع + عشرة فروع. فلا ينقص من الحزمة ترخيص: الفرعان 03 و08 غير قائمين، والترقيم يقفز فوقهما.",
+    "الجهة المصدرة لكل ترخيص من جدول شهادة اعتماد التوقيع — لا مُفترَضة."
+  ]
+}

@@ -172,6 +172,11 @@ async def upload_document(
     title: str | None = Form(None),
     issue_date: date | None = Form(None),
     expiry_date: date | None = Form(None),
+    # ARC-03 — رقم المستند وجهته المصدِرة: تعرضهما البطاقة لكل مستند،
+    # ولم يكن لهما مدخل إلا في المستند المخصَّص — فترفع ترخيًصا رسمًيا
+    # ولا سبيل إلى تسجيل رقمه، وهو أول ما يُسأل عنه في ورقة رسمية.
+    doc_number: str | None = Form(None),
+    issuing_authority: str | None = Form(None),
     file: UploadFile = File(...),
     user: models.User = Depends(require_perm("upload_documents")),
     db: Session = Depends(get_db),
@@ -246,6 +251,10 @@ async def upload_document(
         file_path=fpath, mime=file.content_type, issue_date=issue_date,
         expiry_date=expiry_date, version=new_version, is_current=True,
         uploaded_by=user.id,
+        extracted_data_json=({k: v for k, v in
+                             (("doc_number", (doc_number or "").strip() or None),
+                              ("issuing_authority", (issuing_authority or "").strip() or None))
+                             if v} or None),
     )
     db.add(doc)
     db.flush()

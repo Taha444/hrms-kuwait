@@ -177,6 +177,21 @@ export default function Archive() {
               {cur ? <span className="pill success">{t("arch_uploaded_v", { v: cur.version })}</span> : <span className="pill neutral">{t("arch_not_uploaded")}</span>}
             </div>
             {cur && <p className="muted" style={{ fontSize: 12 }}>{t("arch_added", { date: fmtKuwaitDate(cur.created_at, lang) })}{cur.expiry_date ? ` · ${t("arch_expires", { date: cur.expiry_date })}` : ""}</p>}
+            {/* ARC-03 — رقم الترخيص وجهته المصدِرة: يُحفظان مع كل مستند
+                وكانا يُعرَضان للمخصَّص وحده — بياٌن يُكتَب ولا يُقرأ.
+                ورقم الترخيص أول ما يُسأل عنه في ورقة رسمية. */}
+            {cur?.doc_number && (
+              <div style={{ fontSize: 12 }}>
+                {isEn ? "No.: " : "رقم: "}<code>{cur.doc_number}</code>
+                {cur.issuing_authority && <> · {cur.issuing_authority}</>}
+              </div>
+            )}
+            {/* والمنتهي يُقال صراحًة: لا يُترَك القارئ يطرح التاريخين. */}
+            {cur?.status === "expired" && (
+              <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600 }}>
+                {isEn ? "Expired" : "منتهٍ"}
+              </div>
+            )}
             <div className="row" style={{ marginTop: 8 }}>
               {cur && <button className="ghost sm" onClick={() => download(entityType, entityId, dt.code, dt.name)}><Icon name="doc" size={14} /> {t("arch_download")}</button>}
               {/* ARC-01/ARC-02 — الحالي على وجه البطاقة، والتاريخ خلف زر.

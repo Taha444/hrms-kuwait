@@ -49,6 +49,37 @@ def create_branch(data: schemas.BranchIn, request: Request,
     return branch
 
 
+@router.put("/branches/{branch_id}", response_model=schemas.BranchOut)
+def update_branch(branch_id: int, data: schemas.BranchUpdate, request: Request,
+                  user: models.User = Depends(require_perm("manage_branches")),
+                  db: Session = Depends(get_db)):
+    """BR-EDIT — تعديل فرع. **ولم يكن للفروع تعديٌل أصًلا.**
+
+    فرٌع أُنشئ باسم فيه خطأ يبقى به إلى الأبد، وفرٌع بلا إحداثيات لا
+    يُضبَط فلا يعمل البصم بالموقع فيه، وفرٌع بلا محافظة يوقف توليد العقد
+    الحكومي لكل موظفيه — وثلاثتها بلا باب.
+
+    وما لا يُرسَل لا يُمسّ (``exclude_unset``): طلٌب بحقلين لا يمحو ما
+    عداهما، وهو العطل الذي قِيس في تعديل الموظفين من قبل.
+    """
+    branch = db.get(models.Branch, branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    assert_same_company(user, branch.company_id, db=db)
+
+    payload = data.model_dump(exclude_unset=True)
+    before = {k: getattr(branch, k, None) for k in payload}
+    for field, value in payload.items():
+        setattr(branch, field, value)
+    changed = {k: (before[k], payload[k]) for k in payload if before[k] != payload[k]}
+    audit(db, user, "update_branch", "branch", branch.id,
+          detail="، ".join(f"{k}: {a} ← {b}" for k, (a, b) in changed.items())[:400],
+          request=request)
+    db.commit()
+    db.refresh(branch)
+    return branch
+
+
 @router.get("/org/structure")
 def org_structure(company_id: int | None = None,
                   user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):

@@ -340,11 +340,44 @@ class OcrApplyIn(BaseModel):
 # ----------------------------- الفروع والورديات -----------------------------
 
 class BranchIn(BaseModel):
+    """BR-EDIT — حقول الفرع التي يملكها من يديره.
+
+    **وثلاثٌة منها كانت محجوبة عن الإنشاء ولا تُعدَّل بعده**: ``code``
+    و``governorate`` و``governorate_en``. والنظام يبني عليها:
+
+    - ``code`` يدخل **الرقم الوظيفي** لكل موظف في الفرع (GTC-SLM-00042).
+    - ``governorate`` هي **إدارة العمل المختصّة** في العقد الحكومي، وبلا
+      محافظة على أي فرع يقف التوليد برسالة «إدارة العمل ناقصة».
+
+    فكان الفرع يُولَد ناقًصا ولا يُكمَّل — ولا نقطة تحديث للفروع أصًلا.
+    """
     name: str
+    name_en: str | None = None
+    code: str | None = None
+    governorate: str | None = None
+    governorate_en: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     geofence_radius_m: int = 100
     auto_checkout_minutes: int = 15
+    address: str | None = None
+
+
+class BranchUpdate(BaseModel):
+    """تعديل فرع — كل حقل اختياري، وما لا يُرسَل لا يُمسّ.
+
+    و``exclude_unset`` هو الفارق بين «لم يُذكر» و«أُفرِغ عمًدا»: بدونه
+    يمحو طلٌب بحقلين كلَّ ما عداهما — وهو عطٌل قِيس في الموظفين من قبل.
+    """
+    name: str | None = None
+    name_en: str | None = None
+    code: str | None = None
+    governorate: str | None = None
+    governorate_en: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_m: int | None = None
+    auto_checkout_minutes: int | None = None
     address: str | None = None
 
 

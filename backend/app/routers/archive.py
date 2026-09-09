@@ -78,6 +78,16 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
             "days_left": ((d.expiry_date - kuwait_today()).days if d.expiry_date else None),
             "has_versions": (d.version or 1) > 1,
         }
+        # ARC-03 — **رقم الترخيص والجهة المصدرة لكل مستند لا للمخصَّص وحده.**
+        #
+        # كانا يُحفظان لكل مستند ويُقرآن للمخصَّص فقط، فترفع الشركة ترخيصها
+        # التجاري برقمه وجهته ثم لا يظهر منهما شيء على البطاقة — بياٌن
+        # يُكتَب ولا يُقرأ. ورقم الترخيص أول ما يُسأل عنه في ورقة رسمية.
+        meta = (d.extracted_data_json
+                if isinstance(d.extracted_data_json, dict) else {})
+        item["doc_number"] = meta.get("doc_number")
+        item["issuing_authority"] = meta.get("issuing_authority")
+
         # metadata مضافة للمستندات المخصّصة
         if item["is_custom"] and d.extracted_data_json:
             meta = d.extracted_data_json if isinstance(d.extracted_data_json, dict) else {}
