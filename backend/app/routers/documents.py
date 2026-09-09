@@ -177,6 +177,11 @@ async def upload_document(
     # ولا سبيل إلى تسجيل رقمه، وهو أول ما يُسأل عنه في ورقة رسمية.
     doc_number: str | None = Form(None),
     issuing_authority: str | None = Form(None),
+    # ARC-04 — تنبيه الانتهاء للمستندات المخصَّصة **opt-in**: المسح اليومي
+    # يتخطّى ``custom:`` ما لم يُفعَّل. ولم يكن لهذا الحقل مدخل هنا، فكل
+    # مستند مخصَّص يُرفع من هذا الباب يبقى **بلا تنبيه تجديد** مهما كان
+    # تاريخ انتهائه — وهو أخطر ما يصمت عنه النظام.
+    notify_on_expiry: bool = Form(False),
     file: UploadFile = File(...),
     user: models.User = Depends(require_perm("upload_documents")),
     db: Session = Depends(get_db),
@@ -205,8 +210,12 @@ async def upload_document(
         company_id = user.company_id
 
     # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
-    fpath = save_bytes(await read_limited(file), "documents", file.filename,
+    _raw = await read_limited(file)
+    fpath = save_bytes(_raw, "documents", file.filename,
                        prefix=f"{entity_type}_{entity_id}_")
+    # وبصمة المحتوى تُحفَظ: «هل هذا هو الملف الذي رُفع؟» سؤاٌل يُجاب من
+    # السجل لا من الذاكرة، ومستندات هذه الشاشة تُقدَّم لجهات رسمية.
+    _sha = __import__("hashlib").sha256(_raw).hexdigest()
 
     # تعطيل النسخ السابقة لنفس النوع
     prev = db.scalars(select(models.Document).where(
@@ -251,6 +260,8 @@ async def upload_document(
         file_path=fpath, mime=file.content_type, issue_date=issue_date,
         expiry_date=expiry_date, version=new_version, is_current=True,
         uploaded_by=user.id,
+        notify_on_expiry=bool(notify_on_expiry),
+        checksum_sha256=_sha,
         extracted_data_json=({k: v for k, v in
                              (("doc_number", (doc_number or "").strip() or None),
                               ("issuing_authority", (issuing_authority or "").strip() or None))

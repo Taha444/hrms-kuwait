@@ -52,13 +52,21 @@ def create_company(data: schemas.CompanyIn, request: Request,
 
 
 @router.put("/{company_id}", response_model=schemas.CompanyOut)
-def update_company(company_id: int, data: schemas.CompanyIn, request: Request,
+def update_company(company_id: int, data: schemas.CompanyUpdate, request: Request,
                    user: models.User = Depends(require_super_admin), db: Session = Depends(get_db)):
+    """CO-EDIT — تعديل شركة. **وما لا يُرسَل لا يُمسّ.**
+
+    كان يكتب النموذج كامًلا بقيمه الافتراضية، فتعديل الاسم وحده يُصفّر
+    ``eos_day_divisor`` و``eos_max_months`` ومهلة التنبيه وأيام الإجازة
+    إلى قيم المصنع — **وهي أرقاٌم تُحسب بها مستحقات نهاية خدمة الموظفين**.
+    """
     company = db.get(models.Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="الشركة غير موجودة")
-    _check_commercial_reg_unique(db, data.commercial_reg, exclude_id=company_id)
-    for k, v in data.model_dump().items():
+    payload = data.model_dump(exclude_unset=True)
+    if "commercial_reg" in payload:
+        _check_commercial_reg_unique(db, payload["commercial_reg"], exclude_id=company_id)
+    for k, v in payload.items():
         setattr(company, k, v)
     audit(db, user, "update_company", "company", company.id, request=request)
     db.commit()

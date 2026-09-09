@@ -86,10 +86,34 @@ class CompanyIn(BaseModel):
     name_en: str | None = None
     commercial_reg: str | None = None
     entity_type: str | None = None
+    #: CO-EDIT — رقم ملف صاحب العمل لدى إدارة العمل. يُطبع في العقد
+    #: الحكومي، وكان لا يُقبل هنا فلا سبيل إلى ضبطه إلا من مسار الأرشيف.
+    file_number: str | None = None
     eos_day_divisor: int = 26
     eos_max_months: int = 18
     alert_lead_days: int = 30
     annual_leave_days: int = 30
+
+
+class CompanyUpdate(BaseModel):
+    """تعديل شركة — كل حقل اختياري، وما لا يُرسَل لا يُمسّ.
+
+    **والعطل الذي أوجبها**: ``PUT`` كان يكتب ``CompanyIn`` كاملة بقيمها
+    الافتراضية، فتعديل الاسم وحده **يُصفّر معاملات نهاية الخدمة**
+    (``eos_day_divisor`` و``eos_max_months``) ومهلة التنبيه وأيام
+    الإجازة إلى قيم المصنع — وهي أرقام تُحسب بها مستحقات الموظفين.
+    وهو نفس نمط «الطلب الجزئي يمحو ما لم يُرسَل» المُصلَح في الموظفين
+    والفروع.
+    """
+    name: str | None = None
+    name_en: str | None = None
+    commercial_reg: str | None = None
+    entity_type: str | None = None
+    file_number: str | None = None
+    eos_day_divisor: int | None = None
+    eos_max_months: int | None = None
+    alert_lead_days: int | None = None
+    annual_leave_days: int | None = None
 
 
 class CompanyOut(CompanyIn):

@@ -312,6 +312,28 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
     company = match[0]
     report["company"].append(f"الشركة: #{company['id']} — {company['name']}")
 
+    # **وحقول الشركة كانت تُتخطّى صمًتا في هذا الوضع**: رقم الملف والسجل
+    # التجاري والكيان القانوني تُقرأ من المستندات ثم لا تُكتب — فتدخل
+    # الفروع والمستندات وتبقى هويّة الشركة فارغة. كشفته المراجعة بعد
+    # الإدخال، لا قبله.
+    fields = {k: (data["company"].get(k) or "").strip()
+              for k in ("name_en", "entity_type", "file_number", "commercial_reg")}
+    fill = {k: v for k, v in fields.items() if v and not (company.get(k) or "").strip()}
+    kept = {k: (company.get(k), v) for k, v in fields.items()
+            if v and (company.get(k) or "").strip() and company.get(k) != v}
+    for k, (cur, new) in kept.items():
+        report["blocked"].append(
+            f"الشركة.{k}: على الموقع «{cur}» وفي المستندات «{new}» — لم يُغيَّر")
+    if fill:
+        report["company"].extend(f"  + {k} = {v}" for k, v in fill.items())
+        if apply:
+            # تعديٌل جزئي: ما لا يُرسَل لا يُمسّ — ومعاملات نهاية الخدمة
+            # تبقى كما ضبطها صاحبها.
+            r = s.put(api + f"/companies/{company['id']}", json=fill)
+            if r.status_code >= 400:
+                report["blocked"].append(
+                    f"تعذّر تحديث حقول الشركة: {r.status_code} {r.text[:160]}")
+
     # ---- الفروع ----------------------------------------------------------
     existing = {b.get("code"): b for b in _get("/branches") if b.get("code")}
     by_no: dict[str, dict] = {}
@@ -399,7 +421,9 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
                 "document_type_code": doc["type_code"],
                 "title": doc.get("title") or "",
                 "doc_number": doc.get("number") or "",
-                "issuing_authority": doc.get("issuing_authority") or ""}
+                "issuing_authority": doc.get("issuing_authority") or "",
+                # المستند المخصَّص لا يُنبَّه على انتهائه ما لم يُفعَّل.
+                "notify_on_expiry": "true" if doc.get("expiry") else "false"}
         if doc.get("issued"):
             form["issue_date"] = doc["issued"]
         if doc.get("expiry"):

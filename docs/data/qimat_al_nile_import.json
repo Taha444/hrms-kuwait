@@ -1,0 +1,128 @@
+{
+  "_readme": [
+    "شركة قمة النيل الخالد للتجارة العامة والمقاولات — مستخرَجة من مستنداتها الرسمية.",
+    "كل قيمة مقروءة من ملف مذكور في _sources أو من جدول شهادة اعتماد التوقيع.",
+    "ما ليس في المستندات تُرك فارًغا وذُكر في review — ولم يُملأ بتخمين.",
+    "  python -m app.import_company_package --data docs/data/qimat_al_nile_import.json --source <مجلد الحزمة>",
+    "بلا --apply لا يُكتب شيء: تقرير فقط."
+  ],
+  "company": {
+    "match_by": {"name_contains": "قمة النيل الخالد"},
+    "name": "شركة قمة النيل الخالد للتجارة العامة والمقاولات",
+    "name_en": "Qimat Al Nile Al Khalid General Trading & Contracting Co.",
+    "entity_type": "شركة ذات مسؤولية محدودة",
+    "file_number": "100003978",
+    "commercial_reg": "23907",
+    "civil_no": "1627787",
+    "unified_no": "15777",
+    "paci_address_no": "10236383",
+    "governorate": "العاصمة",
+    "address": "العاصمة — القبلة، سوق الأقمشة",
+    "_sources": {
+      "entity_type": "شهادة اعتماد التوقيع · الكيان القانوني",
+      "file_number": "شهادة اعتماد التوقيع · رقم الملف",
+      "commercial_reg": "ترخيص الاستيراد 5910 · «23907 رقم السجل التجاري»",
+      "civil_no": "ترخيص الاستيراد وشهادة التوقيع — متطابقان",
+      "address": "الترخيص التجاري 1998/1040 · العنوان"
+    }
+  },
+  "branches": [
+    {"no": "01", "code": "QNK01", "name": "لورد فاشن لبيع أقمشة الستائر والمفروشات",
+     "entity_no": "1698205", "license_no": "1998/1041", "expiry": "2027-01-14",
+     "governorate": "الفروانية", "governorate_en": "Al Farwaniyah",
+     "address": "الفروانية — ضجيج الطائرات، بيتك / علي عبدالوهاب وأولاده — الرقم الآلي للعنوان: 14827084",
+     "paci_address_no": "14827084", "unified_no": "232508"},
+
+    {"no": "02", "code": "QNK02", "name": "أجواخ لورد العالمية للأقمشة",
+     "entity_no": "1705881", "license_no": "1999/1030", "expiry": "2026-12-05",
+     "governorate": "العاصمة", "governorate_en": "Al Asima",
+     "address": "العاصمة — الرقم الآلي للعنوان: 10234409",
+     "paci_address_no": "10234409", "unified_no": "193236"},
+
+    {"no": "03", "code": "QNK03", "name": "شركة السوق الكامل المركزي لغير المواد الغذائية",
+     "entity_no": "1813627", "license_no": "2000/1391", "expiry": "2027-01-14",
+     "governorate": "الجهراء", "governorate_en": "Al Jahra",
+     "address": "الجهراء — الرقم الآلي للعنوان: 14708413",
+     "paci_address_no": "14708413", "unified_no": "235466"},
+
+    {"no": "05", "code": "QNK05", "name": "ديموس لتنجيد الأثاث والمفروشات",
+     "entity_no": "1886119", "license_no": "2001/1109", "expiry": "2027-01-14",
+     "governorate": "الفروانية", "governorate_en": "Al Farwaniyah",
+     "address": "الفروانية — ضجيج الطائرات، بيتك / علي عبدالوهاب وأولاده — الرقم الآلي للعنوان: 14827105",
+     "paci_address_no": "14827105", "unified_no": "227250"},
+
+    {"no": "06", "code": "QNK06", "name": "ثوب الأناقة للإكسسوارات والملابس الجاهزة",
+     "entity_no": "5917768", "license_no": "2024/30815", "expiry": "2028-12-02",
+     "governorate": "العاصمة", "governorate_en": "Al Asima",
+     "address": "العاصمة — القبلة، سوق الصفاة، شارع عبدالله المبارك — الرقم الآلي للعنوان: 10231953",
+     "paci_address_no": "10231953", "unified_no": "562230"},
+
+    {"no": "ZAHRA", "code": "QNKZH", "name": "خياط زهرة الصفاة للسيدات وأقمشتها",
+     "entity_no": "4668776", "license_no": "2019/40229", "expiry": "2027-12-24",
+     "governorate": "العاصمة", "governorate_en": "Al Asima",
+     "address": "العاصمة — الرقم الآلي للعنوان: 10232091",
+     "paci_address_no": "10232091", "unified_no": "465293"},
+
+    {"no": "FACTORY", "code": "QNKFC", "name": "مصنع ذي فكتري لأعمال النجارة",
+     "entity_no": "5143146", "license_no": "206862", "expiry": "2027-06-12",
+     "governorate": "الفروانية", "governorate_en": "Al Farwaniyah",
+     "address": "الفروانية — الرقم الآلي للعنوان: 21678507",
+     "paci_address_no": "21678507", "unified_no": "500979"}
+  ],
+  "documents": [
+    {"file": "Company_Commercial_License_1998-1040_Expires_2027-01-14.pdf",
+     "entity": "company", "type_code": "company_license",
+     "title": "الترخيص التجاري للشركة", "number": "1998/1040",
+     "expiry": "2027-01-14", "issuing_authority": "وزارة التجارة والصناعة"},
+
+    {"file": "Company_General_Import_License_5910_EXPIRED_2026-05-17.pdf",
+     "entity": "company", "type_code": "import_license",
+     "title": "ترخيص استيراد عام", "number": "5910",
+     "issued": "2025-05-18", "expiry": "2026-05-17",
+     "issuing_authority": "وزارة التجارة والصناعة"},
+
+    {"file": "Company_Signature_Authorization_EmployerFile_100003978_EXPIRED_2025-12-20.pdf",
+     "entity": "company", "type_code": "signature_authorization",
+     "title": "شهادة اعتماد توقيع صاحب العمل", "number": "100003978",
+     "expiry": "2025-12-20", "issuing_authority": "الهيئة العامة للقوى العاملة"},
+
+    {"file": "Branch_01_Lord_Fashion_Commercial_License_1998-1041_Expires_2027-01-14.pdf",
+     "entity": "branch", "branch_no": "01", "type_code": "branch_license",
+     "title": "الترخيص التجاري للفرع", "number": "1998/1041",
+     "expiry": "2027-01-14", "issuing_authority": "وزارة التجارة والصناعة"},
+
+    {"file": "Branch_02_Ajwakh_Lord_Commercial_License_1999-1030_EXPIRED_2026-12-05.pdf",
+     "entity": "branch", "branch_no": "02", "type_code": "branch_license",
+     "title": "الترخيص التجاري للفرع", "number": "1999/1030",
+     "expiry": "2026-12-05", "issuing_authority": "وزارة التجارة والصناعة"},
+
+    {"file": "Branch_05_Dimos_Commercial_License_2001-1109_Expires_2027-01-14.pdf",
+     "entity": "branch", "branch_no": "05", "type_code": "branch_license",
+     "title": "الترخيص التجاري للفرع", "number": "2001/1109",
+     "expiry": "2027-01-14", "issuing_authority": "وزارة التجارة والصناعة"},
+
+    {"file": "Branch_06_Thoub_Al_Anaqa_Commercial_License_2024-30815_Expires_2028-12-02.pdf",
+     "entity": "branch", "branch_no": "06", "type_code": "branch_license",
+     "title": "الترخيص التجاري للفرع", "number": "2024/30815",
+     "expiry": "2028-12-02", "issuing_authority": "وزارة التجارة والصناعة"}
+  ],
+  "signatories_on_record": {
+    "_note": "من شهادة اعتماد التوقيع (صادرة 2024-12-25، سارية حتى 2025-12-20 — منتهية). لا يُدخَلون آلًيا: السجل يربط المخوَّل بحساب مستخدم.",
+    "people": [
+      {"name": "وليد محمد احمد ابراهيم", "civil_id": "270102000925", "since": "2019-09-25"},
+      {"name": "عبد الله محمد احمد ابراهيم", "civil_id": "272092101149", "since": "2019-09-25"}
+    ]
+  },
+  "_verified": [
+    "بصمات SHA256: 7 من 7 من الموجود على القرص مطابقة للبيان.",
+    "أرقام العناوين الآلية والمحافظات: مطابقة بين ترخيص كل جهة وجدول شهادة اعتماد التوقيع.",
+    "إجمالي التراخيص في الشهادة = 8 = الشركة + سبعة فروع."
+  ],
+  "review": [
+    "ترخيصان معلَنان في البيان ومفقودان من القرص: الفرع 03 (السوق الكامل المركزي 2000/1391) وخياط زهرة الصفاة (2019/40229). الفرعان يُنشآن ببياناتهما من الشهادة، ولا يُنشأ لهما مستند بلا ملف.",
+    "مصنع ذي فكتري (206862) في الشهادة ولا ذكر له في البيان أصًلا — يُنشأ فرًعا بلا مستند حتى يصل ترخيصه.",
+    "اسم ملف الفرع 02 يقول EXPIRED وتاريخه 2026-12-05 لم يحن بعد — التسمية في الحزمة خاطئة، والمعتمَد هو التاريخ.",
+    "الرقم المركزي 201220104741 في ترخيص الاستيراد — لم يُدخَل، فحقول النظام لا تحمله ولم يُقابَل بمصدر ثانٍ.",
+    "لا إحداثيات لأي فرع في أي مستند — تُضبَط من شاشة الفروع."
+  ]
+}
