@@ -791,7 +791,7 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
         #
         # والشرط من ``request_actions`` لا نسخًة منه هنا: ما تعرضه الشاشة
         # هو ما يقبله الخادم.
-        if not request_actions._may_execute(db, user, "signature"):
+        if not request_actions._may_execute(db, user, "signature", req):
             raise HTTPException(status_code=403,
                                 detail="رفع النسخة الموقّعة من صلاحية شؤون الموظفين")
         if user.employee_id and req.employee_id == user.employee_id:
@@ -799,7 +799,7 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
                                 detail="لا يجوز إتمام توقيع طلبك بنفسك")
         workflow.upload_signed_scan_done(db, req, rt)
     elif kind == "exit_permit" and req.status == "awaiting_delegate":
-        if not request_actions._may_execute(db, user, "delegate"):
+        if not request_actions._may_execute(db, user, "delegate", req):
             raise HTTPException(status_code=403, detail="رفع إذن المغادرة من صلاحية المندوب")
         workflow.upload_exit_permit_done(db, req, rt)
     else:

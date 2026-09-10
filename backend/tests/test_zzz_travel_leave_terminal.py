@@ -288,57 +288,14 @@ def test_the_delegates_task_closes_when_his_work_is_done(client, travel):
         db.close()
     assert not stale, f"مهمة المندوب باقية بعد إنجاز عمله: {stale}"
 
-
 # ---------------------------------------------------------------------------
-# P11-36 — الأخ المجاور: مرحلة التوقيع كانت بلا حارس
+# مرحلة التوقيع تُقاس في ``test_zzz_resignation_walkable`` لا هنا
 # ---------------------------------------------------------------------------
-
-@pytest.fixture
-def at_signature(client, travel):
-    """يضع الطلب في حال انتظار التوقيع — قياس الحارس لا قياس التقدّم."""
-    db = SessionLocal()
-    try:
-        req = db.get(models.Request, travel)
-        was = req.status
-        req.status = "awaiting_signature"
-        db.commit()
-    finally:
-        db.close()
-    yield travel
-    db = SessionLocal()
-    try:
-        req = db.get(models.Request, travel)
-        if req:
-            req.status = was
-            db.commit()
-    finally:
-        db.close()
-
-
-def test_the_owner_of_the_request_cannot_sign_it_through(client, at_signature):
-    """**بواٌب كان بلا حارس.**
-
-    رفع «النسخة الموقّعة» يتقدّم بالطلب عبر مرحلة التوقيع، وكان بلا فحص
-    فاعٍل أصًلا — بخلاف أخيه المجاور (إذن المغادرة) المحروس. فكل من يرى
-    الطلب، **ومنهم صاحبه**، يتخطّى التوقيع برفع أيّ ملف: توقيٌع في السجلّ
-    لم يقع في الواقع.
-    """
-    r = client.post(f"/api/requests/{at_signature}/documents",
-                    headers=auth_headers(login(client, *EMP)),
-                    data={"kind": "signed_scan"}, files=_pdf())
-    assert r.status_code == 403, r.text
-
-
-def test_the_signature_stage_offers_its_action_to_whoever_owns_it(client, at_signature):
-    """ومن يملكها يجدها معروضة — لا مخفيًّة خلف صلاحية مهجورة."""
-    d = client.get(f"/api/requests/{at_signature}",
-                   headers=auth_headers(login(client, *HR))).json()
-    acts = d["allowed_actions"]
-    assert [a["action"] for a in acts] == ["upload_signed_scan"], acts
-    assert acts[0]["via"] == "upload" and acts[0]["doc_kind"] == "signed_scan"
-
-    # ولصاحب الطلب سبٌب أخصّ: لا نقص صلاحية بل منع اعتماد ذاتي.
-    e = client.get(f"/api/requests/{at_signature}",
-                   headers=auth_headers(login(client, *EMP))).json()
-    assert e["allowed_actions"] == []
-    assert "بنفسك" in (e.get("no_actions_reason") or ""), e.get("no_actions_reason")
+#
+# كان هنا حارسان يضعان **طلب إجازة** في حال ``awaiting_signature`` بتعديل
+# الحقل مباشًرة. وهي حاٌل لا تنتجها سلسلة الإجازة عند تلك المرحلة أصًلا:
+# المرحلة الحيّة يومها مرحلة المندوب. فكان الحارسان يقيسان وضًعا مستحيًلا،
+# ولمّا ضاق شرط التوقيع على **معتمِد المرحلة المُصدِرة** سقطا — وبحقّ.
+#
+# ومرحلة التوقيع تُقاس على مسارها الحقيقي: الاستقالة تبلغها باعتمادين
+# ولا بحيلة، وهناك يُقاس عرُضها وحارُسها وأثرها.

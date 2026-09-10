@@ -119,10 +119,11 @@ ACTION_DECISION: dict[str, str] = {
 #: مرحلة ``hr_review`` نفسها التي تقبل القرار قبلها — فالمفتاح الصادق هو
 #: «ما تحتاجه هذه الحال كي تكتمل».
 EXECUTION_ACTIONS_BY_STATUS: dict[str, dict] = {
-    # ``self_forbidden`` — لا يُتمّ المرء توقيع طلبه. والراية هنا لأن
-    # الشرط على الخادم أيًضا: لو عُرض الفعل ثم رُدّ، لعاد العطل مقلوًبا —
-    # زٌر يُعرَض ويُردّ. أما إذن المغادرة فورقٌة تستخرجها الوزارة والمندوب
-    # ساعٍ إليها لا مقرٌّ بها، فلا يُمنع منها في شركٍة مندوبها واحد.
+    # ``self_forbidden`` — **لاختيار الرسالة وحدها**: الحُكم في
+    # ``_may_execute``. ولصاحب الطلب سبٌب أخصّ من «تنقصك صلاحية»: أن
+    # الأمر لا يجوز له أصًلا. أما إذن المغادرة فورقٌة تستخرجها الوزارة
+    # والمندوب ساعٍ إليها لا مقرٌّ بها، فلا يُمنع منها في شركٍة مندوبها
+    # واحد.
     "awaiting_signature": {"action": "upload_signed_scan", "via": "upload",
                            "doc_kind": "signed_scan", "who": "signature",
                            "self_forbidden": True,
@@ -136,7 +137,8 @@ EXECUTION_ACTIONS_BY_STATUS: dict[str, dict] = {
 }
 
 
-def _may_execute(db: Session, user: models.User, who: str) -> bool:
+def _may_execute(db: Session, user: models.User, who: str,
+                 req: models.Request | None = None) -> bool:
     """هل يقبل الخادمُ من هذا المستخدم تنفيذ هذه الحال؟
 
     كل فرع أدناه يقرأ من موضع الشرط الأصلي: أي تعديل هناك يجب أن يُقرأ
@@ -147,9 +149,37 @@ def _may_execute(db: Session, user: models.User, who: str) -> bool:
     if who == "delegate":
         # routers/requests.upload_request_document — kind="exit_permit"
         return user.role == "delegate" or user.role in workflow.CANCEL_ROLES
-    if who in ("approval", "signature"):
-        # routers/requests.mark_received — require_any_perm(*APPROVAL_PERMS)
-        # وrouters/requests.upload_request_document — kind="signed_scan"
+
+    if who == "signature":
+        # **رفُع النسخة الموقّعة عمٌل سجلّي لا قرار**: العامل يحضر فيوقّع
+        # الورقة، ومن يستلمها يمسحها ويرفعها. فالصلاحية ``upload_documents``.
+        #
+        # وقد ضلّ الشرط في الطرفين قبل أن يستقرّ:
+        #
+        # كان **أيّ صلاحية اعتماد في الشركة** — فقيس أن مسؤول فرع يُعرَض
+        # له إتمام توقيع استقالٍة ليس هو معتمِد مرحلتها ولا مُصدِر ورقتها،
+        # ويقبله الخادم.
+        #
+        # فضُيِّق إلى معتمِد المرحلة المُصدِرة (``can_decide``) — **وكان
+        # أضيق من الواقع**: مرحلة إصدار تسوية نهاية الخدمة دورها المدير،
+        # والذي يستلم الورقة الموقّعة ويحفظها شؤون الموظفين. فردّ الخادم
+        # 403 على من يقوم بالعمل فعًلا، ووقف الطلب عند التوقيع.
+        #
+        # و``upload_documents`` تُصيب المقصود: شؤون الموظفين والمدير
+        # والمندوب — لا مسؤول الفرع ولا المحاسب.
+        assigned = get_user_perms(user, db)
+        if not permissions.check_legacy(user.role, assigned, "upload_documents"):
+            return False
+        # **ولا يتمّ المرء توقيع طلبه** — وشؤون الموظفين تحمل الصلاحية،
+        # فبلا هذا يُتمّ استقالته بنفسه. والحُكم هنا لا في وصف الحال، كي
+        # يكون للقاعدة موضٌع واحد يقرؤه العرُض والمسار.
+        if req is not None and user.employee_id and req.employee_id == user.employee_id:
+            return False
+        return True
+
+    if who == "approval":
+        # routers/requests.mark_received — require_any_perm(*APPROVAL_PERMS).
+        # والاستلام تسليٌم لا إصدار: يقبله كل من يعالج الطلبات.
         assigned = get_user_perms(user, db)
         return any(permissions.check_legacy(user.role, assigned, perm)
                    for perm in permissions.APPROVAL_PERMS)
@@ -197,9 +227,7 @@ def allowed_actions(db: Session, req: models.Request,
     # بحكم التصميم، فالشرط كان يُسكت هذه الحالات كلّها.
     spec = EXECUTION_ACTIONS_BY_STATUS.get(req.status)
     if spec is not None:
-        if not _may_execute(db, user, spec["who"]):
-            return []
-        if spec.get("self_forbidden") and user.employee_id                 and req.employee_id == user.employee_id:
+        if not _may_execute(db, user, spec["who"], req):
             return []
         a = spec["action"]
         out = {"action": a, "via": spec["via"], "decision": None,
@@ -271,7 +299,7 @@ def why_not(db: Session, req: models.Request, user: models.User | None) -> str |
     if spec is not None:
         if spec.get("self_forbidden") and user.employee_id                 and req.employee_id == user.employee_id:
             return "لا يجوز إتمام توقيع طلبك بنفسك — يتولّاه غيرك."
-        if _may_execute(db, user, spec["who"]):
+        if _may_execute(db, user, spec["who"], req):
             return None
         return execution_stage_hint(req.status)
     if req.status != "pending":

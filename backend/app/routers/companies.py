@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import audit, get_current_user, require_super_admin
+from .. import permissions
+from ..deps import audit, get_current_user, require_perm, require_super_admin
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -53,13 +54,27 @@ def create_company(data: schemas.CompanyIn, request: Request,
 
 @router.put("/{company_id}", response_model=schemas.CompanyOut)
 def update_company(company_id: int, data: schemas.CompanyUpdate, request: Request,
-                   user: models.User = Depends(require_super_admin), db: Session = Depends(get_db)):
+                   user: models.User = Depends(require_perm("manage_company")),
+                   db: Session = Depends(get_db)):
     """CO-EDIT — تعديل شركة. **وما لا يُرسَل لا يُمسّ.**
 
     كان يكتب النموذج كامًلا بقيمه الافتراضية، فتعديل الاسم وحده يُصفّر
     ``eos_day_divisor`` و``eos_max_months`` ومهلة التنبيه وأيام الإجازة
     إلى قيم المصنع — **وهي أرقاٌم تُحسب بها مستحقات نهاية خدمة الموظفين**.
     """
+    # **قرار المالك (2026-09-11)** — التعديل بـ``manage_company`` لا
+    # بـ``super_admin``: كانت بيانات الشركة لا يعدّلها أحٌد في الإنتاج، لأن
+    # القاعدة المعلَنة تمنع منح ``super_admin`` لأيّ شخص.
+    #
+    # **والنطاق يُحرَس هنا** لأن المعرّف في المسار لا في الاستعلام: فلا
+    # يمرّ عليه ``scope_company_id`` الذي يُجبِر غير العابرين على شركتهم.
+    # وبلا هذا الفحص يصير مدير شركٍة قادًرا على تعديل شركٍة أخرى بتبديل
+    # رقٍم في العنوان — وهي أوسع مما طُلب. والإنشاء والتعطيل يبقيان
+    # للإدارة العليا بقرار المالك نفسه.
+    if user.role not in permissions.CROSS_COMPANY_ROLES \
+            and user.company_id != company_id:
+        raise HTTPException(status_code=403, detail="لا تملك تعديل بيانات شركة أخرى")
+
     company = db.get(models.Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="الشركة غير موجودة")
