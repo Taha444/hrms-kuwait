@@ -700,6 +700,21 @@ class Request(Base):
     policy_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="pending")
     current_stage: Mapped[int] = mapped_column(Integer, default=0)
+    #: DEC-RACE — عدّاد القرارات: يزيد **بمطالبة ذرّية** قبل كل قرار.
+    #:
+    #: كل حرّاس القرار كانت «اقرأ ثم افحص» بلا قفل: طلبا اعتماد ورفض
+    #: يصلان معًا فيقرآن ``pending`` والمرحلة نفسها، فيمرّان كلاهما.
+    #: والنتيجة المقيسة: ردّان 200، وخطٌّ زمني فيه اعتماٌد ورفض، وحاٌل
+    #: نهائية «مكتمل»، **ومستٌند رسمي يُولَّد رغم وجود رفض**.
+    #:
+    #: والعدّاد يجعل الفائز واحًدا: من يُحدّث الصفّ بشرط القيمة التي قرأها
+    #: يفوز، والثاني يجد شرطه لم يعد صادًقا فيُردّ بـ409.
+    #:
+    #: ولا يُعتمَد على قفل صفّ (``FOR UPDATE``) لأن SQLite — قاعدة
+    #: الاختبارات — تتجاهله: فتعمل الحماية في الإنتاج وتغيب عن القياس،
+    #: وهو أسوأ من غيابها في الاثنين.
+    decision_seq: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     #: بصمة الطلب: موظف + نوع + حمولة. يحرسها قيد فريد **جزئي** يشمل

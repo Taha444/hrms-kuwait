@@ -1048,6 +1048,44 @@ def _close_open_tasks(db: Session, req: models.Request) -> None:
         t.completed_at = datetime.now(timezone.utc)
 
 
+class StaleDecision(RuntimeError):
+    """قراٌر بُني على حاٍل تغيّرت قبل أن يُكتب."""
+
+
+def claim_decision(db: Session, req: models.Request, *,
+                   seen_stage: int, seen_seq: int) -> bool:
+    """**يطالب بحقّ اتخاذ القرار ذرًّيا** — ويفوز واحد فقط.
+
+    كل حرّاس القرار قبل هذا كانت «اقرأ ثم افحص»: طلبا اعتماد ورفض يصلان
+    في اللحظة نفسها فيقرآن ``pending`` والمرحلة نفسها، ويمرّان كلاهما.
+    والمقيس: ردّان 200، وخطٌّ زمني فيه اعتماٌد ورفض معًا، وحاٌل نهائية
+    «مكتمل»، **ومستٌند رسمي يُولَّد رغم وجود رفض** — أي ورقة تُقدَّم لجهة
+    وقد رُفض أصلها.
+
+    والمطالبة تحديٌث مشروط: من يجد الحالة كما قرأها يفوز ويزيد العدّاد،
+    ومن تأخّر يجد شرطه كاذًبا فيعود بـ``False`` — فيردّ عليه المسار 409.
+
+    **ولا يُستعمل قفل الصفّ**: SQLite (قاعدة الاختبارات) تتجاهل
+    ``FOR UPDATE``، فتعمل الحماية في الإنتاج وتغيب عن القياس. والتحديث
+    المشروط ذرّيٌّ في الاثنين.
+    """
+    from sqlalchemy import update as sa_update
+
+    res = db.execute(
+        sa_update(models.Request)
+        .where(models.Request.id == req.id,
+               models.Request.status == "pending",
+               models.Request.current_stage == seen_stage,
+               models.Request.decision_seq == seen_seq)
+        .values(decision_seq=seen_seq + 1)
+    )
+    if res.rowcount:
+        # الصفّ في الجلسة يجب أن يوافق ما في القاعدة، وإلا كتب فوقه لاحًقا.
+        req.decision_seq = seen_seq + 1
+        return True
+    return False
+
+
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
            note: str | None, rt: models.RequestType,
            action: str | None = None) -> models.Request:

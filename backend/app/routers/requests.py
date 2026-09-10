@@ -653,6 +653,26 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
 
     # P0-#7 — capture before-state for audit trail
     before = {"status": req.status, "current_stage": req.current_stage}
+
+    # DEC-RACE — **المطالبة الذرّية**: بعد كل الفحوص، وقبل أي أثر.
+    #
+    # كل ما سبقها قراءٌة ثم فحص، فطلبا اعتماد ورفض متزامنان يمرّان كلاهما:
+    # ردّان 200، واعتماٌد ورفض في الخطّ الزمني، وحاٌل «مكتمل»، ومستٌند
+    # رسمي يُولَّد رغم الرفض. وهنا يفوز واحد ويُردّ الثاني.
+    if not workflow.claim_decision(db, req, seen_stage=req.current_stage,
+                                   seen_seq=req.decision_seq):
+        # **والخاسر يُسجَّل ولا يُهمَل**: سباٌق لا أثر له لا يُحقَّق فيه.
+        audit(db, user, "request_decision_conflict", "request", req.id,
+              detail=(f"decision={data.decision} stage={req.current_stage} "
+                      f"seq={req.decision_seq}"),
+              request=request, company_id=req.company_id,
+              correlation_id=f"req:{req.id}", result="conflict",
+              reason="قرار متزامن سبقه غيره")
+        db.commit()
+        raise HTTPException(status_code=409, detail=(
+            "اتُّخذ قرار آخر على هذه المرحلة في اللحظة نفسها. "
+            "أعد تحميل الطلب واقرأ حالته قبل أن تقرّر."))
+
     req = workflow.decide(db, req, user, data.decision, data.note, rt,
                           action=action)
     audit(db, user, f"request_{data.decision}", "request", req.id,
