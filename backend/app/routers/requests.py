@@ -113,6 +113,16 @@ def registry(user: models.User = Depends(get_current_user)):
         "system_records": v15_registry.SYSTEM_RECORDS,
         "legacy_request_aliases": v15_registry.LEGACY_REQUEST_ALIASES,
         "legacy_template_aliases": v15_registry.LEGACY_PRN_ALIASES,
+        # **الوعد يُنشَر، فيُنشَر معه ما لم يُوفَ به.**
+        #
+        # ``canonical_workflows`` تعلن مستندات كل مسار، وتسعة عشر منها لا
+        # يُنتَج. ومن يقرأ هذا السجلّ — واجهًة أو تدقيًقا أو حزمة أدلّة —
+        # يقرأ الإعلان وعًدا: «هذا المسار يُصدر هذه الورقة». فنشُر الإعلان
+        # وحده يجعل الردّ يشهد بما لا يقع.
+        #
+        # والقائمة محسوبة لا مكتوبة: تُقاس من الأنواع نفسها، فلا تشيخ.
+        "output_gaps": {k: v15_registry.OUTPUT_GAPS.get(k, {})
+                        for k in v15_registry.output_gaps()},
         "summary": v15_registry.summary(),
     }
 

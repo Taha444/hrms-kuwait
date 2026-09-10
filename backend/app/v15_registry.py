@@ -496,6 +496,9 @@ def summary() -> dict:
         "layouts": len(LAYOUTS),
         "legacy_request_aliases": len(LEGACY_REQUEST_ALIASES),
         "legacy_template_aliases": len(LEGACY_PRN_ALIASES),
+        # مخرٌج معلٌن لا يُنتَج — رقٌم يُقرأ بلا تفصيل، وتفصيُله في
+        # ``/requests/registry``. ورقٌم لا يُنشَر لا يُلاحَظ نموّه.
+        "declared_outputs_not_produced": len(output_gaps()),
         "migration_version": migration_version(),
     }
 
@@ -510,3 +513,105 @@ def resolve_canonical_document(code: str) -> dict | None:
     if od and od in CANONICAL_DOCUMENTS:
         return {"od_code": od, "legacy_alias": code, **CANONICAL_DOCUMENTS[od]}
     return None
+
+
+# ==============================================================================
+# البند 4 — ما يعلنه المسار مقابل ما يُنتجه المحرّك
+#
+# **العطل المقيس**: السجلّ يعلن لكل مسار مستنداته، و**تسعة عشر مستنًدا
+# معلًنا لا يُنتَج**. والإعلان يُقرأ على أنه وعد: يظهر في ``/api/manifest``
+# وفي حزمة الأدلّة وفي كل ما يعرض المسار القانوني — فيُقرأ «المسار يُصدر
+# هذه الورقة» ولا ورقة.
+#
+# وأثقلها وزًنا قانوًنيا:
+#
+# - ``WF-009 → OD-022`` «اتفاقية سلفة/قرض». والسجلّ يقول «اتفاق وجدول سداد
+#   **موقّع**»، ونصّ الطلب الرسمي يقول «أتعهد بالالتزام بخطة السداد
+#   المعتمدة». فالتعهّد نٌصّ في الطلب، والأداة التي تُوقَّع لا وجود لها:
+#   يُعتمد القرض ويُجدوَل الاستقطاع من الأجر بلا سٍند موقّع.
+# - ``WF-013 → OD-008`` «قرار خصم» — خصٌم من الأجر بلا قرار مكتوب.
+# - ``WF-008 → OD-021/BANK_ACCOUNT`` — تغيير حساب بنكي بلا إشعار يحمل
+#   القديم والجديد وشهر النفاذ.
+#
+# **ولا تُختلَق ورقٌة رسمية**: تسعٌة منها بلا قالب في السجلّ أصًلا، فتوليدها
+# ليس إصلاح كود بل مستنٌد يُصاغ ويُعتمد. وادّعاء إنتاجه أسوأ من غيابه.
+#
+# **فالعلاج أن يُسمّى ما لا يُنتَج** بدل أن يبقى انحراًفا صامًتا بين إعلان
+# وواقع. وحارٌس يمنع طرفين: إعلاٌن جديد لا يُنتَج ولا يُسمّى هنا، وسطٌر
+# هنا لمستند صار يُنتَج فبطل عذره.
+# ==============================================================================
+
+#: ``"WF-0xx/OD-0yy"`` ← سبب عدم الإنتاج وما يلزم لرفعه.
+#:
+#: ``needs``: ``template`` = يلزم مستٌند يُصاغ ويُعتمد (قرار المالك) ·
+#: ``wiring`` = القالب موجود ويلزم ربطه بالمسار (قرار هندسي).
+OUTPUT_GAPS: dict[str, dict] = {
+    # — يلزمها مستٌند يُصاغ ويُعتمد —
+    "WF-002/OD-012": {"needs": "template", "why": "إفادة مالية للسفر — لا قالب في السجلّ."},
+    "WF-009/OD-022": {"needs": "template", "why": "اتفاقية سلفة/قرض بجدول سداد موقّع — لا قالب. وهي سنُد الاستقطاع من الأجر."},
+    "WF-010/OD-023": {"needs": "template", "why": "إيصال تسوية مصروفات — لا قالب."},
+    "WF-011/OD-024": {"needs": "template", "why": "قرار اعتراض راتب — لا قالب."},
+    "WF-012/OD-024": {"needs": "template", "why": "قرار اعتراض خصم — لا قالب."},
+    "WF-014/OD-009": {"needs": "template", "why": "إقرار/ردّ الموظف على مخالفة — لا قالب."},
+    "WF-015/OD-009": {"needs": "template", "why": "إقرار/ردّ الموظف على إنذار — لا قالب."},
+    "WF-016/OD-010": {"needs": "template", "why": "قرار نتيجة تظلّم — لا قالب."},
+    "WF-027/OD-020": {"needs": "template", "why": "طلب/نتيجة تدريب — لا قالب."},
+
+    # — قالُبها موجود، والربط قرار هندسي —
+    "WF-002/OD-013": {"needs": "wiring", "why": "غلاف متابعة حكومية للسفر. والسجلّ يقول تُنشأ Case مستقلة للمندوب «عند الحاجة» لا أنها مخرج الإجازة نفسها — فيُحسم: أثٌر تابع أم مخرٌج مستقل."},
+    "WF-003/OD-018": {"needs": "wiring", "why": "إيصال استئذان — القالب HRMS-PR-026/028 قائم."},
+    "WF-004/OD-018": {"needs": "wiring", "why": "إيصال تصحيح حضور — والسجلّ يشترط سجلّ before/after."},
+    "WF-007/OD-021": {"needs": "wiring", "why": "إشعار تحديث بيانات شخصية."},
+    "WF-008/OD-021": {"needs": "wiring", "why": "إشعار تغيير حساب بنكي بـIBAN مقنَّع وشهر نفاذ — والسجلّ يشترط ألّا يفعّله من أدخله."},
+    "WF-013/OD-008": {"needs": "wiring", "why": "قرار خصم — القالب HRMS-PR-021 قائم. خصٌم من الأجر بلا قرار مكتوب."},
+    "WF-017/OD-018": {"needs": "wiring", "why": "إيصال عمل إضافي/عودة."},
+    "WF-021/OD-013": {"needs": "wiring", "why": "غلاف متابعة حكومية — إقامة/تصريح."},
+    "WF-022/OD-013": {"needs": "wiring", "why": "غلاف متابعة حكومية."},
+    "WF-023/OD-013": {"needs": "wiring", "why": "غلاف متابعة حكومية."},
+}
+
+
+def produced_outputs() -> dict[str, set[str]]:
+    """المسار ← المستندات التي يُنتجها نوٌع من أنواعه فعًلا.
+
+    ويُحتسب فيها الترقية بالحمولة: نوع ``leave`` يُنتج ``OD-011``، وهو
+    مخرُج ``WF-001`` و``WF-002`` كلتيهما — فالسفر ترقيٌة للمسار نفسه لا
+    نوٌع آخر. ومن قاس بالكود الساكن وحده قرأ ``WF-002`` بلا نوٍع أصًلا.
+    """
+    from .workflow import DEFAULT_REQUEST_TYPES
+
+    out: dict[str, set[str]] = {}
+    for rt in DEFAULT_REQUEST_TYPES:
+        entry = LEGACY_REQUEST_ALIASES.get(rt["code"]) or {}
+        canonical = entry.get("canonical") if isinstance(entry, dict) else None
+        if not canonical:
+            continue
+        chain = rt.get("approval_chain_json") or []
+        if not (rt.get("produces_document")
+                or any(s.get("produces_document") for s in chain)):
+            continue
+        od = LEGACY_PRN_ALIASES.get(rt.get("default_template_code"))
+        if not od:
+            continue
+        out.setdefault(canonical, set()).add(od)
+        for base, _field, promoted in _PAYLOAD_PROMOTIONS:
+            if canonical == base:
+                out.setdefault(promoted, set()).add(od)
+    return out
+
+
+def output_gaps() -> list[str]:
+    """المستندات المعلَنة التي لا تُنتَج — بمفتاح ``"WF/OD"``.
+
+    تُقرأ من موضع واحد: يقرؤها الحارس ويقرؤها أيّ تقرير، فلا ينحرف
+    مقياٌس عن مقياس.
+    """
+    produced = produced_outputs()
+    gaps = []
+    for wf, body in CANONICAL_WORKFLOWS.items():
+        for od in body.get("od") or []:
+            if not (CANONICAL_DOCUMENTS.get(od) or {}).get("produces_pdf"):
+                continue
+            if od not in (produced.get(wf) or set()):
+                gaps.append(f"{wf}/{od}")
+    return sorted(gaps)
