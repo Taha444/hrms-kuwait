@@ -952,11 +952,46 @@ def parallel_stage_complete(db: Session, req: models.Request, stage: dict) -> bo
     return needed and needed <= _party_decisions(db, req, req.current_stage)
 
 
+#: بادئات ``dedup_key`` لمهامّ المراحل — **وهذه الدالة وحدها تُنشئها**.
+#:
+#: P11-36 — المهمّة تُغلق حين يقع عملها، لا حين يُغلَق الطلب. و
+#: ``_close_open_tasks`` لا تُدعى إلا في الحالات النهائية، فمهمة المندوب
+#: («إجراءات إذن مغادرة البلاد») كانت تبقى في صندوقه بعد رفعه الإذن حتى
+#: يسجّل أحدٌ الاستلام — وقد يمتدّ ذلك أياًما. وصندوٌق فيه عمٌل منتهٍ
+#: يُقرأ كتأخّر فيُهمَل كلّه.
+#:
+#: والقائمة بادئات لا أنواع بقصد: النوع مشتٌرك (``request_update`` يصف
+#: مهمّة مرحلة وإخطار نتيجة معًا)، والبادئة تخصّ المرحلة وحدها. فلا
+#: يُكنَس ما يجب أن يعيش: ``req_apply_failed`` و``stage_unassigned`` لا
+#: تُنشأ من هنا، ومهمة «فشل توليد مستند» كذلك — تبقى حتى تُعالَج.
+STAGE_TASK_PREFIXES = ("req_stage:", "req_par:", "req_exit:", "req_pickup:")
+
+
+def _close_stage_tasks(db: Session, req: models.Request) -> None:
+    """يغلق مهامّ المرحلة المنصرفة قبل إنشاء مهامّ التي تليها.
+
+    للطلب مرحلٌة حيّة واحدة، فمهمُة مرحلٍة مضت تصف عمًلا وقع (ولهذا تقدّم
+    الطلب) أو عمًلا لم يبق له محلّ.
+    """
+    for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "request",
+            models.Task.related_entity_id == req.id,
+            models.Task.status.in_(("open", "in_progress")),
+    )).all():
+        if is_notification(t.type) or not t.dedup_key:
+            continue
+        if t.dedup_key.startswith(STAGE_TASK_PREFIXES):
+            t.status = "done"
+            t.completed_at = datetime.now(timezone.utc)
+
+
 def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> None:
     """يهيّئ المرحلة الحالية: ضبط الحالة وإنشاء المهام للمستلِمين."""
     chain = _chain(rt, req)
     if req.current_stage >= len(chain):
         return _finalize(db, req)
+    # P11-36 — قبل إنشاء مهامّ هذه المرحلة تُغلق مهامّ ما قبلها.
+    _close_stage_tasks(db, req)
     stage = chain[req.current_stage]
     kind = stage.get("kind", "approval")
     name = _employee_name(db, req)

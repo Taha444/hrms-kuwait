@@ -43,7 +43,6 @@ export default function RequestDetail() {
     if (!appt.scheduled_at) { setErr(t("rd_appt_required")); return; }
     act(() => api.post(`/requests/${id}/appointment`, appt), t("rd_appt_set"));
   };
-  const received = () => act(() => api.post(`/requests/${id}/received`), t("rd_received_done"));
 
   const uploadDoc = async (kind: string, file: File) => {
     const fd = new FormData();
@@ -68,6 +67,9 @@ export default function RequestDetail() {
   const markFiled = (kind: string) =>
     act(() => api.post(`/requests/${id}/document/${kind}/mark-filed`), t("rd_marked_filed"));
 
+  // من يملك مرحلة التوقيع = من عُرض له فعلها. مصدٌر واحد لا شرطان.
+  const signStage = (req.allowed_actions || [])
+    .some((a: any) => a.action === "upload_signed_scan");
   const isManager = user?.role && ["company_manager", "company_owner", "super_admin"].includes(user.role);
   const genDoc = req.documents?.find((d: any) => d.kind === "generated_pdf");
   const printStatusLabel: Record<string, string> = {
@@ -135,20 +137,45 @@ export default function RequestDetail() {
             الإجازات بـapprove_leave يقبله الخادم وتُخفي عنه الواجهة أزراره.
             والأفعال وتسمياتها والقرار المقابل لكلٍّ منها كلها من الخادم:
             ترجمة فعل إلى قرار في الواجهة قاعدة ثانية تنحرف. */}
+        {/* P11-36 — و«كيف» يقع الفعل من الخادم أيًضا. مرحلة المندوب
+            ومرحلة الاستلام تُنفَّذان ولا تُقرَّران: مخرجهما رفع مستند أو
+            نداء مسار، لا قرار على /decide. وكانتا مكتوبتين هنا بشرطين
+            محلّيين — دور ‏delegate‏ نًصّا، و‏approve_request‏ المهجورة —
+            فرأى مندوٌب شاشة صامتة، ورأى من يملك الاستلام لا زرّ له. */}
         {(req.allowed_actions || []).length > 0 && (
-          <div className="row">
-            {(req.allowed_actions || []).map((a: any) => (
-              <button key={a.action}
-                      /* P11-35 — الاعتراض يمضي بالمسار (قرار المالك) لكنه
-                         ليس موافقة: لونُه لون التحفّظ لا لون الاعتماد.
-                         والتلوين على الفعل لا على أثره وحده. */
-                      className={a.decision === "rejected" ? "danger"
-                                 : a.decision === "returned" ? "warn"
-                                 : a.action === "dispute" ? "warn" : ""}
-                      onClick={() => decide(a.decision, a.action)}>
-                {lang === "en" ? a.label_en : a.label_ar}
-              </button>
-            ))}
+          <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+            {(req.allowed_actions || []).map((a: any) => {
+              const label = lang === "en" ? a.label_en : a.label_ar;
+              if (a.via === "upload") {
+                return (
+                  <div className="field" key={a.action}>
+                    <label htmlFor={`rd-act-${a.action}`}>{label}</label>
+                    <input id={`rd-act-${a.action}`} type="file"
+                           onChange={(e) => e.target.files && uploadDoc(a.doc_kind, e.target.files[0])} />
+                  </div>
+                );
+              }
+              if (a.via === "post") {
+                return (
+                  <button key={a.action}
+                          onClick={() => act(() => api.post(`/requests/${id}/${a.path}`), t("rd_action_done"))}>
+                    {label}
+                  </button>
+                );
+              }
+              return (
+                <button key={a.action}
+                        /* P11-35 — الاعتراض يمضي بالمسار (قرار المالك) لكنه
+                           ليس موافقة: لونُه لون التحفّظ لا لون الاعتماد.
+                           والتلوين على الفعل لا على أثره وحده. */
+                        className={a.decision === "rejected" ? "danger"
+                                   : a.decision === "returned" ? "warn"
+                                   : a.action === "dispute" ? "warn" : ""}
+                        onClick={() => decide(a.decision, a.action)}>
+                  {label}
+                </button>
+              );
+            })}
           </div>
         )}
         {/* ولمن لا أفعال له: السبب كما يقوله الخادم، بدل الإخفاء الصامت */}
@@ -182,7 +209,11 @@ export default function RequestDetail() {
           </div>
         )}
 
-        {req.status === "awaiting_signature" && can("approve_request") && (
+        {/* P11-36 — موعد المراجعة يظهر لمن يملك مرحلة التوقيع، ومن يقرّر
+            ذلك الخادم: كان الشرط ‏can("approve_request")‏ — المهجورة —
+            بينما يشترط ‏/appointment‏ صلاحية مجال الفئة. ورفع النسخة
+            الموقّعة انتقل إلى شريط الإجراءات أعلاه، فلا يُكتب مرّتين. */}
+        {signStage && (
           <div className="card" style={{ background: "#f8fafc" }}>
             <h4>{t("rd_sign_title")}</h4>
             <div className="row">
@@ -193,22 +224,7 @@ export default function RequestDetail() {
                 <input id="rd-appt-location" value={appt.location} onChange={(e) => setAppt({ ...appt, location: e.target.value })} /></div>
             </div>
             <button onClick={setAppointment}>{t("rd_set_appt")}</button>
-            <div className="field" style={{ marginTop: 12 }}>
-              <label htmlFor="rd-upload-signed">{t("rd_upload_signed")}</label>
-              <input id="rd-upload-signed" type="file" onChange={(e) => e.target.files && uploadDoc("signed_scan", e.target.files[0])} />
-            </div>
           </div>
-        )}
-
-        {req.status === "awaiting_delegate" && user?.role === "delegate" && (
-          <div className="field">
-            <label htmlFor="rd-upload-exit">{t("rd_upload_exit")}</label>
-            <input id="rd-upload-exit" type="file" onChange={(e) => e.target.files && uploadDoc("exit_permit", e.target.files[0])} />
-          </div>
-        )}
-
-        {req.status === "ready_for_pickup" && can("approve_request") && (
-          <button onClick={received}>{t("rd_mark_received")}</button>
         )}
 
         {isManager && !["completed", "rejected", "cancelled", "returned"].includes(req.status) && (

@@ -62,6 +62,10 @@ ACTION_LABELS: dict[str, dict[str, str]] = {
     "cannot_complete": {"ar": "تعذّر التنفيذ", "en": "Cannot Complete"},
     "acknowledge": {"ar": "علمت", "en": "Acknowledge"},
     "dispute": {"ar": "اعتراض", "en": "Dispute"},
+    # P11-36 — أفعال المراحل التي **تُنفَّذ ولا تُقرَّر**.
+    "upload_signed_scan": {"ar": "رفع النسخة الموقّعة", "en": "Upload Signed Copy"},
+    "upload_exit_permit": {"ar": "رفع إذن المغادرة", "en": "Upload Exit Permit"},
+    "confirm_received": {"ar": "تسجيل استلام العامل", "en": "Confirm Receipt"},
 }
 
 #: الفعل ← القرار الذي يُرسَل إلى ``/decide``. الواجهة لا تترجم أفعاًلا إلى
@@ -93,6 +97,84 @@ ACTION_DECISION: dict[str, str] = {
     "return": "returned",
 }
 
+#: P11-36 — مراحل **تُنفَّذ ولا تُقرَّر**: مخرجها عمٌل يقع، لا زرّ قرار.
+#:
+#: **العطل المقيس**: إجازة السفر تصل مرحلة المندوب فتقف. المندوب يرى في
+#: صندوقه طلًبا و``allowed_actions: []`` و``no_actions_reason: ""`` —
+#: شاشٌة صامتة لا فعل فيها ولا سبب. ثم إن ضغط «اعتماد» ردّه الخادم:
+#: «هذه المرحلة تكتمل برفع إذن المغادرة لا بالاعتماد المباشر». فالخادم
+#: يعرف المخرج، والشاشة لا تذكره.
+#:
+#: **والسبب** أن الدالتين أدناه تنصرفان عند ``status != "pending"``، وهذه
+#: المراحل حالتها ``awaiting_delegate`` و``ready_for_pickup``. فكل ما
+#: بُني في APP-01 — أن الشاشة تعرض ما يقبله الخادم — كان مقصوًرا على
+#: القرارات، وسقط منه ما يُنفَّذ.
+#:
+#: و``via`` هو **كيف** يقع الفعل: ``decide`` قراٌر يُرسَل إلى ``/decide``،
+#: و``upload`` مستنٌد يُرفَع، و``post`` نداٌء على مسار. والواجهة تقرأ هذا
+#: ولا تخمّن: كان زرّ الاستلام مشروًطا بـ``approve_request`` — الصلاحية
+#: الموصوفة في هذا الملف نفسه بأنها مهجورة — وحقل إذن المغادرة مشروًطا
+#: بدور ``delegate`` نًصّا. وهو انحراف APP-01 عينه، معاًدا في مكان آخر.
+#: ويُفتَرَس بالحالة لا بنوع المرحلة: ``awaiting_signature`` حاٌل **داخل**
+#: مرحلة ``hr_review`` نفسها التي تقبل القرار قبلها — فالمفتاح الصادق هو
+#: «ما تحتاجه هذه الحال كي تكتمل».
+EXECUTION_ACTIONS_BY_STATUS: dict[str, dict] = {
+    # ``self_forbidden`` — لا يُتمّ المرء توقيع طلبه. والراية هنا لأن
+    # الشرط على الخادم أيًضا: لو عُرض الفعل ثم رُدّ، لعاد العطل مقلوًبا —
+    # زٌر يُعرَض ويُردّ. أما إذن المغادرة فورقٌة تستخرجها الوزارة والمندوب
+    # ساعٍ إليها لا مقرٌّ بها، فلا يُمنع منها في شركٍة مندوبها واحد.
+    "awaiting_signature": {"action": "upload_signed_scan", "via": "upload",
+                           "doc_kind": "signed_scan", "who": "signature",
+                           "self_forbidden": True,
+                           "executor": "شؤون الموظفين"},
+    "awaiting_delegate": {"action": "upload_exit_permit", "via": "upload",
+                          "doc_kind": "exit_permit", "who": "delegate",
+                          "executor": "المندوب"},
+    "ready_for_pickup": {"action": "confirm_received", "via": "post",
+                         "path": "received", "who": "approval",
+                         "executor": "شؤون الموظفين"},
+}
+
+
+def _may_execute(db: Session, user: models.User, who: str) -> bool:
+    """هل يقبل الخادمُ من هذا المستخدم تنفيذ هذه الحال؟
+
+    كل فرع أدناه يقرأ من موضع الشرط الأصلي: أي تعديل هناك يجب أن يُقرأ
+    هنا، وإلا عادت الشاشة تعرض ما يُردّ أو تُخفي ما يُقبَل.
+    """
+    from .deps import get_user_perms
+
+    if who == "delegate":
+        # routers/requests.upload_request_document — kind="exit_permit"
+        return user.role == "delegate" or user.role in workflow.CANCEL_ROLES
+    if who in ("approval", "signature"):
+        # routers/requests.mark_received — require_any_perm(*APPROVAL_PERMS)
+        # وrouters/requests.upload_request_document — kind="signed_scan"
+        assigned = get_user_perms(user, db)
+        return any(permissions.check_legacy(user.role, assigned, perm)
+                   for perm in permissions.APPROVAL_PERMS)
+    return False
+
+
+def execution_stage_hint(status: str | None) -> str | None:
+    """ما تحتاجه هذه الحالة كي تكتمل — عبارٌة واحدة للشاشة وللمسار.
+
+    P11-36 — كان في ``/decide`` ردٌّ يقول الحقيقة: «هذه المرحلة تكتمل
+    برفع إذن المغادرة لا بالاعتماد المباشر». وكان **لا يُقرأ أبًدا**:
+    الحارس الذي يشترط ``pending`` يسبقه، فيردّ 409 بعبارة «لا يمكن اتخاذ
+    قرار في هذه الحالة» — وهي لا تقول ما الحال ولا ما يُفعل. فبقيت
+    الجملة الصحيحة مكتوبًة في شيفرة لا يبلغها نداء.
+
+    وهي هنا في موضع واحد: يقرأها ``no_actions_reason`` ويقرأها ردّ 409،
+    فلا تنحرف إحداهما عن الأخرى.
+    """
+    spec = EXECUTION_ACTIONS_BY_STATUS.get(status or "")
+    if spec is None:
+        return None
+    return (f"هذه المرحلة تكتمل بـ«{ACTION_LABELS[spec['action']]['ar']}» "
+            f"من {spec['executor']} — لا بالاعتماد المباشر.")
+
+
 #: الإرجاع للتصحيح متاح في المراحل الأولى فقط: بعد قطع الطلب شوًطا يصير
 #: إرجاعه إلى مقدّمه إلغاءً لقرارات اتُّخذت قبله.
 RETURN_MAX_STAGE = 2
@@ -108,7 +190,26 @@ def allowed_actions(db: Session, req: models.Request,
     قائمة فارغة تعني: لا شيء يُعرَض. وهي الحالة الصحيحة لغير المعيَّن —
     لا رسالة صامتة ولا زر مُعطَّل يوحي بأن الأمر ممكن.
     """
-    if user is None or req.status != "pending":
+    if user is None:
+        return []
+
+    # P11-36 — ما يُنفَّذ يُوصَف قبل شرط ``pending``: حالته ليست ``pending``
+    # بحكم التصميم، فالشرط كان يُسكت هذه الحالات كلّها.
+    spec = EXECUTION_ACTIONS_BY_STATUS.get(req.status)
+    if spec is not None:
+        if not _may_execute(db, user, spec["who"]):
+            return []
+        if spec.get("self_forbidden") and user.employee_id                 and req.employee_id == user.employee_id:
+            return []
+        a = spec["action"]
+        out = {"action": a, "via": spec["via"], "decision": None,
+               "label_ar": ACTION_LABELS[a]["ar"], "label_en": ACTION_LABELS[a]["en"]}
+        for k in ("doc_kind", "path"):
+            if k in spec:
+                out[k] = spec[k]
+        return [out]
+
+    if req.status != "pending":
         return []
 
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
@@ -139,6 +240,7 @@ def allowed_actions(db: Session, req: models.Request,
         names.remove("return")
 
     return [{"action": a,
+             "via": "decide",
              "decision": ACTION_DECISION[a],
              "label_ar": ACTION_LABELS[a]["ar"],
              "label_en": ACTION_LABELS[a]["en"]}
@@ -163,6 +265,15 @@ def why_not(db: Session, req: models.Request, user: models.User | None) -> str |
                     "ثم أعد التطبيق.")
         return ("لم يُطبَّق أثر هذا الطلب بعد اعتماده — الشؤون القانونية "
                 "مُبلَّغة وتتولّى تصحيحه.")
+    # P11-36 — مرحلٌة تُنفَّذ ولا يملكها هذا المستخدم: تقول من يملكها.
+    # وكانت تسكت لأن حالتها ليست ``pending`` — فيقف المندوب أمام لا شيء.
+    spec = EXECUTION_ACTIONS_BY_STATUS.get(req.status)
+    if spec is not None:
+        if spec.get("self_forbidden") and user.employee_id                 and req.employee_id == user.employee_id:
+            return "لا يجوز إتمام توقيع طلبك بنفسك — يتولّاه غيرك."
+        if _may_execute(db, user, spec["who"]):
+            return None
+        return execution_stage_hint(req.status)
     if req.status != "pending":
         return None
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)

@@ -536,7 +536,12 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
            db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
     if req.status not in ("pending",):
-        raise HTTPException(status_code=409, detail="لا يمكن اتخاذ قرار في هذه الحالة")
+        # P11-36 — الردّ يقول **ما الحال وما يُفعل**. وكان عاًما، والجملة
+        # التي تقول الحقيقة مكتوبًة أسفل هذا الحارس فلا يبلغها نداء.
+        raise HTTPException(
+            status_code=409,
+            detail=(request_actions.execution_stage_hint(req.status)
+                    or "لا يمكن اتخاذ قرار في هذه الحالة"))
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     # V2.2 §4.5 (AP-01) — القرار يحتاج صلاحية مجاله لا صلاحية عامة.
     # حارس المسار يقبل approve_request أو process_delegate_tasks، وهو حارس
@@ -628,11 +633,10 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
             raise HTTPException(status_code=400, detail="الإرجاع للتصحيح متاح فقط في المرحلتين الأولى والثانية")
         if not (data.note and data.note.strip()):
             raise HTTPException(status_code=400, detail="يجب توضيح سبب الإرجاع في الملاحظة")
-    if stage.get("kind") == "delegate_exit" and data.decision == "approved":
-        raise HTTPException(
-            status_code=400,
-            detail="هذه المرحلة تكتمل برفع إذن المغادرة (documents) لا بالاعتماد المباشر",
-        )
+    # P11-36 — رُفع من هنا شرٌط لا يبلغه نداء: ``delegate_exit`` حالتها
+    # ``awaiting_delegate``، والحارس أعلاه يردّ كل ما ليس ``pending``. فكان
+    # فحًصا يطمئن قارئه ولا يعمل، ورسالًة صحيحة لا تُقرأ. والجملة صارت في
+    # ``request_actions.execution_stage_hint`` تُقرأ من الردّ ومن الشاشة.
     # P11-35 — الفعل يُحفظ، ولا يُصدَّق كما وصل.
     #
     # المرسَل يجب أن يكون من أفعال **هذه** المرحلة بالضبط، وأن يترجم إلى
@@ -780,9 +784,22 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
 
     # تقديم سير العمل حسب نوع المستند
     if kind == "signed_scan" and req.status == "awaiting_signature":
+        # P11-36 — **بواٌب بلا حارس.** رفع النسخة الموقّعة يتقدّم بالطلب
+        # عبر مرحلة التوقيع، وكان بلا فحص فاعٍل أصًلا: كل من يرى الطلب —
+        # ومنهم صاحبه — يستطيع تخطّي التوقيع برفع أي ملف. وأخوه المجاور
+        # (إذن المغادرة) محروس، فبقي هذا مفتوًحا بالسهو لا بالقصد.
+        #
+        # والشرط من ``request_actions`` لا نسخًة منه هنا: ما تعرضه الشاشة
+        # هو ما يقبله الخادم.
+        if not request_actions._may_execute(db, user, "signature"):
+            raise HTTPException(status_code=403,
+                                detail="رفع النسخة الموقّعة من صلاحية شؤون الموظفين")
+        if user.employee_id and req.employee_id == user.employee_id:
+            raise HTTPException(status_code=403,
+                                detail="لا يجوز إتمام توقيع طلبك بنفسك")
         workflow.upload_signed_scan_done(db, req, rt)
     elif kind == "exit_permit" and req.status == "awaiting_delegate":
-        if not (user.role == "delegate" or user.role in workflow.CANCEL_ROLES):
+        if not request_actions._may_execute(db, user, "delegate"):
             raise HTTPException(status_code=403, detail="رفع إذن المغادرة من صلاحية المندوب")
         workflow.upload_exit_permit_done(db, req, rt)
     else:

@@ -986,10 +986,10 @@ const dict: Record<string, { ar: string; en: string }> = {
   rd_location: { ar: "المكان", en: "Location" },
   rd_company_hq: { ar: "مقر الشركة", en: "Company HQ" },
   rd_set_appt: { ar: "تحديد الموعد وإشعار العامل", en: "Set appointment and notify the worker" },
-  rd_upload_signed: { ar: "رفع الطلب الموقّع (بعد توقيع العامل)", en: "Upload signed request (after worker signs)" },
-  rd_upload_exit: { ar: "رفع إذن مغادرة البلاد", en: "Upload exit permit" },
-  rd_mark_received: { ar: "تسجيل استلام العامل", en: "Mark worker received" },
   rd_cancel_mgr: { ar: "إلغاء الطلب (المدير العام)", en: "Cancel request (GM)" },
+  // P11-36 — رساٌلة عامة لأفعال المراحل التي تُنفَّذ بنداء مسار:
+  // تسميةُ الفعل تأتي من الخادم، فلا تُكرَّر هنا مفتاًحا لكل فعل.
+  rd_action_done: { ar: "تم تنفيذ الإجراء", en: "Action completed" },
   rd_decided: { ar: "تم تنفيذ القرار", en: "Decision applied" },
   rd_cancelled: { ar: "تم الإلغاء", en: "Cancelled" },
   rd_appt_set: { ar: "تم تحديد الموعد", en: "Appointment set" },
@@ -1010,7 +1010,6 @@ const dict: Record<string, { ar: string; en: string }> = {
     en: "The document file is missing from storage though its record remains — it cannot be printed or handed over. It must be regenerated.",
   },
   rd_retry_done: { ar: "أُعيد تطبيق الأثر", en: "Effect reapplied" },
-  rd_received_done: { ar: "تم تسجيل الاستلام", en: "Receipt recorded" },
   rd_doc_uploaded: { ar: "تم رفع المستند", en: "Document uploaded" },
   rd_print_status: { ar: "حالة الطباعة", en: "Print Status" },
   rd_print_ready: { ar: "جاهز للطباعة", en: "Ready to Print" },
