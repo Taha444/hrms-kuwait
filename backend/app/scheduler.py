@@ -55,6 +55,14 @@ def _run_daily_scan():
                 return
             result = daily_scan(db)
             logger.info("daily_scan: %s", result)
+            # **والأثر المؤجَّل يجد يومه.** ترقيٌة بنفاٍذ مستقبلي لا تُطبَّق
+            # يوم اعتمادها، فلولا هذا المسح لبقيت «مؤجَّلة» إلى الأبد —
+            # وتأجيٌل بلا يوٍم يحلّ فيه تسويٌف لا تأجيل.
+            from .request_effects import apply_due_effects
+
+            due = apply_due_effects(db)
+            if due["applied"] or due["failed"]:
+                logger.info("apply_due_effects: %s", due)
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل المسح اليومي")
         _alert_job_failure("daily_scan", exc)

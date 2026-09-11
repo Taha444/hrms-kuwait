@@ -2021,6 +2021,14 @@ def test_wf09_effect_is_applied_once_only(client):
 
     الترقية أخطر مثال: تطبيق مزدوج يرفع الراتب مرتين، ويظهر الخطأ في كشف
     الرواتب بعد الصرف. البصمة سطر تدقيق لا علَم قابل لإعادة الضبط.
+
+    **وكان هذا الحارس يبني الطلب بيده بكود ``REQPROM``** — وهو كنيٌة لا
+    نوَع لها في الكتالوج. والطلب الحقيقي يُخزَّن بكود الكتالوج المُحَل
+    (``REQPROMO``)، فكان الأثر مسجًَّلا تحت مفتاٍح لا يطابق شيًئا: يمرّ
+    الحارس والإنتاج لا يرفع راتًبا أبًدا.
+
+    **فاختباٌر يبني صفَّه بيده يفحص ما كتبه هو لا ما يقع.** وهو أخو العطل
+    الذي ظهر في الاستقالة: اختباٌر يمرّ من الخادم ولا يمرّ من الشاشة.
     """
     from app import models, request_effects
     from app.database import SessionLocal
@@ -2031,7 +2039,7 @@ def test_wf09_effect_is_applied_once_only(client):
         emp = db.scalar(select(models.Employee).where(models.Employee.status == "active"))
         req = models.Request(
             company_id=emp.company_id, employee_id=emp.id, requester_user_id=1,
-            request_type_code="REQPROM", status="pending", current_stage=0,
+            request_type_code="REQPROMO", status="pending", current_stage=0,
             payload_json={"new_title": "مدير أول", "new_salary": 950,
                           "effective_date": "2026-09-01", "reason": "ترقية"},
         )
@@ -2051,7 +2059,7 @@ def test_wf09_effect_is_applied_once_only(client):
         # قيمة غير صالحة تُفشِل التطبيق بدل أن تكتب فراغًا فوق بيانات صحيحة
         bad = models.Request(
             company_id=emp.company_id, employee_id=emp.id, requester_user_id=1,
-            request_type_code="REQCIVIL", status="pending", current_stage=0,
+            request_type_code="REQCID", status="pending", current_stage=0,
             payload_json={"new_civil": "  ", "reason": "تحديث"},
         )
         db.add(bad)

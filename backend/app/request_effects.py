@@ -77,21 +77,30 @@ FIELD_EFFECTS: dict[str, tuple[str, dict[str, tuple[str, Callable[[Any], Any]]]]
         "passport_number": ("new_passport", _as_text),
         "passport_expiry": ("new_expiry", _as_date),
     }),
-    "REQCIVIL": ("تحديث البطاقة المدنية", {
+    # **مفتاٌح لا يطابق نوًعا لا يعمل أبًدا.** الطلب يُخزَّن بكود الكتالوج
+    # المُحَل (``request_type_code=rt.code``) لا بالكنية المرسَلة، فأثٌر
+    # مسجٌَّل تحت كنية لا يُستدعى قط. وكانت ثلاثة: ``REQCIVIL`` (والكود
+    # ``REQCID``) و``REQPROM`` (``REQPROMO``) و``REQTRANS`` (``REQTRF``).
+    #
+    # فبقيت ترقيٌة تُعتمد ولا يتغيّر راتب، وبطاقٌة مدنية تُجدَّد ولا يتغيّر
+    # رقمها، ونقٌل يُعتمد ولا ينتقل أحد — وكلّها تُغلَق «مكتملة».
+    #
+    # ولم يمسكه حارٌس لأن لا شيء كان يقابل مفاتيح هذا السجلّ بالكتالوج.
+    "REQCID": ("تحديث البطاقة المدنية", {
         "civil_id": ("new_civil", _as_text),
     }),
     "REQCONTACT": ("تحديث بيانات الاتصال", {
         "phone": ("new_phone", _as_text),
         "email": ("new_email", _as_text),
     }),
-    "REQPROM": ("ترقية / مراجعة راتب", {
+    "REQPROMO": ("ترقية / مراجعة راتب", {
         "job_title": ("new_title", _as_text),
         "basic_salary": ("new_salary", _as_float),
     }),
     "REQSHIFT": ("تغيير الوردية", {
         "shift_id": ("requested_shift_id", _as_int),
     }),
-    "REQTRANS": ("نقل إلى فرع آخر", {
+    "REQTRF": ("نقل إلى فرع آخر", {
         "branch_id": ("to_branch_id", _as_int),
     }),
     "REQTRFLIC": ("نقل فرع / ترخيص", {
@@ -137,6 +146,23 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
         return False, "الموظف غير موجود"
 
     payload = req.payload_json or {}
+
+    # **ولا يقع أثٌر قبل تاريخ نفاذه.**
+    #
+    # كان يُطبَّق فوًرا، ويُقرأ ``effective_date`` **لكتابة ملاحظة فقط**:
+    # «تاريخ السريان المعلن: …». أي أن النظام يعرف أن التاريخ في المستقبل
+    # ويطبّق، ثم يسجّل القاعدة التي خالفها. فترقيٌة تُعتمد في يناير بنفاٍذ
+    # في أبريل ترفع الراتب في يناير — وثلاثُة أشهر فرًقا في الأجر وفي كل
+    # ما يُحسب منه.
+    #
+    # والتأجيل نجاٌح لا فشل: الطلب يكتمل، والأثر ينتظر يومه. ويلتقطه
+    # المسح اليومي حين يحلّ — ولا يحتاج جدوًلا جديًدا، فبصمُة التطبيق
+    # (سطر التدقيق) هي ما يميّز ما وقع ممّا لم يقع.
+    eff_declared = _as_date(payload.get("effective_date")
+                            or payload.get("effective_from"))
+    if eff_declared and eff_declared > kuwait_today():
+        return True, (f"{label}: مؤجٌَّل حتى تاريخ نفاذه "
+                      f"{eff_declared.isoformat()} — لم يُطبَّق بعد")
     changes: dict[str, dict[str, Any]] = {}
     for column, (field, cast) in mapping.items():
         raw = payload.get(field)
@@ -162,7 +188,7 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
         return True, f"{label}: القيم المطلوبة مطابقة للحالي — لا تغيير"
 
     eff = _as_date(payload.get("effective_date") or payload.get("effective_from"))
-    note_eff = f" (تاريخ السريان المعلن: {eff.isoformat()})" if eff and eff > kuwait_today() else ""
+    note_eff = ""
 
     db.add(models.AuditLog(
         company_id=req.company_id, user_id=actor_user_id(),
@@ -192,3 +218,55 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
         for c, v in changes.items()
     )
     return True, f"{label}{note_eff}: {summary}"
+
+
+def due_deferred_effects(db: Session) -> list[models.Request]:
+    """طلباٌت اكتملت وأثُرها مؤجٌَّل إلى تاريخ نفاٍذ قد حلّ.
+
+    **وتأجيٌل بلا يوٍم يحلّ فيه تسويٌف لا تأجيل.** فالمسح اليومي هو ما
+    يجعل «مؤجَّل» وعًدا يُوفى.
+
+    والتمييز ببصمة التطبيق (سطر التدقيق) لا بعموٍد جديد: هي موجودٌة أصًلا
+    ولا تُحذف، ولا يُضاف مصدٌر ثاٍن لحقيقٍة واحدة.
+    """
+    codes = tuple(FIELD_EFFECTS)
+    if not codes:
+        return []
+    rows = db.scalars(select(models.Request).where(
+        models.Request.request_type_code.in_(codes),
+        models.Request.status == "completed",
+    )).all()
+
+    today = kuwait_today()
+    due = []
+    for req in rows:
+        payload = req.payload_json or {}
+        eff = _as_date(payload.get("effective_date")
+                       or payload.get("effective_from"))
+        if eff and eff > today:
+            continue                     # لم يحن بعد
+        if already_applied(db, req):
+            continue
+        due.append(req)
+    return due
+
+
+def apply_due_effects(db: Session) -> dict:
+    """يطبّق ما حلّ من الآثار المؤجَّلة — يُستدعى من المسح اليومي.
+
+    **والفشل لا يُبتلع**: الطلب يبقى بلا أثر ويُعاد غًدا، ويُسجَّل سببه.
+    فأثٌر يفشل صامًتا أسوأ من أثر يتأخّر.
+    """
+    applied, failed = [], []
+    for req in due_deferred_effects(db):
+        try:
+            ok, note = apply_field_effect(db, req)
+        except Exception as exc:  # pragma: no cover — لا تُسقط بقية الطلبات
+            db.rollback()
+            failed.append({"request_id": req.id, "note": f"{type(exc).__name__}: {exc}"})
+            continue
+        (applied if ok else failed).append({"request_id": req.id, "note": note})
+    if applied:
+        db.commit()
+    return {"applied": len(applied), "failed": len(failed),
+            "details": applied + failed}
