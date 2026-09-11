@@ -630,6 +630,25 @@ SCHEMAS.update({
         "attachments": {"required": [], "optional": ["supporting_doc"]},
         "meta": {"legacy_aliases": ["violation_objection"], "strict_validation": False},
     },
+    # ------------------------- إصدار خصم -------------------------
+    #
+    # الحقول من السجلّ: ``OD-008`` «قرار خصم» يشترط ``deduction_amount``
+    # و``reason`` و``payroll_month`` (و``employee_name`` يأتي من الطلب).
+    #
+    # و**الشهر حقٌل لا اشتقاق**: الرواتب تقرأ الخصومات بتاريخها داخل حدود
+    # الشهر، فلو اشتُقّ من تاريخ الاعتماد لوقع الخصم في شهٍر لم يقصده
+    # مُصدِره — ويُقفل الشهر فلا يُقرأ الصفّ أبًدا.
+    "ADMDED": {
+        "fields": [
+            _field("deduction_amount", "مبلغ الخصم (د.ك)", "amount", required=True),
+            _field("reason", "سبب الخصم ومستنده", "textarea", required=True,
+                   max_length=1000),
+            _field("payroll_month", "شهر المسيّر (YYYY-MM)", "text", required=True,
+                   max_length=7),
+        ],
+        "attachments": {"required": [], "optional": ["evidence"]},
+        "meta": {"legacy_aliases": ["deduction"]},
+    },
     # ------------------------- إصدار إنذار -------------------------
     #
     # P11-38 — **إنذاٌر بلا مخطّط نموذج**. كان يُنشأ بحمولة غير معرَّفة
@@ -820,6 +839,8 @@ _VERIFIED_ENFORCE_REQUIRED = (
     # P11-38 — الإنذار. وحقٌل يُعلَن إلزامًيا ولا يُفرَض إعلاٌن لا يقرؤه
     # أحد: مخطّطه جديٌد والواجهة تُبنى منه، فقيوده تصف ما تُرسله فعًلا.
     "ADMWARN",
+    # والخصم كذلك: مبلٌغ أو شهٌر ناقص يعني أثًرا لا يقع أو يقع في غير شهره.
+    "ADMDED",
 )
 
 for _code in _VERIFIED_ENFORCE_REQUIRED:

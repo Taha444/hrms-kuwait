@@ -892,6 +892,11 @@ class Deduction(Base):
     reason: Mapped[str | None] = mapped_column(String(250))
     ded_type: Mapped[str] = mapped_column(String(30), default="violation")
     date: Mapped[date | None] = mapped_column(Date)
+    # **خصٌم بلا مصدر رقٌم بلا تفسير.** من يقرأ كشف الراتب يرى مبلًغا
+    # مقتطًعا، ومن غير هذا الرابط لا يبلغ سبَبه ولا من اعتمده ولا حقَّ
+    # الاعتراض عليه. وهو أيًضا حارس التكرار: قراٌر واحد لا يُنتج خصمين.
+    request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id"), index=True)
 
 
 class PayrollRun(Base):

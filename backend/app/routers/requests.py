@@ -716,6 +716,10 @@ def cancel(req_id: int, request: Request, note: str | None = None,
         req = workflow.cancel(db, req, user, note, rt)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except workflow.EffectAlreadyApplied as e:
+        # 409 لا 403: الصلاحيُة قائمة والحاُل هي المانع — ومن يقرأ «ممنوع»
+        # يظنّ نفسه غير مخوَّل، فيطلب صلاحيًة لا تنفعه.
+        raise HTTPException(status_code=409, detail=str(e))
     audit(db, user, "request_cancel", "request", req.id,
           detail=note, request=request, company_id=req.company_id,
           correlation_id=f"req:{req.id}", before=before, reason=note,

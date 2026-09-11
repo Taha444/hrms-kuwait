@@ -1263,6 +1263,10 @@ class StaleDecision(RuntimeError):
     """قراٌر بُني على حاٍل تغيّرت قبل أن يُكتب."""
 
 
+class EffectAlreadyApplied(RuntimeError):
+    """طلٌب وقع أثره — فلا يُلغى بتغيير حالته."""
+
+
 def claim_decision(db: Session, req: models.Request, *,
                    seen_stage: int, seen_seq: int) -> bool:
     """**يطالب بحقّ اتخاذ القرار ذرًّيا** — ويفوز واحد فقط.
@@ -1684,6 +1688,62 @@ def retry_apply(db: Session, req: models.Request) -> None:
     db.refresh(req)
 
 
+def _apply_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
+    """أثر قرار الخصم: يكتب صفَّه في مدخلات الرواتب.
+
+    **العطل المقيس**: ``ADMDED`` يمرّ بثلاث مراحل (شؤون الموظفين ←
+    المحاسب ← المدير) ويُغلَق «مكتمًلا» — **ولا يُخصَم شيء**. وجدول
+    ``deductions`` تقرؤه الرواتب سطًرا سطًرا وتجمعه في ``other_deductions``،
+    **ولا سطَر في النظام كلّه كان يُنشئ صًفا فيه**. فالمجموع صفٌر دائًما.
+
+    ومفهومان متوازيان كانا يتقاسمان المعنى: ``EmployeeEvent(kind="penalty")``
+    يُكتب يدًوا من شاشة الموظف ولا تقرؤه الرواتب، و``Deduction`` تقرؤه ولا
+    يكتبه أحد. فالذي يُكتب لا يُقرأ، والذي يُقرأ لا يُكتب.
+
+    والحقول من السجلّ: ``OD-008`` يشترط ``deduction_amount`` و``reason``
+    و``payroll_month``.
+    """
+    payload = req.payload_json or {}
+    try:
+        amount = float(payload.get("deduction_amount") or 0)
+    except (TypeError, ValueError):
+        return False, f"مبلغ الخصم غير صالح: {payload.get('deduction_amount')!r}"
+    if amount <= 0:
+        return False, "مبلغ الخصم يجب أن يكون أكبر من صفر"
+
+    month = str(payload.get("payroll_month") or "").strip()
+    try:
+        period_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return False, f"شهر المسيّر غير صالح: {month!r} — الصيغة YYYY-MM"
+
+    # **ولا يُكتب خصٌم في شهٍر أُقفل.**
+    #
+    # الرواتب تقرأ الخصومات بتاريخها داخل حدود الشهر، فصفٌّ يُكتب في شهر
+    # اكتمل مسيّره **لا يقرؤه أحد أبًدا**: أثٌر يُعلَن واقًعا ولا يقع —
+    # وهو العطل نفسه الذي جئنا نُصلحه، مقلوًبا. فيُردّ الطلب إلى
+    # ``apply_failed`` بسببه مكتوًبا، ويراه من يملك تصحيحه.
+    run = db.scalar(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == req.company_id,
+        models.PayrollRun.period == month))
+    if run and run.status in ("approved", "finalized", "locked"):
+        return False, (f"مسيّر {month} في حالة «{run.status}» — لا يُقبل خصٌم "
+                       f"على شهر أُقفل. اختر شهًرا مفتوًحا، أو أصدره بتسوية.")
+
+    # حارٌس ثاٍن على الصفّ نفسه لا على بصمة تدقيق: قراٌر واحد لا يُنتج خصمين.
+    existing = db.scalar(select(models.Deduction).where(
+        models.Deduction.request_id == req.id))
+    if existing:
+        return True, f"خصٌم مسجٌَّل سابًقا لهذا القرار (#{existing.id})"
+
+    reason = str(payload.get("reason") or "").strip()[:250] or None
+    db.add(models.Deduction(
+        company_id=req.company_id, employee_id=req.employee_id,
+        amount=amount, reason=reason, date=period_start, request_id=req.id))
+    db.flush()
+    return True, f"سُجِّل خصٌم {amount:.3f} على مسيّر {month}"
+
+
 def _effects_applied(db: Session, req: models.Request) -> bool:
     """هل وقع الأثر فعًلا؟ سطر النظام «معتمَد» هو أثره الوحيد في السجل.
 
@@ -1738,7 +1798,10 @@ def _apply_effects(db: Session, req: models.Request,
     _effect = {"REQATT": _apply_attendance_correction,
                "REQLV": _apply_leave, "leave": _apply_leave,
                "REQRESIGN": _open_exit_case,
-               "REQEOS": _open_exit_case}.get(req.request_type_code)
+               "REQEOS": _open_exit_case,
+               # قرار الخصم يكتب مدخَل الرواتب. وكان الجدول يُقرأ ولا
+               # يُكتب، فالمجموع صفٌر دائًما مهما اعتُمد من قرارات.
+               "ADMDED": _apply_deduction}.get(req.request_type_code)
     if _effect is None and req.request_type_code in FIELD_EFFECTS:
         _effect = apply_field_effect
     if _effect:
@@ -1872,6 +1935,20 @@ def cancel(db: Session, req: models.Request, user: models.User, note: str | None
     """إلغاء/رفض من المدير العام في أي مرحلة → إشعار كل الأطراف."""
     if user.role not in CANCEL_ROLES:
         raise PermissionError("الإلغاء من صلاحية المدير العام / الإدارة العليا فقط")
+
+    # **وأثٌر وقع لا يُلغى بتغيير حالة.**
+    #
+    # ``cancel`` تكتب «ملغى» ولا تعكس شيًئا، والمسار لا يفحص الحالة — فطلٌب
+    # مكتمٌل وقع أثره يُلغى ويبقى أثره: إجازٌة خُصمت من الرصيد، أو **خصٌم
+    # اقتُطع من الأجر** والطلب يقول «ملغى». والسجلّ يشهد بغير ما وقع.
+    #
+    # فالإلغاء بعد وقوع الأثر يُردّ، ويُقال ما يُفعل بدله. وهذا تضييٌق لا
+    # توسيع: من كان يلغي فيظنّ أنه يعكس، صار يعرف أنه لم يكن يعكس شيًئا.
+    if _effects_applied(db, req):
+        raise EffectAlreadyApplied(
+            "وقع أثر هذا الطلب فعًلا — والإلغاء لا يعكسه. أصدِر قراًرا "
+            "معاكًسا أو تسويًة تردّ الأثر، فإلغاُء الحالة وحدها يترك الأثر "
+            "قائًما ويجعل السجلّ يشهد بغير ما وقع.")
     req.status = "cancelled"
     req.closed_at = datetime.now(timezone.utc)
     db.add(models.RequestApproval(
