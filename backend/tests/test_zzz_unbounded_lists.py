@@ -271,3 +271,50 @@ def test_the_approval_inbox_is_deliberately_uncapped():
     assert ".limit(" not in src, \
         "سقٌف قبل ترشيٍح في بايثون — يُعرَض بعُض ما يستحقّ المعتمِد"
     assert 'models.Request.status.in_(' in src, "لم يبقَ مقيًَّدا بالعمل الجاري"
+
+
+def test_every_screen_that_reads_the_total_can_actually_read_it():
+    """**آلٌة من ثالثة أجزاء، وأوسطُها كان غائًبا.**
+
+    ``employees`` كان يردّ ``X-Total-Count`` **قبل هذه الجولة**، و
+    ``Employees.tsx`` يقرؤه ويبني عليه المرقِّم::
+
+        const PAGE = 25;
+        ... limit: PAGE ...
+        setTotal(Number(r.headers["x-total-count"] || r.data.length));
+        {total > PAGE && ( ...المرقِّم... )}
+
+    فإن لم يُكشَف الترويسُة سقط ``total`` إلى ``r.data.length`` = 25،
+    و``25 > 25`` كاذب — **فال يُرسَم المرقِّم أبًدا**، وتُعرَض أوُل خمٍس
+    وعشرين من خمسمئة موظف بال طريٍق إلى الباقي. وسطٌر آخر يقول «النتائج:
+    25» دائًما.
+
+    **والنطاُق يُقال بدّقة**: الإنتاُج يخدم الواجهَة من الأصل نفسه
+    (``app.mount("/assets", ...)``) فال يعمل CORS ولا يظهر العطل هناك.
+    لكنّ ``cors_origins`` افتراضُه ``localhost:5173`` — أي **التطويُر
+    المحلّي** وأيُّ نشٍر منفصل (وهو ما يصير القاعدَة بعد الانتقال إلى
+    AWS، حيث تُخدَم الواجهُة من CDN).
+
+    فهذا الحارس يربط الأجزاء الثالثة: من قرأ الترويسَة في الواجهة وجب أن
+    تكون مكشوفًة في الخادم.
+    """
+    import pathlib
+
+    import app.main as M
+
+    front = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src"
+    if not front.exists():
+        import pytest
+        pytest.skip("لا واجهَة في هذه الشجرة")
+
+    readers = sorted(p.name for p in front.rglob("*.tsx")
+                     if "x-total-count" in p.read_text(encoding="utf-8").lower())
+    if not readers:
+        return
+
+    exposed: list[str] = []
+    for mw in M.app.user_middleware:
+        if "CORS" in str(mw.cls):
+            exposed = [h.lower() for h in (mw.kwargs.get("expose_headers") or [])]
+    assert "x-total-count" in exposed, (
+        f"شاشاٌت تقرأ الترويسة ولا تُكشَف لها: {readers}")
