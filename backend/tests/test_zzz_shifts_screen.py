@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app import models
+from app.clock import KUWAIT_TZ
 from app.database import SessionLocal
 from app.routers import attendance as att
 from tests.conftest import auth_headers, login
@@ -119,7 +120,16 @@ def test_assigning_a_shift_changes_how_attendance_is_marked(client):
     finally:
         db.close()
 
-    late = datetime.now(timezone.utc).replace(hour=11, minute=0)
+    # **ولحظاُت القياس بتوقيت الكويت** — وكانت تُبنى بتوقيت UTC كأن
+    # ساعَة الوردية غرينتشية. وهو الافتراض الخاطئ نفسه الذي كان في
+    # الشيفرة: «الثامنة» تُكتب محلّية وتُقرأ UTC. فلمّا صحّت الشيفرة سقط
+    # الحارس — لأنه كان يحمل العطل في بياناته.
+    def _at(hour: int, minute: int = 0) -> datetime:
+        local = datetime.now(KUWAIT_TZ).replace(
+            hour=hour, minute=minute, second=0, microsecond=0)
+        return local.astimezone(timezone.utc)
+
+    late = _at(11, 0)
     db = SessionLocal()
     try:
         fresh = db.get(models.Employee, emp.id)
@@ -138,7 +148,7 @@ def test_assigning_a_shift_changes_how_attendance_is_marked(client):
             "أُسندت الوردية ولم يتغيّر الوسم"
         )
         # وداخل السماح يبقى حاضًرا — الحدّ يعمل في الاتجاهين.
-        on_time = late.replace(hour=8, minute=10)
+        on_time = _at(8, 10)
         assert att._compute_in_status(db, fresh, on_time) == "present"
 
         fresh.shift_id = had

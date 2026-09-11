@@ -20,7 +20,7 @@ from ..deps import assert_same_company, audit, get_current_user, require_perm, s
 from ..qr import haversine_m
 from ..safe_files import read_limited
 from .. import qr_token
-from ..clock import today as kuwait_today
+from ..clock import KUWAIT_TZ, today as kuwait_today
 from ..storage import save_at_key
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
@@ -32,6 +32,27 @@ def _resolve_employee(db: Session, user: models.User) -> models.Employee:
     emp = db.get(models.Employee, user.employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="ملف الموظف غير موجود")
+
+    # **ومن انتهت خدمته لا يبصم.**
+    #
+    # الحضور كان بلا حارس حالة إطلاًقا: من أُنهيت خدمته أو أُرشف ملفّه
+    # يبقى حساُبه نشًطا — لا شيء في النظام يعطّله عند الأرشفة — فيسجّل
+    # حضوًرا وانصراًفا، وتُبنى عليه أياُم حضور في كشف راتب لمن لم يعد على
+    # رأس العمل.
+    #
+    # والقاعدة موجودٌة ومستعملة في إنشاء الطلبات
+    # (``workflow.BLOCKED_EMPLOYEE_STATUSES``) — فتُقرأ من موضعها لا
+    # تُكتب ثانيًة: قائمتان لحالٍة واحدة تنحرف إحداهما.
+    #
+    # وهو ``V-G`` بنصّه: «تأكد أن الـbackend POST نفسه يرفض — لا الواجهة
+    # فقط». وباٌب يُغلَق في الشاشة ويبقى مفتوًحا في المسار ليس حماية.
+    from ..workflow import BLOCKED_EMPLOYEE_STATUSES
+
+    if (emp.status or "").strip() in BLOCKED_EMPLOYEE_STATUSES:
+        raise HTTPException(
+            status_code=403,
+            detail=f"ملف الموظف «{emp.status}» — لا يُسجَّل حضوٌر على ملٍّف "
+                   f"انتهت خدمته. راجع شؤون الموظفين إن كان ذلك خطًأ.")
     return emp
 
 
@@ -168,31 +189,52 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
             "check_out_at": rec.check_out_at}
 
 
+def _local(moment: datetime) -> datetime:
+    """اللحظة بتوقيت الكويت — **ووردٌية تُقاس بساعتها لا بساعة الخادم**.
+
+    ``shift.start_time`` ساعٌة محلّية يكتبها موظف الشؤون («تبدأ السابعة»)،
+    والحضور يُسجَّل لحظًة بتوقيت UTC. وكان الاثنان يُقارَنان بختم الساعة
+    المحلّية ``tzinfo=utc`` — أي قراءة «السابعة» على أنها سابعُة غرينتش،
+    وهي عاشرُة الكويت.
+
+    والخطأ ذو وجهين: **التأخير لا يُرصَد أبًدا** (من يصل التاسعة والنصف
+    لحظتُه 06:30 UTC، فما زال «قبل السابعة»)، **والانصراف المبكر يُرصَد
+    ظلًما** (من ينصرف الرابعة عصًرا لحظتُه 13:00 UTC، فهي «قبل الرابعة»).
+
+    و``clock.py`` كُتب لهذا بعينه: «النظام يحمل ساعتين». وهذا الموضع كان
+    ما زال يحمل الثانية.
+    """
+    if moment.tzinfo is None:            # SQLite لا يحفظ المنطقة عند القراءة
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(KUWAIT_TZ)
+
+
 def _compute_in_status(db: Session, emp: models.Employee, now: datetime) -> str:
     if not emp.shift_id:
         return "present"
     shift = db.get(models.Shift, emp.shift_id)
     if not shift:
         return "present"
-    cutoff = datetime.combine(now.date(), shift.start_time).replace(tzinfo=timezone.utc)
-    if now > cutoff and (now - cutoff).total_seconds() / 60 > shift.grace_minutes:
+    local = _local(now)
+    cutoff = datetime.combine(local.date(), shift.start_time).replace(tzinfo=KUWAIT_TZ)
+    if local > cutoff and (local - cutoff).total_seconds() / 60 > shift.grace_minutes:
         return "late"
     return "present"
 
 
 def _finalize_out(db: Session, emp: models.Employee, rec: models.AttendanceRecord, now: datetime):
     # SQLite لا يحفظ tzinfo عند إعادة القراءة — نطبّع الطرفين دومًا لتفادي مقارنة naive/aware
-    check_in = rec.check_in_at.replace(tzinfo=timezone.utc) if rec.check_in_at.tzinfo is None else rec.check_in_at
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    rec.worked_minutes = max(int((now - check_in).total_seconds() // 60), 0)
+    check_in = _local(rec.check_in_at)
+    local = _local(now)
+    # فرُق لحظتين لا يتأثّر بالمنطقة — فهذا الحساب كان صحيًحا ويبقى.
+    rec.worked_minutes = max(int((local - check_in).total_seconds() // 60), 0)
     if emp.shift_id:
         shift = db.get(models.Shift, emp.shift_id)
         if shift:
-            shift_minutes = int((datetime.combine(now.date(), shift.end_time)
-                                 - datetime.combine(now.date(), shift.start_time)).total_seconds() // 60)
-            end_cutoff = datetime.combine(now.date(), shift.end_time).replace(tzinfo=timezone.utc)
-            if now < end_cutoff and rec.status == "present":
+            shift_minutes = int((datetime.combine(local.date(), shift.end_time)
+                                 - datetime.combine(local.date(), shift.start_time)).total_seconds() // 60)
+            end_cutoff = datetime.combine(local.date(), shift.end_time).replace(tzinfo=KUWAIT_TZ)
+            if local < end_cutoff and rec.status == "present":
                 rec.status = "early_leave"
             if rec.worked_minutes > shift_minutes:
                 rec.overtime_minutes = rec.worked_minutes - shift_minutes
