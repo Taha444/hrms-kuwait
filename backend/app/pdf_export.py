@@ -177,15 +177,29 @@ class ArabicPDF:
         صحة المستند عبر GET /api/verify/{code} دون حاجة لحساب في النظام."""
         self._line_break(0.6 * cm)
         size = 2.2 * cm
-        widget = qr.QrCodeWidget(code)
+        # **ورمٌز بلا طريق لا يُتحقَّق به.** كان يحمل النصّ المجرَّد، فمن
+        # يمسحه يحصل على سلسلة حروٍف لا تقوده إلى شيء. فيحمل الرابط متى
+        # عُرف العنوان العامّ، ويبقى مجرًَّدا إن لم يُضبَط — رابٌط خاطئ
+        # يقود إلى لا شيء أسوأ من رمٍز يُنسَخ بالي;د.
+        from .config import settings
+
+        base = (settings.public_base_url or "").rstrip("/")
+        target = f"{base}/api/verify/{code}" if base else code
+        widget = qr.QrCodeWidget(target)
         b = widget.getBounds()
         w, h = b[2] - b[0], b[3] - b[1]
         d = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
         d.add(widget)
         renderPDF.draw(d, self.c, self.left, self.y - size + 0.3 * cm)
         self.c.setFont(self.font, 8.5)
-        self.c.drawString(self.left + size + 0.3 * cm, self.y - size / 2,
+        # والسطر يذكر الموضع لا الرمز وحده: من لا يملك ماسًحا يكتبه بيده.
+        self.c.drawString(self.left + size + 0.3 * cm, self.y - size / 2 + 0.35 * cm,
                           _shape(f"رمز التحقق / Verification Code: {code}"))
+        if base:
+            self.c.setFont(self.font, 7.5)
+            self.c.drawString(self.left + size + 0.3 * cm, self.y - size / 2 - 0.15 * cm,
+                              _shape(f"{base}/api/verify/{code}"))
+            self.c.setFont(self.font, 8.5)
         self.y -= size
 
     def bytes(self) -> bytes:
