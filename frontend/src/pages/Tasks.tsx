@@ -97,7 +97,7 @@ export default function Tasks() {
         : <div className="table-wrap">
         {total > tasks.length && (
           <div className="ok" style={{ marginBottom: ".5rem" }}>
-            {t("tasks_partial").replace("{shown}", String(tasks.length))
+            {t("list_partial").replace("{shown}", String(tasks.length))
                                .replace("{total}", String(total))}
           </div>
         )}

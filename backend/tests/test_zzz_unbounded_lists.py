@@ -219,9 +219,55 @@ def test_the_screen_says_how_many_are_hidden():
 
     src = page.read_text(encoding="utf-8")
     assert "x-total-count" in src.lower(), "الشاشُة لا تقرأ العدد الكّلي"
-    assert "tasks_partial" in src, "لا تقول للمستخدم أن بعده بقيّة"
+    assert "list_partial" in src, "لا تقول للمستخدم أن بعده بقيّة"
 
     # والنصُّ من طبقة الترجمة لا مكتوًبا بالي;د — فزُّر اللغة يعمل عليه.
     i18n = page.parents[1] / "i18n.tsx"
     body = i18n.read_text(encoding="utf-8")
-    assert re.search(r"tasks_partial:\s*\{\s*ar:", body), "النصُّ خارج الترجمة"
+    assert re.search(r"list_partial:\s*\{\s*ar:", body), "النصُّ خارج الترجمة"
+
+
+def test_both_capped_screens_say_how_many_are_hidden():
+    """**وسقٌف على مسارين وإتماٌم لواحد قاعدٌة في موضعين.**
+
+    وُضع السقُف على ``/tasks/my`` و``/requests/mine`` معًا، ثم قُرئ العدُد
+    الكّلي في شاشٍة واحدة — فبقيت الثانيُة تعرض السقَف كأنه الكلّ. وهو
+    العطُل نفسه في نصفه الآخر.
+
+    **والجملُة واحدة لا اثنتان**: ``list_partial`` تُستعمل في الشاشتين،
+    فنٌّص ثاٍن لقاعدٍة واحدة ينحرف عن الأول.
+    """
+    import pathlib
+
+    pages = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
+    if not pages.exists():
+        import pytest
+        pytest.skip("لا واجهَة في هذه الشجرة")
+
+    for name in ("Tasks.tsx", "Requests.tsx"):
+        src = (pages / name).read_text(encoding="utf-8")
+        assert "x-total-count" in src.lower(), f"{name}: لا يقرأ العدد الكّلي"
+        assert 't("list_partial")' in src, f"{name}: لا يقول كم بقي"
+
+
+def test_the_approval_inbox_is_deliberately_uncapped():
+    """**وسقٌف قبل ترشيٍح في بايثون يُجوِّع الترشيح.**
+
+    ``approval_inbox`` يقرأ الطلبات المفتوحة ثم يُرشِّح بـ``can_decide``
+    **في بايثون** لا في الاستعالم. فسقٌف على الاستعالم يأخذ أحدَث مئٍة ثم
+    يُرشِّح، فيُعرَض ثالٌث وعند المعتمِد خمسون — وهو عين ما وقع في ترشيح
+    الفئات وأُصلح.
+
+    وهو مقيٌَّد **بالعمل الجاري** لا بالتاريخ: حااٌلت مفتوحة، ولو بلغت
+    الآالف فالمشكلُة في العمل لا في القائمة. فيُترك بعلّته ويُحرَس أن
+    العلّة قائمة.
+    """
+    import inspect
+
+    from app.routers import requests as RQ
+
+    src = inspect.getsource(RQ.approval_inbox)
+    assert "can_decide(" in src, "تغيّر الترشيح — يُعاد النظر في السقف"
+    assert ".limit(" not in src, \
+        "سقٌف قبل ترشيٍح في بايثون — يُعرَض بعُض ما يستحقّ المعتمِد"
+    assert 'models.Request.status.in_(' in src, "لم يبقَ مقيًَّدا بالعمل الجاري"

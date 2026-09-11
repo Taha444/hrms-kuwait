@@ -48,9 +48,18 @@ export default function Requests() {
   // يجب اختيار موظف صراحة. لو عنده employee_id (مثل موظف/HR مربوط) → يقدر يختار نفسه.
   const hasOwnEmployeeProfile = !!user?.employee_id;
 
+  const [mineTotal, setMineTotal] = useState(0);
+
   const load = () => {
     setState("loading");
-    api.get("/requests/mine").then((r) => { setMine(r.data); setState("ok"); })
+    // **وسقٌف يُخفي بلا أن يقول يُضلِّل.** الخادُم يحدّ القائمة (وهي تنمو
+    // بمدّة خدمة الموظف) ويردّ العدَد الكّلي في X-Total-Count — والنصُّ هو
+    // نصُّ صندوق المهامّ نفسه: قاعدٌة واحدة، جملٌة واحدة.
+    api.get("/requests/mine").then((r) => {
+      setMine(r.data);
+      setMineTotal(Number(r.headers?.["x-total-count"] ?? r.data.length));
+      setState("ok");
+    })
       .catch(() => setState("error"));
     // APP-01 — لا تحكم الواجهة على الصلاحية: نقطة الوصول نفسها محروسة
     // بمجموعة صلاحيات القرار كاملة، فمن لا يملك شيًئا منها يُردّ بـ403.
@@ -241,6 +250,12 @@ export default function Requests() {
         : state === "error" ? <ErrorRetry onRetry={load} />
         : !list.length ? <EmptyState icon="requests" />
         : <div className="table-wrap">
+        {tab === "mine" && mineTotal > mine.length && (
+          <div className="ok" style={{ marginBottom: ".5rem" }}>
+            {t("list_partial").replace("{shown}", String(mine.length))
+                              .replace("{total}", String(mineTotal))}
+          </div>
+        )}
         <table>
           <thead><tr><th>#</th><th>{t("col_type")}</th><th>{t("col_employee")}</th><th>{t("status")}</th><th>{t("req_path")}</th><th></th></tr></thead>
           <tbody>
