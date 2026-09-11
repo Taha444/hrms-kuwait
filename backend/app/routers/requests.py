@@ -374,12 +374,20 @@ def list_type_schemas(user: models.User = Depends(get_current_user),
 
 
 @router.post("/types", status_code=201)
-def create_request_type(data: schemas.RequestTypeIn,
+def create_request_type(data: schemas.RequestTypeIn, request: Request,
                         user: models.User = Depends(require_perm("manage_request_types")),
                         db: Session = Depends(get_db)):
+    """**ونوٌع يُستحدَث يشكّل كل طلٍب يُقدَّم بعده** — فيُقيَّد من استحدثه.
+
+    كان يُنشئ نوًعا بسلسلة اعتماداته ومخرجاته بلا سطر تدقيق واحد.
+    """
     cid = None if user.role == "super_admin" else user.company_id
     rt = models.RequestType(company_id=cid, **data.model_dump())
     db.add(rt)
+    db.flush()
+    audit(db, user, "create_request_type", "request_type", rt.id,
+          detail=f"{rt.code} — {rt.name}", request=request,
+          after={"code": rt.code, "name": rt.name, "company_id": cid})
     db.commit()
     db.refresh(rt)
     return {"ok": True, "id": rt.id}

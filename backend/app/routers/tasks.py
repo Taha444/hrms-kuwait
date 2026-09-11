@@ -2,13 +2,13 @@
 """صندوق المهام لكل مستخدم (Task Inbox) + تشغيل المسح اليومي يدويًا."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user, require_perm, scope_company_id
+from ..deps import audit, get_current_user, require_perm, scope_company_id
 from ..notifications import daily_scan
 
 from ..gov_tasks import GOV_TASK_TYPES
@@ -221,7 +221,8 @@ def bulk_task_action(task_ids: list[int], action: str,
 
 
 @router.post("/cleanup-orphans")
-def cleanup_orphan_tasks(user: models.User = Depends(require_perm("manage_tasks")),
+def cleanup_orphan_tasks(request: Request,
+                         user: models.User = Depends(require_perm("manage_tasks")),
                          db: Session = Depends(get_db)):
     """V2.2 §19 — تنظيف مهام يتيمة: المهام المفتوحة المرتبطة بطلب مغلق (نهائية).
     يستخدمها HR لتصحيح حالات نادرة تسبق تفعيل _close_open_tasks.
@@ -250,6 +251,10 @@ def cleanup_orphan_tasks(user: models.User = Depends(require_perm("manage_tasks"
             t.status = "dismissed"
             t.completed_at = now
             fixed += 1
+    # **وكنٌس جماعّي بلا سطٍر لا يُفسَّر**: من كنس، وفي أيّ نطاق، وكم صًفّا.
+    audit(db, user, "cleanup_orphan_tasks", "task", 0,
+          detail=f"أُسقِطت {fixed} مهمًة يتيمة", request=request,
+          company_id=cid, after={"cleaned": fixed, "company_id": cid})
     db.commit()
     return {"ok": True, "cleaned": fixed}
 

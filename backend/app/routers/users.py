@@ -683,14 +683,28 @@ def set_matrix(user_id: int, data: schemas.MatrixIn, request: Request,
 
 
 @router.post("/{user_id}/matrix/reset")
-def reset_matrix(user_id: int, user: models.User = Depends(require_perm("manage_users")),
+def reset_matrix(user_id: int, request: Request,
+                 user: models.User = Depends(require_perm("manage_users")),
                  db: Session = Depends(get_db)):
-    """يعيد المستخدم إلى صلاحيات دوره الافتراضية (حذف كل المنح الدقيقة)."""
+    """يعيد المستخدم إلى صلاحيات دوره الافتراضية (حذف كل المنح الدقيقة).
+
+    **وسحُب سلطٍة بلا سطر تدقيق لا يُفسَّر بعد سنة.** كان هذا المسار يحذف
+    كلَّ منحٍة دقيقة ولا يقيّد شيًئا — و``copy_permissions`` بعده باثنَي
+    عشر سطًرا يقيّد. شقيقتان على الكائن نفسه: إحداهما تحفظ من غيّر السلطة
+    والأخرى لا. ولم يكن يستقبل ``Request`` أصًلا، فلا عنواَن ولا أداة.
+
+    ويُقيَّد **ما حُذف بعينه**: «أُعيد إلى الافتراضي» لا تقول ماذا فُقد،
+    ومن يراجع بعد شهٍر يحتاج القائمة لا الحكم.
+    """
     target = _get_scoped_user(db, user, user_id)
+    removed = [x.perm_code for x in target.permissions if "." in x.perm_code]
     for p in [x for x in target.permissions if "." in x.perm_code]:
         db.delete(p)
+    audit(db, user, "reset_permission_matrix", "user", target.id,
+          detail=f"حُذفت {len(removed)} منحًة دقيقة", request=request,
+          before={"granted": removed}, after={"granted": []})
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "removed": len(removed)}
 
 
 @router.post("/copy-permissions")
