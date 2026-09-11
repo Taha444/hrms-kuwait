@@ -623,7 +623,118 @@ def _warn_unassigned_stage(db: Session, req: models.Request,
         )
 
 
-def resolve_stage_approvers(db: Session, req: models.Request, stage: dict) -> list[models.User]:
+#: حقوٌل في الحمولة تسمّي **طرًفا** في الطلب لا مقدًَّما له.
+#:
+#: P11-37 — نموذج الشكوى يسأل «المُشتكى منه (اختياري)» ويخزّن
+#: ``against_user_id``، و**الكلمة كانت تظهر في الشيفرة مرًّة واحدة: في
+#: النموذج الذي يجمعها**. لا سطَر يقرؤها.
+#:
+#: وهذا ليس حقًلا مهمًلا بل وعٌد لا يُوفى: من يكتب اسم من يشكو منه يفهم أنه
+#: بذلك يحتجب عنه. والأثر ينقلب على الغرض — سلسلة ``REQGRV`` مرحلٌة واحدة
+#: دورها ``hr``، فإن كان المشكو منه من شؤون الموظفين وصله الطلب في صندوقه،
+#: وأذن له ``_get_req`` لأنه معتمِد المرحلة، وقرّر الشكوى المرفوعة ضدّه.
+#: (قيس: الاعتماد يعود 200، والمهمّة تصله بعنوان «بانتظار موافقتك».)
+#:
+#: وحارس الاعتماد الذاتي لا يمنعه: يقيس ``req.employee_id`` — أي **مقدّم**
+#: الشكوى لا المشكو منه. فالقاعدة قائمٌة وتقيس الطرف الآخر.
+PARTY_FIELDS = ("against_user_id",)
+
+
+def excluded_parties(db: Session, req: models.Request) -> set[int]:
+    """مستخدمون لا يجوز أن ينظروا هذا الطلب لأنهم أطراٌف فيه.
+
+    **ويُطابَق المعرّف في الفضاءين** — موظًفا ومستخدًما — لأن اسم الحقل
+    يقول ``user_id`` ونوعه المعلَن ``employee_ref``، ولم يكن ثمّة قارٌئ
+    يحسم أيّهما. والخطأ هنا غير متكافئ: زيادُة المستبعَدين تنزع معتمًِدا
+    (ويُصعَّد إلى غيره)، ونقُصهم يجعل المشكو منه يقرأ الشكوى ضدّه. فيُوسَّع
+    المطابَق قصًدا.
+    """
+    payload = req.payload_json or {}
+    out: set[int] = set()
+    for field in PARTY_FIELDS:
+        raw = payload.get(field)
+        if raw in (None, "", 0, "0"):
+            continue
+        try:
+            ident = int(raw)
+        except (TypeError, ValueError):
+            continue
+        as_user = db.get(models.User, ident)
+        if as_user:
+            out.add(as_user.id)
+        for u in db.scalars(select(models.User).where(
+                models.User.employee_id == ident)).all():
+            out.add(u.id)
+    return out
+
+
+#: تصعيٌد حين يُحجَب **كل** معتمِدي المرحلة لأنهم أطراف.
+#:
+#: ويبقى داخل من يملك ``approve_grievance`` أصًلا (``hr`` ·
+#: ``company_manager``)، فلا سلطٌة جديدة تُمنَح — والقاعدة 20 تمنع توسيع
+#: الصلاحيات في جولة تنظيف.
+#:
+#: **ولولا التصعيد لكان الحجُب ضرًرا آخر بالمشتكي**: شكوى بلا معتمِد تقف
+#: إلى الأبد، فتصير حمايُته إسكاًتا له.
+_PARTY_ESCALATION: dict[str, tuple[str, ...]] = {
+    "hr": ("company_manager",),
+    "company_manager": ("hr",),
+}
+
+
+def resolve_stage_approvers(db: Session, req: models.Request,
+                            stage: dict) -> list[models.User]:
+    """معتمِدو المرحلة **بعد حجب أطراف الطلب**.
+
+    وهذا الموضع واحٌد تمرّ به الأبواب كلّها: الصندوق، والإخطارات،
+    و``is_stage_approver`` ومنه ``can_decide`` ومسار القرار، و``_get_req``
+    في الطلبات السرّية. فالحجب هنا يسدّها معًا — ووضُعه في أحدها دون
+    البقية هو نمط «موضعان يصفان قاعدة واحدة» بعينه.
+    """
+    blocked = excluded_parties(db, req)
+    approvers = _stage_approvers_by_role(db, req, stage)
+    if not blocked:
+        return approvers
+
+    kept = [u for u in approvers if u.id not in blocked]
+    if kept or not approvers:
+        return kept
+
+    # حُجب الجميع — فيُصعَّد إلى من يملك الصلاحية نفسها ولم يكن طرًفا.
+    for role in _PARTY_ESCALATION.get(stage.get("role") or "", ()):
+        alt = [u for u in users_by_role(db, req.company_id, [role])
+               if u.id not in blocked]
+        if alt:
+            from .delegation import expand_approvers_with_delegates
+            return expand_approvers_with_delegates(db, alt, req.company_id)
+
+    _warn_no_impartial_approver(db, req, blocked)
+    return []
+
+
+def _warn_no_impartial_approver(db: Session, req: models.Request,
+                                blocked: set[int]) -> None:
+    """**طلٌب عالٌق ظاهٌر خيٌر من طلب ينظره طرٌف فيه** — ولا يُسكَت عنه.
+
+    ولا يُخطَر به من هو طرف، ولا يحمل الإخطار موضوع الشكوى ولا اسم
+    مقدّمها: يقول إن المرحلة بلا معتمِد محايد ويطلب إسناد غيره.
+    """
+    for u in users_by_role(db, req.company_id, ["company_owner", "super_admin"]):
+        if u.id in blocked:
+            continue
+        create_task(
+            db, company_id=req.company_id, type="config_gap",
+            assignee_user_id=u.id, severity="critical",
+            title="طلب سرّي بلا معتمِد محايد",
+            detail=(f"الطلب #{req.id} — كل معتمِدي مرحلته أطراٌف فيه، فلا "
+                    f"يجوز أن ينظروه. أسنِد معتمًِدا محايًدا لتمضي المعالجة."),
+            related_entity_type="request", related_entity_id=req.id,
+            dedup_key=f"no_impartial_approver:{req.id}",
+        )
+
+
+def _stage_approvers_by_role(db: Session, req: models.Request,
+                             stage: dict) -> list[models.User]:
     """يحدد المستخدمين المعنيين بمرحلة معيّنة حسب الدور (وفرع العامل).
 
     V2.2 §8 — المسؤول المباشر الفعلي:
@@ -691,6 +802,11 @@ def is_stage_approver(db: Session, req: models.Request, user: models.User,
     "موضعان يصفان قاعدة واحدة" الذي أنتج نصف أعطال هذا النظام.
     """
     if user.company_id != req.company_id:
+        return False
+    # P11-37 — وطرُف الطلب لا ينظره في أي شكل مرحلة. والمرحلة المتوازية
+    # لا تمرّ بـ``resolve_stage_approvers``، فلولا هذا السطر بقي لها باٌب
+    # مفتوٌح يوم تُستعمل في نوٍع له طرف مسمّى.
+    if user.id in excluded_parties(db, req):
         return False
     if stage.get("kind") == "parallel":
         # V2.2 §13.10 — الجهة معتمِدة نصيبها وحده، ومرة واحدة
