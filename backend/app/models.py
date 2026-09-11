@@ -741,6 +741,26 @@ class Request(Base):
     #: وإعادة التقديم بعد رفض تبقى مسموحة لأن الصفّ المغلق يخرج من القيد.
     dedup_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
     # V2.2/§5 Workflow Engine: needs_info + cancel + return_to_submitter
+    #
+    # **أعمدٌة فارغٌة أبًدا — ولا تُقرأ، ولا تُملأ بنصف حقيقة.**
+    #
+    # قيست هذه الثالثة فلم يذكرها شيٌء خارج هذا الملف. وعمٌود يبقى
+    # ``NULL`` دائًما وله اسٌم ذو معنى فٌّخ: من يستعلم عن ``cancel_reason``
+    # يجده فارًغا فيستنتج أن الإلغاء وقع **بلا سبب**، وهو قد وقع بسبٍب
+    # مسجٍَّل في موضعه.
+    #
+    # - ``cancelled_at`` و``cancel_reason``: ``workflow.cancel`` تكتب
+    #   ``closed_at`` وتُنشئ صفَّ ``RequestApproval`` بعنوان «إلغاء المدير
+    #   العام» وملاحظته. فالوقُت والسبُب محفوظان — في موضٍع واحد. وملؤهما
+    #   هنا أيًضا يجعل للحقيقة الواحدة موضعين ينحرفان، وهو ما يُتجنَّب في
+    #   هذا النظام قصًدا (كما ``outstanding_loan`` يُحسَب ولا يُخزَّن).
+    #
+    # - ``needs_info_note``: ``needs_info`` فعٌل معلٌن في ``v15_status``
+    #   ولا يُنفَّذ. والمنفَّذ هو ``returned`` («أُعيد للتصحيح») وملاحظتُه
+    #   في قرار الإرجاع. فهذا العمود توأُم فعٍل لم يُبنَ.
+    #
+    # وتُترك ولا تُحذَف: قد تحملها صفوٌف في الإنتاج، وحذُف عموٍد قراٌر
+    # لصاحب النظام. يحرسها ``test_zzz_dead_columns.py``.
     needs_info_note: Mapped[str | None] = mapped_column(Text)
     cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)

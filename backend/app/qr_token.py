@@ -80,9 +80,25 @@ def make_static_qr_token(branch_id: int, kiosk_key: str | None) -> str:
     return jwt.encode(body, settings.secret_key, algorithm=settings.algorithm)
 
 
-def make_checkin_ticket(employee_id: int, branch_id: int) -> tuple[str, datetime]:
-    return _encode({"employee_id": employee_id, "branch_id": branch_id},
-                   TICKET_TTL_SECONDS, "checkin_ticket")
+def make_checkin_ticket(employee_id: int, branch_id: int,
+                        lat: float | None = None,
+                        lng: float | None = None) -> tuple[str, datetime]:
+    """تذكرٌة تحمل **الموضَع الذي أقرّه السياج**، لا الذي يرسله العميل ثانيًة.
+
+    فالإحداثياُت تُستقبَل في ``validate-qr`` ويُفحَص بها السياج، ثم كانت
+    **تُلقى**: والسجلُّ يُنشأ في نداٍء آخر (``check-in``) لا يستقبلها،
+    فتبقى ``in_lat``/``in_lng``/``out_lat``/``out_lng`` فارغًة أبًدا —
+    مخطٌَّط يعِد بدليٍل على موضع البصمة، والنظاُم لا يحفظه. فمن نازع في
+    حضوره لا يجد ما يُحتَجّ به له ولا عليه.
+
+    وحملُها في التذكرة الموقَّعة أصحُّ من قبولها مرًة أخرى: **ما يُخزَّن هو
+    ما مرّ بالسياج** — ولو استُقبلت ثانيًة أمكن إرسال موضٍع غير الذي
+    أُقِرّ.
+    """
+    body: dict = {"employee_id": employee_id, "branch_id": branch_id}
+    if lat is not None and lng is not None:
+        body["lat"], body["lng"] = float(lat), float(lng)
+    return _encode(body, TICKET_TTL_SECONDS, "checkin_ticket")
 
 
 def decode(token: str, expected_type: str) -> dict:

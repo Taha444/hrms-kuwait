@@ -121,7 +121,8 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
             db.commit()
             raise HTTPException(status_code=409, detail="هذا الرمز استُخدم بالفعل، انتظر تجدّده")
 
-    ticket, ticket_exp = qr_token.make_checkin_ticket(emp.id, branch.id)
+    ticket, ticket_exp = qr_token.make_checkin_ticket(
+        emp.id, branch.id, data.lat, data.lng)
     audit(db, user, "validate_qr", "branch", branch.id, request=request)
     db.commit()
     return {
@@ -181,7 +182,10 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
         rec = models.AttendanceRecord(
             company_id=emp.company_id, employee_id=emp.id, branch_id=branch.id,
             check_in_at=now, method=("gps" if emp.attendance_mode == "gps" else "qr"),
-            selfie_in_path=fpath, status=status)
+            selfie_in_path=fpath, status=status,
+            # **دليُل الموضع يُحفَظ** — من التذكرة الموقَّعة، أي ما أقرّه
+            # السياج. وكانت هذه الأعمدُة الأربعة فارغًة أبًدا.
+            in_lat=payload.get("lat"), in_lng=payload.get("lng"))
         db.add(rec)
         audit(db, user, "check_in", "attendance", emp.id, detail=status, request=request)
         db.commit()
@@ -197,6 +201,8 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
         raise HTTPException(status_code=404, detail="لا يوجد تسجيل حضور مفتوح")
     rec.check_out_at = now
     rec.selfie_out_path = fpath
+    # وموضُع الانصراف كموضع الحضور: من التذكرة الموقَّعة لا من العميل.
+    rec.out_lat, rec.out_lng = payload.get("lat"), payload.get("lng")
     _finalize_out(db, emp, rec, now)
     audit(db, user, "check_out", "attendance", emp.id, request=request)
     db.commit()
