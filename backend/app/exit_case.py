@@ -132,5 +132,33 @@ def open_from_request(db, req: models.Request) -> tuple[bool, str]:
         # فيراه من يملك إصلاحه بدل أن يُختم «مكتمل» بلا أثر.
         return False, str(exc.detail)
 
+    # **ودٌين قائٌم لا يختفي بانتهاء الخدمة.**
+    #
+    # أقساط القرض صفوُف خصم في أشهٍر قادمة، والرواتب تحسب للموظفين على رأس
+    # العمل. فمن انتهت خدمته وعليه أقساٌط لم تُحتسب بعد **لا تُقرأ صفوفه
+    # أبًدا** — فيسقط الدين بصمت ولا يظهر في أيّ شاشة ولا تقرير.
+    #
+    # ولا يُقرَّر هنا مصيُره: اقتطاعه من المستحقات حٌد قانوني ومسألُة
+    # سياسة. لكنه **يُسمّى** فيبلغ من يسوّي الحساب، بدل أن يُكتشَف بعد
+    # إغلاق الملف أو لا يُكتشَف أصًلا.
+    from .workflow import outstanding_loan
+
+    owed = outstanding_loan(db, emp.id)
+    if owed > 0:
+        from .notifications import create_task, users_by_role
+
+        for u in users_by_role(db, emp.company_id, ["accountant", "hr"]):
+            create_task(
+                db, company_id=emp.company_id, type="config_gap",
+                assignee_user_id=u.id, severity="critical",
+                title=f"دٌين قرٍض قائم عند نهاية خدمة {emp.name}",
+                detail=(f"بقي {owed:.3f} د.ك من أقساٍط لم تُحتسب بعد. وأقساُط "
+                        f"ما بعد آخر يوم عمل لا تقرؤها الرواتب — فيلزم "
+                        f"تسويتها في حساب نهاية الخدمة أو إسقاطها بقرار."),
+                related_entity_type="eos_case", related_entity_id=case.id,
+                dedup_key=f"exit_loan_due:{case.id}",
+            )
+
     return True, (f"فُتحت حالة نهاية الخدمة {case.reference_no} — "
-                  f"{eos_engine.TERMINATION_REASONS.get(reason, reason)} @ {last_day}")
+                  f"{eos_engine.TERMINATION_REASONS.get(reason, reason)} @ {last_day}"
+                  + (f" · دٌين قرٍض قائم {owed:.3f}" if owed > 0 else ""))

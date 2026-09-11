@@ -5,16 +5,30 @@ import io
 from tests.conftest import auth_headers, login
 
 
-def test_74_notification_templates_seeded(client):
+def test_the_whole_notification_catalog_is_seeded(client):
+    """**كل ما يُعلَن في الكتالوج يُبذَر، ولا يُبذَر ما ليس فيه.**
+
+    كان الشرط رقًما حرفًيا (74) واسُم الاختبار يحمله. وهو يمسك «أُضيف
+    قالب» — وليست إضافُة قالب عطًلا؛ ويُخطئ اسُمه يوم يتغيّر الرقم فيصير
+    الاسم يقول غير ما يفحص. (وقع: أُضيف ``NTF-075`` لاتفاقية القرض.)
+
+    والخطر الحقيقي أن يفترق المُعلَن عن المبذور: قالٌب يُرسَل ولا يُعرَف،
+    أو يُعلَن ولا يوجد. فيُقاس الطرفان أحدهما بالآخر — ولا يحتاج تحديًثا
+    كلّما نما الكتالوج.
+    """
+    from app import notification_templates as NT
+
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     r = client.get("/api/notifications/templates", headers=hr)
     assert r.status_code == 200
-    data = r.json()
-    assert len(data) == 74
-    codes = {x["code"] for x in data}
-    assert "NTF-001" in codes and "NTF-074" in codes
+    served = {x["code"] for x in r.json()}
+    declared = {t["code"] for t in NT.DEFAULT_NOTIFICATION_TEMPLATES}
+    assert served == declared, {"مُعلٌَن ولم يُبذَر": sorted(declared - served),
+                                "مبذوٌر بلا إعلان": sorted(served - declared)}
+    assert "NTF-001" in served, "الكتالوج فارغ — لا يقيس التساوي شيًئا"
+
     cats = client.get("/api/notifications/templates/categories", headers=hr).json()
-    assert len(cats) == 10
+    assert len(cats) == len({t["category"] for t in NT.DEFAULT_NOTIFICATION_TEMPLATES})
 
 
 def test_preferences_default_enabled_and_updatable(client):

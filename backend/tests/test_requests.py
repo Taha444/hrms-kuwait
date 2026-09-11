@@ -13,13 +13,24 @@ def _emp_id(client):
 
 
 def test_produces_document_types_have_default_template_code(client):
-    """P0-02/P2-02: كل نوع طلب produces_document=True مرتبط بأحد قوالب HRMS-PR الرسمية
-    (أو None صراحًة حين لا يوجد قالب مطابق فعليًا بين الـ42 — لا يُهمَل الحقل بصمت)."""
+    """P0-02/P2-02 ← P1-02: **لكل منتِج هويٌّة تُحَل، لا قالٌب بالضرورة.**
+
+    كان الشرط أن يحمل كل نوع منتِج ``default_template_code`` — وكان صحيًحا
+    يوم كان **القالب يحدّد هويّة المستند**. وبعد P1-02 صارت الهويّة من
+    السجلّ: مساٌر يعلن مستنًدا واحًدا يكفي، ويبقى القالب مُرجًِّحا حين
+    يعلن المسار عدًدا.
+
+    فالشرط هنا هو الثابت الحقيقي: **لا ورقٌة رسمية بلا صنف قانوني**. وهو
+    أوسع تغطيًة من سابقه لا أضيق: يمسك النوع الذي له قالٌب يشير إلى غير ما
+    يعلنه مساره، وذاك كان يمرّ.
+    """
+    from app import v15_registry as R
     from app import workflow
 
-    for rt in workflow.DEFAULT_REQUEST_TYPES:
-        if rt.get("produces_document"):
-            assert "default_template_code" in rt, f"{rt['code']} missing default_template_code key"
+    naked = [rt["code"] for rt in workflow.DEFAULT_REQUEST_TYPES
+             if rt.get("produces_document")
+             and not R.canonical_od_for(rt["code"], rt.get("default_template_code"))]
+    assert not naked, f"نوٌع يُنتج ورقًة بلا صنف قانوني: {naked}"
 
 
 def test_new_request_types_available(client):

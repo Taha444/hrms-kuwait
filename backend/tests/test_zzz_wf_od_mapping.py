@@ -80,6 +80,17 @@ REVIEWED = {
     "ADMDED": "HRMS-PR-021",       # OD-008 — «قرار خصم» بالحرف، وقالبه الوحيد
 }
 
+#: **أنواٌع هويُّة مستندها من السجلّ لا من قالب** (P1-02).
+#:
+#: لا قالب لـ``OD-022`` في السجلّ، والمستند يُبنى من نوع الطلب ونصّه
+#: الرسمي لا من ملفّ قالب. وهويّتُه محسومٌة بلا لبس: ``WF-009`` يعلن
+#: ``OD-022`` وحده. فهذا قراٌر مكتوب كغيره، لا سكوت.
+REGISTRY_IDENTIFIED = {
+    "advance": "WF-009 → OD-022 — اتفاقية سلفة، بلا قالب والسجلّ يحسم.",
+    "loan": "WF-009 → OD-022 — اتفاقية قرض، بلا قالب والسجلّ يحسم.",
+    "REQADV": "WF-009 → OD-022 — اتفاقية سلفة/قرض، بلا قالب والسجلّ يحسم.",
+}
+
 #: ما لا يقيسه السجلّ: نوع بلا مسار قانوني أو بلا قالب.
 UNDECIDED = {
     "REQMIS": "«مهمة عمل خارجية» — مسارها WF-029 (تصنيف عام) لا يعلن أي OD.",
@@ -148,7 +159,7 @@ def test_no_document_producing_type_is_silently_unreviewed():
 
     والسكوت هو ما أنتج العطل: الخريطة تنحرف بلا أن يسأل أحد.
     """
-    known = set(REVIEWED) | set(UNDECIDED)
+    known = set(REVIEWED) | set(UNDECIDED) | set(REGISTRY_IDENTIFIED)
     silent = [rt["code"] for rt in _types_producing_documents()
               if rt["code"] not in known]
     assert not silent, (
@@ -220,6 +231,16 @@ def test_the_unverifiable_set_is_exactly_what_was_measured():
         canonical = entry.get("canonical") if isinstance(entry, dict) else None
         declared = set((R.CANONICAL_WORKFLOWS.get(canonical) or {}).get("od") or [])
         actual = R.LEGACY_PRN_ALIASES.get(rt.get("default_template_code"))
+        # P1-02 — ونوٌع **مساُره يعلن مستنَده** لا يفلت: الفحص التقاطعي
+        # (قالب ↔ ما يعلنه المسار) لا محلّ له حين لا قالب، والهويّة
+        # محسومٌة بالإعلان.
+        #
+        # والشرط ``declared`` لازم: ``ADMLIC`` و``REQMIS`` تُحَل هويّتهما
+        # أيًضا، لكن **من قالبهما وحده** لأن مسارهما لا يعلن شيًئا
+        # (``OD_FROM_TEMPLATE_ONLY``). فهما ما زالا خارج الفحص بحقّ، ولولا
+        # هذا الشرط لأُعلنا محسومين وليسا كذلك. (أمسكه الحارس نفسه.)
+        if declared and R.canonical_od_for(rt["code"], rt.get("default_template_code")):
+            continue
         if not (actual and declared):
             escaping.add(rt["code"])
 
@@ -369,13 +390,17 @@ def test_every_template_question_is_now_decided():
 
     فلا نوع منتِج بلا قالب، ولا نوع يشير إلى صنف تأديبي بغير موضوعه.
     """
+    # P1-02 — والشرط صار «هويٌّة تُحَل» لا «قالٌب موجود»: السجلّ يحسم حين
+    # يعلن المسار مستنًدا واحًدا (``WF-009 → OD-022`` للسلفة والقرض)،
+    # والقالب يُرجِّح حين يعلن عدًدا. والثابت واحد: لا ورقٌة بلا صنف.
     naked = [rt["code"] for rt in _types_producing_documents()
-             if not rt.get("default_template_code")]
-    assert not naked, f"نوع يُنتج مستنًدا بلا قالب — فأثره بلا صنف: {naked}"
+             if not R.canonical_od_for(rt["code"], rt.get("default_template_code"))]
+    assert not naked, f"نوع يُنتج مستنًدا بلا صنف قانوني: {naked}"
 
     disciplinary = R.LEGACY_PRN_ALIASES.get("HRMS-PR-022")
     wrong = [rt["code"] for rt in _types_producing_documents()
-             if R.LEGACY_PRN_ALIASES.get(rt["default_template_code"]) == disciplinary
+             if rt.get("default_template_code")
+             and R.LEGACY_PRN_ALIASES.get(rt["default_template_code"]) == disciplinary
              and rt["code"] != "ADMWARN"]
     assert not wrong, (
         f"نوع غير الإنذار يُصنَّف أثره تأديبًيا: {wrong}"

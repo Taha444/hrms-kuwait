@@ -249,9 +249,10 @@ DEFAULT_REQUEST_TYPES = [
         "name": "طلب سلفة",
         "category": CAT_FINANCIAL,
         "requires_physical_signature": False,
-        "produces_document": False,
+        "produces_document": True,
         "approval_chain_json": [
-            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
+            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager",
+             "kind": "approval", "produces_document": True},
             {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
         ],
         "template_html": None,
@@ -262,9 +263,10 @@ DEFAULT_REQUEST_TYPES = [
         "name": "طلب قرض",
         "category": CAT_FINANCIAL,
         "requires_physical_signature": False,
-        "produces_document": False,
+        "produces_document": True,
         "approval_chain_json": [
-            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager", "kind": "approval"},
+            {"order": 0, "label": "اعتماد المدير العام", "role": "company_manager",
+             "kind": "approval", "produces_document": True},
             {"order": 1, "label": "التنفيذ من المحاسب", "role": "accountant", "kind": "pickup"},
         ],
         "template_html": None,
@@ -369,8 +371,22 @@ DEFAULT_REQUEST_TYPES = [
            ["hr"], requires_physical_signature=False),
 
     # الطلبات المالية
+    # **قرار المالك — الاتفاقية تُصدَر موقَّعة أو جاهزًة للتوقيع.**
+    #
+    # توقيُع الموظف يُؤخذ من صورة توقيعه المحفوظة على النظام فتُطبع الورقة
+    # موقَّعة في مكانها. فإن لم تكن له صورة تُطبع بخطٍّ فارغ ليوقّعها عند
+    # الشؤون. وفي الحالين يصله إشعار. والآلية قائمٌة أصًلا في
+    # ``pdf_export.signatures``: العنوان ثم الخط ثم الصورة إن وُجدت.
+    #
+    # ولا يلزم قالٌب لـ``OD-022``: المستند يُبنى من نوع الطلب ونصّه الرسمي،
+    # وهويّتُه تُحَل من السجلّ (``WF-009`` يعلن ``OD-022`` وحده).
+    #
+    # و``produces_document`` على **المرحلة** لا على النوع وحده: المرحلة
+    # الثانية تسليٌم (``pickup``)، فتُصدَر الورقة عند قرار المدير — القرار
+    # قراُره، والمحاسب ينفّذ.
     _simple("REQADV", "طلب سلفة أو قرض", CAT_FINANCIAL,
-           ["company_manager", "accountant"], requires_physical_signature=False, visible_to_employee=True),
+           ["company_manager", "accountant"], requires_physical_signature=False,
+           produces_document=True, visible_to_employee=True),
     _simple("REQEXP", "طلب استرداد مصروفات", CAT_FINANCIAL,
            ["branch_supervisor", "accountant"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
@@ -1744,6 +1760,133 @@ def _apply_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
     return True, f"سُجِّل خصٌم {amount:.3f} على مسيّر {month}"
 
 
+#: **قسٌط بلا كسٍر ضائع.** المبلغ على الأشهر نادًرا ما يقسم بالتمام،
+#: والكسر يُحمَل على **القسط الأخير** فيبقى المجموع مساوًيا لأصل الدين
+#: بالضبط. وهو اصطلاٌح حسابي لا صيغٌة قانونية — ومع ذلك يُعلَن هنا لا
+#: يُدفَن في سطر: من يراجع الجدول بعد سنة يحتاج أن يعرف لماذا آخر قسط
+#: يخالف إخوته بفلوس.
+LOAN_REMAINDER_ON_LAST = True
+
+
+def _month_add(month: str, n: int) -> str:
+    """``YYYY-MM`` + n شهًرا."""
+    y, m = (int(x) for x in month.split("-")[:2])
+    total = (y * 12 + (m - 1)) + n
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def _apply_loan(db: Session, req: models.Request) -> tuple[bool, str]:
+    """أثر السلفة/القرض: يبني جدول السداد أقساًطا تقرؤها الرواتب.
+
+    **العطل المقيس**: النموذج يجمع ``amount`` و``months`` و
+    ``first_deduction_month`` — **ولا سطَر في النظام يقرأ واحًدا منها**.
+    فيُعتمد القرض بمرحلتين (المدير ثم المحاسب) ويُغلَق «مكتمًلا»، ولا
+    جدوَل سداٍد ولا استقطاع. والموظف يأخذ المال والشركة لا تسترّده — أو
+    تسترّده بورقٍة خارج النظام لا أثر لها فيه.
+
+    **ولا جدوٌل ثاٍن للمال**: القسط يُكتب صفَّ خصٍم كبقية الخصومات، فتقرؤه
+    الرواتب بالآلية نفسها المقيسة. ولو بُني له مخزٌن مستقل لصار للالتزام
+    الواحد مصدران — وهي علّة ``EmployeeEvent``/``Deduction`` بعينها: ما
+    يُكتب لا يُقرأ وما يُقرأ لا يُكتب.
+
+    والدين الباقي يُحسَب من أقساطه التي لم يستهلكها مسيّر بعد، فلا رقَم
+    يُخزَّن ويشيخ.
+    """
+    p = req.payload_json or {}
+    try:
+        principal = round(float(p.get("amount") or 0), 3)
+    except (TypeError, ValueError):
+        return False, f"مبلغ غير صالح: {p.get('amount')!r}"
+    if principal <= 0:
+        return False, "مبلغ القرض يجب أن يكون أكبر من صفر"
+
+    kind = (p.get("loan_type") or "loan").strip()
+    # «سلفة» تُخصم شهًرا واحًدا بنصّ النموذج، و``months`` مخفٌي عندها.
+    months = 1 if kind == "advance" else int(p.get("months") or 0)
+    if months < 1:
+        return False, "عدد أشهر السداد يجب أن يكون شهًرا فأكثر"
+
+    first = str(p.get("first_deduction_month") or "").strip()
+    try:
+        date.fromisoformat(f"{first}-01")
+    except ValueError:
+        return False, f"شهر بداية الخصم غير صالح: {first!r} — الصيغة YYYY-MM"
+
+    already = db.scalars(select(models.Deduction).where(
+        models.Deduction.request_id == req.id)).all()
+    if already:
+        return True, f"جدوُل السداد مبنٌي سابًقا لهذا الطلب ({len(already)} قسط)"
+
+    # **ولا يبدأ السداد في شهٍر أُقفل**: قسٌط يُكتب هناك لا يقرؤه أحد،
+    # فيبقى الدين قائًما والجدول يقول إنه يُسدَّد.
+    run = db.scalar(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == req.company_id,
+        models.PayrollRun.period == first))
+    if run and run.status in ("approved", "finalized", "locked"):
+        return False, (f"مسيّر {first} في حالة «{run.status}» — لا يبدأ السداد "
+                       f"في شهٍر أُقفل. اختر شهًرا مفتوًحا.")
+
+    base = round(principal / months, 3)
+    for i in range(months):
+        amount = base
+        if i == months - 1 and LOAN_REMAINDER_ON_LAST:
+            amount = round(principal - base * (months - 1), 3)
+        month = _month_add(first, i)
+        db.add(models.Deduction(
+            company_id=req.company_id, employee_id=req.employee_id,
+            amount=amount, date=date.fromisoformat(f"{month}-01"),
+            ded_type="loan_installment", request_id=req.id,
+            reason=f"قسط {i + 1} من {months} — {'سلفة' if kind == 'advance' else 'قرض'} "
+                   f"طلب #{req.id}"))
+    db.flush()
+    _notify_loan_agreement_ready(db, req)
+    last = _month_add(first, months - 1)
+    return True, (f"جدوُل سداد {principal:.3f} على {months} قسط — "
+                  f"من {first} إلى {last}")
+
+
+def _notify_loan_agreement_ready(db: Session, req: models.Request) -> None:
+    """يُبلَّغ الموظف أن اتفاقيته جاهزة — **رسالًة واحدة تسع الحالين**.
+
+    **قرار المالك**: التوقيع يُؤخذ من صورة توقيع الموظف المحفوظة فتُطبع
+    الورقة موقَّعة في مكانها؛ فإن لم تكن له صورة تُطبع بخطٍّ فارغ ليوقّعها
+    عند الشؤون. وفي الحالين يصله إشعار.
+
+    وكنتُ فرّقتُ الرسالة بالحال، فاختار المالك جملًة واحدة — وهي أقرب إلى
+    ما يقع: الموظف يذهب إلى الشؤون في الحالين، وهناك يُعرَف أيوقّع أم
+    يستلم. ورسالتان تفترضان أن النظام يعرف حال ورقته قبل أن يراها، وهو
+    يعرف صورَة التوقيع لا ما تحتاجه الورقة عند التسليم.
+    """
+    rt = get_request_type(db, req.company_id, req.request_type_code)
+    _notify_employee_from_template(
+        db, req, code="NTF-075",
+        context={"request_type": rt.name if rt else "السلفة/القرض"},
+        dedup_key=f"loan_agreement:{req.id}")
+
+
+def outstanding_loan(db: Session, employee_id: int) -> float:
+    """ما بقي على الموظف من أقساٍط لم يستهلكها مسيّر بعد.
+
+    يُحسَب ولا يُخزَّن: رقٌم مخزَّن للدين يشيخ مع كل قسط، فيُقرأ بعد أشهر
+    وهو غير صحيح.
+    """
+    rows = db.scalars(select(models.Deduction).where(
+        models.Deduction.employee_id == employee_id,
+        models.Deduction.ded_type == "loan_installment")).all()
+    total = 0.0
+    for row in rows:
+        month = row.date.strftime("%Y-%m") if row.date else None
+        if not month:
+            continue
+        run = db.scalar(select(models.PayrollRun).where(
+            models.PayrollRun.company_id == row.company_id,
+            models.PayrollRun.period == month))
+        if run and run.status in ("approved", "finalized", "locked"):
+            continue                     # استُهلك فعًلا
+        total += float(row.amount or 0)
+    return round(total, 3)
+
+
 def _reverse_leave(db: Session, req: models.Request) -> tuple[bool, str]:
     """يعكس أثر إجازة معتمَدة — ويردّ رصيدها إن كان خُصم.
 
@@ -1794,23 +1937,39 @@ def _reverse_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
     **وما اقتُطع فعًلا لا يُردّ بحذف صفّ**: إن كان مسيّر شهره قد اكتمل
     فالمال خرج، وردُّه تسويٌة مالية لا محُو سجل. فيُردّ الإلغاء ويُقال ذلك.
     """
-    row = db.scalar(select(models.Deduction).where(
-        models.Deduction.request_id == req.id))
-    if not row:
+    rows = db.scalars(select(models.Deduction).where(
+        models.Deduction.request_id == req.id)).all()
+    if not rows:
         return True, "لا خصَم مسجًَّلا لهذا القرار — لا شيء يُعكَس"
 
-    month = row.date.strftime("%Y-%m") if row.date else None
-    run = db.scalar(select(models.PayrollRun).where(
-        models.PayrollRun.company_id == req.company_id,
-        models.PayrollRun.period == month)) if month else None
-    if run and run.status in ("approved", "finalized", "locked"):
-        return False, (f"مسيّر {month} في حالة «{run.status}» — الخصم اقتُطع "
-                       f"فعًلا، وردُّه تسويٌة مالية لا إلغاُء قرار.")
-
-    amount = float(row.amount or 0)
-    db.delete(row)
+    # **وجدوُل سداٍد نصُفه استُهلك لا يُلغى ولا يبقى كلّه.**
+    #
+    # القرض أقساٌط لا قسط، وقد يُلغى بعد أن اقتُطع بعضها. فتُحذف الأقساط
+    # التي لم يقرأها مسيّر بعد، وتبقى التي اقتُطعت — والباقي دٌين قائم
+    # يُسوّى، لا صفوٌف تُمحى فيختفي أثُر ماٍل خرج.
+    kept, removed, removed_sum = [], 0, 0.0
+    for row in rows:
+        month = row.date.strftime("%Y-%m") if row.date else None
+        run = db.scalar(select(models.PayrollRun).where(
+            models.PayrollRun.company_id == req.company_id,
+            models.PayrollRun.period == month)) if month else None
+        if run and run.status in ("approved", "finalized", "locked"):
+            kept.append((month, float(row.amount or 0)))
+            continue
+        removed_sum += float(row.amount or 0)
+        removed += 1
+        db.delete(row)
     db.flush()
-    return True, f"أُلغي خصٌم {amount:.3f} على مسيّر {month} قبل احتسابه"
+
+    if not removed:
+        months = "، ".join(m for m, _a in kept)
+        return False, (f"كل ما سُجِّل اقتُطع فعًلا ({months}) — وردُّه تسويٌة "
+                       f"مالية لا إلغاُء قرار.")
+    if kept:
+        paid = round(sum(a for _m, a in kept), 3)
+        return True, (f"أُلغيت {removed} قسًطا لم تُحتسب ({removed_sum:.3f}) — "
+                      f"ويبقى {paid:.3f} اقتُطع فعًلا دينًا يُسوَّى.")
+    return True, f"أُلغي {removed} قسًطا قبل احتسابها ({removed_sum:.3f})"
 
 
 #: النوع ← كيف يُعكَس أثره. **وما ليس فيها لا يُعكَس تلقائًيا** — ولا
@@ -1818,6 +1977,9 @@ def _reverse_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
 _REVERSAL = {
     "REQLV": _reverse_leave, "leave": _reverse_leave,
     "ADMDED": _reverse_deduction,
+    # والقرض يُعكَس بالآلية نفسها: أقساُطه صفوُف خصم.
+    "advance": _reverse_deduction, "loan": _reverse_deduction,
+    "REQADV": _reverse_deduction,
 }
 
 
@@ -1878,7 +2040,12 @@ def _apply_effects(db: Session, req: models.Request,
                "REQEOS": _open_exit_case,
                # قرار الخصم يكتب مدخَل الرواتب. وكان الجدول يُقرأ ولا
                # يُكتب، فالمجموع صفٌر دائًما مهما اعتُمد من قرارات.
-               "ADMDED": _apply_deduction}.get(req.request_type_code)
+               "ADMDED": _apply_deduction,
+               # والقرض يبني جدوَل سداده. وكان النموذج يجمع المبلغ
+               # والأشهر وشهر البدء ولا يقرؤها أحد: يُعتمد القرض ولا
+               # يُستقطَع منه شيء.
+               "advance": _apply_loan, "loan": _apply_loan,
+               "REQADV": _apply_loan}.get(req.request_type_code)
     if _effect is None and req.request_type_code in FIELD_EFFECTS:
         _effect = apply_field_effect
     if _effect:
