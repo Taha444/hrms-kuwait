@@ -76,6 +76,29 @@ def renew_permit(permit_id: int, expiry_date: date, request: Request,
     if not p:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
     assert_same_company(user, p.company_id, db=db)
+
+    # **طريقان إلى الحقيقة نفسها، وأحدهما بلا ضمانات.**
+    #
+    # ``/api/pro/deprecation-notice`` يعلن أن «الاستخدام الوحيد المُعتمد
+    # للإقامة/الإذن هو Residency Renewals» — ولم يكن شيٌء يفرض ذلك. وهذا
+    # المسار يكتب ``Permit.expiry_date`` مباشرًة: لا عقَد حكومي، ولا
+    # توقيَع طرفين، ولا فحَص اكتمال، ولا قراءَة مستنٍد نهائي. فمندوٌب له
+    # معاملٌة مفتوحة يستطيع تجديد الإقامة من هنا، **فتبقى المعاملة مفتوحًة
+    # على بياناٍت بطلت** — والمعاملة وإقامتُها يتناقضان.
+    #
+    # والشرُط من ``_open_case_for_permit`` نفسها: المصدُر الواحد الذي
+    # يحتكم إليه حارُس الإنشاء وقائمُة المستحقّين. ولا يُسَدّ الباب حيث لا
+    # معاملة — فتصحيُح إقامٍة لا ملّف لها يبقى ممكًنا.
+    from .renewals import _open_case_for_permit
+
+    case = _open_case_for_permit(db, p.id)
+    if case is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"لهذه الإقامة معاملُة تجديٍد مفتوحة (#{case.id}) — "
+                    f"أكمِلها من شاشة تجديد الإقامات. التجديُد المباشر من "
+                    f"هنا يترك المعاملة مفتوحًة على بياناٍت بطلت."))
+
     old_expiry = p.expiry_date
     p.expiry_date = expiry_date
     if number:
