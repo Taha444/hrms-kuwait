@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
 
@@ -22,6 +23,8 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+
+logger = logging.getLogger(__name__)
 
 from .storage import key_exists
 from .permissions import ROLE_LABEL_AR
@@ -167,8 +170,15 @@ class ArabicPDF:
                         self.c.drawImage(sig_path, cx - dw / 2,
                                          line_y - dh - 0.1 * cm,
                                          width=dw, height=dh, mask="auto")
-                except Exception:
-                    pass  # فشل قراءة الصورة — يُترك المكان فارغًا كما لو لم يوجد توقيع
+                except Exception as exc:  # noqa: BLE001
+                    # يُترك المكان فارًغا كما لو لم يوجد توقيع — **ولا يُسكَت
+                    # عنه في السجل**. فالموظف يذهب إلى الشؤون في الحالين
+                    # (قرار المالك: رسالٌة واحدة تسع الحالين)، لكنّ فشًلا
+                    # عاًمّا في القراءة — مجلُّد رفٍع تغيّر، أو صيغٌة لا
+                    # تُقرأ — يطبع **كلَّ** الأوراق فارغًة ولا يعلم به
+                    # مشغٌّل. والمشغّل هو من يستطيع إصلاحه.
+                    logger.warning("تعذّر رسم صورة التوقيع %s: %s",
+                                   sig_path, exc)
 
         self.y = line_y - sig_h - 0.4 * cm
 

@@ -54,15 +54,28 @@ engine = create_engine(
 # مستخدًما، صار غياب السياسات عيًبا حقيقًيا — ويسقط الاختبار عندئذٍ، وهو
 # الوقت الصحيح للمراجعة.
 #
+import logging as _logging
+
 from sqlalchemy import event as _event
 
 
-@_event.listens_for(engine, "connect")
-def _fk(dbapi_connection, _record):
-    try:
-        dbapi_connection.execute("PRAGMA foreign_keys=ON")
-    except Exception:
-        pass
+#: ``PRAGMA`` خاصٌّ بـSQLite. وكان المستمُع يُنفّذه على أيّ قاعدة ثم
+#: يبتلع الخطأ — فعلى Postgres في الإنتاج **يُرفَع استثناٌء ويُبتلع عند
+#: كل اتصال**، وعلى SQLite فشلٌه صامٌت يعني أن المفاتيح الأجنبية
+#: **مطفأة** فتُقبَل صفوٌف يتيمة، وهو عين ما وُضعت لتمنعه.
+#:
+#: فيُسأل عن المحرّك أوًّلا، ويُسجَّل الفشل حيث يعني شيًئا.
+_IS_SQLITE = settings.database_url.startswith("sqlite")
+
+if _IS_SQLITE:
+    @_event.listens_for(engine, "connect")
+    def _fk(dbapi_connection, _record):
+        try:
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+        except Exception as exc:  # noqa: BLE001
+            _logging.getLogger(__name__).warning(
+                "تعذّر تشغيل المفاتيح الأجنبية في SQLite — "
+                "قد تُقبَل صفوٌف يتيمة: %s", exc)
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
