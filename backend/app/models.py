@@ -899,6 +899,34 @@ class Deduction(Base):
         ForeignKey("requests.id"), index=True)
 
 
+class Allowance(Base):
+    """بدٌل أو ميزة تُضاف إلى أجر الشهر.
+
+    **ولماذا جدوٌل مستقل لا خصٌم بإشارة سالبة**: الحيلة تُغري لأنها توفّر
+    جدوًلا، وتُفسِد كل تقرير خصومات بعدها — مجموُع الخصم يصير ناقًصا بقدر
+    البدلات، ومن يراجع «كم اقتُطع من فلان» يقرأ رقًما لا معًنى له. والأثر
+    الموجب والسالب معنيان مختلفان لا إشارتان لمعًنى واحد.
+
+    و``effective_to`` **يحدّ المتكرّر**: بدٌل متكرّر بلا نهاية التزاٌم بلا
+    مخرج — يبقى يُصرَف بعد زوال سببه ولا أحد يذكر لماذا بدأ.
+    """
+    __tablename__ = "allowances"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id"), index=True)
+    allowance_type: Mapped[str] = mapped_column(String(40), default="other")
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    effective_from: Mapped[date] = mapped_column(Date)
+    #: ``None`` في المتكرّر يعني «حتى يُوقَف»، وفي غير المتكرّر لا معنى له.
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str | None] = mapped_column(String(250))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class PayrollRun(Base):
     __tablename__ = "payroll_runs"
 

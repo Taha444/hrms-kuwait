@@ -130,7 +130,31 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
         partial = employed_days < days_in_month
         earned_basic = (round(daily * employed_days, 3) if partial else basic)
 
-        gross = round(earned_basic + overtime_pay, 3)
+        # **والبدلات مكوٌَّن ثالث في الأجر.**
+        #
+        # كان ``gross`` أساسًيا وإضافًيا فقط، فبدٌل يُعتمد بمرحلتين لا
+        # يُصرَف منه فلس. والصفوف تُقرأ بسريانها لا بتاريخ إنشائها: بدٌل
+        # لمرٍّة واحدة يُصرَف في شهره، والمتكرّر في كل شهر يقع داخل مدّته.
+        #
+        # **ولا يمسّ هذا أساًسا قانونًيا**: نهايُة الخدمة تُحسب من
+        # ``basic_salary`` وأجُر الإضافي من ``basic/divisor`` — كلاهما على
+        # الأساسي لا على الإجمالي. وهل ينبغي أن تدخلهما البدلات سؤاٌل
+        # قانوني قائٌم قبل هذا العمل ولم يُحدِثه.
+        allowance_rows = db.scalars(select(models.Allowance).where(
+            models.Allowance.employee_id == e.id,
+            models.Allowance.effective_from < nxt.date(),
+            or_(models.Allowance.effective_to.is_(None),
+                  models.Allowance.effective_to >= first.date()),
+        )).all()
+        allowances = 0.0
+        for a in allowance_rows:
+            if a.is_recurring:
+                allowances += float(a.amount or 0)
+            elif first.date() <= a.effective_from < nxt.date():
+                allowances += float(a.amount or 0)
+        allowances = round(allowances, 3)
+
+        gross = round(earned_basic + overtime_pay + allowances, 3)
         total_ded = round(absence_deduction + other_deductions, 3)
         net = round(gross - total_ded, 3)
 
@@ -154,7 +178,8 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             # QA-03 — أيام عمل بلا سجل حضور: تُعرَض لـHR ولا تُخصم. وجودها بعدد
             # كبير يعني خلًلا في التسجيل يستحق مراجعة، لا خصًما من الراتب.
             "unrecorded_days": unrecorded_days,
-            "overtime_pay": overtime_pay, "absence_deduction": absence_deduction,
+            "overtime_pay": overtime_pay, "allowances": allowances,
+            "absence_deduction": absence_deduction,
             "other_deductions": round(other_deductions, 3), "gross": gross,
             "total_deductions": total_ded, "net": net,
         })

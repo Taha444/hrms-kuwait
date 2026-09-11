@@ -389,8 +389,17 @@ DEFAULT_REQUEST_TYPES = [
            produces_document=True, visible_to_employee=True),
     _simple("REQEXP", "طلب استرداد مصروفات", CAT_FINANCIAL,
            ["branch_supervisor", "accountant"], requires_physical_signature=False, visible_to_employee=True),
+    # **قرار المالك — يُفتَح للموظف.**
+    #
+    # نصُّ النوع الرسمي بصوته: «أتقدم بطلب بدل أو ميزة وفق البيانات
+    # الموضحة»، وسلسلتُه تبدأ من مسؤوله المباشر. وكان محجوًبا عن كتالوجه —
+    # فنموٌذج بصوت صاحبه لا يفتحه صاحبه. وهو العطل نفسه الذي ظهر في
+    # ``REQWARN`` و``REQVIO``.
+    #
+    # والحجب كان في الكتالوج وحده: الموظف يحمل ``submit_request``، فالمسار
+    # يقبله لنفسه. أي أن الحقّ كان قائًما ولا طريق إليه.
     _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
-           ["branch_supervisor", "company_manager"], requires_physical_signature=False),
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
            ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-032"),
@@ -1845,6 +1854,81 @@ def _apply_loan(db: Session, req: models.Request) -> tuple[bool, str]:
                   f"من {first} إلى {last}")
 
 
+def _apply_allowance(db: Session, req: models.Request) -> tuple[bool, str]:
+    """أثر البدل: يُنشئ صفَّه ليدخل أجر الشهر.
+
+    **العطل المقيس**: النموذج يجمع ``allowance_type`` و``amount`` و
+    ``effective_from`` و``is_recurring`` — ولا يقرؤها أحد. والرواتب لا
+    تعرف البدلات أصًلا: ``gross = earned_basic + overtime_pay``. فيُعتمد
+    البدل بمرحلتين ويُغلَق «مكتمًلا»، ولا يُصرَف منه فلس.
+
+    **ولا يمسّ هذا أساًسا قانونًيا**: نهايُة الخدمة تُحسب من
+    ``basic_salary`` صراحًة، وأجُر الإضافي من ``basic / divisor``. فالبدل
+    يدخل أجر الشهر ولا يدخل الأساسين. وهل **ينبغي** أن يدخلهما سؤاٌل
+    قانوني قائٌم قبل هذا العمل ولم يُحدِثه — ويبقى لصاحب القرار.
+    """
+    p = req.payload_json or {}
+    try:
+        amount = round(float(p.get("amount") or 0), 3)
+    except (TypeError, ValueError):
+        return False, f"مبلغ غير صالح: {p.get('amount')!r}"
+    if amount <= 0:
+        return False, "مبلغ البدل يجب أن يكون أكبر من صفر"
+
+    start = _as_date(p.get("effective_from"))
+    if not start:
+        return False, f"تاريخ نفاذ غير صالح: {p.get('effective_from')!r}"
+    end = _as_date(p.get("effective_to"))
+    recurring = bool(p.get("is_recurring"))
+    if end and end < start:
+        return False, f"تاريخ الانتهاء {end} قبل تاريخ النفاذ {start}"
+
+    existing = db.scalar(select(models.Allowance).where(
+        models.Allowance.request_id == req.id))
+    if existing:
+        return True, f"البدل مسجٌَّل سابًقا لهذا القرار (#{existing.id})"
+
+    db.add(models.Allowance(
+        company_id=req.company_id, employee_id=req.employee_id,
+        request_id=req.id,
+        allowance_type=(p.get("allowance_type") or "other").strip()[:40],
+        amount=amount, effective_from=start, effective_to=end,
+        is_recurring=recurring,
+        reason=str(p.get("reason") or "").strip()[:250] or None))
+    db.flush()
+    if recurring:
+        until = f"حتى {end}" if end else "حتى يُوقَف"
+        return True, f"بدٌل متكرّر {amount:.3f} من {start} {until}"
+    return True, f"بدٌل لمرٍّة واحدة {amount:.3f} في {start:%Y-%m}"
+
+
+def _reverse_allowance(db: Session, req: models.Request) -> tuple[bool, str]:
+    """يعكس بدًلا لم يدخل مسيًَّرا بعد.
+
+    **وما صُرف فعًلا لا يُردّ بحذف صفّ**: إن كان شهٌر من أشهر سريانه قد
+    اكتمل مسيّره فالمال دخل الأجر، وسحبُه استرداٌد لا محُو سجل. فيُردّ
+    الإلغاء ويُقال ذلك.
+    """
+    row = db.scalar(select(models.Allowance).where(
+        models.Allowance.request_id == req.id))
+    if not row:
+        return True, "لا بدَل مسجًَّلا لهذا القرار — لا شيء يُعكَس"
+
+    month = row.effective_from.strftime("%Y-%m")
+    consumed = db.scalar(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == req.company_id,
+        models.PayrollRun.period >= month,
+        models.PayrollRun.status.in_(("approved", "finalized", "locked"))))
+    if consumed:
+        return False, (f"دخل البدُل مسيَّر {consumed.period} («{consumed.status}») — "
+                       f"وسحبُه استرداٌد لا إلغاُء قرار.")
+
+    amount = float(row.amount or 0)
+    db.delete(row)
+    db.flush()
+    return True, f"أُلغي بدٌل {amount:.3f} قبل أن يدخل أجًرا"
+
+
 def _notify_loan_agreement_ready(db: Session, req: models.Request) -> None:
     """يُبلَّغ الموظف أن اتفاقيته جاهزة — **رسالًة واحدة تسع الحالين**.
 
@@ -1980,6 +2064,7 @@ _REVERSAL = {
     # والقرض يُعكَس بالآلية نفسها: أقساُطه صفوُف خصم.
     "advance": _reverse_deduction, "loan": _reverse_deduction,
     "REQADV": _reverse_deduction,
+    "REQALLOW": _reverse_allowance,
 }
 
 
@@ -2045,7 +2130,10 @@ def _apply_effects(db: Session, req: models.Request,
                # والأشهر وشهر البدء ولا يقرؤها أحد: يُعتمد القرض ولا
                # يُستقطَع منه شيء.
                "advance": _apply_loan, "loan": _apply_loan,
-               "REQADV": _apply_loan}.get(req.request_type_code)
+               "REQADV": _apply_loan,
+               # والبدل الوجه الموجب: كان يُعتمد ولا يُصرَف منه فلس،
+               # والرواتب لا تعرف البدلات أصًلا.
+               "REQALLOW": _apply_allowance}.get(req.request_type_code)
     if _effect is None and req.request_type_code in FIELD_EFFECTS:
         _effect = apply_field_effect
     if _effect:
