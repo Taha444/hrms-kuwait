@@ -630,6 +630,42 @@ SCHEMAS.update({
         "attachments": {"required": [], "optional": ["supporting_doc"]},
         "meta": {"legacy_aliases": ["violation_objection"], "strict_validation": False},
     },
+    # ------------------------- إصدار إنذار -------------------------
+    #
+    # P11-38 — **إنذاٌر بلا مخطّط نموذج**. كان يُنشأ بحمولة غير معرَّفة
+    # ويُولَّد منها مستنٌد رسمي، والسجلّ يشترط لـ``OD-006`` «قرار إنذار/
+    # مخالفة»: ``incident_date`` · ``incident_summary`` ·
+    # ``policy_reference``. فإنذاٌر بلا تاريخ واقعة ولا مرجع سياسة ورقٌة
+    # لا تصلح سنًدا أمام جهة.
+    #
+    # والحقول من السجلّ لا من اجتهاد، ونصّ النوع يزيد «مستوى الإنذار
+    # وتاريخ سريانه».
+    #
+    # و**«المدة المحددة» سياسٌة لا تُختلَق**: النصّ يعطي الموظف حق الرد
+    # «خلال المدة المحددة» ولا رقَم لها في النظام. فيذكرها مُصدِر الإنذار
+    # صراحًة، ولا يخترع النظام عدًدا يصير بمرور الوقت قاعدًة لم يقرّرها
+    # أحد.
+    "ADMWARN": {
+        "fields": [
+            _field("incident_date", "تاريخ الواقعة", "date", required=True),
+            _field("incident_summary", "وصف الواقعة", "textarea", required=True,
+                   max_length=1000),
+            _field("policy_reference", "مرجع السياسة أو اللائحة", "text",
+                   required=True, max_length=200),
+            _field("warning_level", "مستوى الإنذار", "select", required=True,
+                   options=[
+                       {"value": "verbal_documented", "label": "تنبيه شفهي موثَّق"},
+                       {"value": "first", "label": "إنذار أول"},
+                       {"value": "second", "label": "إنذار ثانٍ"},
+                       {"value": "final", "label": "إنذار نهائي"},
+                   ]),
+            _field("effective_date", "تاريخ السريان", "date", required=True),
+            _field("response_deadline", "آخر موعد لردّ الموظف", "date",
+                   required=True),
+        ],
+        "attachments": {"required": [], "optional": ["evidence"]},
+        "meta": {"legacy_aliases": ["warning"]},
+    },
     "REQWARN": {  # إقرار أو رد على إنذار — شؤون الموظفين فقط
         "fields": [
             _field("warning_ref", "رقم الإنذار أو تاريخه", "text", required=True,
@@ -781,6 +817,9 @@ _VERIFIED_ENFORCE_REQUIRED = (
     # (addressed_to بدل purpose، subtype بدل loan_type، description بدل reason)
     # فأُعفيت من التحقق. بعد أن صارت كل الأنواع تُبنى من الـschema لم يبقَ استثناء.
     "REQLV", "REQADV", "REQEXP", "REQBANK",
+    # P11-38 — الإنذار. وحقٌل يُعلَن إلزامًيا ولا يُفرَض إعلاٌن لا يقرؤه
+    # أحد: مخطّطه جديٌد والواجهة تُبنى منه، فقيوده تصف ما تُرسله فعًلا.
+    "ADMWARN",
 )
 
 for _code in _VERIFIED_ENFORCE_REQUIRED:

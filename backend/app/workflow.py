@@ -383,11 +383,20 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQGRV", "شكوى أو تظلم", CAT_GRIEVANCE,
            ["hr"], requires_physical_signature=False, is_confidential=True, visible_to_employee=True,
            default_template_code="HRMS-PR-041"),
+    # P11-38 — **حٌق مكتوٌب في النصّ وباٌب مغلٌق دونه.**
+    #
+    # حقول هذين النوعين مكتوبٌة بصوت الموظف: «الموقف من الإنذار» بخياراته
+    # «أقر بالاطلاع» و«أعترض على مضمونه»، ثم «ردّي على الإنذار». وكان
+    # ``visible_to_employee=False`` يمنعهما من كتالوجه — فنموٌذج بصوت
+    # صاحبه لا يفتحه صاحبه. والنصّ الرسمي يعطيه «حق الرد أو الاعتراض خلال
+    # المدة المحددة».
     _simple("REQVIO", "اعتراض على مخالفة", CAT_GRIEVANCE,
            ["hr", "company_manager"], requires_physical_signature=False,
+           visible_to_employee=True,
            default_template_code="HRMS-PR-013"),
     _simple("REQWARN", "إقرار أو رد على إنذار", CAT_GRIEVANCE,
            ["hr"], requires_physical_signature=False,
+           visible_to_employee=True,
            default_template_code="HRMS-PR-014"),
 
     # طلبات عامة
@@ -1170,6 +1179,45 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
     )
 
 
+#: نوٌع تأديبي ← قالب إخطار المعنيّ به، ومفاتيح نصّه من الحمولة.
+#:
+#: P11-38 — كتالوج الإشعارات فيه ثلاثة قوالب كُتبت لهذا بعينه:
+#: ``NTF-071`` «صدر لك إنذار وظيفي بخصوص {{violation}}» · ``NTF-072``
+#: «سُجِّلت عليك مخالفة وظيفية بتاريخ {{date}}» · ``NTF-073`` «صدر خصم
+#: بمبلغ {{amount}} — السبب: {{reason}}». **ولم يكن في النظام سطٌر يرسل
+#: واحًدا منها.** فيصدر الإنذار ويُطبَع، ويصل الموظف إخطاٌر واحد: «اكتمل
+#: طلبك».
+#:
+#: وقالٌب في الكتالوج لا يُرسَل وعٌد مكتوب: من يقرأ الكتالوج يظنّ الموظف
+#: مبلًَّغا. والنصّ الرسمي للإنذار يعطيه «حق الرد أو الاعتراض خلال المدة
+#: المحددة» — وحٌق لا يُعلَم به لا يُستعمَل.
+_DISCIPLINARY_NOTICE: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
+    "ADMWARN": ("NTF-071", (("violation", "incident_summary"),)),
+    "ADMVIO": ("NTF-072", (("date", "incident_date"), ("violation", "incident_summary"))),
+    "ADMDED": ("NTF-073", (("amount", "amount"), ("reason", "reason"))),
+}
+
+
+def _notify_disciplinary_subject(db: Session, req: models.Request,
+                                 rt: models.RequestType | None) -> bool:
+    """يُبلّغ من صدر بحقّه الإجراء — ويعيد True إن كان النوع تأديبًيا.
+
+    والقيمة المعادة تمنع إرسال «اكتمل طلبك» فوقه: رسالتان تصفان حدًثا
+    واحًدا بوجهين متناقضين أسوأ من واحدة.
+    """
+    spec = _DISCIPLINARY_NOTICE.get(req.request_type_code)
+    if not spec:
+        return False
+    code, keys = spec
+    payload = req.payload_json or {}
+    context = {key: str(payload.get(src) or "—") for key, src in keys}
+    _notify_employee_from_template(
+        db, req, code=code, context=context, severity="warning",
+        dedup_key=f"disciplinary:{req.id}",
+    )
+    return True
+
+
 def _notify_employee_from_template(db: Session, req: models.Request, code: str,
                                    context: dict | None = None, **kwargs) -> None:
     """يُشعر العامل نفسه (خدمة ذاتية) عبر قالب مسمّى من الكتالوج — إن كان له حساب."""
@@ -1782,10 +1830,15 @@ def _finalize(db: Session, req: models.Request) -> None:
         correlation_id=f"req:{req.id}",
         after_json={"status": "completed", "closed_at": req.closed_at.isoformat()},
     ))
-    _notify_employee_from_template(
-        db, req, code="NTF-037", context={"request_type": rt.name if rt else req.request_type_code},
-        dedup_key=f"req_done:{req.id}",
-    )
+    # P11-38 — والمعنيّ بالإجراء التأديبي يُبلَّغ **به**، لا بعبارة «اكتمل
+    # طلبك». فالإنذار ليس طلًبا تقدّم به ولا اكتمل له شيء؛ ورسالٌة تصف
+    # الحدث بغير وجهه تُقرأ خبًرا سارًّا عن عقوبة.
+    if not _notify_disciplinary_subject(db, req, rt):
+        _notify_employee_from_template(
+            db, req, code="NTF-037",
+            context={"request_type": rt.name if rt else req.request_type_code},
+            dedup_key=f"req_done:{req.id}",
+        )
     # V2.2 §20 — إشعار "جاهز للطباعة" للمسؤول عن طباعة المستندات (HR/الأرشيف)
     # عند وجود مستند رسمي مُوَلَّد ينتظر الطباعة والحفظ في الملف الورقي.
     if rt and getattr(rt, "produces_document", False):
