@@ -9,6 +9,10 @@ export default function Tasks() {
   const { t } = useI18n();
   const { can } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
+  // **سقٌف يُخفي بلا أن يقول يُضلِّل.** الخادُم يحدّ الصندوق (وهو ينمو
+  // بصّف لكل إشعاٍر يومي) ويردّ العدَد الكّلي في ترويسة X-Total-Count.
+  // فمن له أكثُر من السقف كان يرى السقَف ولا يُقال له أن بعده بقيّة.
+  const [total, setTotal] = useState(0);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [status, setStatus] = useState("open");
   const [category, setCategory] = useState("");
@@ -22,7 +26,11 @@ export default function Tasks() {
     setState("loading");
     api.get("/tasks/my", { params: { status, category: category || undefined,
                                      kind: kind || undefined } })
-      .then((r) => { setTasks(r.data); setState("ok"); })
+      .then((r) => {
+        setTasks(r.data);
+        setTotal(Number(r.headers?.["x-total-count"] ?? r.data.length));
+        setState("ok");
+      })
       .catch(() => setState("error"));
   };
   useEffect(() => { load(); }, [status, category, kind]);
@@ -87,6 +95,12 @@ export default function Tasks() {
         : state === "error" ? <ErrorRetry onRetry={load} />
         : !tasks.length ? <EmptyState icon="tasks" />
         : <div className="table-wrap">
+        {total > tasks.length && (
+          <div className="ok" style={{ marginBottom: ".5rem" }}>
+            {t("tasks_partial").replace("{shown}", String(tasks.length))
+                               .replace("{total}", String(total))}
+          </div>
+        )}
         <table>
           <thead><tr><th>{t("col_type")}</th><th>{t("col_title")}</th><th>{t("col_detail")}</th><th>{t("col_severity")}</th><th></th></tr></thead>
           <tbody>

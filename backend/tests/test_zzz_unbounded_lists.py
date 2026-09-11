@@ -179,3 +179,49 @@ def test_the_ceiling_cannot_be_raised_without_bound(client):
     for bad in ("limit=0", "limit=-5", "limit=999999", "offset=-1"):
         r = client.get(f"/api/tasks/my?{bad}", headers=hdr)
         assert r.status_code == 200, (bad, r.text[:200])
+
+
+# ---------------------------------------------------------------------------
+# والسقف يُقال، ويُقرأ
+# ---------------------------------------------------------------------------
+
+def test_the_total_header_is_exposed_to_the_browser():
+    """**وترويسٌة لا تُكشَف لا تُقرأ.**
+
+    ``allow_headers`` تخصّ ما يُرسله المتصفّح، و``expose_headers`` ما
+    يُسمح له بقراءته من الجواب. وبدونها تصل ``X-Total-Count`` إلى
+    المتصفّح **ويحجُبها هو عن الشيفرة** — فالسقُف يُخفي ولا يقول، والشاشُة
+    تعرض مئتين وعندها ألف.
+
+    وهي حالٌة **تعمل في الاختبار وتصمت في الإنتاج**: عميُل الاختبار لا
+    أصَل متقاطع له فيرى كلَّ الترويسات. فلا يُمسَك إال بقراءة الإعداد.
+    """
+    import app.main as M
+
+    for mw in M.app.user_middleware:
+        if "CORS" in str(mw.cls):
+            exposed = mw.kwargs.get("expose_headers") or []
+            assert "X-Total-Count" in exposed, exposed
+            return
+    raise AssertionError("لا وسيَط CORS — يُعاد النظر في هذا الحارس")
+
+
+def test_the_screen_says_how_many_are_hidden():
+    """**والشاشُة تقول كم بقي** — لا تعرض السقَف كأنه الكلّ."""
+    import pathlib
+    import re
+
+    page = (pathlib.Path(__file__).resolve().parents[2]
+            / "frontend" / "src" / "pages" / "Tasks.tsx")
+    if not page.exists():
+        import pytest
+        pytest.skip("لا واجهَة في هذه الشجرة")
+
+    src = page.read_text(encoding="utf-8")
+    assert "x-total-count" in src.lower(), "الشاشُة لا تقرأ العدد الكّلي"
+    assert "tasks_partial" in src, "لا تقول للمستخدم أن بعده بقيّة"
+
+    # والنصُّ من طبقة الترجمة لا مكتوًبا بالي;د — فزُّر اللغة يعمل عليه.
+    i18n = page.parents[1] / "i18n.tsx"
+    body = i18n.read_text(encoding="utf-8")
+    assert re.search(r"tasks_partial:\s*\{\s*ar:", body), "النصُّ خارج الترجمة"
