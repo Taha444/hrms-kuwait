@@ -373,6 +373,10 @@ STAGE_TASK_PREFIX = {
     R.AWAITING_SIGNATURE: "renewal_sign:",
     R.CONTRACTS_SIGNED: "renewal_signed:",
     R.AWAITING_CIVIL_CARD: "renewal_card:",
+    # **وبصمٌة ناقصٌة تُغلق ما أُرسل للتوّ.** ``_close_superseded_stage_tasks``
+    # تُبقي بصمَة المرحلة الحالية وتُغلق ما عداها، فمرحلٌة بلا بصمٍة هنا
+    # تُغلَق مهمُّتها في النداء نفسه الذي أنشأها.
+    R.PENDING_HR_VERIFY: "renewal_verify:",
     R.COMPLETED: "renewal_done:",
 }
 
@@ -496,6 +500,21 @@ def _notify_stage(db, rn):
                 db, code="NTF-017", assignee_user_id=emp_user.id, company_id=rn.company_id,
                 related_entity_type="renewal", related_entity_id=rn.id,
                 dedup_key=f"renewal_card:{rn.id}")
+    elif rn.status == R.PENDING_HR_VERIFY:
+        # **بوّابٌة تنتظر فاعًلا لا يعلم أنها تنتظره.**
+        #
+        # هذه آخُر بوّابة قبل الإغلاق: الشؤون تطابق رقم الإقامة الجديد
+        # وتاريخه والرسوم. وكلا الانتقالين إليها **ينادي**
+        # ``_notify_stage`` — ولم يكن لها فرٌع هنا، فيقع النداء ولا يُرسَل
+        # شيء. والنظاُم يعرف الفاعل: ``STAGE_ACTOR`` يقول «شؤون
+        # الموظفين». فتبقى المعاملة ساكنًة حتى يمرّ عليها أحٌد بالمصادفة.
+        for u in users_by_role(db, rn.company_id, ["hr"]):
+            notify_from_template(
+                db, code="NTF-033", assignee_user_id=u.id, company_id=rn.company_id,
+                context={"request_type": "تحقّق بيانات تجديد الإقامة",
+                         "employee_name": name},
+                related_entity_type="renewal", related_entity_id=rn.id,
+                dedup_key=f"renewal_verify:{rn.id}:u{u.id}")
     elif rn.status == R.COMPLETED:
         notify_roles(db, rn.company_id, ["delegate", "hr"], type="request_update",
                      title=f"اكتملت معاملة تجديد الإقامة: {name}",
