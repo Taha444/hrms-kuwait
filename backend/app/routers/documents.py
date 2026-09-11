@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit_context import actor_user_id, original_actor_user_id
@@ -272,15 +272,19 @@ async def upload_document(
     db.flush()
     _sync_permit_from_document(db, doc)
 
-    # مهمة متسلسلة: رفع جواز جديد → إغلاق إشعار "الجواز قارب على الانتهاء" + مهمة نقل معلومات
+    # مهمة متسلسلة: رفع جواز جديد → مهمة نقل معلومات الجواز إلى المندوبين.
+    #
+    # **وهنا كان تحديٌث بلا قيٍد على مستنٍد ولا على شركة**: يُغلق كلَّ مهمة
+    # ``doc_expiring`` مفتوحة **في قاعدة البيانات بأسرها**. فرفُع جواٍز
+    # لموظٍف واحد كان يُسكِت تنبيهات انتهاء المستندات لكل موظٍف في كل
+    # شركة — والمحرّك الذي يمنع سقوط الإقامات يخرس. وهو خرٌق لعزل
+    # الشركات أيًضا.
+    #
+    # ولم يكن يضيف شيًئا: إغلاُق مهامّ النسخة المستبدَلة يقع أعلاه لكل
+    # نسخٍة على حدة بـ``_close_expiry_tasks_for(db, d.id)`` — وهي الدالُة
+    # المقيَّدة بمستندها، تقع اثنَي عشر سطًرا فوق ما كان هنا. **قاعدٌة في
+    # موضعين: أحدهما صحيٌح والآخر يعمل.**
     if document_type_code == "passport" and entity_type == "employee":
-        db.execute(
-            update(models.Task)
-            .where(models.Task.related_entity_type == "document",
-                   models.Task.type == "doc_expiring",
-                   models.Task.status.in_(["open", "in_progress"]))
-            .values(status="done", completed_at=datetime.now())
-        )
         emp = db.get(models.Employee, entity_id)
         notify_roles(
             db, company_id, ["delegate"],

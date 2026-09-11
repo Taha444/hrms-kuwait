@@ -18,8 +18,14 @@
 - **الرفض أوضح من الصمت**: قيمة غير صالحة أو حقل مفقود تُفشل التطبيق
   (apply_failed) بدل أن تكتب None فوق بيانات صحيحة.
 
-**قيد معلوم**: ``effective_date`` المستقبلي يُطبَّق فور الاعتماد ويُدوَّن
-تاريخه في السجل — لا يوجد جدولة مؤجَّلة. مسجَّل في FOUND_EXTRA.md.
+- **ولا يقع أثٌر قبل تاريخ نفاذه**: ``effective_date`` في المستقبل يؤجّل
+  الأثر — والطلب يكتمل — ويلتقطه المسُح اليومي حين يحلّ اليوم
+  (``due_deferred_effects`` و``apply_due_effects``). وكان يُطبَّق فوًرا
+  ويُدوَّن تاريخ النفاذ في ملاحظة، أي يخالف القاعدة ثم يسجّلها.
+
+- **والتاريخ في مصدٍر واحد**: ما يُنشَر إلى ``Document.expiry_date`` —
+  الذي يقرؤه محرّك التنبيهات — يُنشَر معه، فلا تُظهر شاشٌة تاريًخا جديًدا
+  وينادي تنبيٌه على قديم. انظر ``DOCUMENT_EXPIRY_EFFECTS``.
 """
 from __future__ import annotations
 
@@ -109,6 +115,67 @@ FIELD_EFFECTS: dict[str, tuple[str, dict[str, tuple[str, Callable[[Any], Any]]]]
     }),
 }
 
+#: **مصدران لتاريٍخ واحد، والتجديد يحدّث الذي لا يقرؤه المحرّك.**
+#:
+#: تاريُخ انتهاء الجواز مخزٌَّن في موضعين: ``Employee.passport_expiry``
+#: (تقرؤه شاشُة الملف) و``Document.expiry_date`` للمستند الجاري (يقرؤه
+#: محرُّك التنبيهات وحده — ``notifications`` يستعلم ``Document`` لا
+#: ``Employee``). فـ``REQPASS`` كان يكتب عموَد الموظف **فقط**: الشاشة
+#: تُظهر التاريخ الجديد، والتنبيه يظلّ ينادي على التاريخ القديم.
+#:
+#: و``REQCID`` أسوأ: **لا عموَد للبطاقة المدنية في الموظف أصًلا** —
+#: تاريخها في المستند وحده. فكان النموذج يسأل «تاريخ الانتهاء الجديد»
+#: ولا أحَد يكتبه في أيّ موضع. حقٌل يُدخَله المستخدم ويُلقى.
+#:
+#: والقاعدُة من السكيل بنصّها: «حدّث **المصدر الواحد** الذي تقرأ منه
+#: الشاشات… ولا يبقى جزٌء من النظام شايف التاريخ القديم وجزٌء آخر شايف
+#: الجديد».
+DOCUMENT_EXPIRY_EFFECTS: dict[str, tuple[str, str]] = {
+    "REQPASS": ("new_expiry", "passport"),
+    "REQCID": ("new_expiry", "civil_id"),
+}
+
+
+def _propagate_document_expiry(db: Session, req: models.Request,
+                               emp: models.Employee,
+                               payload: dict) -> dict[str, dict[str, Any]]:
+    """ينشر تاريخ الانتهاء الجديد إلى المستند الذي يقرؤه محرّك التنبيهات.
+
+    ويُغلق تنبيه المستند القديم: المسُح اليومي **يتخطّى** أيَّ مستنٍد له
+    مهمٌة ``doc_expiring`` مفتوحة، فتنبيٌه قديٌم يبقى مفتوًحا بتاريٍخ بطل
+    **ويمنع أيَّ تنبيٍه مصّحح** — يقول المستند ينتهي في تاريٍخ مضى، ولا
+    سبيل لتصحيحه. والإغلاق يُستدعى من دالته المقيَّدة بمستندها، لا
+    يُكتب ثانيًة.
+    """
+    spec = DOCUMENT_EXPIRY_EFFECTS.get(req.request_type_code)
+    if not spec:
+        return {}
+    field, doc_type = spec
+    new = _as_date(payload.get(field))
+    if new is None:
+        return {}
+
+    doc = db.scalar(select(models.Document).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == emp.id,
+        models.Document.document_type_code == doc_type,
+        models.Document.is_current == True))  # noqa: E712
+    if doc is None:
+        # لا مستنَد جاٍر من هذا النوع — لا يُخلَق مستٌند من طلب.
+        return {}
+    before = doc.expiry_date
+    if before == new:
+        return {}
+
+    doc.expiry_date = new
+    from .routers.documents import _close_expiry_tasks_for
+    _close_expiry_tasks_for(db, doc.id)
+    return {f"doc:{doc_type}.expiry_date": {
+        "before": before.isoformat() if isinstance(before, date) else before,
+        "after": new.isoformat(),
+    }}
+
+
 #: حقول لا يجوز أن تصير فارغة بأثر طلب — تفريغها يفقد بيانات لا تُستعاد.
 _REQUIRED_TARGETS = {"civil_id", "passport_number", "basic_salary", "job_title"}
 
@@ -183,6 +250,9 @@ def apply_field_effect(db: Session, req: models.Request) -> tuple[bool, str]:
             "before": before.isoformat() if isinstance(before, date) else before,
             "after": value.isoformat() if isinstance(value, date) else value,
         }
+
+    # **والنشُر قبل حكم «لا تغيير»**: تاريٌخ يتغيّر في المستند وحده تغيٌُّر.
+    changes.update(_propagate_document_expiry(db, req, emp, payload))
 
     if not changes:
         return True, f"{label}: القيم المطلوبة مطابقة للحالي — لا تغيير"
