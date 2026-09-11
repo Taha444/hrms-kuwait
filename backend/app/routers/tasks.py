@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user, require_perm
+from ..deps import get_current_user, require_perm, scope_company_id
 from ..notifications import daily_scan
 
 from ..gov_tasks import GOV_TASK_TYPES
@@ -224,12 +224,24 @@ def bulk_task_action(task_ids: list[int], action: str,
 def cleanup_orphan_tasks(user: models.User = Depends(require_perm("manage_tasks")),
                          db: Session = Depends(get_db)):
     """V2.2 §19 — تنظيف مهام يتيمة: المهام المفتوحة المرتبطة بطلب مغلق (نهائية).
-    يستخدمها HR لتصحيح حالات نادرة تسبق تفعيل _close_open_tasks."""
+    يستخدمها HR لتصحيح حالات نادرة تسبق تفعيل _close_open_tasks.
+
+    **والكنُس مقيٌَّد بشركة الكانس.** ``manage_tasks`` يحملها
+    ``company_manager`` و``delegate`` — وكلاهما مقيٌَّد بشركته — وكان
+    الاستعلام بلا قيد شركة، فمديُر الشركة الأولى يكنس مهامّ الشركة
+    الثانية. والفعُل صحيٌح في كل صّف على حدة (المهمة يتيمٌة فعًلا)، لكنّ
+    **الفاعل يتخطّى نطاقه** ويُقيَّد في التدقيق فاعًلا في بيانات لا يراها.
+    والنطاق من ``scope_company_id`` نفسها التي يحتكم إليها باقي النظام:
+    من هو فوق الشركات يكنس الكلّ، وغيره يكنس شركته.
+    """
     closed_statuses = {"completed", "rejected", "cancelled"}
+    cid = scope_company_id(user)
     q = select(models.Task).where(
         models.Task.status.in_(("open", "in_progress")),
         models.Task.related_entity_type == "request",
     )
+    if cid is not None:
+        q = q.where(models.Task.company_id == cid)
     fixed = 0
     now = datetime.now()
     for t in db.scalars(q).all():
