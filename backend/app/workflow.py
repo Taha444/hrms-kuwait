@@ -1744,6 +1744,83 @@ def _apply_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
     return True, f"سُجِّل خصٌم {amount:.3f} على مسيّر {month}"
 
 
+def _reverse_leave(db: Session, req: models.Request) -> tuple[bool, str]:
+    """يعكس أثر إجازة معتمَدة — ويردّ رصيدها إن كان خُصم.
+
+    **ولا يُعاد رصيُد يوٍم غاب فيه الموظف.** إجازٌة بدأت فعًلا ليست بيانًة
+    تُمحى: الرجل لم يكن على رأس العمل. فردُّ الرصيد عنها يمنحه أياًما
+    استهلكها — وهو خطٌأ في المال لا في السجلّ وحده.
+    """
+    from .clock import today as kuwait_today
+
+    leave = db.scalar(select(models.Leave).where(
+        models.Leave.request_id == req.id))
+    if not leave:
+        return True, "لا صفَّ إجازة لهذا الطلب — لا شيء يُعكَس"
+    if leave.status == "cancelled":
+        return True, "الإجازة معكوسٌة سابًقا"
+
+    if leave.start_date and leave.start_date <= kuwait_today():
+        return False, (f"بدأت الإجازة في {leave.start_date} — ولا يُعاد رصيُد "
+                       f"يوٍم غاب فيه الموظف. صحّحها بتسوية حضور أو بقرار "
+                       f"مستقل يوضّح ما جرى.")
+
+    emp = db.get(models.Employee, leave.employee_id)
+    if not emp:
+        return False, "الموظف غير موجود — لا يُردّ رصيٌد إلى ملٍّف غائب"
+
+    days = float(leave.days or 0)
+    deducts = (leave.leave_type or "") in LEAVE_TYPES_DEDUCTING_BALANCE
+    before = float(emp.annual_leave_balance or 0)
+    after = before + days if deducts else before
+    if deducts:
+        emp.annual_leave_balance = after
+
+    leave.status = "cancelled"
+    db.add(models.LeaveLedger(
+        company_id=req.company_id, employee_id=emp.id,
+        kind="reversal", days=days, balance_before=before, balance_after=after,
+        leave_type=leave.leave_type, request_id=req.id, leave_id=leave.id,
+        note=f"عكُس أثر إجازة بإلغاء الطلب #{req.id}",
+    ))
+    if deducts:
+        return True, f"رُدّ {days:g} يوم — الرصيد {before:g} ← {after:g}"
+    return True, f"أُلغيت إجازة {leave.leave_type} ({days:g} يوم) بلا رصيد يُردّ"
+
+
+def _reverse_deduction(db: Session, req: models.Request) -> tuple[bool, str]:
+    """يعكس خصًما لم يستهلكه مسيّر بعد.
+
+    **وما اقتُطع فعًلا لا يُردّ بحذف صفّ**: إن كان مسيّر شهره قد اكتمل
+    فالمال خرج، وردُّه تسويٌة مالية لا محُو سجل. فيُردّ الإلغاء ويُقال ذلك.
+    """
+    row = db.scalar(select(models.Deduction).where(
+        models.Deduction.request_id == req.id))
+    if not row:
+        return True, "لا خصَم مسجًَّلا لهذا القرار — لا شيء يُعكَس"
+
+    month = row.date.strftime("%Y-%m") if row.date else None
+    run = db.scalar(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == req.company_id,
+        models.PayrollRun.period == month)) if month else None
+    if run and run.status in ("approved", "finalized", "locked"):
+        return False, (f"مسيّر {month} في حالة «{run.status}» — الخصم اقتُطع "
+                       f"فعًلا، وردُّه تسويٌة مالية لا إلغاُء قرار.")
+
+    amount = float(row.amount or 0)
+    db.delete(row)
+    db.flush()
+    return True, f"أُلغي خصٌم {amount:.3f} على مسيّر {month} قبل احتسابه"
+
+
+#: النوع ← كيف يُعكَس أثره. **وما ليس فيها لا يُعكَس تلقائًيا** — ولا
+#: يُدَّعى عكُسه: بابٌ يُفتَح بلا مفتاح أسوأ من باب مغلق يقول لماذا.
+_REVERSAL = {
+    "REQLV": _reverse_leave, "leave": _reverse_leave,
+    "ADMDED": _reverse_deduction,
+}
+
+
 def _effects_applied(db: Session, req: models.Request) -> bool:
     """هل وقع الأثر فعًلا؟ سطر النظام «معتمَد» هو أثره الوحيد في السجل.
 
@@ -1944,16 +2021,28 @@ def cancel(db: Session, req: models.Request, user: models.User, note: str | None
     #
     # فالإلغاء بعد وقوع الأثر يُردّ، ويُقال ما يُفعل بدله. وهذا تضييٌق لا
     # توسيع: من كان يلغي فيظنّ أنه يعكس، صار يعرف أنه لم يكن يعكس شيًئا.
+    reversal_note = None
     if _effects_applied(db, req):
-        raise EffectAlreadyApplied(
-            "وقع أثر هذا الطلب فعًلا — والإلغاء لا يعكسه. أصدِر قراًرا "
-            "معاكًسا أو تسويًة تردّ الأثر، فإلغاُء الحالة وحدها يترك الأثر "
-            "قائًما ويجعل السجلّ يشهد بغير ما وقع.")
+        reverser = _REVERSAL.get(req.request_type_code)
+        if reverser is None:
+            # **وباٌب مغلٌق يقول لماذا خيٌر من باب يُفتَح بلا مفتاح.**
+            raise EffectAlreadyApplied(
+                "وقع أثر هذا الطلب فعًلا، ولا يُعكَس أثر هذا النوع تلقائًيا. "
+                "أصدِر قراًرا معاكًسا أو تسويًة تردّ الأثر، فإلغاُء الحالة "
+                "وحدها يترك الأثر قائًما ويجعل السجلّ يشهد بغير ما وقع.")
+        reversed_ok, reversal_note = reverser(db, req)
+        if not reversed_ok:
+            raise EffectAlreadyApplied(
+                f"لا يُعكَس أثر هذا الطلب: {reversal_note}")
     req.status = "cancelled"
     req.closed_at = datetime.now(timezone.utc)
     db.add(models.RequestApproval(
         request_id=req.id, stage_order=req.current_stage, stage_label="إلغاء المدير العام",
-        approver_role=user.role, approver_user_id=user.id, decision="rejected", note=note,
+        approver_role=user.role, approver_user_id=user.id, decision="rejected",
+        # **وعكُس الأثر يُكتب مع الإلغاء لا يُفصَل عنه.** من يقرأ «ملغى» بعد
+        # سنة يحتاج أن يعرف ماذا رُدّ: أياُم رصيٍد أم مبلٌغ لم يُقتطع.
+        note=(f"{note or ''} — {reversal_note}".strip(" —")
+              if reversal_note else note),
     ))
     _notify_terminated(db, req, rt, "cancelled", user, note)
     _close_open_tasks(db, req)

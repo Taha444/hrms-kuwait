@@ -231,20 +231,22 @@ def test_a_missing_amount_is_refused_at_the_door(client):
 # وأثٌر وقع لا يُلغى بتغيير حالة
 # ---------------------------------------------------------------------------
 
-def test_cancelling_an_applied_request_is_refused(client, applied):
-    """**والإلغاء لا يعكس الأثر.**
+def test_cancelling_an_uncounted_deduction_reverses_it(client, applied):
+    """**والإلغاء يعكس الأثر — بعد أن صار له مفتاح.**
 
-    ``cancel`` تكتب «ملغى» ولا تعكس شيًئا، والمسار لا يفحص الحالة. فطلٌب
-    مكتمٌل وقع أثره كان يُلغى ويبقى أثره: خصٌم اقتُطع من الأجر والطلب
-    يقول «ملغى» — والسجلّ يشهد بغير ما وقع.
+    وهذا الحارس كان يشترط ``409``: سُدَّ الباب أوًلا لئلا يُقتطع خصٌم
+    والطلب يقول «ملغى». **فصار باًبا مغلًقا بلا مفتاح**، ورسالُة الردّ
+    تأمر بـ«قرار معاكس أو تسوية» وليس لهما وجود — وأمٌر بما لا يستطيعه
+    النظام أسوأ من صمت.
 
-    وهو تضييٌق لا توسيع: من كان يلغي فيظنّ أنه يعكس، صار يعرف أنه لم يكن
-    يعكس شيًئا.
+    فبُني العكس، وصار الشرط ما يقع فعًلا: خصٌم لم يحتسبه مسيّر يُحذف قبل
+    أن يُقتطع، ويُلغى الطلب. **وحاُل الشهر المقفل** — حيث المال خرج فلا
+    يُمحى صفُّه — مقيسٌة في ``test_zzz_effect_reversal``.
     """
     r = client.post(f"/api/requests/{applied}/cancel",
                     headers=auth_headers(login(client, *MGR)),
-                    params={"note": "محاولة إلغاء بعد وقوع الأثر"})
-    assert r.status_code == 409, (r.status_code, r.text[:250])
+                    params={"note": "إلغاء قبل احتساب المسيّر"})
+    assert r.status_code == 200, (r.status_code, r.text[:250])
 
     db = SessionLocal()
     try:
@@ -253,5 +255,5 @@ def test_cancelling_an_applied_request_is_refused(client, applied):
             models.Deduction.request_id == applied)).all()
     finally:
         db.close()
-    assert req.status != "cancelled", req.status
-    assert len(rows) == 1, "اختفى الخصم أو تكرّر"
+    assert req.status == "cancelled", req.status
+    assert not rows, "أُلغي الطلب وبقي خصمه قائًما"
