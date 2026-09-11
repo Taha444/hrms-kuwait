@@ -57,7 +57,7 @@ def test_no_excuse_outlives_its_reason():
 def test_every_named_gap_says_what_it_needs():
     """ولكل سطر ما يلزم لرفعه: مستٌند يُعتمد، أو ربٌط يُكتب."""
     bad = [k for k, v in R.OUTPUT_GAPS.items()
-           if v.get("needs") not in ("template", "wiring")
+           if v.get("needs") not in ("template", "profile_template", "wiring")
            or not (v.get("why") or "").strip()]
     assert not bad, f"سطٌر بلا تصنيف أو بلا سبب: {bad}"
 
@@ -73,7 +73,25 @@ def test_a_gap_that_claims_no_template_really_has_none():
                      if tpl.startswith("HRMS-PR-")}
     wrong = [k for k, v in R.OUTPUT_GAPS.items()
              if v.get("needs") == "template" and k.split("/")[1] in with_template]
-    assert not wrong, f"صُنّف «بلا قالب» وله قالب: {wrong}"
+    assert not wrong, (
+        "صُنّف «بلا قالب» وله قالب — إن كان للمستند قوالٌب ولا قالب لصورته "
+        f"فتصنيفه profile_template: {wrong}")
+
+
+def test_a_profile_gap_has_templates_but_not_for_its_shape():
+    """**وتصنيٌف ثالث لأن الواقع ثالث.**
+
+    صنّفتُ أوًلا صور ``OD-018`` «ربًطا» لأن المستند له قالب — فقاس تصنيفي
+    المستندَ لا صورته. و``OD-018`` يغطّي أربع صور وقوالبه اثنان، فاستئذاٌن
+    وتصحيُح حضور بلا قالب. والفرق بين التصنيفين عمٌل قائم أو ورقٌة تُصاغ.
+    """
+    with_template = {od for tpl, od in R.LEGACY_PRN_ALIASES.items()
+                     if tpl.startswith("HRMS-PR-")}
+    wrong = [k for k, v in R.OUTPUT_GAPS.items()
+             if v.get("needs") == "profile_template"
+             and k.split("/")[1] not in with_template]
+    assert not wrong, (
+        f"صُنّف «صورٌة بلا قالب» والمستند نفسه بلا قالب — فتصنيفه template: {wrong}")
 
 
 def test_a_gap_that_claims_wiring_actually_has_a_template():
@@ -147,3 +165,59 @@ def test_the_summary_counts_what_is_missing(client):
     body = client.get("/api/requests/registry",
                       headers=auth_headers(login(client, "100000000002", "hr12345"))).json()
     assert body["summary"]["declared_outputs_not_produced"] == len(R.output_gaps())
+
+
+# ---------------------------------------------------------------------------
+# P1-02 — هويّة المستند من السجلّ لا من القالب
+# ---------------------------------------------------------------------------
+
+def test_identity_comes_from_the_workflow_not_the_template():
+    """**القالب لا يحدّد هويّة المستند القانونية.**
+
+    كان ``generate_document`` يشتقّ ``od_code`` من ``default_template_code``
+    وحده. وأثره ظهر عند الربط: تسعٌة من عشرة قالُبها يشير إلى غير ما يعلنه
+    مسارها — «تحديث بطاقة مدنية» → «قرار إنذار»، و«تصحيح حضور» → *تقرير*.
+    ولم يمسكه حارٌس لأن حارس الخريطة يمرّ على منتجي المستندات وحدهم،
+    وهؤلاء لا يُنتجون — فكانت المؤشّرات الخاطئة مستورًة خلف ألّا شيء يُنتَج.
+    """
+    # مساٌر يعلن واحًدا: هو، ولو خالفه القالب.
+    assert R.canonical_od_for("ADMDED", "HRMS-PR-012") == "OD-008"
+    # ومساٌر يعلن عدًدا: القالب يختار من بينها ولا يخرج عنها.
+    assert R.canonical_od_for("leave", "HRMS-PR-027") == "OD-011"
+
+
+def test_a_type_with_no_declared_output_is_not_guessed():
+    """**وغياب الربط لا يُخمَّن.**
+
+    والسكيل يشترطه صريًحا: لا سقوط عام إلى مستند افتراضي، بل خطٌأ يسمّي
+    المسار. وورقٌة رسمية بلا صنف قانوني لا تُعرَف بعد سنة ولا يُحتجّ بها.
+    """
+    assert R.canonical_od_for("لا-وجود-له", "HRMS-PR-027") is None
+
+
+def test_the_template_only_exceptions_are_named_not_silent():
+    """والاستثناء يُسمّى: نوعان مسارهما لا يعلن مستنًدا وهما يُنتجان."""
+    assert set(R.OD_FROM_TEMPLATE_ONLY) == {"REQMIS", "ADMLIC"}, \
+        sorted(R.OD_FROM_TEMPLATE_ONLY)
+    for code, why in R.OD_FROM_TEMPLATE_ONLY.items():
+        assert why.strip(), code
+
+
+def test_the_generator_refuses_to_stamp_a_document_with_no_identity():
+    """والمولّد يصرخ باسم المسار بدل أن يختم ورقًة بلا هويّة."""
+    import inspect
+
+    from app import workflow
+
+    src = inspect.getsource(workflow.generate_document)
+    assert "canonical_od_for" in src, "المولّد ما زال يقرأ القالب وحده"
+    assert "raise RuntimeError" in src, "غياب الهويّة يمرّ بصمت"
+
+
+def test_the_two_newly_wired_outputs_are_produced():
+    """والمربوطان يُنتَجان فعًلا — لا يُعلَنان."""
+    produced = R.produced_outputs()
+    assert "OD-008" in produced.get("WF-013", set()), "قرار الخصم لا يُنتَج"
+    assert "OD-018" in produced.get("WF-017", set()), "تكليف العمل الإضافي لا يُنتَج"
+    for key in ("WF-013/OD-008", "WF-017/OD-018"):
+        assert key not in R.OUTPUT_GAPS, f"سطٌر باقٍ وقد رُبط: {key}"

@@ -286,9 +286,14 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQSHIFT", "طلب تغيير وردية", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False,
            default_template_code="HRMS-PR-037"),
+    # P1-02/W1 — كان يُعتمد العمل الإضافي ولا يصدر به تكليٌف مكتوب، وقالبه
+    # ``HRMS-PR-038`` يشير إلى ``OD-017`` (تسوية) بينما مساره يعلن
+    # ``OD-018`` إيصال/تأكيد إجراء. والقالب المطابق قائٌم باسمه:
+    # «تكليف واعتماد عمل إضافي».
     _simple("REQOT", "طلب عمل إضافي", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager", "accountant"], requires_physical_signature=False,
-           default_template_code="HRMS-PR-038"),
+           produces_document=True,
+           default_template_code="HRMS-PR-026"),
     # كان يُنتج مستنًدا **بلا قالب إطلاًقا** — فأثره بلا صنف ولا نصّ
     # مثبَّت. ومساره WF-018 يعلن OD-005، والسجلّ يقول المستند ولا يقول
     # أيّ قالب من ثمانية تشير إليه. فلم أختر بالاسم (وهو الخطأ الذي وقع
@@ -452,9 +457,16 @@ DEFAULT_REQUEST_TYPES = [
     _simple("ADMACTUAL", "تعديل الراتب الفعلي أو مكان العمل الفعلي", CAT_ADMIN,
            ["company_manager", "accountant"], requires_physical_signature=False,
            default_template_code="HRMS-PR-009"),
+    # P1-02/W2 — **خصٌم من الأجر بلا قرار مكتوب.**
+    #
+    # نصّ النوع نفسه يقول: «ولا يطبق الخصم إلا بعد بيان السبب والمستند وحق
+    # الرد والاعتماد المالي». ومساره يعلن ``OD-008`` «قرار خصم»، وقالبه
+    # الوحيد ``HRMS-PR-021`` اسمه «قرار خصم» بالحرف. وكان يشير إلى
+    # ``HRMS-PR-012`` → ``OD-005`` «قرار تغيير وظيفي» ولا يُنتج شيًئا.
     _simple("ADMDED", "إصدار خصم", CAT_ADMIN,
            ["hr", "accountant", "company_manager"], requires_physical_signature=False,
-           default_template_code="HRMS-PR-012"),
+           produces_document=True,
+           default_template_code="HRMS-PR-021"),
     _simple("ADMVIO", "تسجيل مخالفة وظيفية", CAT_ADMIN,
            ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False,
            default_template_code="HRMS-PR-013"),
@@ -2082,9 +2094,24 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
             prev.lifecycle_status = "SUPERSEDED"
     # يُنشأ السجل أوًلا (بلا file_path) للحصول على doc.id، لازم لتوليد رمز التحقق
     # المُشتق منه (P2-01) قبل رسم الـPDF نفسه.
-    # V1.5 Phase 4: نستخرج od_code من default_template_code (HRMS-PR-XXX → OD-YYY)
+    # P1-02 — **هويّة المستند من السجلّ لا من القالب.**
+    #
+    # كان يُشتقّ من ``default_template_code`` وحده، أي أن القالب يحدّد هويّة
+    # المستند القانونية والسجلُّ الذي يعلن مخرجات كل مسار لا يُقرأ. وقيس أن
+    # تسعة من عشرة أنواع معلَّقة قالُبها يشير إلى مستٍند غير الذي يعلنه
+    # مسارها — «تحديث بطاقة مدنية» → «قرار إنذار»، و«تصحيح حضور» → تقرير.
+    #
+    # **وغياب الهويّة يصرخ ولا يُختَم**: ورقٌة رسمية بلا صنف قانوني لا
+    # تُعرَف بعد سنة، ولا يُحتجّ بها، ولا يُعرَف أيّ قاعدة تحكمها.
     from . import v15_registry
-    od_code = v15_registry.resolve_template(rt.default_template_code) if rt.default_template_code else None
+    od_code = v15_registry.canonical_od_for(rt.code, rt.default_template_code)
+    if not od_code:
+        entry = v15_registry.LEGACY_REQUEST_ALIASES.get(rt.code) or {}
+        wf = (entry.get("canonical") if isinstance(entry, dict) else None) or "—"
+        raise RuntimeError(
+            f"لا يمكن تحديد صنف المستند لنوع {rt.code} (المسار {wf}): "
+            f"المسار لا يعلن مستنًدا وقالبه {rt.default_template_code or '—'} "
+            f"لا يحسم. عرّف المخرج في السجلّ قبل توليد ورقة رسمية.")
     doc = models.RequestDocument(
         request_id=req.id, kind=kind, file_path=None,
         version=len(existing) + 1, uploaded_by=actor.id,
