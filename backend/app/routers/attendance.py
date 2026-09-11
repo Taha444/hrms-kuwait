@@ -92,6 +92,22 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
     branch = db.get(models.Branch, int(payload["branch_id"]))
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
+
+    # **ورمٌز صدر قبل تدوير المفتاح لا يُقبَل.**
+    #
+    # كان رمز الفرع دائًما بلا صلة بالمفتاح، فتدويُره يمنع جلَب رمٍز جديد
+    # ولا يمسّ ما خرج: من صوّر الشاشة مرًّة يبصم بها إلى الأبد. وزرُّ
+    # «تدوير المفتاح» يَعِد بالإبطال ولا يفعله.
+    #
+    # والدفاع المعلَن في شرح الرمز كان الـgeofence — وهو **اختيارٌي بيد
+    # المتّصل**: المسافة تُقاس إن أرسل إحداثيات، وموظُف نمط ``qr`` غير
+    # مُلزَم بإرسالها.
+    if payload.get("kv", "") != qr_token.kiosk_key_fingerprint(branch.kiosk_key):
+        raise HTTPException(
+            status_code=403,
+            detail="هذا الرمز أُبطل بتدوير مفتاح الشاشة — اعرض الرمز الجديد "
+                   "من شاشة الفرع وأعد المسح.")
+
     # العزل + أهلية الموظف لهذا الفرع
     assert_same_company(user, branch.company_id, db=db)
     if emp.branch_id not in (None, branch.id):

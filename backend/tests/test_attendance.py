@@ -23,20 +23,32 @@ def _selfie_files():
 
 
 def test_full_qr_then_selfie_checkin(client):
-    _, branch_id, _, lat, lng = _emp_branch()
+    _, branch_id, kiosk_key, lat, lng = _emp_branch()
     tok = login(client, "100000000101", "emp12345")
     h = auth_headers(tok)
 
-    qr = qr_token.make_qr_token(branch_id)[0]
+    # **والرمز يُسكّ كما يسكّه الكشك** — وكانت الاختبارات تستعمل
+    # ``make_qr_token`` وهي دالٌة لا يستدعيها التطبيق إطلاًقا: فتقيس
+    # مساًرا لا يسلكه المنتج. وقد أُزيلت.
+    qr = qr_token.make_static_qr_token(branch_id, kiosk_key)
     r = client.post("/api/attendance/validate-qr", headers=h,
                     json={"qr_token": qr, "lat": lat, "lng": lng})
     assert r.status_code == 200, r.text
     ticket = r.json()["checkin_ticket"]
 
-    # نفس الرمز لا يصلح مرتين (anti-replay)
+    # **ومنُع الإعادة على التذكرة لا على رمز الشاشة.**
+    #
+    # كان هنا شرٌط بأن الرمز نفسه لا يصلح مرّتين — وهو صحيٌح للرمز المؤقَّت
+    # الذي كانت تسكّه ``make_qr_token``، وهي دالٌة لا يستدعيها التطبيق.
+    # أما رمز الكشك فثابٌت بطبعه: شاشٌة واحدة يمسحها عشرات الموظفين طول
+    # اليوم، فلو بطَل بأول مسٍح لتعطّل الفرع كلّه.
+    #
+    # والحماية في موضعها الصحيح: **التذكرة** تُستهلَك مرًّة واحدة
+    # (``consume_jti``) — وهو ما يقيسه ``r4`` أدناه.
     r2 = client.post("/api/attendance/validate-qr", headers=h,
                      json={"qr_token": qr, "lat": lat, "lng": lng})
-    assert r2.status_code == 409
+    assert r2.status_code == 200, "رمز الشاشة الثابت يُمسَح مراًرا بطبعه"
+    assert r2.json()["checkin_ticket"] != ticket, "تذكرٌة مكرَّرة لمسحين"
 
     # تسجيل حضور بالتذكرة + السيلفي
     r3 = client.post("/api/attendance/check-in", headers=h,
@@ -51,10 +63,13 @@ def test_full_qr_then_selfie_checkin(client):
 
 
 def test_checkin_rejected_without_selfie(client):
-    _, branch_id, _, lat, lng = _emp_branch()
+    _, branch_id, kiosk_key, lat, lng = _emp_branch()
     tok = login(client, "100000000101", "emp12345")
     h = auth_headers(tok)
-    qr = qr_token.make_qr_token(branch_id)[0]
+    # **والرمز يُسكّ كما يسكّه الكشك** — وكانت الاختبارات تستعمل
+    # ``make_qr_token`` وهي دالٌة لا يستدعيها التطبيق إطلاًقا: فتقيس
+    # مساًرا لا يسلكه المنتج. وقد أُزيلت.
+    qr = qr_token.make_static_qr_token(branch_id, kiosk_key)
     ticket = client.post("/api/attendance/validate-qr", headers=h,
                          json={"qr_token": qr, "lat": lat, "lng": lng}).json()["checkin_ticket"]
     # بدون ملف سيلفي → 422 (حقل مطلوب)
@@ -71,9 +86,12 @@ def test_invalid_qr_token_rejected(client):
 
 
 def test_outside_geofence_rejected(client):
-    _, branch_id, _, _, _ = _emp_branch()
+    _, branch_id, kiosk_key, _, _ = _emp_branch()
     tok = login(client, "100000000101", "emp12345")
-    qr = qr_token.make_qr_token(branch_id)[0]
+    # **والرمز يُسكّ كما يسكّه الكشك** — وكانت الاختبارات تستعمل
+    # ``make_qr_token`` وهي دالٌة لا يستدعيها التطبيق إطلاًقا: فتقيس
+    # مساًرا لا يسلكه المنتج. وقد أُزيلت.
+    qr = qr_token.make_static_qr_token(branch_id, kiosk_key)
     # إحداثيات بعيدة جدًا (خارج النطاق)
     r = client.post("/api/attendance/validate-qr", headers=auth_headers(tok),
                     json={"qr_token": qr, "lat": 30.0, "lng": 50.0})

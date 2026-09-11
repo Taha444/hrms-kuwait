@@ -13,6 +13,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import hashlib
+
 import jwt
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -34,16 +36,47 @@ def _encode(payload: dict, ttl: int, token_type: str) -> tuple[str, datetime]:
     return token, exp
 
 
-def make_qr_token(branch_id: int) -> tuple[str, datetime]:
-    return _encode({"branch_id": branch_id}, QR_TTL_SECONDS, "qr")
+# **وباٌب ثاٍن لسكّ الرمز يُغلَق.**
+#
+# كانت هنا ``make_qr_token`` تسكّ رمز فرٍع بمهلة وبلا صلة بمفتاح الشاشة،
+# **ولا يستدعيها شيٌء في التطبيق** — تبقيها الاختبارات وحدها. وبقاؤها بعد
+# ربط الرمز بالمفتاح سلاٌح مُعبَّأ: من يستعملها غًدا يسكّ رمًزا لا يُبطله
+# تدوير، فتعود الثغرة من باٍب لا يمرّ به أحد اليوم.
+#
+# والاختبارات التي كانت تستعملها كانت تختبر مساًرا لا يسلكه المنتج.
 
 
-def make_static_qr_token(branch_id: int) -> str:
-    """رمز فرع ثابت (deterministic، بلا انتهاء ولا jti) — لا يتغيّر إطلاقًا.
+def kiosk_key_fingerprint(kiosk_key: str | None) -> str:
+    """بصمٌة قصيرة لمفتاح الشاشة — تُحمَل في الرمز فيُبطله تدويُر المفتاح.
 
-    الحماية من الاستخدام عن بُعد تعتمد على الـ geofence (الموقع الجغرافي) لا على تغيّر الرمز.
+    ولا يُحمَل المفتاح نفسه: الرمز يُعرَض على شاشٍة ويُصوَّر، فحمُله فيه
+    تسريٌب له. والبصمة تكفي للمقارنة ولا تكشف الأصل.
     """
-    body = {"branch_id": branch_id, "type": "qr", "static": True}
+    if not kiosk_key:
+        return ""
+    return hashlib.sha256(kiosk_key.encode("utf-8")).hexdigest()[:16]
+
+
+def make_static_qr_token(branch_id: int, kiosk_key: str | None) -> str:
+    """رمز الفرع — ثابٌت ما دام مفتاح الشاشة ثابًتا، **ويُبطله تدويُره**.
+
+    **العطل المقيس**: كان الرمز ``deterministic`` بلا انتهاء ولا مُعرِّف
+    ولا صلة بمفتاح الشاشة — «لا يتغيّر إطلاقًا» بنصّ شرحه. فمن صوّره مرًّة
+    يملكه إلى الأبد، **وتدويُر المفتاح لا يُبطله**: يمنع جلَب رمٍز جديد
+    من الرابط، ولا يمسّ ما خرج.
+
+    وكان شرحُه يحيل الحماية إلى الـgeofence. والقياس: ``_check_geofence``
+    يقيس المسافة **إن أرسل العميل إحداثيات**، وموظُف نمط ``qr`` غير
+    مُلزَم بإرسالها. فالدفاع الذي يُبرِّر دواَم الرمز **اختيارٌي بيد
+    المتّصل**.
+
+    فصار الرمز يحمل بصمة المفتاح: تدويُر المفتاح يُبطل كل ما صدر قبله —
+    وهذا هو معنى «الإبطال» الذي كان الزرّ يَعِد به ولا يفعله.
+    """
+    # والمفتاح **مُلزِم لا اختياري**: قيمٌة افتراضية تعني رمًزا يُسكّ
+    # صحيَح الشكل وميَّت المعنى — يُقبَل عند الإنشاء ويُردّ عند الاستعمال.
+    body = {"branch_id": branch_id, "type": "qr", "static": True,
+            "kv": kiosk_key_fingerprint(kiosk_key)}
     return jwt.encode(body, settings.secret_key, algorithm=settings.algorithm)
 
 

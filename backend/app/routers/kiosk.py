@@ -21,9 +21,9 @@ def kiosk_qr(branch_id: int, key: str = Query(...), db: Session = Depends(get_db
     # رسالة موحّدة + مقارنة ثابتة الزمن لتجنّب كشف الوجود/التوقيت
     if not branch or not branch.kiosk_key or not hmac.compare_digest(branch.kiosk_key, key):
         raise HTTPException(status_code=403, detail="مفتاح الشاشة غير صالح")
-    # رمز ثابت لكل فرع — لا يتغيّر
+    # الرمز ثابٌت ما دام المفتاح ثابًتا — وتدويُره يُبطل ما صدر قبله.
     return {
-        "token": make_static_qr_token(branch.id),
+        "token": make_static_qr_token(branch.id, branch.kiosk_key),
         "branch_name": branch.name,
         "static": True,
     }
