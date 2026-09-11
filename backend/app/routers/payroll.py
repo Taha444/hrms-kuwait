@@ -60,6 +60,56 @@ def _self_approval_blocked(user: models.User, pr: models.PayrollRun) -> bool:
     return pr.prepared_by_user_id == user.id and user.role != "super_admin"
 
 
+def _notify_payroll_ready(db: Session, pr: models.PayrollRun) -> None:
+    """NTF-021 — **مسيٌَّر يصير جاهًزا ولا يعلم به من يعتمده.**
+
+    كان ``payroll.py`` و``routers/payroll.py`` لا يُنشئان إشعاًرا واحًدا:
+    لا ``create_task`` ولا ``notify_``. فالمسيّر يُجهَّز ويقف عند
+    ``prepared`` بانتظار مُعتمٍِد **لا شيء يخبره أن ينظر**. والقالب
+    ``NTF-021`` «مسيّر الرواتب جاهز للمراجعة» مكتوٌب في الكتالوج منذ
+    ``FIX-004`` ولم يُستدعَ قط — نٌّص أُعلن ولا يُرسَل.
+
+    ولا يُخطَر به من جهّزه: فصُل السلطات يمنعه من اعتماده، فرسالٌة تطلب
+    منه ما لا يستطيعه. **والقاعدة تُقرأ من موضعها** —
+    ``_self_approval_blocked`` نفسها التي يحتكم إليها المنع — لا تُكتب
+    ثانيًة هنا فتنحرف.
+
+    وإن لم يبقَ محايٌد، فالمسيّر عالٌق: يُرفَع إلى المالك ثغرَة إعداد،
+    على نسق ``_warn_no_impartial_approver`` في مسار الطلبات. **وعالٌق
+    ظاهٌر خيٌر من عالٍق صامت.**
+    """
+    from ..notifications import (create_task, notify_from_template, oversight_users,
+                                 users_by_role)
+    from ..permissions import ROLE_DEFAULT_PERMS
+
+    roles = [r for r, perms in ROLE_DEFAULT_PERMS.items() if "run_payroll" in perms]
+    impartial = [u for u in users_by_role(db, pr.company_id, roles)
+                 if not _self_approval_blocked(u, pr)]
+
+    if not impartial:
+        for u in oversight_users(db, pr.company_id):
+            create_task(
+                db, company_id=pr.company_id, type="config_gap",
+                assignee_user_id=u.id, severity="critical",
+                title="مسيّر رواتب بلا معتمٍِد محايد",
+                detail=(f"مسيّر {pr.period} جاهٌز ولا يوجد من يعتمده: فصُل "
+                        f"السلطات يمنع من جهّزه من اعتماده. أسنِد صلاحية "
+                        f"«تشغيل الرواتب» لشخٍص آخر لتمضي المعالجة."),
+                related_entity_type="payroll_run", related_entity_id=pr.id,
+                # **وبصمٌة واحدٌة لعدّة مستقبلين تحجب كلَّ من بعد الأول** —
+                # فتُلحَق بمعرّف المستقبِل، كما يفعل ``notify_roles``.
+                dedup_key=f"payroll_no_impartial:{pr.id}:u{u.id}",
+            )
+        return
+
+    for u in impartial:
+        notify_from_template(
+            db, code="NTF-021", assignee_user_id=u.id, company_id=pr.company_id,
+            context={"period": pr.period},
+            related_entity_type="payroll_run", related_entity_id=pr.id,
+            dedup_key=f"payroll_ready:{pr.id}:u{u.id}", severity="warning")
+
+
 @router.get("/preview")
 def preview(period: str, request: Request, company_id: int | None = None,
             user: models.User = Depends(require_perm("view_payroll")),
@@ -134,6 +184,9 @@ def run(period: str, request: Request, company_id: int | None = None, force_futu
         run_id = pr.id
     audit(db, user, "prepare_payroll", "payroll_run", run_id,
           detail=result["period"], request=request)
+    db.commit()
+    # **بعد الالتزام**: لا يُخطَر بمسيٍّر لم يُكتب بعد.
+    _notify_payroll_ready(db, db.get(models.PayrollRun, run_id))
     db.commit()
     return {"ok": True, "run_id": run_id, "status": "prepared", **result}
 
@@ -262,6 +315,9 @@ def reopen_run(run_id: int, reason: str, request: Request,
           correlation_id=f"payroll:{pr.id}",
           before={"status": before_status},
           after={"status": "prepared", "reason": reason.strip()})
+    db.commit()
+    # **وإعادُة الفتح تُعيد الحاجة إلى معتمِد** — فتُعيد الإخطار.
+    _notify_payroll_ready(db, pr)
     db.commit()
     return {"ok": True, "status": "prepared", "reopened_from": before_status}
 

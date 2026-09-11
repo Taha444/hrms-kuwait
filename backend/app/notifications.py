@@ -200,6 +200,28 @@ def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list
     return list(db.scalars(q).all())
 
 
+def oversight_users(db: Session, company_id: int | None) -> list[models.User]:
+    """**من يُصعَّد إليه ما لا يحلّه أحٌد داخل الشركة.**
+
+    ``users_by_role`` تقيّد بـ``company_id``، والمالك والإدارة العليا
+    ``company_id = None`` بالتعريف — فهما يريان الشركات كلها
+    (``CROSS_COMPANY_ROLES``). فكل تصعيٍد يقيّد بالشركة **يصل إلى لا
+    أحد**، وتحذيٌر لا يصل لا يُفرَّق عن الصمت الذي بُني ليمنعه.
+
+    ويُقرأ الدوران من ``CROSS_COMPANY_ROLES`` لا يُكتبان هنا. ويُقبَل
+    أيًضا من أُسند منهم إلى شركٍة بعينها — فالنطاق قد يُضيَّق بالي;د.
+    """
+    from .permissions import CROSS_COMPANY_ROLES
+
+    q = select(models.User).where(
+        models.User.role.in_(sorted(CROSS_COMPANY_ROLES)),
+        models.User.is_active == True)  # noqa: E712
+    rows = list(db.scalars(q).all())
+    return [u for u in rows
+            if u.company_id is None or company_id is None
+            or u.company_id == company_id]
+
+
 def notify_roles(db: Session, company_id: int | None, roles: list[str], **kwargs) -> int:
     """ينشئ مهمة لكل مستخدم ضمن الأدوار المحددة. **يعيد عدد ما أُنشئ فعًلا.**
 

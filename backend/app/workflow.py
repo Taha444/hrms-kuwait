@@ -30,7 +30,8 @@ from . import models, module_owned
 from .audit_context import actor_ip, actor_user_id, original_actor_user_id
 from .task_kinds import is_notification
 from .config import settings
-from .notifications import create_task, notify_employee_self, notify_from_template, users_by_role
+from .notifications import (create_task, notify_employee_self, notify_from_template,
+                            oversight_users, users_by_role)
 from .permissions import ROLE_LABEL_AR
 from .storage import key_exists, save_at_key
 
@@ -790,7 +791,10 @@ def _warn_no_impartial_approver(db: Session, req: models.Request,
     ولا يُخطَر به من هو طرف، ولا يحمل الإخطار موضوع الشكوى ولا اسم
     مقدّمها: يقول إن المرحلة بلا معتمِد محايد ويطلب إسناد غيره.
     """
-    for u in users_by_role(db, req.company_id, ["company_owner", "super_admin"]):
+    # **والتصعيُد لا يُقيَّد بالشركة**: المالك والإدارة العليا
+    # ``company_id = None``، فاستعلاٌم مقيٌَّد بها يعيد قائمًة فارغة —
+    # فكان هذا التحذير يُصعَّد إلى لا أحد.
+    for u in oversight_users(db, req.company_id):
         if u.id in blocked:
             continue
         create_task(
@@ -800,7 +804,7 @@ def _warn_no_impartial_approver(db: Session, req: models.Request,
             detail=(f"الطلب #{req.id} — كل معتمِدي مرحلته أطراٌف فيه، فلا "
                     f"يجوز أن ينظروه. أسنِد معتمًِدا محايًدا لتمضي المعالجة."),
             related_entity_type="request", related_entity_id=req.id,
-            dedup_key=f"no_impartial_approver:{req.id}",
+            dedup_key=f"no_impartial_approver:{req.id}:u{u.id}",
         )
 
 
