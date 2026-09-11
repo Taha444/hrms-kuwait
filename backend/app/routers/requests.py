@@ -3,9 +3,10 @@
 import os
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
+                     Response, UploadFile)
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import or_ as sa_or
 from sqlalchemy.orm import Session
 
@@ -504,13 +505,29 @@ def submit_request(data: schemas.RequestIn, request: Request,
 
 
 @router.get("/mine")
-def my_requests(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """طلباتي (للعامل) — الطلبات التي قدّمها أو الخاصة بملفه."""
+def my_requests(response: Response, limit: int = 100, offset: int = 0,
+                user: models.User = Depends(get_current_user),
+                db: Session = Depends(get_db)):
+    """طلباتي (للعامل) — الطلبات التي قدّمها أو الخاصة بملفه.
+
+    **وقائمٌة بلا سقٍف تنكسر بالنموّ لا بالخطأ.** فهذه تنمو بمدّة خدمة
+    الموظف، و``_serialize`` يستعلم لكل صّف على حدة (مراحله وقراراته) —
+    فمئُة طلٍب مئُة جولٍة على القاعدة. والسقُف يحدّ الاثنين معًا.
+
+    والعدُد الكّلي في ترويسة ``X-Total-Count``: الجواُب يبقى مصفوفًة كما
+    كان فلا تُكسَر واجهٌة قائمة، وتعرف الشاشُة أن بعده بقيّة.
+    """
+    limit = max(1, min(int(limit or 100), 500))
+    offset = max(0, int(offset or 0))
     q = select(models.Request).where(
         (models.Request.requester_user_id == user.id)
         | (models.Request.employee_id == (user.employee_id or -1))
     )
-    return [_serialize(db, r, viewer=user) for r in db.scalars(q.order_by(models.Request.created_at.desc())).all()]
+    response.headers["X-Total-Count"] = str(
+        db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+    rows = db.scalars(q.order_by(models.Request.created_at.desc())
+                      .limit(limit).offset(offset)).all()
+    return [_serialize(db, r, viewer=user) for r in rows]
 
 
 @router.get("/inbox")

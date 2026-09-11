@@ -2,7 +2,7 @@
 """صندوق المهام لكل مستخدم (Task Inbox) + تشغيل المسح اليومي يدويًا."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -46,9 +46,10 @@ from ..task_kinds import NOTIFICATION_TYPES, inbox_query, is_notification  # noq
 
 
 @router.get("/my")
-def my_tasks(status: str | None = "open", category: str | None = None,
+def my_tasks(response: Response, status: str | None = "open",
+             category: str | None = None,
              kind: str | None = None, company_id: int | None = None,
-             all_companies: bool = False,
+             all_companies: bool = False, limit: int = 200, offset: int = 0,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """``kind=task`` للصندوق، ``kind=notification`` لمركز الإشعارات.
 
@@ -60,7 +61,35 @@ def my_tasks(status: str | None = "open", category: str | None = None,
 
     cid = None if all_companies else scope_company_id(user, company_id)
     q = inbox_query(user.id, status, kind, company_id=cid)
-    rows = db.scalars(q.order_by(models.Task.created_at.desc())).all()
+
+    # **والترشيُح بالفئة ينزل إلى الاستعلام.**
+    #
+    # كان يُطبَّق **بعد** بناء القائمة كلّها: فالخادم يقرأ كلَّ صفوف
+    # المستخدم ويُسلسِلها ثم يُلقي ما ليس من الفئة. ومع سقٍف للصفوف يصير
+    # ذلك عطًلا لا بطًئا: نأخذ أحدَث مئتين ثم نُرشِّح، فتُعرَض ثالٌث من
+    # فئٍة فيها خمسون.
+    if category:
+        if category == "system":
+            q = q.where(models.Task.type.notin_(tuple(_CATEGORY)))
+        else:
+            types = tuple(t for t, c in _CATEGORY.items() if c == category)
+            q = q.where(models.Task.type.in_(types or ("",)))
+
+    # **وصندوٌق بلا سقٍف ينكسر بالنموّ لا بالخطأ.**
+    #
+    # الافتراض ``status="open"`` كان يحميه وحده، والمعامَل بيد العميل:
+    # ``?status=`` يُلغي الترشيح فيُعيد **كلَّ ما أُسند للمستخدم في عمره**.
+    # والـdigest اليومي وحده يضيف صًفّا لكل مستخدم كلَّ يوم، فبعد سنٍة
+    # تُقاس القائمة بالآالف — وهي أكثُر شاشٍة تُفتَح في النظام.
+    #
+    # والعدُد الكّلي يُردّ في ترويسة: الجواُب يبقى مصفوفًة كما كان، فلا
+    # تُكسَر واجهٌة قائمة، وتعرف الشاشُة أن بعده بقيًّة.
+    limit = max(1, min(int(limit or 200), 1000))
+    offset = max(0, int(offset or 0))
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    response.headers["X-Total-Count"] = str(total)
+    rows = db.scalars(q.order_by(models.Task.created_at.desc())
+                      .limit(limit).offset(offset)).all()
 
     # TSK-CLM — من يعمل على المهمة الآن. المهمة تُوزَّع على مجموعة، ولها
     # التقاٌط يمنع أن يعملها اثنان — وكان لا يُقرأ من الشاشة ولا يُلتقَط
@@ -91,8 +120,6 @@ def my_tasks(status: str | None = "open", category: str | None = None,
                                 and (t.claimed_by_user_id == user.id
                                      or user.role in ("hr", "super_admin"))),
             "template_code": t.template_code, "channel": t.channel} for t in rows]
-    if category:
-        out = [x for x in out if x["category"] == category]
     return out
 
 
