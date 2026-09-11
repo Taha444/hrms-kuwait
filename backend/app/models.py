@@ -188,8 +188,11 @@ class EosCase(Base):
     # قرار المالك أن حالة نهاية الخدمة هي المرجع. وبلا هذا الرابط يبقى
     # المرجع قائًما وأصلُه مجهوًلا: من يقرأ الحالة لا يعرف أن استقالة
     # وُقّعت خلفها، ومن يقرأ الطلب لا يصل إلى ما ترتّب عليه.
+    #: ``SET NULL`` بقصد: **ورقٌة رسمية صدرت لا تُمحى بمحو طلبها** —
+    #: تفقد مصدَرها لا وجودَها. و``may_view_document`` تحجب السرّي بلا
+    #: مصدر، فالسقوط في جانب الحجب لا الكشف.
     source_request_id: Mapped[int | None] = mapped_column(
-        ForeignKey("requests.id"), index=True)
+        ForeignKey("requests.id", ondelete="SET NULL"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -527,6 +530,22 @@ class Document(Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
     generated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     signature_version: Mapped[int | None] = mapped_column(Integer)
+    # **ومستٌند سرٌّي في ملٍّف مفتوح ليس سرًّا.**
+    #
+    # كان الأرشيف لا يعرف السرّية إطلاًقا: من يحمل ``view_documents``
+    # يقرأ كل ما في ملف الموظف. وأربعُة مستنداٍت سرّية تُصدَر اليوم —
+    # قرار إنذار، قرار خصم، اتفاقية قرض، تسوية نهاية خدمة.
+    #
+    # و``source_request_id`` ليس للتتبّع وحده: **به تُقرأ قاعدُة الرؤية من
+    # الطلب نفسه** لا من نسخٍة ثانية لها. فمن يرى الطلب يرى ورقته، ومن
+    # حُجب عنه الطلب تُحجَب عنه.
+    is_confidential: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0"), nullable=False)
+    #: ``SET NULL`` بقصد: **ورقٌة رسمية صدرت لا تُمحى بمحو طلبها** —
+    #: تفقد مصدَرها لا وجودَها. و``may_view_document`` تحجب السرّي بلا
+    #: مصدر، فالسقوط في جانب الحجب لا الكشف.
+    source_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requests.id", ondelete="SET NULL"), index=True)
     # R8 §2 — Dynamic Custom Documents: يفعّل تنبيهات قبل الانتهاء لمستندات مخصّصة
     notify_on_expiry: Mapped[bool] = mapped_column(Boolean, default=False)
     # RNW-08 — النسخة الموقّعة تشير إلى النسخة المولّدة التي وُقّعت بالضبط.

@@ -11,6 +11,7 @@ from .. import eos as eos_engine
 from .. import leave_balance as leave_balance_service
 from .. import models, schemas
 from ..storage import file_response, save_at_key
+from ..doc_archive import visible_documents
 from ..database import get_db
 from .. import exit_guard
 from ..deps import (
@@ -401,6 +402,9 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
             models.Document.is_current == True,  # noqa: E712
         )
     ).all()
+    # **والسرّي يُرشَّح بقاعدة طلبه** — قرار إنذار أو نتيجة تظلّم لا
+    # يقرؤهما من حُجب عنه أصلُهما.
+    docs = visible_documents(db, user, docs)
     deductions = db.scalars(select(models.Deduction).where(models.Deduction.employee_id == emp_id)).all()
     leaves = db.scalars(select(models.Leave).where(models.Leave.employee_id == emp_id)).all()
     attendance = db.scalars(
@@ -632,8 +636,10 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
     items: list[dict] = []
 
     items.append({"at": emp.created_at.isoformat(), "category": "create", "text": "تم إنشاء ملف الموظف"})
-    for d in db.scalars(select(models.Document).where(
-            models.Document.entity_type == "employee", models.Document.entity_id == emp.id)).all():
+    # والخطّ الزمني باٌب كالقائمة: عنواٌن فيه يكشف وجود الورقة.
+    for d in visible_documents(db, user, db.scalars(select(models.Document).where(
+            models.Document.entity_type == "employee",
+            models.Document.entity_id == emp.id)).all()):
         items.append({"at": d.created_at.isoformat(), "category": "document",
                       "text": f"رفع مستند: {d.title or d.document_type_code} (نسخة {d.version})"})
     for p in db.scalars(select(models.Permit).where(models.Permit.employee_id == emp.id)).all():

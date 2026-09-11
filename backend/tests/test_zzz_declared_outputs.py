@@ -57,7 +57,8 @@ def test_no_excuse_outlives_its_reason():
 def test_every_named_gap_says_what_it_needs():
     """ولكل سطر ما يلزم لرفعه: مستٌند يُعتمد، أو ربٌط يُكتب."""
     bad = [k for k, v in R.OUTPUT_GAPS.items()
-           if v.get("needs") not in ("template", "profile_template", "wiring")
+           if v.get("needs") not in ("template", "profile_template", "wiring",
+                                     "signature_decision")
            or not (v.get("why") or "").strip()]
     assert not bad, f"سطٌر بلا تصنيف أو بلا سبب: {bad}"
 
@@ -129,12 +130,25 @@ def test_the_travel_promotion_is_counted_as_the_same_path():
         "لم تُحتسب ترقية الحمولة — فيُقرأ مسار السفر بلا مخرج"
 
 
-def test_the_loan_agreement_is_named_as_the_gap_it_is():
-    """والخامس ثغرٌة مسمّاة: سنُد الاستقطاع من الأجر لا وجود له."""
-    entry = R.OUTPUT_GAPS.get("WF-009/OD-022")
-    assert entry, "ثغرة القرض غير مسمّاة"
-    assert entry["needs"] == "template"
-    assert "الأجر" in entry["why"], entry["why"]
+def test_the_loan_agreement_is_now_produced():
+    """**والخامس أُغلق**: سنُد الاستقطاع صار يُصدَر.
+
+    وكان هذا الحارس يشترط بقاءه ثغرًة مسمّاة — وهو الصواب يومها. ثم
+    تبيّن أن ``OD-022`` لا يحتاج قالًبا: المستند يُبنى من نوع الطلب
+    ونصّه، والهويّة تُحَل من السجلّ. فصار يُصدَر، وبطَل عذُره.
+    """
+    assert "OD-022" in R.produced_outputs().get("WF-009", set())
+    assert "WF-009/OD-022" not in R.OUTPUT_GAPS
+    # وسرُّه محفوٌظ الآن: الورقة تحمل علَم السرّية ومصدَرها.
+    from app.doc_archive import is_confidential_output
+
+    class _D:
+        od_code = "OD-022"
+
+    class _R:
+        is_confidential = False
+
+    assert is_confidential_output(_R(), _D())
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +169,7 @@ def test_the_registry_endpoint_publishes_the_shortfall(client):
     gaps = body.get("output_gaps")
     assert gaps, "السجلّ يُنشَر بلا ما لم يُوفَ به"
     assert set(gaps) == set(R.output_gaps())
-    assert gaps["WF-009/OD-022"]["needs"] == "template"
+    assert all(v.get("needs") for v in gaps.values()), gaps
 
 
 def test_the_summary_counts_what_is_missing(client):
@@ -221,3 +235,46 @@ def test_the_two_newly_wired_outputs_are_produced():
     assert "OD-018" in produced.get("WF-017", set()), "تكليف العمل الإضافي لا يُنتَج"
     for key in ("WF-013/OD-008", "WF-017/OD-018"):
         assert key not in R.OUTPUT_GAPS, f"سطٌر باقٍ وقد رُبط: {key}"
+
+
+def test_a_confidential_output_is_marked_confidential_when_archived():
+    """**وورقٌة سرّية تحمل سرَّها إلى ملفّها.**
+
+    كان الأرشيف لا يعرف السرّية، فأربعُة مستنداٍت سرّية تُصدَر ويُحفَظ
+    أثُرها في ملٍّف يقرؤه كل من يحمل ``view_documents``. وكان هنا سجٌّل
+    يسمّي ذلك التسرّب لئلّا ينمو بصمت.
+
+    **ثم بُنيت خصوصيُة الأرشيف فبطَل سبُب السجلّ** — فحُذف. وصار المقيس
+    أن كل مستٍند سرّي يُصدَر يُوسَم سرًّيا عند حفظه، وأن قاعدة رؤيته
+    قاعدُة طلبه.
+    """
+    from app.doc_archive import is_confidential_output
+
+    class _Doc:
+        def __init__(self, od):
+            self.od_code = od
+
+    class _Req:
+        is_confidential = False
+
+    confidential = {od for od, b in R.CANONICAL_DOCUMENTS.items()
+                    if b.get("confidential")}
+    produced = R.produced_outputs()
+    issued = {od for ods in produced.values() for od in ods}
+    for od in sorted(issued & confidential):
+        assert is_confidential_output(_Req(), _Doc(od)),             f"{od} سرٌّي في السجلّ ولا يُوسَم سرًّيا عند حفظه"
+
+
+def test_no_stale_open_archive_register_remains():
+    """**والعذر يسقط بزوال سببه** — سجلُّ التسرّب حُذف لا احتُفظ به.
+
+    وسجٌّل يحمل عيًبا أُصلح يُقرأ بعد شهور كأنه قائم.
+    """
+    assert not hasattr(R, "CONFIDENTIAL_IN_OPEN_ARCHIVE"),         "سجلُّ التسرّب باٍق وقد بُنيت الخصوصية"
+def test_the_remaining_holds_say_why():
+    """ولا يُسكَت عن سبب الحجب: يُسمّى بتصنيفه لا يُخلَط بغيره."""
+    held = {k: v for k, v in R.OUTPUT_GAPS.items()
+            if v.get("needs") == "signature_decision"}
+    assert held, "لا سطَر يذكر عائق التوقيع"
+    for key, body in held.items():
+        assert "توقيع" in body["why"], key

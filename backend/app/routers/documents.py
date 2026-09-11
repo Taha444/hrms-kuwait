@@ -13,6 +13,7 @@ from ..audit_context import actor_user_id, original_actor_user_id
 
 from .. import models
 from ..config import settings
+from ..doc_archive import may_view_document, visible_documents
 from ..database import get_db
 from ..deps import assert_same_company, audit, require_perm
 from .. import ocr
@@ -309,6 +310,9 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
         models.Document.document_type_code == document_type_code,
         models.Document.is_current == True,  # noqa: E712
     ))
+    # **والتنزيل باٌب كالعرض** — بل أخطر: يُخرج الورقة نفسها.
+    if doc is not None and not may_view_document(db, user, doc):
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
     if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     assert_same_company(user, doc.company_id, db=db)
@@ -330,7 +334,9 @@ def document_history(entity_type: str, entity_id: int, document_type_code: str |
     )
     if document_type_code:
         q = q.where(models.Document.document_type_code == document_type_code)
-    rows = db.scalars(q.order_by(models.Document.created_at.desc())).all()
+    rows = visible_documents(db, user,
+                             db.scalars(q.order_by(
+                                 models.Document.created_at.desc())).all())
 
     # ARC-01 — من رفعه وحجمه: نسخة قديمة بلا صاحب ولا حجم لا تُميَّز عن
     # غيرها. ومن يفتّش في إصدارات مستند رسمي يسأل أوًلا «من غيّره ومتى؟».

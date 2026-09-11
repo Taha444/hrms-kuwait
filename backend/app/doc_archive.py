@@ -75,6 +75,9 @@ def archive_request_document(db, req, doc, *, title: str,
         title=title, file_path=doc.file_path, mime="application/pdf",
         version=len(prev) + 1, is_current=True, uploaded_by=actor_id,
         is_issued=True,
+        # السرّية من صنف المستند في السجلّ — لا من رأي الموضع.
+        is_confidential=is_confidential_output(req, doc),
+        source_request_id=req.id,
         reference_no=doc.reference_no,
         checksum_sha256=doc.checksum_sha256,
         signature_version=doc.signature_version,
@@ -83,3 +86,60 @@ def archive_request_document(db, req, doc, *, title: str,
     db.add(row)
     db.flush()
     return row
+
+
+
+def is_confidential_output(req, doc) -> bool:
+    """أسرٌّي هذا المستند؟ — **من السجلّ لا من رأي الموضع**.
+
+    ``CANONICAL_DOCUMENTS[od]["confidential"]`` هو الحكم، ويُسنَد إليه نوُع
+    الطلب إن كان سرًّيا (``REQGRV`` مثًلا). ولو كُتب الحكم هنا لصار
+    تصنيًفا ثانًيا ينحرف عن السجلّ يوم يتغيّر.
+    """
+    from . import v15_registry as R
+
+    od = getattr(doc, "od_code", None)
+    if od and (R.CANONICAL_DOCUMENTS.get(od) or {}).get("confidential"):
+        return True
+    return bool(getattr(req, "is_confidential", False))
+
+
+def may_view_document(db, user, doc) -> bool:
+    """هل يرى هذا المستخدم هذه الورقة؟
+
+    **وقاعدُة الرؤية هي قاعدُة الطلب نفسها** لا نسخٌة ثانية لها: من يرى
+    الطلب يرى ورقته، ومن حُجب عنه الطلب تُحجَب عنه. ولو كُتبت هنا قاعدٌة
+    مستقلّة لانحرفت عن ``_get_req`` يوم يتغيّر أحدهما — وهو نمُط «موضعان
+    يصفان قاعدة واحدة» الذي أنتج نصف أعطال هذا النظام.
+    """
+    if not getattr(doc, "is_confidential", False):
+        return True
+    if user is None:
+        return False
+    if user.role == "super_admin":
+        return True
+
+    from . import models, workflow
+
+    # صاحُب الملف يرى ورقته: الإنذار يُسلَّم له، والتظلّم تظلُّمه.
+    if user.employee_id and doc.entity_type == "employee"             and doc.entity_id == user.employee_id:
+        return True
+
+    rid = getattr(doc, "source_request_id", None)
+    if not rid:
+        # **ورقٌة سرّية بلا مصدٍر تُحجَب**: لا تُقرأ قاعدُتها فلا تُخمَّن.
+        return False
+    req = db.get(models.Request, rid)
+    if not req or req.company_id != user.company_id:
+        return False
+    rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
+    for stage in workflow._chain(rt, req):
+        if any(u.id == user.id
+               for u in workflow.resolve_stage_approvers(db, req, stage)):
+            return True
+    return False
+
+
+def visible_documents(db, user, rows):
+    """ترشيٌح واحٌد تمرّ به كل قائمة — فلا يبقى بابٌ يُنسى."""
+    return [d for d in rows if may_view_document(db, user, d)]

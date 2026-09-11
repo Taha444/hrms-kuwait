@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..config import settings
+from ..doc_archive import visible_documents
 from ..database import get_db
 from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
 from ..safe_files import read_limited, unique_path
@@ -47,7 +48,7 @@ BRANCH_DOC_TYPES = [
 ]
 
 
-def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
+def _docs_for(db: Session, entity_type: str, entity_id: int, viewer=None) -> list[dict]:
     """يُعيد كل المستندات الحالية (is_current=True) مع metadata كاملة.
 
     R8 §2 — للمستندات المخصّصة (type يبدأ بـ"custom:") نُعيد بيانات إضافية
@@ -59,6 +60,8 @@ def _docs_for(db: Session, entity_type: str, entity_id: int) -> list[dict]:
         models.Document.entity_id == entity_id,
         models.Document.is_current == True,  # noqa: E712
     )).all()
+    # **والسرّي يُرشَّح بقاعدة طلبه** — لا يُعرَض لمن حُجب عنه أصلُه.
+    rows = visible_documents(db, viewer, rows)
     # cache للأسماء لتجنّب استعلام لكل مستند
     pro_id_to_name: dict[int, str] = {}
     out = []

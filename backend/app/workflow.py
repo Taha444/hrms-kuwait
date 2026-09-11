@@ -275,16 +275,26 @@ DEFAULT_REQUEST_TYPES = [
 
     # ----------------- الـ 44 نوعًا الرسمية المتبقية من حزمة V1.3 (FIX-002) -----------------
     # الحضور والإجازات
+    # **مخرٌج معلٌن يُنتَج** — ولا يحتاج قالًبا.
+    #
+    # ``OD-022`` علّم الدرس: المستند يُبنى من نوع الطلب ونصّه الرسمي لا من
+    # ملفّ قالب، وهويّتُه تُحَل من السجلّ حين يعلن المسار مستنًدا واحًدا.
+    # فما كان يُعَدّ «ثمانية مستندات تُصاغ وتُعتمد» كان أكثُره ينقصه أن
+    # يُقال «أصدِرْه».
+    #
+    # وهذه الأربعة **غير سرّية** في السجلّ، فدخوُلها أرشيَف الموظف لا
+    # يكشف ما لا يُكشَف. وأخواتُها السرّية موقوفٌة حتى يعرف الأرشيف
+    # السرّية — انظر ``OUTPUT_GAPS``.
     _simple("REQPER", "طلب إذن أثناء الدوام", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True),
+           ["branch_supervisor", "hr"], requires_physical_signature=False,
+           produces_document=True, visible_to_employee=True),
     _simple("REQEXIT", "طلب مغادرة مبكرة", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True),
+           ["branch_supervisor", "hr"], requires_physical_signature=False,
+           produces_document=True, visible_to_employee=True),
     _simple("REQLATE", "تبرير تأخير", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-031"),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     _simple("REQATT", "طلب تصحيح سجل حضور", CAT_ATTENDANCE,
-           ["branch_supervisor", "hr"], requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-030"),
+           ["branch_supervisor", "hr"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     _simple("REQSHIFT", "طلب تغيير وردية", CAT_ATTENDANCE,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False,
            default_template_code="HRMS-PR-037"),
@@ -338,9 +348,27 @@ DEFAULT_REQUEST_TYPES = [
     # بيانات الموظف والمستندات
     _simple("REQDOC", "رفع أو تحديث مستند موظف", CAT_EMP_DATA,
            ["hr"], requires_physical_signature=False, visible_to_employee=True),
-    _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_DATA,
-           ["hr"], requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-039"),
+        # **وصار الأرشيف يعرف السرّية**، فزال العائق عن هذه.
+    #
+    # كانت موقوفًة بتصنيف ``archive_privacy``: مستنداٌت سرّية في السجلّ
+    # وملٌّف مفتوح يقرؤه كل من يحمل ``view_documents``. وبعد أن صارت
+    # الورقة تحمل سرَّها ومصدَرها، وقاعدُة رؤيتها قاعدَة طلبها، صار
+    # إصداُرها حفًظا لا كشًفا.
+    #
+    # و``REQBANK`` و``REQDED`` بقيتا: رايُة التوقيع فيهما مفعَّلٌة
+    # افتراًضا، فإصداُر مستنٍد لهما يحوّلهما إلى انتظار توقيٍع ورقّي — وهو
+    # تغيٌّر في المسار لا إصداُر ورقة، ويحتاج قراًرا.
+    # **ومؤشٌّر خاطئ يضلّ ولو لم يحدّد الهويّة.**
+    #
+    # قوالُب هذه الأنواع تشير إلى غير ما يعلنه مسارها: «تعديل بيانات» إلى
+    # شهادة إخلاء طرف، و«اعتراض راتب» إلى تقرير، و«ردّ على إنذار» إلى
+    # قبول استقالة. والهويّة تُحَل من السجلّ فلا تتأثّر — لكن القالب
+    # يُستعمَل في اختيار **المخوَّل بالتوقيع**
+    # (``resolve_authorized_signatory``)، فيوقّع الورقَة من ليس صاحبها.
+    #
+    # فيُنزَع المؤشّر: لا مؤشَّر خيٌر من مؤشٍّر يشير إلى غير موضعه.
+_simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_DATA,
+           ["hr"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     # RW-11 — تغيير الحساب البنكي: تحقّق HR من الهوية والمستند أوًلا، ثم مراجع
     # مالي مستقل. كان يبدأ بالمحاسب مباشرة بلا تحقّق من أن طالب التغيير هو
     # صاحب الحساب فعًلا — وهذا أشيع مسار احتيال داخلي في أنظمة الرواتب:
@@ -350,8 +378,7 @@ DEFAULT_REQUEST_TYPES = [
            requires_physical_signature=False, visible_to_employee=True,
            default_template_code="HRMS-PR-004"),
     _simple("REQCONTACT", "تحديث بيانات الاتصال والطوارئ", CAT_EMP_DATA,
-           ["hr"], requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-039"),
+           ["hr"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
 
     # الشهادات والخطابات
     # AC-11 + RW-03 + DOC-01 — شهادة الراتب تُولَّد من بيانات معتمَدة أصًلا
@@ -388,7 +415,8 @@ DEFAULT_REQUEST_TYPES = [
            ["company_manager", "accountant"], requires_physical_signature=False,
            produces_document=True, visible_to_employee=True),
     _simple("REQEXP", "طلب استرداد مصروفات", CAT_FINANCIAL,
-           ["branch_supervisor", "accountant"], requires_physical_signature=False, visible_to_employee=True),
+           ["branch_supervisor", "accountant"], requires_physical_signature=False,
+           produces_document=True, visible_to_employee=True),
     # **قرار المالك — يُفتَح للموظف.**
     #
     # نصُّ النوع الرسمي بصوته: «أتقدم بطلب بدل أو ميزة وفق البيانات
@@ -401,8 +429,7 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
-           ["accountant", "company_manager"], requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-032"),
+           ["accountant", "company_manager"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     # AC-03 — خطوة HR هنا تحقّق تعاقدي لا قرار مالي: القرار للمحاسب والمدير
     _simple("REQDED", "اعتراض على خصم", CAT_FINANCIAL,
            ["accountant", "hr", "company_manager"], validation_roles=("hr",),
@@ -411,8 +438,7 @@ DEFAULT_REQUEST_TYPES = [
 
     # الشكاوى والتظلمات
     _simple("REQGRV", "شكوى أو تظلم", CAT_GRIEVANCE,
-           ["hr"], requires_physical_signature=False, is_confidential=True, visible_to_employee=True,
-           default_template_code="HRMS-PR-041"),
+           ["hr"], requires_physical_signature=False, produces_document=True, is_confidential=True, visible_to_employee=True),
     # P11-38 — **حٌق مكتوٌب في النصّ وباٌب مغلٌق دونه.**
     #
     # حقول هذين النوعين مكتوبٌة بصوت الموظف: «الموقف من الإنذار» بخياراته
@@ -421,13 +447,11 @@ DEFAULT_REQUEST_TYPES = [
     # صاحبه لا يفتحه صاحبه. والنصّ الرسمي يعطيه «حق الرد أو الاعتراض خلال
     # المدة المحددة».
     _simple("REQVIO", "اعتراض على مخالفة", CAT_GRIEVANCE,
-           ["hr", "company_manager"], requires_physical_signature=False,
-           visible_to_employee=True,
-           default_template_code="HRMS-PR-013"),
+           ["hr", "company_manager"], requires_physical_signature=False, produces_document=True,
+           visible_to_employee=True),
     _simple("REQWARN", "إقرار أو رد على إنذار", CAT_GRIEVANCE,
-           ["hr"], requires_physical_signature=False,
-           visible_to_employee=True,
-           default_template_code="HRMS-PR-014"),
+           ["hr"], requires_physical_signature=False, produces_document=True,
+           visible_to_employee=True),
 
     # طلبات عامة
     _simple("REQGEN", "طلب عام أو اقتراح", CAT_GENERAL,
@@ -435,7 +459,8 @@ DEFAULT_REQUEST_TYPES = [
 
     # التطوير الوظيفي
     _simple("REQTRN", "طلب تدريب", CAT_CAREER,
-           ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False,
+           produces_document=True, visible_to_employee=True),
     _simple("REQTRF", "طلب نقل داخلي", CAT_CAREER,
            ["branch_supervisor", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-016"),
