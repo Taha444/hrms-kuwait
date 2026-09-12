@@ -1260,6 +1260,7 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
                 related_entity_type="request", related_entity_id=req.id,
                 severity="warning", dedup_key=f"req_exit:{req.id}",
             )
+        _warn_debt_before_travel(db, req, name)
     elif kind == "pickup":
         req.status = "ready_for_pickup"
         # يُنفّذ الطلب الدور المحدَّد في المرحلة (hr افتراضيًا، أو accountant للسلف/القروض)
@@ -2013,6 +2014,41 @@ def _notify_loan_agreement_ready(db: Session, req: models.Request) -> None:
         db, req, code="NTF-075",
         context={"request_type": rt.name if rt else "السلفة/القرض"},
         dedup_key=f"loan_agreement:{req.id}")
+
+
+def _warn_debt_before_travel(db: Session, req: models.Request, name: str) -> None:
+    """**والسفُر ثاني لحظٍة يخرج فيها المال، وكانت صامتة.**
+
+    ``outstanding_loan`` يُستشار عند نهاية الخدمة وحدها: ``exit_case``
+    يحسبه ويرفع مهمًة حرجة ويقول صراحًة إن مصيَره «حٌد قانوني ومسألُة
+    سياسة» — **«لكنه يُسمّى فيبلغ من يسوّي الحساب، بدل أن يُكتشَف بعد
+    إغلاق الملف أو لا يُكتشَف أصًلا»**.
+
+    ومغادرُة البلاد تنطبق عليها العبارُة بحرفها: من يسافر وعليه أقساٌط قد
+    لا يعود، والدُين يصير غيَر قابٍل للتحصيل. ولم يكن شيٌء يفحصه هنا.
+
+    **ولا يُقرَّر شيء**: الإجازُة لا تُوقَف، ولا يُقتطَع فلٌس. يُسمّى المبلُغ
+    لمن يسوّي الحساب في اللحظة التي يمكن فيها التسوية. وسجلُّ المخرجات
+    يعلن لهذا المسار ``OD-012`` «إفادة مالية للسفر» — **وهي وثيقٌة
+    تنتظر قراَر صاحبها**، وهذا الإخطاُر ليس بديًلا عنها بل تنبيٌه إلى أن
+    موضَعها له معنى.
+    """
+    owed = outstanding_loan(db, req.employee_id)
+    if owed <= 0:
+        return
+    p = req.payload_json or {}
+    for u in users_by_role(db, req.company_id, ["accountant", "hr"]):
+        create_task(
+            db, company_id=req.company_id, assignee_user_id=u.id,
+            type="request_update", severity="warning",
+            title=f"دٌين قرٍض قائم قبل سفر {name}",
+            detail=(f"بقي {owed:.3f} د.ك من أقساٍط لم تُحتسب بعد، والموظف "
+                    f"يغادر البلاد ({p.get('start_date','')} إلى "
+                    f"{p.get('end_date','')}). الإجازُة لا تُوقَف بهذا — "
+                    f"والتسويُة ممكنٌة الآن، ويصعب تحصيلُها بعد المغادرة."),
+            related_entity_type="request", related_entity_id=req.id,
+            dedup_key=f"travel_loan_due:{req.id}:u{u.id}",
+        )
 
 
 def outstanding_loan(db: Session, employee_id: int) -> float:
