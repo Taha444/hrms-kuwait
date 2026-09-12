@@ -56,9 +56,12 @@ def test_no_excuse_outlives_its_reason():
 
 def test_every_named_gap_says_what_it_needs():
     """ولكل سطر ما يلزم لرفعه: مستٌند يُعتمد، أو ربٌط يُكتب."""
+    # **و``declaration`` صنٌف رابع**: مستنٌد يعلنه مساران ويُنتَج في
+    # أحدهما، فيُعَدّ ناقًصا في اآلخر. وهو **أثُر قياٍس ال نقُص عمل** — ولو
+    # صُنِّف «قالًبا ناقًصا» أنتج عمًلا وهمًيا: صياغَة ورقٍة قائمة.
     bad = [k for k, v in R.OUTPUT_GAPS.items()
            if v.get("needs") not in ("template", "profile_template", "wiring",
-                                     "signature_decision")
+                                     "signature_decision", "declaration")
            or not (v.get("why") or "").strip()]
     assert not bad, f"سطٌر بلا تصنيف أو بلا سبب: {bad}"
 

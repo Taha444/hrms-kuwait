@@ -120,3 +120,51 @@ def test_no_type_points_at_a_template_outside_its_workflow():
         if R.canonical_od_for(code, tpl) is None:
             bad.append((code, tpl))
     assert not bad, f"أنواٌع تُنتج وهويُّة مستندها None: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# وفجوٌة تُبلِّغ عن عمٍل ليس ناقًصا
+# ---------------------------------------------------------------------------
+
+def test_no_gap_asks_for_a_document_the_system_already_produces():
+    """**فجوٌة تطلب ما هو موجوٌد تُنتِج عمًلا وهمًيا.**
+
+    ``WF-014/OD-009`` كانت تقول «ال قالب» — و``OD-009`` (إقرار/ردّ الموظف)
+    **يُنتَج فعًلا** تحت ``WF-015`` (``REQWARN`` و``REQVIO``). فمن يقرأ
+    الفجوَة يصوغ قالًبا لمستنٍد قائم.
+
+    والعلُّة أن القياَس **بالمسار**: مستنٌد يعلنه مساران، يُنتَج في أحدهما
+    فيُعَدّ ناقًصا في اآلخر. فيُصنَّف ``declaration`` — أثُر إعالٍن ال نقُص
+    عمل.
+    """
+    produced = R.produced_outputs()
+    elsewhere = {}
+    for key, body in R.OUTPUT_GAPS.items():
+        od = key.split("/")[1]
+        where = sorted(wf for wf, ods in produced.items() if od in ods)
+        if where and body.get("needs") == "template":
+            elsewhere[key] = where
+    assert not elsewhere, (
+        "فجواٌت تطلب صياغَة قالٍب لمستنٍد يُنتَج فعًلا: " + str(elsewhere))
+
+
+def test_the_cover_sheet_inconsistency_is_recorded_not_hidden():
+    """**والنظاُم ال يكون محًقّا في الوجهين.**
+
+    ``OD-013`` (غلاف متابعة حكومية) **يُنتجه النظاُم فعًلا** لتجديد الإقامة
+    المبكر والعادي (``REQRESE`` · ``REQRESN``) وللمهمة الخارجية
+    (``REQMIS``). وتجديُد الإقامة حكومٌّي بقدر إذن العمل — ومع ذلك ``REQWP``
+    يرفض بعلٍّة مكتوبة، و``REQPASS``/``REQCID`` مطفآن.
+
+    فإمّا الغالُف الداخلي آمٌن — فتُنتجه الثالثُة كما تُنتجه الإقامة — وإمّا
+    ال، فتُرفَع عن الإقامة أيًضا. **وهذا قراٌر (القاعدة 12) ال قياس**، لكنّ
+    التناقَض يُقيَّد فال يُحسَم نصفُه في صمت.
+    """
+    produced = R.produced_outputs()
+    producers = sorted(wf for wf, ods in produced.items() if "OD-013" in ods)
+    assert producers, "افتراُض القياس: النظاُم يُنتج OD-013 في مساٍر ما"
+
+    for key in ("WF-021/OD-013", "WF-022/OD-013", "WF-023/OD-013"):
+        why = R.OUTPUT_GAPS[key]["why"]
+        assert "يُنتج OD-013 فعًلا" in why, f"{key}: التناقُض غيُر مقيَّد"
+        assert "القاعدة 12" in why, f"{key}: ال يُقال إنه قراٌر لصاحبه"
