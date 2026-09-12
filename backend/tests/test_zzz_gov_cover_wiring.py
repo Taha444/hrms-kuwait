@@ -250,3 +250,75 @@ def test_a_failing_cover_does_not_stop_the_departure():
     assert "raise" not in helper.split("except")[-1], \
         "فشُل الغلاف يُسقِط المرحلة"
     assert hasattr(W, "logger"), "ال سجّل في الوحدة — الفرُع ينفجر بـNameError"
+
+
+# ---------------------------------------------------------------------------
+# ومستندان بجسٍم واحد يقرأ أحدُهما كأنه اآلخر
+# ---------------------------------------------------------------------------
+
+def test_the_cover_has_its_own_body_not_the_leave_decision_s():
+    """**جوهر عطٍل أحدثتُه ثم أصلحتُه.**
+
+    الغالُف كان يُرسَم بأسطر ``_body_lines`` نفسها — نوُع اإلجازة وتاريخاها
+    وسببُها — فيبدو **قراَر إجازٍة بترويسة غلاف**. والسجلُّ يشترط له غير
+    ذلك: نوَع المعاملة والجهَة والمرجع.
+
+    فيُقاس أن الجسَم يتبع **هويَّة المستند** ال نوَع الطلب وحده.
+    """
+    src = inspect.getsource(W.generate_document)
+    assert "_gov_cover_lines" in src, "الغالُف يُرسَم بجسم قرار اإلجازة"
+    assert 'od_code == "OD-013"' in src, "الجسُم ال يتبع الهويّة"
+
+    cover = inspect.getsource(W._gov_cover_lines)
+    assert "نوع المعاملة" in cover and "المرجع الداخلي" in cover
+
+
+def test_the_cover_never_invents_a_government_entity():
+    """**وغالٌف ال يسمّي الجهَة أهوُن من غالٍف يسمّي جهًة خاطئة.**
+
+    فورقٌة تُقدَّم إلى الهيئة وعليها اسُم وزارٍة أخرى تُردّ وتُقرأ
+    استخفاًفا. و``GovernmentPortal`` موجوٌد في النظام — يُقرأ منه إن مُلئ
+    ويُسكَت عنه إن لم يُملأ، **وال يُكتَب اسٌم في الشيفرة**.
+    """
+    cover = inspect.getsource(W._gov_cover_lines)
+    assert "GovernmentPortal" in cover, "ال يُقرأ سجلُّ الجهات"
+    for invented in ("الهيئة العامة للقوى العاملة", "المعلومات المدنية",
+                     "الجنسية والجوازات", "وزارة الداخلية"):
+        assert invented not in cover, f"اسُم جهٍة مكتوٌب في الشيفرة: {invented}"
+
+
+def test_the_cover_says_the_original_comes_from_the_authority():
+    """**والورقُة تقول ما هي** — فال تُقرأ بديًلا عن األصل.
+
+    وهي عيُن الملاحظة القانونية في السجلّ: «األصُل يُرفع من الجهة».
+    """
+    cover = inspect.getsource(W._gov_cover_lines)
+    assert "غلاُف متابعٍة داخلي" in cover or "غلاف متابعة داخلي" in cover
+    assert "الأصُل" in cover or "الأصل" in cover
+
+
+def test_the_declared_required_fields_are_not_silently_unmet():
+    """**وشرٌط معلٌَن ال يُفرَض في أيّ موضع** — فيُقال ال يُطوى.
+
+    ``CANONICAL_DOCUMENTS[od]["required"]`` قائمٌة معلَنة لكل مستند، **وال
+    يقرؤها شيء**. وللغالف أربعة: اسُم الموظف (في شبكة الترويسة)، ونوُع
+    المعاملة والمرجُع (في جسمه)، و``government_entity`` — **وهذا بال
+    مصدٍر حتى يُملأ سجلُّ الجهات**.
+
+    فهذا الحارس يُثبِّت الحالَة المقيسة: ثالثٌة تُوفى وواحٌد ينتظر بياًنا
+    يملؤه صاحبُه. فإن صار الشرُط مفروًضا في الشيفرة سقط معلًنا أن هذه
+    الوثيقَة تُحدَّث.
+    """
+    import pathlib
+
+    required = set(R.CANONICAL_DOCUMENTS["OD-013"]["required"])
+    assert required == {"employee_name", "transaction_type",
+                        "government_entity", "reference_no"}, required
+
+    app = pathlib.Path(__file__).resolve().parents[1] / "app"
+    enforcers = [p.name for p in app.rglob("*.py")
+                 if 'CANONICAL_DOCUMENTS' in p.read_text(encoding="utf-8")
+                 and '["required"]' in p.read_text(encoding="utf-8")]
+    assert not enforcers, (
+        "صار الشرُط مفروًضا — تُحدَّث هذه الوثيقة وتُراجَع حقوُل الغلاف: "
+        f"{enforcers}")

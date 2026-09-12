@@ -2545,6 +2545,33 @@ def _notify_terminated(db: Session, req: models.Request, rt: models.RequestType,
         )
 
 
+def _gov_cover_lines(db: Session, rt, req, emp) -> list[str]:
+    """جسُم غلاف المتابعة الحكومية (``OD-013``).
+
+    **ومستندان بجسٍم واحد يقرأ أحدُهما كأنه اآلخر.** فالغالُف كان يُرسَم
+    بأسطر قرار اإلجازة نفسها — نوُع اإلجازة وتاريخاها وسببُها — فيبدو
+    قراَر إجازٍة بترويسة غلاف. والسجلُّ يشترط له أربعًة:
+    ``employee_name`` و``transaction_type`` و``government_entity`` و
+    ``reference_no``.
+
+    **وال تُختلَق جهة**: ``government_entity`` بال مصدٍر في النظام —
+    ``GovernmentPortal`` موجوٌد وفارٌغ وال بذَر له. فيُقرأ منه إن مُلئ،
+    ويُسكَت عنه إن لم يُملأ. **وغالٌف ال يسمّي الجهَة أهوُن من غالٍف
+    يسمّي جهًة خاطئة** — فورقٌة تُقدَّم إلى الهيئة وعليها اسُم وزارٍة أخرى
+    تُردّ، وتُقرأ استخفاًفا.
+    """
+    lines = [f"نوع المعاملة: {rt.name}",
+             f"المرجع الداخلي: طلب رقم {req.id}"]
+    portal = db.scalar(select(models.GovernmentPortal).where(
+        models.GovernmentPortal.category == rt.code,
+        models.GovernmentPortal.is_active == True))  # noqa: E712
+    if portal:
+        lines.append(f"الجهة الحكومية: {portal.name_ar}")
+    lines.append("هذا غلاُف متابعٍة داخلي — الأصُل يُستخرَج من الجهة "
+                 "المختصّة ويُرفَع على المعاملة.")
+    return lines
+
+
 def _body_lines(rt, req, emp) -> list[str]:
     """أسطر تفاصيل الطلب (نص صِرف) — تُستخدم في نسخة PDF ونسخة HTML معًا.
 
@@ -2791,8 +2818,11 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     # القرار قرار والمستند مستند: الاعتماد يبقى، والمستند يُسجَّل FAILED
     # بسببه فيُعاد توليده لاحًقا. ولا يُسجَّل نجاح توليد لم يقع.
     try:
-        pdf_bytes = render_request_pdf(rt, req, emp, company, approvals,
-                                       _body_lines(rt, req, emp),
+        # **والجسُم يتبع هويَّة المستند** — فمستندان بجسٍم واحد يقرأ
+        # أحدُهما كأنه اآلخر.
+        body = (_gov_cover_lines(db, rt, req, emp) if od_code == "OD-013"
+                else _body_lines(rt, req, emp))
+        pdf_bytes = render_request_pdf(rt, req, emp, company, approvals, body,
                                        verification_code=verification_code,
                                        employee_signature=emp_sig,
                                        company_signature=company_sig,
