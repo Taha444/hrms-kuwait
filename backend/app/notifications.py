@@ -194,6 +194,12 @@ def was_created(task) -> bool:
 
 
 def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list[models.User]:
+    """أصحاُب الأدوار في شركٍة — **و``None`` تعني كلَّ الشركات**.
+
+    وهذا موضُع حذٍر: من يُمرِّر شركَة كياٍن قابلٍة للفراغ يبثّ إلى كل من
+    يحمل الدوَر في القاعدة كلّها. فالشركُة تُقرأ من الكيان، وكياٌن بلا
+    شركٍة ليس سهًوا بل **شأُن نظام** — انظر ``notify_roles``.
+    """
     q = select(models.User).where(models.User.role.in_(roles), models.User.is_active == True)  # noqa: E712
     if company_id is not None:
         q = q.where(models.User.company_id == company_id)
@@ -228,10 +234,29 @@ def notify_roles(db: Session, company_id: int | None, roles: list[str], **kwargs
     BKL-03 — كان يعيد None، فيعدّ المسح اليومي المرور لا الإنشاء: يقول
     «وُلّدت 10 مهام» وقد وجدها كلها موجودة فلم يُنشئ شيًئا. والمشغّل يقرأ
     الرقم فيظنّ أن المهام تتكرّر كل تشغيل.
+
+    **وشركٌة فارغٌة ال تعني «كلَّ الشركات» هنا.** ``users_by_role`` بال
+    شركٍة تُعيد كلَّ من يحمل الدوَر في القاعدة — فمهمٌَّة بال شركة كانت
+    تبثّ عنواَنها وتفصيلها إلى موارد **كل** شركٍة ومديريها. وهو خطٌر
+    بنيويٌّ ال واقٌع اليوم: ``Task.company_id`` قابٌل للفراغ وثالثُة صفوٍف
+    فارغٌة فعًلا (``job_failure``)، لكنّ ``sla_scan`` يُرشِّح بـ
+    ``template_code`` المرتبط بمهلة وهي بال قالب. **ويُسَدّ قبل أن يُفتَح**:
+    فأوُّل مهمٍة ذات قالٍب بال شركٍة تكفي.
+
+    **وكياٌن بال شركٍة شأُن نظام** — ومهامُّ النظام مُسنَدٌة إلى الإدارة
+    العليا أصًلا (الثالثُة القائمة كذلك). فتذهب إلى ``oversight_users``:
+    فال تُبثّ عبر الشركات، **وال تُدفَن صامتًة** — وتحذيٌر ال يصل ال
+    يُفرَّق عن الصمت الذي بُني ليمنعه (وهو الدرُس المكتوب في
+    ``oversight_users`` نفسها).
     """
     base_dedup = kwargs.pop("dedup_key", None)
     made = 0
-    for user in users_by_role(db, company_id, roles):
+    recipients = (users_by_role(db, company_id, roles) if company_id is not None
+                  else oversight_users(db, None))
+    if company_id is None:
+        logger.warning("إشعاُر أدواٍر بال شركة (%s) — وُجِّه إلى الإشراف",
+                       kwargs.get("type") or "?")
+    for user in recipients:
         dk = f"{base_dedup}:u{user.id}" if base_dedup else None
         if was_created(create_task(db, company_id=company_id,
                                    assignee_user_id=user.id,

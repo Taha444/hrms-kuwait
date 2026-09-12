@@ -554,3 +554,82 @@ def test_an_overseer_still_reads_every_membership(client):
     r = client.get(f"/api/users/{b}/company-links",
                    headers=auth_headers(login(client, *ADMIN)))
     assert r.status_code == 200, r.text[:300]
+
+
+# ---------------------------------------------------------------------------
+# وشركٌة فارغٌة ال تعني «كلَّ الشركات»
+# ---------------------------------------------------------------------------
+
+def test_a_company_less_task_does_not_fan_out_to_every_company():
+    """**وبٌثّ عبر الشركات بمقدار عدد الشركات.**
+
+    ``users_by_role(db, None, roles)`` تُعيد كلَّ من يحمل الدوَر في القاعدة
+    — و``notify_roles`` كانت تُمرِّر شركَة الكيان كما هي. و
+    ``Task.company_id`` **قابٌل للفراغ** (وثالثُة صفوٍف فارغٌة فعًلا:
+    ``job_failure``). فمهمٌَّة بال شركٍة تُصعَّد فتصل عنواُنها وتفصيلها إلى
+    موارد كل شركٍة ومديريها.
+
+    ولم يكن واقًعا: ``sla_scan`` يُرشِّح بـ``template_code`` المرتبط بمهلة،
+    وتلك بال قالب. **فيُقاس البثُّ مباشرًة** ال عبر المسح — وإال حُرِس ما
+    ال يقع وتُرك ما يقع.
+    """
+    from app import notifications as N
+
+    db = SessionLocal()
+    made: list[int] = []
+    try:
+        n = N.notify_roles(db, None, ["hr", "company_manager"],
+                           type="test_fanout", severity="info",
+                           title="قياُس بثٍّ بال شركة",
+                           dedup_key="zzz_fanout_probe")
+        db.commit()
+        rows = db.scalars(select(models.Task).where(
+            models.Task.type == "test_fanout")).all()
+        made = [r.id for r in rows]
+
+        # **ال أحَد من أصحاب الأدوار المقيَّدة بشركتهم.**
+        recipients = {r.assignee_user_id for r in rows}
+        bound = db.scalars(select(models.User).where(
+            models.User.id.in_(recipients or {0}),
+            models.User.role.in_(("hr", "company_manager")),
+            models.User.company_id.isnot(None))).all()
+        assert not bound, ("بُثَّ إلى أصحاب أدواٍر مقيَّدين بشركاتهم: "
+                           f"{[(u.id, u.role, u.company_id) for u in bound]}")
+
+        # **ولم يُدفَن**: وصل إلى الإشراف — فتحذيٌر ال يصل ال يُفرَّق عن الصمت.
+        assert n >= 1 and rows, "لم يصل إلى أحد — وهذا هو الصمُت نفسه"
+        from app.permissions import CROSS_COMPANY_ROLES
+        overseers = db.scalars(select(models.User).where(
+            models.User.id.in_(recipients))).all()
+        assert all(u.role in CROSS_COMPANY_ROLES for u in overseers), \
+            [(u.id, u.role) for u in overseers]
+    finally:
+        for tid in made:
+            db.execute(sa_delete(models.Task).where(models.Task.id == tid))
+        db.commit()
+        db.close()
+
+
+def test_a_company_bound_task_still_reaches_its_own_roles():
+    """والمقيَُّد بشركٍة يصل إلى أصحابها — التضييُق ال يكسر ما كان يعمل."""
+    from app import notifications as N
+
+    db = SessionLocal()
+    made: list[int] = []
+    try:
+        n = N.notify_roles(db, 1, ["hr"], type="test_fanout_ok", severity="info",
+                           title="قياُس بٍثّ في شركة", dedup_key="zzz_fanout_ok")
+        db.commit()
+        rows = db.scalars(select(models.Task).where(
+            models.Task.type == "test_fanout_ok")).all()
+        made = [r.id for r in rows]
+        assert n >= 1 and rows, "لم يصل إلى موارد شركته"
+        for r in rows:
+            assert r.company_id == 1, r.company_id
+            u = db.get(models.User, r.assignee_user_id)
+            assert u.company_id == 1 and u.role == "hr", (u.role, u.company_id)
+    finally:
+        for tid in made:
+            db.execute(sa_delete(models.Task).where(models.Task.id == tid))
+        db.commit()
+        db.close()
