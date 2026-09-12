@@ -871,6 +871,28 @@ class AttendanceMonthClose(Base):
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
 
+    #: **سجٌّل مفتوٌح واحٌد لكل موظف** — والقيُد في القاعدة لا في الفحص.
+    #:
+    #: ``check_in`` كان يقرأ «لا سجّل مفتوح» ثم يكتب، وبين القراءة
+    #: والكتابة نافذٌة: نقرتان في اللحظة نفسها تُنشئان اثنين، فيأخذ
+    #: ``_finalize_out`` أحدهما ويبقى الآخُر مفتوًحا إلى الأبد — فيمنع
+    #: كلَّ حضوٍر لاحق وتُحتسب دقائُق عمٍل مرتين أو تُفقَد.
+    #:
+    #: **والشرُط جزئّي**: التفرُّد مقصوٌر على ما لم يُنصرَف منه، فمن انصرف
+    #: يبصم غًدا. ولو كان على ``employee_id`` وحده لمنع كلَّ حضوٍر ثاٍن في
+    #: عمر الموظف — عطًلا أوسَع من الذي يُصلحه.
+    #:
+    #: **ويُعرَّف هنا لا في الترحيل وحده**: قاعدُة الاختبار تُبنى بـ
+    #: ``create_all`` لا بالترحيلات، فقيٌد في ترحيٍل وحده **لا وجوَد له في
+    #: الاختبار** — فلا يُقاس، وهو عين فرِق البيئتين الذي كُنس في هذه
+    #: الجولة. والترحيُل ``f4a5b6c7d8e`` للقواعد القائمة.
+    __table_args__ = (
+        Index("ux_attendance_one_open_per_employee", "employee_id",
+              unique=True,
+              sqlite_where=text("check_out_at IS NULL"),
+              postgresql_where=text("check_out_at IS NULL")),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)

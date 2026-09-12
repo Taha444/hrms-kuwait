@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import attendance_close, models, schemas
@@ -188,7 +189,22 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
             in_lat=payload.get("lat"), in_lng=payload.get("lng"))
         db.add(rec)
         audit(db, user, "check_in", "attendance", emp.id, detail=status, request=request)
-        db.commit()
+        # **والفحُص قبل الكتابة ال يرى الطلَب الموازي.**
+        #
+        # نقرتان في اللحظة نفسها تقرآن «ال سجّل مفتوح» فتُنشئان اثنين —
+        # ثم يأخذ ``_finalize_out`` أحدهما ويبقى اآلخُر مفتوًحا إلى األبد،
+        # فيمنع كلَّ حضوٍر لاحق (الفحُص نفسه يردّ 409) وتُحتسب دقائُق عمٍل
+        # مرتين أو تُفقَد.
+        #
+        # فالقيُد في القاعدة: فهٌرس فريٌد مشروٌط بـ``check_out_at IS NULL``
+        # (ترحيل ``f4a5b6c7d8e``). **ويُترجَم إلى الرسالة نفسها** — فقيٌد
+        # يردّ خمسمئة بادَل تسابًقا بانهيار، والمستخدُم ال يفهم أيَّهما.
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="لديك تسجيل حضور مفتوح بالفعل")
         db.refresh(rec)
         return {"ok": True, "action": "in", "status": status, "check_in_at": rec.check_in_at}
 
