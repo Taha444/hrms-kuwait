@@ -1334,6 +1334,21 @@ def decide_salary_change(req_id: int, decision: str, request: Request = None,
 # ----------------------------- النقل بين الشركات -----------------------------
 
 @router.post("/{emp_id}/transfer")
+#: **نقٌل بين الشركات: قفٌل مفتاحُه ``super_admin`` وحده — وقراٌر معلَّق.**
+#:
+#: قيس: ``REQTRF`` و``REQTRFLIC`` يكتبان ``branch_id`` (و``license_id``)
+#: **ولا يكتب أيُّ مساٍر آخر ``company_id``**. فهذه النقطُة هي الطريُق
+#: الوحيد، وصلاحيُتها لا يحملها إلا ``super_admin`` — وقاعدُة المالك تمنع
+#: منحه لأيّ شخص. **فالنقُل بين الشركات غيُر ممكٍن في الإنتاج.**
+#:
+#: وللنظام طريٌق آخر لنفس الغاية: إنهاُء الخدمة في الأولى وتعيٌين في
+#: الثانية (``EosCase`` + ``EmployeeOnboarding``) — وهو ما يقتضيه انتقاُل
+#: عامٍل بين كفيلين عمًلا لا تقنيًة. **وأيُّ الطريقين صحيٌح قراٌر لصاحبه**،
+#: فيه وجٌه قانوني لا يُحسَم بقياس.
+#:
+#: فلا تُوسَّع الصلاحيُة ولا يُحذَف الزّر بلا قرار. والزّر قائٌم في
+#: ``EmployeeProfile.tsx`` محروًسا بـ``can("transfer_employee")`` — فلا
+#: يراه أحٌد اليوم، ولا يفشل من يراه.
 def transfer_employee(emp_id: int, to_company_id: int, note: str | None = None,
                       request: Request = None,
                       user: models.User = Depends(require_perm("transfer_employee")),
