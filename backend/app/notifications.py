@@ -443,6 +443,37 @@ def daily_scan(db: Session) -> dict:
                 )
 
     db.commit()
+    # **وفتيٌل مضبوٌط لم يشتعل بعد يُرى قبل أن يشتعل.**
+    #
+    # ``_check_geofence`` يرفض البصَم بـ400 «إحداثيات GPS مطلوبة» متى كان
+    # نمُط الموظف ``gps`` أو ``both`` **وفرعُه بلا إحداثيات**. وقيس:
+    # واحٌد وعشرون فرًعا من خمسٍة وعشرين بلا إحداثيات، والنمُط الغالب
+    # ``both``. فاليوم **لا أحَد محجوب** (الموظفون على الفروع الأربعة
+    # التي لها إحداثيات)، **وأوُل موظٍف يُسنَد إلى أحد الواحد والعشرين
+    # يُحجَب عن البصم** — ولا شيء كان يقول ذلك قبل أن يقف أمام الشاشة.
+    #
+    # ولا تُختَلق إحداثيات: موضُع الفرع بياٌن يعرفه صاحبه. فيُسمّى الناقص
+    # لمن يملؤه، على عرف ``config_gap`` القائم.
+    for _b in db.scalars(select(models.Branch).where(
+            models.Branch.latitude.is_(None))).all():
+        _at_risk = db.scalar(select(func.count()).select_from(models.Employee).where(
+            models.Employee.branch_id == _b.id,
+            models.Employee.status == "active",
+            models.Employee.attendance_mode.in_(("gps", "both")))) or 0
+        notify_roles(
+            db, _b.company_id, ["company_manager", "hr"],
+            type="config_gap",
+            title=f"فرٌع بلا إحداثيات: {_b.name}",
+            detail=(f"لا موضَع مسجًّلا لهذا الفرع، فالسياُج الجغرافي لا "
+                    f"يعمل عليه. ومن نمطُه GPS أو «كليهما» يُردّ عند البصم "
+                    f"بـ«إحداثيات GPS مطلوبة»"
+                    + (f" — وعليه الآن {_at_risk} موظًفا نشًطا."
+                       if _at_risk else " — ولا موظَف عليه بعد.")),
+            severity="critical" if _at_risk else "warning",
+            related_entity_type="branch", related_entity_id=_b.id,
+            dedup_key=f"branch_no_coords:{_b.id}",
+        )
+
     # BKL-03 — العدد يُقاس من القاعدة لا يُجمع بالنيّة.
     #
     # جمعه في كل فرع يعني رقًما يعتمد على ألّا يُنسى موضع إنشاء — وقد نُسي
