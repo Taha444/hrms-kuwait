@@ -18,6 +18,23 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
     q = (q or "").strip()
     if len(q) < 2:
         return {"query": q, "results": {}}
+    # **حساسيُة الحالة تختلف بين المحرّكين — فبحٌث يعمل محلًّيا ويفشل
+    # في اإلنتاج.**
+    #
+    # ``LIKE`` في SQLite **ال يميّز حالَة الحروف** لأحرف ASCII، وفي
+    # PostgreSQL **يميّزها**. والسويُت تجري على SQLite — فال اختباَر يمسك
+    # هذا أبًدا. وهو الصنُف نفسه الذي تكرَّر اليوم ثالث مرات: ترويسٌة ال
+    # تُكشَف إال عبر األصول، وساعُة مضيٍف تُقارَن بـUTC، وكتالوٌج نسخُته في
+    # القاعدة هي التي تعمل.
+    #
+    # واألثُر يمسّ ما فيه حروٌف التينية: رقُم الجواز (``A9988776``) ورقُم
+    # الترخيص ورقُم الملف والسجلُّ التجاري. فمن يكتب ``a9988776`` ال يجد
+    # شيًئا في اإلنتاج ويجده محلًّيا.
+    #
+    # و``ilike`` صحيحٌة على المحرّكين: SQLAlchemy تترجمها إلى
+    # ``lower(x) LIKE lower(y)`` على SQLite وإلى ``ILIKE`` على Postgres.
+    # والعربيُة ال حالَة لها فال يمسّها التحويل. وال فهٌرس يُفقَد: النمُط
+    # ``%q%`` بعالمَتي بدٍل ال يستعمل فهرًسا أصًلا.
     like = f"%{q}%"
     cid = scope_company_id(user)
     assigned = get_user_perms(user, db)
@@ -30,8 +47,8 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
 
     # الموظفون (بالاسم/المدني/الجواز/رقم الموظف)
     if can("view_employee"):
-        conds = [models.Employee.name.like(like), models.Employee.civil_id.like(like),
-                 models.Employee.passport_number.like(like)]
+        conds = [models.Employee.name.ilike(like), models.Employee.civil_id.ilike(like),
+                 models.Employee.passport_number.ilike(like)]
         if q.isdigit():
             conds.append(models.Employee.id == int(q))
         emp_q = select(models.Employee).where(or_(*conds))
@@ -43,13 +60,13 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
     # الشركات (للإدارة العليا/المالك)
     if user.role in CROSS_COMPANY_ROLES:
         comps = db.scalars(select(models.Company).where(or_(
-            models.Company.name.like(like), models.Company.commercial_reg.like(like),
-            models.Company.file_number.like(like))).limit(6)).all()
+            models.Company.name.ilike(like), models.Company.commercial_reg.ilike(like),
+            models.Company.file_number.ilike(like))).limit(6)).all()
         results["companies"] = [{"id": c.id, "label": c.name,
                                  "sub": f"س.ت {c.commercial_reg or '—'}", "link": "/companies"} for c in comps]
 
     # الفروع
-    br_q = scoped(select(models.Branch).where(models.Branch.name.like(like)), models.Branch)
+    br_q = scoped(select(models.Branch).where(models.Branch.name.ilike(like)), models.Branch)
     branches = db.scalars(br_q.limit(6)).all()
     if branches:
         results["branches"] = [{"id": b.id, "label": b.name, "sub": b.address or "",
@@ -58,7 +75,7 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
     # التراخيص (شأن حكومي → المندوب/الإدارة العليا فقط)
     if can("manage_licenses"):
         lic_q = scoped(select(models.License).where(or_(
-            models.License.name.like(like), models.License.license_no.like(like))), models.License)
+            models.License.name.ilike(like), models.License.license_no.ilike(like))), models.License)
         lics = db.scalars(lic_q.limit(6)).all()
         if lics:
             results["licenses"] = [{"id": l.id, "label": l.name,
@@ -66,7 +83,7 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
 
     # الإقامات (برقم الإقامة)
     if can("manage_permits"):
-        pm_q = scoped(select(models.Permit).where(models.Permit.number.like(like)), models.Permit)
+        pm_q = scoped(select(models.Permit).where(models.Permit.number.ilike(like)), models.Permit)
         permits = db.scalars(pm_q.limit(6)).all()
         if permits:
             emp_map = {e.id: e.name for e in db.scalars(select(models.Employee)).all()}

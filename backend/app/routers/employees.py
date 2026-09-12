@@ -94,11 +94,28 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
     if sc.self_employee_id is not None:
         base = base.where(models.Employee.id == sc.self_employee_id)
     if q:
+        # **حساسيُة الحالة تختلف بين المحرّكين — فبحٌث يعمل محلًّيا ويفشل
+        # في اإلنتاج.**
+        #
+        # ``LIKE`` في SQLite **ال يميّز حالَة الحروف** لأحرف ASCII، وفي
+        # PostgreSQL **يميّزها**. والسويُت تجري على SQLite — فال اختباَر يمسك
+        # هذا أبًدا. وهو الصنُف نفسه الذي تكرَّر اليوم ثالث مرات: ترويسٌة ال
+        # تُكشَف إال عبر األصول، وساعُة مضيٍف تُقارَن بـUTC، وكتالوٌج نسخُته في
+        # القاعدة هي التي تعمل.
+        #
+        # واألثُر يمسّ ما فيه حروٌف التينية: رقُم الجواز (``A9988776``) ورقُم
+        # الترخيص ورقُم الملف والسجلُّ التجاري. فمن يكتب ``a9988776`` ال يجد
+        # شيًئا في اإلنتاج ويجده محلًّيا.
+        #
+        # و``ilike`` صحيحٌة على المحرّكين: SQLAlchemy تترجمها إلى
+        # ``lower(x) LIKE lower(y)`` على SQLite وإلى ``ILIKE`` على Postgres.
+        # والعربيُة ال حالَة لها فال يمسّها التحويل. وال فهٌرس يُفقَد: النمُط
+        # ``%q%`` بعالمَتي بدٍل ال يستعمل فهرًسا أصًلا.
         like = f"%{q.strip()}%"
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة
-        permit_emp_ids = select(models.Permit.employee_id).where(models.Permit.number.like(like))
-        conds = [models.Employee.name.like(like), models.Employee.civil_id.like(like),
-                 models.Employee.passport_number.like(like),
+        permit_emp_ids = select(models.Permit.employee_id).where(models.Permit.number.ilike(like))
+        conds = [models.Employee.name.ilike(like), models.Employee.civil_id.ilike(like),
+                 models.Employee.passport_number.ilike(like),
                  models.Employee.id.in_(permit_emp_ids)]
         if q.strip().isdigit():
             conds.append(models.Employee.id == int(q.strip()))
