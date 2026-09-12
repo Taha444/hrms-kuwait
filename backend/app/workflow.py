@@ -2554,19 +2554,32 @@ def _gov_cover_lines(db: Session, rt, req, emp) -> list[str]:
     ``employee_name`` و``transaction_type`` و``government_entity`` و
     ``reference_no``.
 
-    **وال تُختلَق جهة**: ``government_entity`` بال مصدٍر في النظام —
-    ``GovernmentPortal`` موجوٌد وفارٌغ وال بذَر له. فيُقرأ منه إن مُلئ،
-    ويُسكَت عنه إن لم يُملأ. **وغالٌف ال يسمّي الجهَة أهوُن من غالٍف
-    يسمّي جهًة خاطئة** — فورقٌة تُقدَّم إلى الهيئة وعليها اسُم وزارٍة أخرى
-    تُردّ، وتُقرأ استخفاًفا.
+    **وال تُختلَق جهة**: الفئُة تُقرأ من ``GOV_COVER_CATEGORY`` والاسُم من
+    مفردات ``CATEGORY_LABELS`` — فال يحتاج السطُر إدخاَل بياناٍت، وما ليس
+    في الخريطة يُسكَت عنه. **وغالٌف ال يسمّي الجهَة أهوُن من غالٍف يسمّي
+    جهًة خاطئة** — فورقٌة تُقدَّم إلى الهيئة وعليها اسُم وزارٍة أخرى تُردّ،
+    وتُقرأ استخفاًفا.
     """
+    from . import v15_registry
+    from .routers.portals import CATEGORY_LABELS
+
     lines = [f"نوع المعاملة: {rt.name}",
              f"المرجع الداخلي: طلب رقم {req.id}"]
-    portal = db.scalar(select(models.GovernmentPortal).where(
-        models.GovernmentPortal.category == rt.code,
-        models.GovernmentPortal.is_active == True))  # noqa: E712
-    if portal:
-        lines.append(f"الجهة الحكومية: {portal.name_ar}")
+    # **الجهُة من المفردات المعلَنة لا من اسم رابٍط.** والخريطُة في
+    # ``GOV_COVER_CATEGORY`` — وهناك مكتوٌب لماذا لا يُدرَج فيها كلُّ نوع،
+    # ولماذا كان ``category == rt.code`` بحًثا لا يُصيب.
+    cat = v15_registry.GOV_COVER_CATEGORY.get(rt.code)
+    entity = CATEGORY_LABELS.get(cat) if cat else None
+    if entity:
+        lines.append(f"الجهة الحكومية: {entity}")
+        # ورابُط الجهة إن أُدخل — إضافٌة تُعين المندوب، لا مصدُر التسمية.
+        portal = db.scalar(select(models.GovernmentPortal).where(
+            models.GovernmentPortal.category == cat,
+            models.GovernmentPortal.is_active == True  # noqa: E712
+        ).order_by(models.GovernmentPortal.sort_order,
+                   models.GovernmentPortal.id))
+        if portal:
+            lines.append(f"بوابة المعاملة: {portal.name_ar} — {portal.url}")
     lines.append("هذا غلاُف متابعٍة داخلي — الأصُل يُستخرَج من الجهة "
                  "المختصّة ويُرفَع على المعاملة.")
     return lines
@@ -2831,8 +2844,21 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
         import logging
         doc.lifecycle_status = "FAILED"
         doc.file_path = None
-        # لا عمود note على المستند؛ السبب يُحفظ في مرجعه ليظهر في أي قائمة
-        doc.reference_no = f"FAILED-{type(e).__name__}"[:80]
+        # لا عمود note على المستند؛ السبب يُحفظ في مرجعه ليظهر في أي قائمة.
+        #
+        # **وكان يُكتَب ``FAILED-{النوع}`` — ثابًتا لكل نوع استثناء.**
+        # و``reference_no`` **فريٌد على الجدول كلّه**، فثاني مستنٍد يفشل
+        # بالنوع نفسه (أيَّ شركٍة، أيَّ طلب) يرفع ``IntegrityError`` **داخل
+        # هذا المعالِج نفسه** — فتسقط المعاملُة ومعها قراُر الاعتماد. وهو
+        # بحرفه العطُل الذي كُتب المعالُِج ليمنعه: «المعتمِد يضغط اعتماد
+        # فيُخبَر بخطأ... والطلب عالق بلا سبب ظاهر». وأمسكه حاٌرس سلوكّي
+        # يُسقِط المولَِّد، بعد أن مرَّ حاٌرس نصٌّي يبحث عن ``logger.warning``.
+        #
+        # فيُسبَق بمعرّف المستند — وهو فريٌد بالضرورة (مفتاٌح أساسّي
+        # مُفرَّغ في ``db.flush()`` أعاله). ويُقطَع على **٤٠** ال ٨٠:
+        # العموُد ``String(40)``، وPostgres يرفض الأطول (``SQLite`` يقبله
+        # صامًتا — فطوٌل خاطٌئ يمرّ في الاختبار ويسقط في الإنتاج).
+        doc.reference_no = f"FAILED-{doc.id}-{type(e).__name__}"[:40]
         logging.getLogger("hrms.documents").exception(
             "فشل توليد مستند الطلب %s (%s)", req.id, kind)
         for u in users_by_role(db, req.company_id, ["hr"]):

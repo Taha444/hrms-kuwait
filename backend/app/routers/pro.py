@@ -163,10 +163,35 @@ def add_note(entity_type: str, entity_id: int, note: str, request: Request,
 def list_notes(entity_type: str, entity_id: int,
                user: models.User = Depends(require_perm("manage_permits")),
                db: Session = Depends(get_db)):
-    rows = db.scalars(select(models.GovLog).where(
-        models.GovLog.entity_type == entity_type, models.GovLog.entity_id == entity_id)
-        .order_by(models.GovLog.created_at.desc())).all()
-    names = {u.id: u.full_name for u in db.scalars(select(models.User)).all()}
+    """ملاحظاُت معاملٍة حكومية — **مقيَّدًة بنطاق قارئها**.
+
+    **وتناظٌر منكسر**: ``add_note`` فوقها يتحقّق من نوع الكيان ثم
+    ``assert_same_company(user, entity.company_id)``؛ وهذه كانت تُرشِّح
+    بـ``entity_type`` و``entity_id`` من الاستعلام **وحدهما**. والمعرِّف
+    عددٌ متسلسل — فمندوٌب في شركٍة يكتب ``entity_id=17`` فيقرأ ملاحظاِت
+    إقامِة موظٍف في شركٍة أخرى: ماذا نقص في معاملته، ومتى رُدّت، ومن
+    كتبها. وهو صنُف «الكتابُة محروسٌة والقراءُة مكشوفة».
+
+    و``GovLog`` يحمل ``company_id`` (يُكتَب من ``entity.company_id`` عند
+    الإضافة) — فالنطاُق يُفرض عليه مباشرًة، ولا يتعّطل بزوال الكيان.
+
+    **والنوُع يُقيَّد كما في الكتابة**: ``permit`` أو ``license`` — فال
+    يُستعلَم بنوٍع ال يُكتَب أبدًا.
+    """
+    if entity_type not in ("permit", "license"):
+        raise HTTPException(status_code=400, detail="نوع غير صالح")
+    q = select(models.GovLog).where(
+        models.GovLog.entity_type == entity_type,
+        models.GovLog.entity_id == entity_id)
+    cid = scope_company_id(user, None)
+    if cid is not None:
+        q = q.where(models.GovLog.company_id == cid)
+    rows = db.scalars(q.order_by(models.GovLog.created_at.desc())).all()
+    # **وخريطُة األسماء كانت ``select(User)`` بال حدّ** — كلُّ مستخدٍم في
+    # القاعدة ليُسمّى كاتُب ملاحظة. فتُقرأ أسماُء الكاتبين وحدهم.
+    author_ids = {r.created_by for r in rows if r.created_by}
+    names = dict(db.execute(select(models.User.id, models.User.full_name).where(
+        models.User.id.in_(author_ids))).all()) if author_ids else {}
     return [{"action": r.action, "note": r.note, "by": names.get(r.created_by),
              "at": r.created_at} for r in rows]
 

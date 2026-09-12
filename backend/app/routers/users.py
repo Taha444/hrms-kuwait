@@ -369,10 +369,19 @@ def add_company_link(user_id: int, request: Request,
 def list_company_links(user_id: int,
                       user: models.User = Depends(require_perm("manage_users")),
                       db: Session = Depends(get_db)):
-    """R9 §16 — يعرض عضويات user متعدد الشركات."""
-    target = db.get(models.User, user_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    """R9 §16 — يعرض عضويات user متعدد الشركات.
+
+    **والقراءُة كانت أضعَف من الكتابة عند البيان الواحد.** ``DELETE`` الذي
+    يليها يشترط ``require_super_admin``؛ وهذه كانت ``manage_users`` — وهي
+    مع ``company_manager`` المقيَّد بشركته — **بال نطاق**. فمديُر الشركة
+    الأولى يقرأ بمعرٍِّف متسلسل عضوياِت أيِّ مستخدٍم: أسماَء الشركات التي
+    يخدمها وأسماَء سجاّلته فيها. وهو بنيُة المجموعة، تُقرأ من خارجها.
+
+    و``_get_scoped_user`` هو الحارُس الذي يستعمله باقي هذا الموجّه —
+    فيُستعمل هنا: شركُة الفاعل، والتسلسُل الهرمي معها. ومن هو فوق الشركات
+    يقرأ الكلَّ كما كان.
+    """
+    target = _get_scoped_user(db, user, user_id)
     links = db.scalars(select(models.UserCompanyLink).where(
         models.UserCompanyLink.user_id == user_id
     )).all()

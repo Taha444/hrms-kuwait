@@ -25,9 +25,27 @@ class DelegationIn(BaseModel):
 def _may_manage(user: models.User, delegator: models.User) -> bool:
     """يحدد من يستطيع منح/إلغاء تفويض باسم delegator:
     - المستخدم نفسه (يفوّض نائبه)
-    - HR أو super_admin
+    - HR **في شركته**، أو super_admin
+
+    **وكان بال شركة**: ``user.role in ("hr", "super_admin")`` — و``hr`` دوٌر
+    مقيٌَّد بشركته في كل النظام. فأثُره في الموضعين اللذين يناديانه:
+
+    - **المنح** — موارٌد بشرية في الشركة الأولى تُنشئ تفويَض اعتماٍد
+      لمستخدٍم في الثانية (والسطُر التالي يشترط أن يكون المفوَّض إليه في
+      شركة **المفوِّض** لا في شركة الفاعل — فالتفويُض يقع صحيًحا داخل
+      الشركة الثانية بيٍد من خارجها). أي إنشاُء سلطِة اعتماٍد في شركٍة
+      أخرى.
+    - **الإلغاء** — وتُلغي تفويًضا قائًما فيها، فتتعّطل اعتماداُت أصحابه
+      ويُقيَّد في التدقيق فاعٌل من خارج الشركة.
+
+    **والتضييُق ال يمنح شيًئا جديًدا**: ``super_admin`` كما كان، والمستخدُم
+    نفسه كما كان، و``hr`` كما كان **إال أن شركته تُشترَط**.
     """
-    return user.id == delegator.id or user.role in ("hr", "super_admin")
+    if user.id == delegator.id:
+        return True
+    if user.role == "super_admin":
+        return True
+    return user.role == "hr" and user.company_id == delegator.company_id
 
 
 @router.get("")

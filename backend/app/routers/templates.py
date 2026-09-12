@@ -10,7 +10,7 @@ from functools import lru_cache
 
 import bleach
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import or_ as sa_or, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -151,14 +151,38 @@ def templates_exist(codes: str,
     """R9 §11 — يستعلم عن وجود قوالب بأكواد محددة (comma-separated).
     الردّ: `{"CODE1": true, "CODE2": false}`. المستخدم أي دور مسجّل.
     الاستخدام النموذجي: الـfrontend يفحص قبل عرض زر توليد لتجنب 404 لاحق.
+
+    **وقاعدُة النطاق واحدٌة، وهذا الموضُع كان يتخّطاها.** الموجُّه نفسه
+    يطبّقها في أربعة مواضع — ``list_templates`` بـ``scope_company_id``،
+    و``get`` و``generate`` بـ``assert_same_company`` — والمولُّد في
+    ``workflow`` يقرأ ``company_id IS NULL OR == الشركة``. وهذا وحده كان
+    بلا قيد، فأعطى نتيجتين خاطئتين معًا:
+
+    - **يُقال «موجود» وهو ليس لهذه الشركة**: قالٌب خاٌصّ بشركٍة أخرى يُعَدّ
+      موجوًدا، فيظهر زُر التوليد ثم يسقط بـ404 عند الضغط — وهو عيُن ما كُتب
+      هذا النداُء لتجنّبه.
+    - **ويُفشى وجوُد قالٍب خاٍصّ بشركٍة أخرى** بكوده.
+
+    **وقدٌر من الدقّة**: ال مسار اليوَم يُنشئ قالًبا خاًصّا بشركة —
+    ``create_template`` والبذُر كلُّها ``company_id=None``. فاألثُر **كامٌن**
+    ال واقع: القاعدُة تُفرَض قبل أن يوجد ما يخترقها. وهذا موضُع فرضها، فال
+    يُنتظَر أوُل قالٍب خاٍصّ ليُكتشَف أن نصَف النظام يقيّد ونصفَه ال يقيّد.
+
+    فتُطبَّق القاعدُة نفسها: العاُم (``company_id`` فارًغا) لكلّ أحد، والخاصُّ
+    لشركته، ومن هو فوق الشركات يرى الكلّ.
     """
     codes_list = [c.strip() for c in codes.split(",") if c.strip()]
     if not codes_list:
         return {}
-    found = set(db.scalars(select(models.DocumentTemplate.code).where(
+    q = select(models.DocumentTemplate.code).where(
         models.DocumentTemplate.code.in_(codes_list),
         models.DocumentTemplate.is_active == True,  # noqa: E712
-    )).all())
+    )
+    cid = scope_company_id(user, None)
+    if cid is not None:
+        q = q.where(sa_or(models.DocumentTemplate.company_id.is_(None),
+                          models.DocumentTemplate.company_id == cid))
+    found = set(db.scalars(q).all())
     return {code: (code in found) for code in codes_list}
 
 

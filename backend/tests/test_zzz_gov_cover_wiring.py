@@ -240,61 +240,304 @@ def test_the_identity_override_cannot_invent_a_class():
         db.close()
 
 
-def test_a_failing_cover_does_not_stop_the_departure():
-    """**ومستنٌد مساعٌد يُسقِط مرحلًة حكومية عطٌل أسوأ من غيابه.**
+def _delegate_stage_request(db):
+    """طلُب إجازِة سفٍر واقٌف عند مرحلة المندوب — سّقالُة القياس السلوكي.
 
-    فالمندوُب يمضي بالمعاملة، والفشُل يُسجَّل ليراه من يُصلحه.
+    وتُعيد ``(req, rt, hr)`` أو ``None`` إن لم تكن بيانات األساس موجودة.
     """
-    helper = inspect.getsource(W._generate_stage_output)
-    assert "logger.warning" in helper, "الفشُل صامت"
-    assert "raise" not in helper.split("except")[-1], \
-        "فشُل الغلاف يُسقِط المرحلة"
-    assert hasattr(W, "logger"), "ال سجّل في الوحدة — الفرُع ينفجر بـNameError"
+    emp = db.scalar(select(models.Employee).where(models.Employee.company_id == 1))
+    hr = db.scalar(select(models.User).where(
+        models.User.role == "hr", models.User.company_id == 1))
+    rt = W.get_request_type(db, 1, "leave")
+    if rt is None or emp is None or hr is None:
+        return None
+    chain = W._chain(rt, type("P", (), {"payload_json": {"travel_required": True}})())
+    stage_idx = next(i for i, st in enumerate(chain)
+                     if st.get("kind") == "delegate_exit")
+    req = models.Request(
+        company_id=1, employee_id=emp.id, request_type_code="leave",
+        status="pending", current_stage=stage_idx,
+        payload_json={"travel_required": True,
+                      "start_date": "2031-06-01", "end_date": "2031-06-10"})
+    db.add(req)
+    db.flush()
+    db.add(models.RequestApproval(
+        request_id=req.id, stage_order=stage_idx - 1, stage_label="الشؤون",
+        approver_role="hr", approver_user_id=hr.id, decision="approved"))
+    db.flush()
+    return req, rt, hr
+
+
+def _scrub(db, rid: int) -> None:
+    for tbl in (models.RequestDocument, models.RequestApproval):
+        db.execute(sa_delete(tbl).where(tbl.request_id == rid))
+    db.execute(sa_delete(models.Task).where(
+        models.Task.related_entity_type == "request",
+        models.Task.related_entity_id == rid))
+    db.execute(sa_delete(models.Request).where(models.Request.id == rid))
+    db.commit()
+
+
+def test_a_failing_cover_does_not_stop_the_departure(caplog):
+    """**وورقٌة تتعّطل ال تحبس موظًفا في البلد.**
+
+    الغالُف أثٌر إداري، ومرحلُة المندوب فعٌل قائم بنفسه. فلو انفجر التوليُد
+    داخل معاملٍة واحدة سقط انتقاُل الطلب معه — واإلجازُة تُعلَّق بسبب ورقة.
+
+    **وهذا يُقاس بإسقاط المولِّد ال بقراءة ``except``**: الحارُس كان يبحث
+    عن ``logger.warning`` ويؤكّد غياَب ``raise`` — ونصٌّ كهذا يبقى صحيًحا
+    وال شيَء يُمسَك (ولو غاب ``logger`` من الوحدة انفجر الفرُع نفسه
+    بـ``NameError`` — وقد غاب فعًال وأُضيف).
+    """
+    import logging
+
+    db = SessionLocal()
+    rid = None
+    try:
+        got = _delegate_stage_request(db)
+        if got is None:
+            pytest.skip("ال بياناِت أساٍس في هذه القاعدة")
+        req, rt, _hr = got
+        rid = req.id
+
+        original = W._gov_cover_lines
+
+        def _explode(*a, **k):
+            raise RuntimeError("تعّطل رسُم الغالف — مقصوٌد في القياس")
+
+        W._gov_cover_lines = _explode
+        try:
+            with caplog.at_level(logging.WARNING):
+                W.enter_stage(db, req, rt)   # ال يرفع
+            db.commit()
+        finally:
+            W._gov_cover_lines = original
+
+        # **والخروُج مضى**: الحالُة انتقلت ومهمُّة المندوب أُنشئت.
+        assert req.status == "awaiting_delegate", req.status
+        tasks = db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "request",
+            models.Task.related_entity_id == rid)).all()
+        assert tasks, "مهمُّة المندوب لم تُنشأ — فشُل الغالف أوقف المرحلة"
+
+        # **وال يُسجَّل نجاُح توليٍد لم يقع.** والصفُّ يبقى بقصٍد مكتوٍب في
+        # ``generate_document``: «القراُر قراٌر والمستنُد مستند» — فيُقيَّد
+        # ``FAILED`` بال ملٍّف وبسببه، ليُعاد توليده. وهذا ما يُقاس: ال
+        # غياُب الصّف، بل **أن الصفَّ ال يكذب**.
+        covers = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id == rid,
+            models.RequestDocument.kind == "gov_cover")).all()
+        assert len(covers) == 1, covers
+        cover = covers[0]
+        assert cover.lifecycle_status == "FAILED", cover.lifecycle_status
+        assert not cover.file_path, "صٌّف فاشٌل يشير إلى ملّف"
+        assert (cover.reference_no or "").startswith("FAILED-"), cover.reference_no
+
+        # **ومهمٌَّة تُخرِج من الفشل** — وإال بقيت ورقٌة ناقصٌة ال أحَد يعلمها.
+        fail_tasks = [t for t in tasks if t.type == "document"]
+        assert fail_tasks, ("ال مهمَّة إعادِة توليد — الفشُل مقيٌَّد وال أحَد "
+                            f"مسؤوٌل عنه: {[(t.type, t.title) for t in tasks]}")
+        assert any(t.severity == "critical" for t in fail_tasks), \
+            [t.severity for t in fail_tasks]
+
+        # **والفشُل ال يُدفَن**: أثٌر في السجّل يذكر الطلب.
+        assert any(str(rid) in r.getMessage()
+                   for r in caplog.records if r.levelno >= logging.WARNING), \
+            f"فشٌل صامت: {[r.getMessage() for r in caplog.records]}"
+    finally:
+        if rid:
+            _scrub(db, rid)
+        db.close()
+
+
+def test_two_failures_of_the_same_kind_can_both_be_recorded():
+    """**والمعالُِج ال يفشل بما يعالجه.**
+
+    ``reference_no`` **فريٌد على الجدول كلّه**، وكان الفشُل يكتب فيه
+    ``FAILED-{النوع}`` — ثابًتا. فثاني مستنٍد يفشل بنوع االستثناء نفسه (أيَّ
+    شركٍة، أيَّ طلب) يرفع ``IntegrityError`` داخل ``except`` نفسه، فتسقط
+    المعاملُة ومعها **قراُر االعتماد** — وهو العطُل الذي كُتب المعالُِج
+    ليمنعه.
+
+    **ولم يظهر منفرًدا.** الملُّف كان أخضَر وحده وأحمَر في السويت: مستنٌد
+    فاشٌل واحٌد ال يتصادم مع نفسه. فيُقاس بفشلين صريحين.
+    """
+    db = SessionLocal()
+    made = []
+    try:
+        got = _delegate_stage_request(db)
+        if got is None:
+            pytest.skip("ال بياناِت أساٍس في هذه القاعدة")
+        req, rt, hr = got
+        made.append(req.id)
+
+        got2 = _delegate_stage_request(db)
+        req2 = got2[0]
+        made.append(req2.id)
+
+        original = W._gov_cover_lines
+
+        def _explode(*a, **k):
+            raise RuntimeError("تعّطل رسُم الغالف — مقصوٌد في القياس")
+
+        W._gov_cover_lines = _explode
+        try:
+            W.enter_stage(db, req, rt)
+            W.enter_stage(db, req2, rt)
+            db.commit()          # **ال تسقط المعاملُة بتصادم مرجٍع**
+        finally:
+            W._gov_cover_lines = original
+
+        rows = db.scalars(select(models.RequestDocument).where(
+            models.RequestDocument.request_id.in_(made),
+            models.RequestDocument.kind == "gov_cover")).all()
+        assert len(rows) == 2, rows
+        refs = {r.reference_no for r in rows}
+        assert len(refs) == 2, f"مرجٌع واحٌد لفشلين: {refs}"
+        for r in rows:
+            assert r.lifecycle_status == "FAILED", r.lifecycle_status
+            # **وطوُل العمود ``String(40)``** — وPostgres يرفض الأطول.
+            assert len(r.reference_no) <= 40, (len(r.reference_no), r.reference_no)
+            assert "RuntimeError" in r.reference_no, r.reference_no
+    finally:
+        for rid in made:
+            _scrub(db, rid)
+        db.close()
+
+
+def test_the_success_reference_cannot_collide_between_kinds():
+    """ومرجُع النجاح يقطع الصنَف على ستٍّ — فصنفان يتفقان فيها يتصادمان.
+
+    ``REQ-{req:06d}-{KIND[:6]}-v{version}`` — و``gov_cover`` و
+    ``generated_pdf`` و``exit_permit`` تفترق في السّت. فيُحرَس أنها تبقى
+    كذلك، وإال فشل توليُد المستند الثاني للطلب نفسه بتصادم مرجع.
+    """
+    kinds = ["generated_pdf", "gov_cover", "exit_permit", "uploaded",
+             "signed_scan", "attachment"]
+    prefixes = [k.upper()[:6] for k in kinds]
+    dupes = {p for p in prefixes if prefixes.count(p) > 1}
+    assert not dupes, f"أصناٌف تتفق في ستّة أحرف: {dupes}"
 
 
 # ---------------------------------------------------------------------------
-# ومستندان بجسٍم واحد يقرأ أحدُهما كأنه اآلخر
+# وجسُم الغلاف — يُقاس بأسطره لا بشيفرته
 # ---------------------------------------------------------------------------
 
 def test_the_cover_has_its_own_body_not_the_leave_decision_s():
-    """**جوهر عطٍل أحدثتُه ثم أصلحتُه.**
+    """**ومستندان بجسٍم واحد يقرأ أحدُهما كأنه اآلخر.**
 
-    الغالُف كان يُرسَم بأسطر ``_body_lines`` نفسها — نوُع اإلجازة وتاريخاها
-    وسببُها — فيبدو **قراَر إجازٍة بترويسة غلاف**. والسجلُّ يشترط له غير
-    ذلك: نوَع المعاملة والجهَة والمرجع.
+    الغالُف كان يُرسَم بأسطر قرار اإلجازة — نوُعها وتاريخاها وسببُها —
+    فيبدو قراَر إجازٍة بترويسٍة أخرى. والسجلُّ يشترط للغالف
+    ``transaction_type`` و``reference_no``.
 
-    فيُقاس أن الجسَم يتبع **هويَّة المستند** ال نوَع الطلب وحده.
+    **ويُقاس باألسطر المولَّدة ال بوجود اسم الدالة في الشيفرة.**
     """
-    src = inspect.getsource(W.generate_document)
-    assert "_gov_cover_lines" in src, "الغالُف يُرسَم بجسم قرار اإلجازة"
-    assert 'od_code == "OD-013"' in src, "الجسُم ال يتبع الهويّة"
+    db = SessionLocal()
+    rid = None
+    try:
+        got = _delegate_stage_request(db)
+        if got is None:
+            pytest.skip("ال بياناِت أساٍس في هذه القاعدة")
+        req, rt, _hr = got
+        rid = req.id
+        emp = db.get(models.Employee, req.employee_id)
 
-    cover = inspect.getsource(W._gov_cover_lines)
-    assert "نوع المعاملة" in cover and "المرجع الداخلي" in cover
+        cover = W._gov_cover_lines(db, rt, req, emp)
+        body = W._body_lines(rt, req, emp)
+        blob, leave_blob = "\n".join(cover), "\n".join(body)
+
+        assert any("نوع المعاملة" in ln for ln in cover), cover
+        assert any(f"طلب رقم {rid}" in ln for ln in cover), cover
+        # **وجسمان ال يتقاسمان سطًرا واحًدا.**
+        assert not (set(cover) & set(body)), set(cover) & set(body)
+        # وتاريُخ اإلجازة وسببُها ليسا من شأن الغالف.
+        assert "2031-06-01" in leave_blob and "2031-06-01" not in blob, blob
+    finally:
+        if rid:
+            _scrub(db, rid)
+        db.close()
 
 
-def test_the_cover_never_invents_a_government_entity():
-    """**وغالٌف ال يسمّي الجهَة أهوُن من غالٍف يسمّي جهًة خاطئة.**
+def test_the_cover_names_the_authority_from_the_declared_vocabulary():
+    """**والبحُث الذي ال يُصيب أسوأ من غيابه** — لأنه يبدو موصوًال.
 
-    فورقٌة تُقدَّم إلى الهيئة وعليها اسُم وزارٍة أخرى تُردّ وتُقرأ
-    استخفاًفا. و``GovernmentPortal`` موجوٌد في النظام — يُقرأ منه إن مُلئ
-    ويُسكَت عنه إن لم يُملأ، **وال يُكتَب اسٌم في الشيفرة**.
+    الغالُف كان يطابق ``category == rt.code``، و``create_portal`` يرفض كلَّ
+    فئٍة خارج ``CATEGORY_LABELS`` («فئة غير معروفة») والشاشُة ال تعرض
+    غيرها. فال سبيَل — بالشاشة ولا بالـAPI — لصٍّف فئتُه ``REQWP``: سطُر
+    الجهة كان يُسقَط دائمًا، والحقُل الذي يشترطه السجلّ ال يُملأ أبدًا.
+
+    **ويُقاس بأسطر أنواٍع حقيقية** ال بقراءة الخريطة.
     """
-    cover = inspect.getsource(W._gov_cover_lines)
-    assert "GovernmentPortal" in cover, "ال يُقرأ سجلُّ الجهات"
-    for invented in ("الهيئة العامة للقوى العاملة", "المعلومات المدنية",
-                     "الجنسية والجوازات", "وزارة الداخلية"):
-        assert invented not in cover, f"اسُم جهٍة مكتوٌب في الشيفرة: {invented}"
+    from app.routers.portals import CATEGORY_LABELS
+
+    db = SessionLocal()
+    rid = None
+    try:
+        got = _delegate_stage_request(db)
+        if got is None:
+            pytest.skip("ال بياناِت أساٍس في هذه القاعدة")
+        req, _rt, _hr = got
+        rid = req.id
+        emp = db.get(models.Employee, req.employee_id)
+
+        checked = 0
+        for code, cat in R.GOV_COVER_CATEGORY.items():
+            rt = W.get_request_type(db, 1, code)
+            if rt is None:
+                continue
+            lines = W._gov_cover_lines(db, rt, req, emp)
+            want = CATEGORY_LABELS[cat]
+            assert any(f"الجهة الحكومية: {want}" in ln for ln in lines), (code, lines)
+            checked += 1
+        assert checked, "ال نوَع من الخريطة موجوٌد في الكتالوج — القياُس لم يقع"
+    finally:
+        if rid:
+            _scrub(db, rid)
+        db.close()
 
 
-def test_the_cover_says_the_original_comes_from_the_authority():
-    """**والورقُة تقول ما هي** — فال تُقرأ بديًلا عن األصل.
+def test_every_mapped_category_exists_in_the_portals_vocabulary():
+    """وفئٌة ال يعرفها المعجُم تُسقِط السطَر صامتًة — فتُحرَس الخريطُة نفسها."""
+    from app.routers.portals import CATEGORY_LABELS
 
-    وهي عيُن الملاحظة القانونية في السجلّ: «األصُل يُرفع من الجهة».
+    stray = {c: cat for c, cat in R.GOV_COVER_CATEGORY.items()
+             if cat not in CATEGORY_LABELS}
+    assert not stray, f"فئاٌت ال يعرفها معجُم البوابات: {stray}"
+
+
+def test_an_unmapped_type_says_nothing_instead_of_guessing():
+    """**وما ال أقطع به ال يُسمّى** — ``leave`` و``REQPASS`` بال سطر جهة.
+
+    جواُز الوافد يصدر من سفارة بلده، وإذُن المغادرة بين الداخلية والقوى
+    العاملة. وورقٌة تُقدَّم وعليها اسُم جهٍة خاطئة تُردّ وتُقرأ استخفاًفا.
     """
-    cover = inspect.getsource(W._gov_cover_lines)
-    assert "غلاُف متابعٍة داخلي" in cover or "غلاف متابعة داخلي" in cover
-    assert "الأصُل" in cover or "الأصل" in cover
+    db = SessionLocal()
+    rid = None
+    try:
+        got = _delegate_stage_request(db)
+        if got is None:
+            pytest.skip("ال بياناِت أساٍس في هذه القاعدة")
+        req, rt_leave, _hr = got
+        rid = req.id
+        emp = db.get(models.Employee, req.employee_id)
+
+        for code in ("leave", "REQPASS"):
+            assert code not in R.GOV_COVER_CATEGORY, \
+                f"{code} صار مخّططًا — فيُنقَل إلى الحارس الذي يؤكّد التسمية"
+            rt = rt_leave if code == "leave" else W.get_request_type(db, 1, code)
+            if rt is None:
+                continue
+            lines = W._gov_cover_lines(db, rt, req, emp)
+            assert not any("الجهة الحكومية" in ln for ln in lines), (code, lines)
+            # **والغالُف يبقى يقول من أين يأتي األصل.**
+            assert any("متابع" in ln and "داخلي" in ln for ln in lines), lines
+            assert any("المختص" in ln for ln in lines), lines
+    finally:
+        if rid:
+            _scrub(db, rid)
+        db.close()
+
+
 
 
 def test_the_declared_required_fields_are_not_silently_unmet():

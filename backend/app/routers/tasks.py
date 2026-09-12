@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """صندوق المهام لكل مستخدم (Task Inbox) + تشغيل المسح اليومي يدويًا."""
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -8,10 +9,12 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import audit, get_current_user, require_perm, scope_company_id
+from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
 from ..notifications import daily_scan
 
 from ..gov_tasks import GOV_TASK_TYPES
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -186,10 +189,28 @@ def claim_task(task_id: int, user: models.User = Depends(get_current_user),
     """V1.5 Phase 3 — التقاط مهمة موزعة على مجموعة أدوار قبل التنفيذ لمنع التكرار.
 
     يفشل بـ409 إن كانت المهمة مُلتقَطة من مستخدم آخر ولم تُطلَق بعد.
+
+    **وكان بال تحقٍّق من شركٍة ولا من إسناد**: ``get_current_user`` وحده،
+    فأيُّ مستخدٍم مصدٍَّق يلتقط أيَّ مهمٍة بمعرِّفها — من أي شركة. فتصير
+    ``in_progress`` باسمه، **ويُمنَع صاحبُها** بـ409 «ملتقطة من مستخدم
+    آخر»: تعطيُل عمٍل في شركٍة أخرى بنداٍء واحد، وأثٌر يُنسَب إلى غريب.
+
+    **والإسناُد ال يُشترَط — وهذا قراٌر معلٌَّق ال سهو.** ظننتُ المهمَة
+    شخصيًَّة (ال موضَع يُنشئها بال ``assignee_user_id``، و``notify_roles``
+    تُنشئ صًفّا لكل مستقبِل)، فأضفتُ شرَط الإسناد — فأسقط
+    ``test_task_claim_blocked_when_another_user_already_claimed``: العقُد
+    القائُم أن مستخدًما آخَر في الشركة **يصل** إلى الالتقاط، و409 «ملتقطة
+    من مستخدم آخر» موجودٌة لهذا بعينه. فلو كان الالتقاُط شخصًيا لما كان
+    لها معنى.
+
+    فيبقى العقُد كما هو، **ويُضاف النطاُق وحده** — وهو العطُل المقيس. وهل
+    يحقُّ لغير المُسنَد إليه أن يلتقط مهمًة في شركته؟ سؤاٌل إداريٌّ ال
+    تقنيّ: يُحسم بكلمِة صاحب القرار، ال باستنباٍط من الشيفرة.
     """
     task = db.get(models.Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    assert_same_company(user, task.company_id, db=db)
     if task.status not in ("open", "in_progress"):
         raise HTTPException(status_code=400, detail="لا يمكن التقاط مهمة غير مفتوحة")
     if task.claimed_by_user_id and task.claimed_by_user_id != user.id:
@@ -206,10 +227,27 @@ def claim_task(task_id: int, user: models.User = Depends(get_current_user),
 @router.post("/{task_id}/release")
 def release_task(task_id: int, user: models.User = Depends(get_current_user),
                  db: Session = Depends(get_db)):
-    """يُطلق التقاط المهمة ليتمكن مستخدم آخر من التقاطها. متاح للمالك أو HR."""
+    """يُطلق التقاط المهمة ليتمكن مستخدم آخر من التقاطها. متاح للمالك أو HR.
+
+    **وعطالن كانا هنا:**
+
+    1. **بال شركة** — والشرُط أدناه يسقط كلُّه إن كانت المهمُّة **غيَر
+       ملتقَطة** (``claimed_by_user_id`` فارًغا). فأيُّ مستخدٍم مصدٍَّق يصل
+       إلى أي مهمٍة في أي شركة.
+    2. **وبال فحص حالة** — ثم يُكتَب ``status = "open"``. فمهمٌَّة ``done``
+       أو ``dismissed`` **تُعاد مفتوحًة**: صندوٌق يُظهر عمًلا أُنجز، وعدّاٌد
+       يكذب، وقارٌئ يفقد الثقَة بالصندوق فيُهمله كلَّه — وهو الدرُس نفسه
+       المكتوب في ``_close_stage_tasks``، مقلوًبا.
+
+    فالإطلاُق لما هو مفتوٌح أو جاٍر، ومن داخل الشركة.
+    """
     task = db.get(models.Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    assert_same_company(user, task.company_id, db=db)
+    if task.status not in ("open", "in_progress"):
+        raise HTTPException(status_code=409,
+                            detail="لا يمكن إطلاق مهمة منتهية — أُنجزت أو أُلغيت")
     if task.claimed_by_user_id and task.claimed_by_user_id != user.id and user.role not in ("hr", "super_admin"):
         raise HTTPException(status_code=403, detail="لا يمكنك إطلاق مهمة ملتقطة من مستخدم آخر")
     task.claimed_by_user_id = None
@@ -292,10 +330,17 @@ def retry_delivery(task_id: int,
                    user: models.User = Depends(require_perm("manage_tasks")),
                    db: Session = Depends(get_db)):
     """V2.2 §20 — إعادة محاولة تسليم إشعار فشل في قناته الأصلية (email/SMS).
-    يزيد delivery_attempts ويفوّض للـchannel handler عبر channels.dispatch."""
+    يزيد delivery_attempts ويفوّض للـchannel handler عبر channels.dispatch.
+
+    **وكان بال شركة**: و``manage_tasks`` يحملها ``company_manager``
+    و``delegate`` — وكالهما مقيٌَّد بشركته. فمديُر الشركة الأولى يُعيد
+    إرسال إشعاٍر (بريًدا أو رسالًة) **إلى مستخدٍم في الشركة الثانية**: أثٌر
+    يخرج من النظام إلى خارجه، بيٍد ال تملكه.
+    """
     task = db.get(models.Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    assert_same_company(user, task.company_id, db=db)
     MAX_ATTEMPTS = 5
     if task.delivery_attempts >= MAX_ATTEMPTS:
         raise HTTPException(status_code=409,
@@ -307,9 +352,16 @@ def retry_delivery(task_id: int,
         redispatch_task(db, task)
         task.last_delivery_error = None
     except Exception as e:
+        # **والسبُب يُحفَظ ولا يُفشى.** نصُّ الاستثناء يحمل مضيَف المزوّد
+        # ورأَس طلٍب ومفتاًحا مقطوًعا — ويُقرأ من السجّل والعمود لا من ردّ
+        # واجهٍة يراه مستخدم. والردُّ يقول **ما يُفعل**.
         task.last_delivery_error = str(e)[:400]
+        logger.warning("فشل إعادة تسليم المهمة %s: %s", task.id, type(e).__name__)
         db.commit()
-        raise HTTPException(status_code=502, detail=f"فشل التسليم: {str(e)[:120]}")
+        raise HTTPException(
+            status_code=502,
+            detail=("تعذّر تسليم الإشعار في قناته — حُفظ سبُب الفشل على "
+                    "المهمة، وأعد المحاولة أو راجع إعدادات القناة"))
     db.commit()
     return {"ok": True, "attempts": task.delivery_attempts}
 
