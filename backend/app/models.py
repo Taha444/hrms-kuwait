@@ -1178,6 +1178,24 @@ class DocumentTemplateVersion(Base):
     المستندات المصدَرة قبل التعديل تشير للنسخة التي أُصدرت بها (immutable audit trail)."""
     __tablename__ = "document_template_versions"
 
+    #: **ورقُم نسخٍة يتكرّر يُفسِد سجًّلا موصوًفا «immutable».**
+    #:
+    #: ``update_template`` يقرأ آخَر نسخٍة ثم يُدخِل ``last + 1`` — وبين
+    #: القراءة والكتابة نافذة: تحريران في اللحظة نفسها يكتبان **الرقَم
+    #: نفسه**، فيصير للقالب نسختان بالرقم ذاته. والمستنداُت المُصدَرة تشير
+    #: إلى رقم النسخة، فال يُعرَف **أيَّهما** أُصدرت به — وهو نقُض الغرض
+    #: المكتوب في شرح هذا الصفّ.
+    #:
+    #: والسابقُة قائمٌة في النظام: ``user_signature_versions`` لها قيٌد على
+    #: ``(user_id, version)`` لنفس العلّة بحرفها. فهذا شقيقُها.
+    #:
+    #: **ويُعرَّف هنا ال في الترحيل وحده**: قاعدُة الاختبار تُبنى بـ
+    #: ``create_all``، فقيٌد في ترحيٍل وحده لا يُقاس.
+    __table_args__ = (
+        UniqueConstraint("template_id", "version",
+                         name="uq_template_version"),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     template_id: Mapped[int] = mapped_column(ForeignKey("document_templates.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)

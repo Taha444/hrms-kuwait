@@ -173,3 +173,90 @@ def test_the_payroll_race_is_reported_not_silently_constrained():
     ]
     assert "company_id+period" not in uniq, (
         "أُضيف تفرٌُّد على الفترة — يمنع تسويًة مشروعة، ويُراجَع هذا الملف")
+
+
+# ---------------------------------------------------------------------------
+# ورقُم نسخٍة يتكرّر يُفسِد سجًّلا موصوًفا «immutable»
+# ---------------------------------------------------------------------------
+
+def test_two_template_versions_cannot_share_a_number():
+    """**جوهر البند الثاني**: سجلُّ نسٍخ ال يحمل رقمين متساويين.
+
+    ``update_template`` يقرأ آخَر نسخٍة ثم يُدخِل ``last + 1``، وبين
+    القراءة والكتابة نافذة. واملستنداُت املُصدَرة **تشير إلى رقم النسخة**
+    — فرقمان متساويان يعنيان أن ال يُعرَف أيَّهما أُصدرت به، وهو نقُض
+    الغرض املكتوب في شرح الصفّ: «immutable audit trail».
+
+    والسابقُة قائمة: ``user_signature_versions`` لها قيٌد على
+    ``(user_id, version)`` لنفس العلّة بحرفها.
+    """
+    db = SessionLocal()
+    made = []
+    try:
+        tpl = db.scalar(select(models.DocumentTemplate).where(
+            models.DocumentTemplate.company_id.is_(None)))
+        if tpl is None:
+            import pytest
+            pytest.skip("ال قالَب في هذه القاعدة")
+        taken = db.scalar(select(func.max(models.DocumentTemplateVersion.version))
+                          .where(models.DocumentTemplateVersion.template_id == tpl.id)) or 0
+        v = taken + 1
+        for i in (1, 2):
+            row = models.DocumentTemplateVersion(
+                template_id=tpl.id, version=v, body_html="قياس",
+                name="قياس", category="قياس")
+            db.add(row)
+            try:
+                db.commit()
+                made.append(row.id)
+            except IntegrityError:
+                db.rollback()
+                assert i == 2, "مُنِعت النسخُة األولى"
+                break
+        else:
+            raise AssertionError("رقمان متساويان أُدخِال — القيُد ال يعمل")
+    finally:
+        if made:
+            db.execute(sa_delete(models.DocumentTemplateVersion).where(
+                models.DocumentTemplateVersion.id.in_(made)))
+            db.commit()
+        db.close()
+
+
+def test_the_version_conflict_is_a_409_not_a_500():
+    """**وتعديٌل صحيٌح سبقه غيرُه بلحظٍة ال يُقال له «خطٌأ داخلي».**
+
+    فيُعاد إليه طلبُه ليُطبِّقه على النصّ األحدث.
+    """
+    from app.routers import templates as T
+
+    src = inspect.getsource(T.update_template)
+    assert "IntegrityError" in src, "القيُد يردّ خمسمئة"
+    assert "409" in src, "ال يُردّ تعارًضا"
+
+
+def test_permits_are_deliberately_unconstrained():
+    """**وتعدُّد التصاريح من النوع نفسه مشروٌع بالتصميم.**
+
+    ``renewals`` يُنشئ تصريًحا **جديًدا** عند التجديد — فهو تاريُخ
+    التجديدات. فقيٌد على ``(employee_id, kind)`` **يمنع التجديد**، وهو
+    عطٌل أوسُع من التكرار الذي يمنعه.
+
+    فيُقال وال يُقيَّد: ``_sync_permit_from_document`` قد يُنشئ تصريَحين
+    عند رفعين متزامنين، وأثرُه صٌّف زائٌد وتنبيُه انتهاٍء مكرَّر — ال خطٌأ
+    في مال. والقاعدُة ال تستطيع أن تفرّق املشروَع من الزائد هنا.
+    """
+    import pathlib
+
+    renewals = (pathlib.Path(__file__).resolve().parents[1] / "app" / "routers"
+                / "renewals.py").read_text(encoding="utf-8")
+    assert "models.Permit(" in renewals, \
+        "لم يبقَ التجديُد يُنشئ تصريًحا — يُراجَع هذا الحكم"
+
+    uniq = [
+        "+".join(c.name for c in cons.columns)
+        for cons in models.Permit.__table__.constraints
+        if type(cons).__name__ == "UniqueConstraint"
+    ]
+    assert "employee_id+kind" not in uniq, (
+        "أُضيف تفرٌُّد يمنع تجديًدا مشروًعا — يُراجَع هذا امللف")

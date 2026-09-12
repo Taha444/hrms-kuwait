@@ -11,6 +11,7 @@ from functools import lru_cache
 import bleach
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -214,7 +215,21 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
     # R1-A §8 — تحديث القالب يزيد عدّاد الإصدار (يُختم على أي مستند مُولّد لاحقًا)
     t.version = (t.version or 1) + 1
     audit(db, user, "update_template", "template", t.id, request=request)
-    db.commit()
+    # **وتحريران في اللحظة نفسها يكتبان رقَم النسخة ذاته.**
+    #
+    # ``next_version`` يُحسَب من آخر نسخٍة مقروءة، وبين القراءة والكتابة
+    # نافذة. والقيُد في القاعدة (``uq_template_version``) يمنع الرقمين
+    # المتساويين — **ويُترجَم إلى 409 مفهومة**: من حرَّر يُعاد إليه طلبُه
+    # ليُعيد المحاولة على النصّ األحدث، وال يُقال له «خطٌأ داخلي» على
+    # تعديٍل صحيح سبقه غيره بلحظة.
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="عُدِّلت هذه الصيغُة من جهٍة أخرى في اللحظة نفسها — "
+                   "أعد فتحها ثم طبّق تعديلك على النصّ الأحدث.")
     return {"ok": True, "version": next_version, "template_version": t.version}
 
 
