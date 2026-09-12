@@ -245,3 +245,59 @@ def test_the_status_list_is_read_from_its_one_source():
 
     src = inspect.getsource(A._resolve_employee)
     assert "BLOCKED_EMPLOYEE_STATUSES" in src, "قائمٌة ثانية للحالات المحجوبة"
+
+
+# ---------------------------------------------------------------------------
+# وما مضى من سجالت: تقريٌر ال تعديل
+# ---------------------------------------------------------------------------
+
+def test_the_relabel_tool_reports_and_never_writes():
+    """**أداٌة تُصلح التاريَخ بال قراٍر أخطُر من العطل الذي تُصلحه.**
+
+    فوسُم الحضور يُبنى عليه عمٌل وقع: خصُم غياٍب في مسيٍّر اعتُمد، وإنذاٌر
+    صدر، ومسيٌَّر أُقفل. وإعادُة الوسم بأثٍر رجعي تجعل مسيًَّرا مقفًال يخالف
+    بياناته.
+
+    و``AttendanceMonthClose`` موجودٌة في النظام: للشهر إغالٌق صريح بمن
+    أغلقه ومتى، وإعادُة فتٍح موّثقة بسببها. **فالمغلَق ال يُمَسّ إال بها.**
+
+    فالأداُة تضع الرقَم أمام صاحب القرار مفصوًال — مفتوٌح ومغلَق — وال
+    تكتب صًفّا.
+    """
+    import pathlib
+
+    tool = (pathlib.Path(__file__).resolve().parents[1]
+            / "scripts" / "attendance_relabel_report.py")
+    assert tool.exists(), "ذهبت أداُة التقرير"
+    body = tool.read_text(encoding="utf-8")
+
+    # ال كتابَة: ال التزاَم وال إسناَد حالٍة على صّف.
+    for forbidden in ("db.commit()", "db.add(", "db.execute(update",
+                      "db.delete("):
+        assert forbidden not in body, f"األداُة تكتب: {forbidden}"
+    # **وإسناٌد ليس مقارنة**: ``.status =`` تطابق ``.status ==`` في شرٍط،
+    # فيُطلَب إسناٌد صريح (علامٌة واحدة ال علامتان).
+    import re as _re
+
+    assigns = _re.findall(r"\.status\s*=(?!=)", body)
+    assert not assigns, f"األداُة تُسنِد حالًة: {assigns}"
+
+    # وتفصل المغلَق من المفتوح — وإال كان الرقُم بال معنى للقرار.
+    assert "AttendanceMonthClose" in body, "ال تفصل المغلَق من المفتوح"
+    assert "closed" in body
+
+
+def test_the_report_separates_the_two_directions():
+    """**واالتجاُه نصُف المعنى.**
+
+    ``present → late`` يعني أن المتأخَّر سُجِّل حاضًرا — والعطُل كان
+    لمصلحة الموظف. و``late → present`` ظلٌم يُصحَّح. وخلطُهما في رقٍم واحد
+    يُخفي أيَّهما على صاحب القرار.
+    """
+    import pathlib
+
+    tool = (pathlib.Path(__file__).resolve().parents[1]
+            / "scripts" / "attendance_relabel_report.py")
+    body = tool.read_text(encoding="utf-8")
+    assert "present → late" in body and "late → present" in body
+    assert "stored" in body and "recomputed" in body
