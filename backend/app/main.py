@@ -340,6 +340,30 @@ def _redact(results: dict) -> dict:
             "detail": "مختصر — للتفصيل استعمل رمز الصحّة أو حساب الإدارة العليا"}
 
 
+#: ذاكرٌة قصيرة لفحص حسابات البذرة — انظر التعليل في ``health_deep``.
+#: **وذاكرٌة بلا عمٍر تُخفي تلوًثا جديًدا**، فعمرُها خمُس دقائق: أقصُر من
+#: أيّ نافذِة عمٍل، وأطوُل من أيّ نبضِة مراقبة.
+_SEED_SCAN_TTL_SECONDS = 300
+_seed_scan_cache: dict = {"at": 0.0, "hits": None}
+
+
+def _cached_seed_scan() -> list[dict]:
+    import time as _time
+
+    from . import seed_guard
+    from .database import SessionLocal as _SL
+
+    now = _time.monotonic()
+    if (_seed_scan_cache["hits"] is not None
+            and now - _seed_scan_cache["at"] < _SEED_SCAN_TTL_SECONDS):
+        return _seed_scan_cache["hits"]
+    with _SL() as db:
+        hits = seed_guard.find_seed_accounts(
+            db, privileged_only=True, max_users=seed_guard.BOOT_SCAN_LIMIT)
+    _seed_scan_cache.update({"at": now, "hits": hits})
+    return hits
+
+
 @app.get("/api/health/deep")
 def health_deep(request: Request):
     """V2.2 §25 — فحص عميق: DB + Scheduler + Storage + Registry counts.
@@ -500,10 +524,25 @@ def health_deep(request: Request):
         results["checks"].setdefault("alembic", {})["code_head_error"] = str(e)[:200]
 
     # 7-d) DLV-31 — حسابات بكلمات مرور بذرة ما زالت تعمل
+    #
+    # **وفحٌص يتجاوز مهلَة المنصّة يُبلِّغ أن النظام ساقٌط وهو قائم.**
+    #
+    # ``find_seed_accounts`` تكلفتُه مقصودة: PBKDF2 بمئتين وأربعين ألف
+    # دورة، ~0.6 ثانية **لكل مستخدم** عبر كل كلمات البذرة. وشرُحه يقول
+    # ذلك ويضيّقه **عند الإقلاع** بحدّين (``privileged_only`` و
+    # ``max_users``) لأن «الفحص نفسه يصير سبب انهيار الإقلاع بمهلة
+    # المنصّة». وكان هذا النداء **بلا تضييق**: قيس 6.7 ثانية على عشرين
+    # مستخدًما محلًّيا، و15.8 على الإنتاج — **وأوُل نداٍء ردَّ 502**. وعلى
+    # قاعدٍة بخمسمئة موظف يعني ذلك خمَس دقائق، فيصير المسارُ الذي بُني
+    # للتحقّق بعد كل نشرة **هو** ما يُظهر النظام معطًّلا.
+    #
+    # فيُنقَل القراُر المكتوب في الإقلاع كما هو — نفُس الحدّين، من موضعهما
+    # لا نسخًة ثالثة — وتُضاف ذاكرٌة قصيرة فلا يتكرّر مع كل استفسار
+    # مراقبة. والمسُح الشامل بلا حدّ يبقى في ``remediate_seed_accounts``
+    # حيث ينتظره إنسان.
     try:
         from . import seed_guard
-        with SessionLocal() as _db:
-            _seed_hits = seed_guard.find_seed_accounts(_db)
+        _seed_hits = _cached_seed_scan()
         results["checks"]["seed_accounts"] = {
             "status": "fail" if _seed_hits else "ok",
             "count": len(_seed_hits),
