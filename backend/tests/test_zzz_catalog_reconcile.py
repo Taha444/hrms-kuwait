@@ -137,3 +137,82 @@ def test_the_deploy_log_says_what_was_reconciled():
     assert "approval_chains_deferred" in src, "المؤجَّل ال يُطبَع"
     # وال تبقى الطباعُة مشروطًة بالمُضاف وحده.
     assert src.count("print(") >= 3, src[-400:]
+
+
+# ---------------------------------------------------------------------------
+# وثالثُة كتالوجات، ولكلٍّ منطقُه بحسب قابليّته للتحرير
+# ---------------------------------------------------------------------------
+
+def test_a_missing_notification_template_is_inserted():
+    """**وقالٌب ناقٌص = إشعاٌر ال يصل، بال خطٍأ يُرى.**
+
+    ``notify_from_template`` تُسقِط بصمت ما ال قالَب له (تُسجِّل تحذيًرا
+    وتُعيد ``None``)، وشرحُها يقول: «الصمت هنا هو ما أخفى العطل… فكانت كل
+    اإلشعارات المبنية على قوالب تختفي بال أثر».
+
+    وقوالُب اإلشعارات تُبذَر في ``seed.py`` **المحظور في اإلنتاج** — فكلُّ
+    قالٍب يُضاف بعد أوّل نشرٍة ال يدخل القاعدَة. وقيس: ``NTF-075`` (إشعاُر
+    اتفاقية القرض المبنّي في هذه الجولة) **لم يكن فيها**.
+    """
+    from app.notification_templates import DEFAULT_NOTIFICATION_TEMPLATES as NT
+
+    db = SessionLocal()
+    try:
+        row = db.scalar(select(models.NotificationTemplate).where(
+            models.NotificationTemplate.code == "NTF-075"))
+        assert row is not None, "NTF-075 غائٌب — إشعاُر القرض ال يصل"
+        db.delete(row)
+        db.commit()
+
+        report = ensure_default_catalog(db)
+        assert report["notification_templates_added"] >= 1, report
+        back = db.scalar(select(models.NotificationTemplate).where(
+            models.NotificationTemplate.code == "NTF-075"))
+        assert back is not None, "لم يُعَد إدخالُه"
+        spec = next(t for t in NT if t["code"] == "NTF-075")
+        assert back.body_text == spec["body_text"]
+    finally:
+        db.close()
+
+
+def test_notification_templates_are_reconciled_because_they_are_not_editable():
+    """**واملزامنُة تتبع قابليَة التحرير ال الرغبة.**
+
+    ال مساَر كتابٍة لقوالب اإلشعارات (قراءٌة فقط) — فالصفوُف نسخٌة من
+    الشيفرة، ومصالحُتها ال تطمس عمَل أحد.
+    """
+    import pathlib
+
+    router = (pathlib.Path(__file__).resolve().parents[1] / "app" / "routers"
+              / "notification_settings.py").read_text(encoding="utf-8")
+    for verb in ("@router.put", "@router.patch"):
+        assert f'{verb}("/templates' not in router, \
+            "صار القالُب يُحرَّر — تُراجَع املزامنة"
+
+    src = inspect.getsource(ensure_default_catalog)
+    assert "NotificationTemplate" in src, "ال تُصالَح قوالُب اإلشعارات"
+
+
+def test_document_templates_are_named_never_overwritten():
+    """**وقالٌب يُحرَّر ال يُكتَب فوقه.**
+
+    ``PUT /templates/{id}`` موجوٌد ويحفظ النسخَة السابقة في سجلّ
+    إصدارات — فالتحريُر متوقٌَّع، ومزامنٌة صامتة **تطمس عمَل اإلدارة**.
+
+    لكنّ الفرَق ال يُطوى: قيس خمسُة قوالب ``body_html`` تخالف الشيفرة
+    (PR-001 · PR-006 · PR-008 · PR-009 · PR-032) — صُحِّحت في الشيفرة ولم
+    يبلغ تصحيحُها القاعدة. فتُسمّى ليُطبِّقها صاحُبها، فيبقى سجلُّ
+    اإلصدارات صادًقا.
+    """
+    src = inspect.getsource(ensure_default_catalog)
+    assert "document_templates_drifted" in src, "الفرُق ال يُقال"
+    # وال تُكتَب فوقها: ال إسناَد body_html في املصالحة.
+    assert "row.body_html =" not in src and ".body_html = body" not in src, \
+        "املصالحُة تكتب فوق قالٍب يُحرَّر"
+
+    import pathlib
+
+    router = (pathlib.Path(__file__).resolve().parents[1] / "app" / "routers"
+              / "templates.py").read_text(encoding="utf-8")
+    assert "@router.put" in router, "افتراُض القياس: القالُب يُحرَّر"
+    assert "DocumentTemplateVersion" in router, "ال سجلَّ إصدارات"

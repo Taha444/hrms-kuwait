@@ -154,7 +154,61 @@ def ensure_default_catalog(db: Session) -> dict:
         db.add(row)
         tpl_added += 1
 
-    if rt_added or tpl_added:
+    # ─── **قوالُب الإشعارات: تُصالَح ألنها ال تُحرَّر** ──────────────
+    #
+    # قيس: ال مساَر كتابٍة لها في النظام (قراءٌة فقط)، وتُبذَر في
+    # ``seed.py`` **المحظور في الإنتاج**. فـ``NTF-075`` — إشعاُر اتفاقية
+    # القرض المُضاف بعد أوّل نشرة — **لم يكن في القاعدة**.
+    #
+    # و``notify_from_template`` **تُسقِط بصمت** ما ال قالَب له (تُسجِّل
+    # تحذيًرا وتُعيد ``None``)، وشرحُها يقول: «الصمت هنا هو ما أخفى
+    # العطل… فكانت كل الإشعارات المبنية على قوالب تختفي بال أثر». فقالٌب
+    # ناقٌص = إشعاٌر ال يصل، بال خطٍأ يُرى.
+    from .notification_templates import DEFAULT_NOTIFICATION_TEMPLATES
+
+    nt_rows = {r.code: r for r in db.scalars(
+        select(models.NotificationTemplate)).all()}
+    nt_added, nt_updated = 0, []
+    _NT_OWNED = ("name", "category", "event_type", "channel_default",
+                 "sla_hours", "body_text")
+    for spec in DEFAULT_NOTIFICATION_TEMPLATES:
+        row = nt_rows.get(spec["code"])
+        if row is None:
+            db.add(models.NotificationTemplate(
+                code=spec["code"], name=spec["name"], category=spec["category"],
+                event_type=spec["event_type"],
+                channel_default=spec["channel_default"],
+                sla_hours=spec["sla_hours"], body_text=spec["body_text"],
+                is_active=True))
+            nt_added += 1
+            continue
+        changed = [f for f in _NT_OWNED if getattr(row, f) != spec[f]]
+        for f in changed:
+            setattr(row, f, spec[f])
+        if changed:
+            nt_updated.append(f"{spec['code']}:{'+'.join(changed)}")
+
+    # ─── **وقوالُب المستندات تُقاس وال تُكتَب فوقها** ────────────────
+    #
+    # وهي **تُحرَّر فعًلا**: ``PUT /templates/{id}`` بسجلّ إصداراٍت يحفظ
+    # النسخَة السابقة. فمزامنٌة صامتة **تطمس عمَل الإدارة** — وسجلُّ
+    # الإصدارات نفسه دليٌل على أن التحرير متوقَّع.
+    #
+    # لكنّ الفرَق ال يُطوى: قيس **خمسُة قوالب** ``body_html`` تخالف
+    # الشيفرة (PR-001 · PR-006 · PR-008 · PR-009 · PR-032) — وهي بعينها
+    # التي صُحِّحت في الشيفرة ولم يبلغ تصحيحُها القاعدة. فتُسمّى ليُطبِّقها
+    # صاحُبها من الواجهة، فيبقى سجلُّ الإصدارات صادًقا.
+    tpl_drift = []
+    tpl_rows = {r.code: r for r in db.scalars(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.company_id.is_(None),
+        models.DocumentTemplate.code.is_not(None))).all()}
+    for entry in DEFAULT_TEMPLATES:
+        code, name, name_en, category, body = entry
+        row = tpl_rows.get(code)
+        if row is not None and (row.body_html or "") != (body or ""):
+            tpl_drift.append(code)
+
+    if rt_added or tpl_added or nt_added or nt_updated:
         db.commit()
         logger.info("catalog_seed: +%d request_types, +%d templates",
                    rt_added, tpl_added)
@@ -178,6 +232,11 @@ def ensure_default_catalog(db: Session) -> dict:
         "request_types_updated_detail": rt_updated,
         "approval_chains_deferred": chain_deferred,
         "templates_added": tpl_added,
+        "notification_templates_added": nt_added,
+        "notification_templates_updated": len(nt_updated),
+        "notification_templates_updated_detail": nt_updated,
+        # **وقالٌب يُحرَّر ال يُكتَب فوقه — يُسمّى ليُطبِّقه صاحبُه.**
+        "document_templates_drifted": tpl_drift,
         "request_types_total": rt_count,
         "templates_total": tpl_count,
     }

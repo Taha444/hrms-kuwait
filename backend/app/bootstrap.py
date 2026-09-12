@@ -127,6 +127,16 @@ def _ensure_catalog() -> None:
         print(f"[bootstrap] ✓ صُولِح {updated} نوَع طلٍب مع الكتالوج: "
               + "، ".join((report.get("request_types_updated_detail") or [])[:12])
               + (" …" if updated > 12 else ""))
+    nt_added = report.get("notification_templates_added") or 0
+    nt_updated = report.get("notification_templates_updated") or 0
+    if nt_added or nt_updated:
+        print(f"[bootstrap] ✓ قوالُب الإشعارات: +{nt_added} مُضاف، "
+              f"{nt_updated} مُصالَح")
+    # **وقالٌب يُحرَّر ال يُكتَب فوقه — يُسمّى ليُطبِّقه صاحبُه.**
+    drift = report.get("document_templates_drifted") or []
+    if drift:
+        print(f"[bootstrap] ⚠ قوالُب مستنداٍت تخالف الشيفرة: {drift} — "
+              "تُطبَّق من شاشة الصيغ (PUT) ليبقى سجلُّ الإصدارات صادًقا")
     deferred = report.get("approval_chains_deferred") or []
     if deferred:
         print(f"[bootstrap] ⚠ أُجِّلت سلسلُة اعتماٍد لطلٍب جاٍر: {deferred} — "
