@@ -374,9 +374,22 @@ _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_
     # مالي مستقل. كان يبدأ بالمحاسب مباشرة بلا تحقّق من أن طالب التغيير هو
     # صاحب الحساب فعًلا — وهذا أشيع مسار احتيال داخلي في أنظمة الرواتب:
     # رسالة "غيّروا حسابي" تمرّ بلا تثبّت من هوية مرسلها.
+    # **وُصِل مخرجُه — إغفاٌل ال قرار، والدليُل في اسم المستند.**
+    #
+    # ``OD-021`` اسمُه «إشعار تحديث بيانات (شخصية/**بنك**/جهة اتصال)» —
+    # فالحالُة التي يسمّيها المستنُد بعينها كانت ال تُنتجه. و``REQDATA``
+    # و``REQCONTACT`` (شقيقاه على المستند نفسه) يُنتجانه.
+    #
+    # وكانت العلُّة المسجَّلة في ``OUTPUT_GAPS`` أن الإصدار يحوّل الطلب إلى
+    # انتظار توقيٍع ورقّي — **وقد بطلت بقرار المالك**: الرايُة مفعَّلٌة على
+    # ثالثة أنواٍع وحدها (REQRESIGN · REQEOS · REQCLR)، ومرفوعٌة عن هذا.
+    # فبقيت العلُّة في السجلّ بعد أن زال سببُها.
+    #
+    # والمستنُد ``confidential`` — تحمله خصوصيُة الأرشيف المبنيَّة أصًلا.
     _simple("REQBANK", "طلب تغيير الحساب البنكي", CAT_EMP_DATA,
            ["hr", "accountant", "company_manager"], validation_roles=("hr",),
            requires_physical_signature=False, visible_to_employee=True,
+           produces_document=True,
            default_template_code="HRMS-PR-004"),
     _simple("REQCONTACT", "تحديث بيانات الاتصال والطوارئ", CAT_EMP_DATA,
            ["hr"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
@@ -432,10 +445,20 @@ _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
            ["accountant", "company_manager"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     # AC-03 — خطوة HR هنا تحقّق تعاقدي لا قرار مالي: القرار للمحاسب والمدير
+    # **وُصِل مخرجُه — كسابقه، إغفاٌل يكشفه اسُم المستند.**
+    #
+    # ``OD-024`` اسمُه «قرار اعتراض راتب / **خصم**»، و``REQPAY`` (اعتراض
+    # على الراتب) يُنتجه — و``REQDED`` (اعتراض على خصم) ال. شقيقان على
+    # مستنٍد واحد يسمّيهما معًا، أحدُهما يُنتجه.
+    #
+    # ومعترٌض يُبتّ اعتراضُه بال ورقٍة تُسلَّم له ال يملك ما يحتجّ به.
     _simple("REQDED", "اعتراض على خصم", CAT_FINANCIAL,
            ["accountant", "hr", "company_manager"], validation_roles=("hr",),
            requires_physical_signature=False, visible_to_employee=True,
-           default_template_code="HRMS-PR-033"),
+           produces_document=True),
+    # **وقالٌب خاطٌئ يُنزَع ال يُتبَع**: ``HRMS-PR-033`` يشير إلى ``RPT-005``
+    # (تقرير) ال إلى ``OD-024``. فهويُّة المستند من السجلّ — ``WF-012``
+    # يعلن ``OD-024`` وحده — كما في أمثاله التي نُزعت قوالبها.
 
     # الشكاوى والتظلمات
     _simple("REQGRV", "شكوى أو تظلم", CAT_GRIEVANCE,

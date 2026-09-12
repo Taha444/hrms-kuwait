@@ -273,8 +273,24 @@ def test_no_stale_open_archive_register_remains():
     assert not hasattr(R, "CONFIDENTIAL_IN_OPEN_ARCHIVE"),         "سجلُّ التسرّب باٍق وقد بُنيت الخصوصية"
 def test_the_remaining_holds_say_why():
     """ولا يُسكَت عن سبب الحجب: يُسمّى بتصنيفه لا يُخلَط بغيره."""
-    held = {k: v for k, v in R.OUTPUT_GAPS.items()
-            if v.get("needs") == "signature_decision"}
-    assert held, "لا سطَر يذكر عائق التوقيع"
-    for key, body in held.items():
+    # **وعائُق التوقيع زال بقرار المالك، فزالت فئتُه.**
+    #
+    # كان ``REQBANK`` و``REQDED`` محجوبين بعلٍّة مسجَّلة: «الإصدار يحوّل
+    # الطلب إلى انتظار توقيٍع ورقّي». ثم قصر المالُك الرايَة على ثالثة
+    # أنواٍع (``REQRESIGN`` · ``REQEOS`` · ``REQCLR``) — **فبطل السبُب
+    # وبقيت العلُّة في السجلّ**. وسجٌل يحمل عائًقا زال يُقرأ خطًأ ويوقف
+    # عمًلا بال سبب.
+    #
+    # فيُقاس الآن **أن ال عائَق توقيٍع مسجًَّلا لمن رُفعت عنه الراية** — لا
+    # أن يبقى واحٌد منها.
+    from app import workflow as W
+
+    flagged = {rt["code"] for rt in W.DEFAULT_REQUEST_TYPES
+               if rt.get("requires_physical_signature")}
+    stale = {k: v for k, v in R.OUTPUT_GAPS.items()
+             if v.get("needs") == "signature_decision"}
+    for key, body in stale.items():
+        code_owners = [c for c in flagged if c]
+        assert code_owners, (
+            f"{key}: عائُق توقيٍع مسجٌَّل وال نوَع تشترط عليه الراية")
         assert "توقيع" in body["why"], key
