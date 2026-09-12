@@ -65,6 +65,76 @@ def ensure_default_catalog(db: Session) -> dict:
         db.add(row)
         rt_added += 1
 
+    # ─── **مصالحُة الصفوف القائمة — ال إدراُج الناقص وحده** ──────────
+    #
+    # **العطل**: كانت الدالُة تُدرِج ما ال كوَد له وتُخطّي ما وُجد
+    # (``if rt["code"] in existing_rt: continue``). فكلُّ تغييٍر في
+    # ``DEFAULT_REQUEST_TYPES`` بعد أوّل نشرٍة **ال يبلغ النظاَم العامل**:
+    # الشيفرُة تُعلن أن نوًعا يُنتج مستنًدا، و``get_request_type`` تقرأ صَّف
+    # القاعدة الذي يقول غير ذلك.
+    #
+    # **ولم يُمسَك ألن الاختبار يبذر من جديد**: ``conftest`` يحذف الجداول
+    # ويُعيد البذَر، فيعمل على كتالوٍج طازٍج دائًما. «أخضٌر في الاختبار
+    # وصامٌت في الإنتاج» — وهو الصنُف نفسه الذي كُنس في هذه الجولة
+    # (ترويسٌة لا تُكشَف، وساعُة مضيف).
+    #
+    # **والمزامنُة آمنٌة هنا بالقياس**: ال مساَر ``PUT``/``PATCH`` لأنواع
+    # الطلبات في النظام كلّه، فالصفوُف العامّة (``company_id IS NULL``)
+    # ليست عمًلا بشرًيا يُطمَس — هي نسخٌة من الكتالوج.
+    #
+    # **وسلسلُة الاعتماد وحدها تُستثنى بشرط**: ``Request.current_stage``
+    # فهٌرس فيها، فتغييُر طولها يُزيح معنى المراحل على طلٍب جاٍر. فتُحدَّث
+    # حين ال طلَب جاٍر أو حين ال يتغيّر الطول، وإال تُؤجَّل ويُقال ذلك —
+    # ويزامنها اإلقالُع التالي بعد أن تُغلَق.
+    _OWNED = ("name", "category", "requires_physical_signature",
+              "produces_document", "visible_to_employee",
+              "default_template_code")
+    by_code = {rt["code"]: rt for rt in DEFAULT_REQUEST_TYPES}
+    rows = db.scalars(select(models.RequestType).where(
+        models.RequestType.company_id.is_(None))).all()
+
+    rt_updated: list[str] = []
+    chain_deferred: list[str] = []
+    for row in rows:
+        spec = by_code.get(row.code)
+        if not spec:
+            continue
+        changed = []
+        for field in _OWNED:
+            want = spec.get(field)
+            if field in ("requires_physical_signature", "produces_document"):
+                want = bool(spec.get(field, False))
+            elif field == "visible_to_employee":
+                want = bool(spec.get(field, True))
+            elif field == "category":
+                want = spec.get("category") or "عام"
+            if getattr(row, field) != want:
+                setattr(row, field, want)
+                changed.append(field)
+
+        want_chain = spec.get("approval_chain_json") or []
+        if (row.approval_chain_json or []) != want_chain:
+            in_flight = db.scalar(select(models.Request.id).where(
+                models.Request.request_type_code == row.code,
+                models.Request.status.notin_(
+                    ("completed", "rejected", "cancelled")),
+            ).limit(1))
+            same_length = len(row.approval_chain_json or []) == len(want_chain)
+            if in_flight and not same_length:
+                chain_deferred.append(row.code)
+            else:
+                row.approval_chain_json = want_chain
+                changed.append("approval_chain_json")
+
+        if changed:
+            rt_updated.append(f"{row.code}:{'+'.join(changed)}")
+
+    if rt_updated or chain_deferred:
+        db.commit()
+        logger.info("catalog_seed: صُولِح %d نوًعا%s", len(rt_updated),
+                   (f"، وأُجِّلت سلسلُة {chain_deferred} لطلٍب جاٍر"
+                    if chain_deferred else ""))
+
     # ─── Document Templates ─────────────────────────────────────────
     existing_tpl = set(db.scalars(select(models.DocumentTemplate.code).where(
         models.DocumentTemplate.company_id.is_(None),
@@ -102,6 +172,11 @@ def ensure_default_catalog(db: Session) -> dict:
 
     return {
         "request_types_added": rt_added,
+        # **ومصالحٌة ال يُعرَف أنها وقعت ال تُصدَّق**: تُسمّى بما تغيّر في
+        # كل نوع، فمن يقرأ تقريَر النشرة يرى أثَر تغييره.
+        "request_types_updated": len(rt_updated),
+        "request_types_updated_detail": rt_updated,
+        "approval_chains_deferred": chain_deferred,
         "templates_added": tpl_added,
         "request_types_total": rt_count,
         "templates_total": tpl_count,
