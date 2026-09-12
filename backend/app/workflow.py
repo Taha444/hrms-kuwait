@@ -30,8 +30,12 @@ from . import models, module_owned
 from .audit_context import actor_ip, actor_user_id, original_actor_user_id
 from .task_kinds import is_notification
 from .config import settings
+import logging
+
 from .notifications import (create_task, notify_employee_self, notify_from_template,
                             oversight_users, users_by_role)
+
+logger = logging.getLogger(__name__)
 from .permissions import ROLE_LABEL_AR
 from .storage import key_exists, save_at_key
 
@@ -328,18 +332,37 @@ DEFAULT_REQUEST_TYPES = [
     _simple("REQRESN", "طلب تجديد إقامة عادي", CAT_RESIDENCY,
            ["delegate", "hr"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-034"),
+    # **قراُر المالك (2026-09-12): يُربَط الغلاُف الداخلي للأربعة.**
+    #
+    # والغلاُف ليس المستنَد الحكومي: ``OD-013`` معلٌَن في السجلّ «غلاف
+    # متابعة **داخلي** — النظام لا يُصدر مستنًدا حكوميًا مزيًفا؛ الأصُل
+    # يُرفع من الجهة». والنظاُم يُنتجه **فعًلا** لتجديد الإقامة
+    # (``REQRESE`` · ``REQRESN``) بقالب ``HRMS-PR-034`` نفسه — فكان غياُبه
+    # عن هذه الأربعة عدَم اتّساٍق لا حماية.
+    #
+    # **وقالبُها كان يشير إلى مستنٍد آخر تماًما**، وهو ما يُختَم على الأثر
+    # (``template_code``): فكان أرشيُف تحديث الجواز يحمل «محضر تحقيق
+    # إداري» وأرشيُف إذن العمل والبطاقة «قرار إنذار / مخالفة». وهو عيُن ما
+    # وقع في ``ADMLIC`` وأُصلح بـ«أُزيل التصنيف الخاطئ أوًلا». فصُوِّبت إلى
+    # ``HRMS-PR-034`` — قالُب الغلاف الذي يخدم الإقامة.
     _simple("REQPASS", "طلب تحديث أو تجديد جواز السفر", CAT_RESIDENCY,
-           ["hr"], requires_physical_signature=False,
-           default_template_code="HRMS-PR-024"),
+           ["hr"], requires_physical_signature=False, produces_document=True,
+           default_template_code="HRMS-PR-034"),
     _simple("REQCID", "طلب تحديث أو تجديد البطاقة المدنية", CAT_RESIDENCY,
-           ["hr", "delegate"], requires_physical_signature=False,
-           default_template_code="HRMS-PR-023"),
-    # DOC-11 — تجديد إذن العمل لا يُنتج مستنًدا من النظام: الإذن تُصدره الهيئة
-    # العامة للقوى العاملة، وأي ورقة يولّدها النظام بشكله ليست إذًنا بل انتحال
-    # صفة جهة حكومية. المندوب يرفع المستند الرسمي بعد استخراجه.
+           ["hr", "delegate"], requires_physical_signature=False, produces_document=True,
+           default_template_code="HRMS-PR-034"),
+    # DOC-11 — **الإذُن نفسه لا يولّده النظام**: تُصدره الهيئة العامة للقوى
+    # العاملة، وورقٌة بشكله انتحاُل صفة جهة حكومية. والمندوُب يرفع المستنَد
+    # الرسمي بعد استخراجه — **وهذا باٍق ولم يُمَسّ**.
+    #
+    # **وما وُصِل هو الغلاُف الداخلي لا الإذن** (قرار المالك 2026-09-12):
+    # ``WF-021`` يعلن ``OD-013`` وحده — غلاَف متابعٍة داخلًيا يحمله المندوب
+    # إلى الجهة، لا شهادًة تنتحل صفَتها. والفرُق بينهما هو الفرُق بين ورقٍة
+    # تقول «هذه معاملُتنا ومرجعُها كذا» وورقٍة تقول «هذا إذُن عمل».
     _simple("REQWP", "طلب تجديد إذن عمل", CAT_RESIDENCY,
-           ["hr", "company_manager", "delegate"], requires_physical_signature=False, produces_document=False,
-           default_template_code="HRMS-PR-022"),
+           ["hr", "company_manager", "delegate"], requires_physical_signature=False,
+           produces_document=True,
+           default_template_code="HRMS-PR-034"),
     _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
            ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
@@ -1261,6 +1284,7 @@ def enter_stage(db: Session, req: models.Request, rt: models.RequestType) -> Non
                 severity="warning", dedup_key=f"req_exit:{req.id}",
             )
         _warn_debt_before_travel(db, req, name)
+        _generate_stage_output(db, req, rt, kind, user=None)
     elif kind == "pickup":
         req.status = "ready_for_pickup"
         # يُنفّذ الطلب الدور المحدَّد في المرحلة (hr افتراضيًا، أو accountant للسلف/القروض)
@@ -2016,6 +2040,57 @@ def _notify_loan_agreement_ready(db: Session, req: models.Request) -> None:
         dedup_key=f"loan_agreement:{req.id}")
 
 
+def _generate_stage_output(db: Session, req: models.Request,
+                           rt: models.RequestType, stage_kind: str,
+                           user: models.User | None) -> None:
+    """يولّد مخرَج المرحلة إن أعلنه السجلّ — غلاُف المتابعة عند المندوب.
+
+    **وسجٌل يقول «يُنتَج» وال يُنتَج هو العطُل نفسه** الذي تُكنَس هذه
+    الجولُة لأجله. فـ``STAGE_EXTRA_OUTPUTS`` تُحتسب في
+    ``produced_outputs`` — فإن لم يُولَّد المستنُد هنا صار السجلُّ يكذب.
+
+    وصنٌف مستقّل (``kind="gov_cover"``) ال ``generated_pdf``: فالطلُب
+    يحمل مستندين — قراَر الإجازة وغلاَف المتابعة — ولو تقاسما الصنَف
+    لعدَّ المولُّد أحدَهما تكراًرا للآخر فأبطله.
+    """
+    from . import v15_registry
+
+    extra = v15_registry.STAGE_EXTRA_OUTPUTS.get((rt.code, stage_kind))
+    if not extra:
+        return
+
+    # **وفاعٌل صادٌق أو ال مستند.**
+    #
+    # ``enter_stage`` ال تعرف المستخدم — والمستنُد يُقيَّد عليه
+    # ``uploaded_by``. فمن سبَّبه؟ **من قرَّر فنقل الطلَب إلى المندوب**:
+    # يُقرأ من سياق التدقيق (وهو مضبوٌط في نداء القرار)، ثم من آخر معتمٍِد
+    # إن غاب. وال تُكتَب نسبٌة كاذبة: بال فاعٍل ال يُولَّد المستند ويُسجَّل
+    # السبب — فورقٌة تُنسَب إلى مجهول أسوأ من ورقٍة تتأخّر.
+    if user is None:
+        uid = actor_user_id()
+        if uid:
+            user = db.get(models.User, uid)
+    if user is None:
+        last = db.scalar(select(models.RequestApproval).where(
+            models.RequestApproval.request_id == req.id,
+            models.RequestApproval.decision == "approved",
+        ).order_by(models.RequestApproval.decided_at.desc()))
+        if last and last.approver_user_id:
+            user = db.get(models.User, last.approver_user_id)
+    if user is None:
+        logger.warning("غلاُف المتابعة للطلب %s بال فاعٍل يُنسَب إليه — لم يُولَّد",
+                       req.id)
+        return
+    try:
+        generate_document(db, req, rt, kind="gov_cover",
+                          actor=user, od_override=extra)
+    except Exception as exc:  # noqa: BLE001
+        # **وغالٌف يفشل ال يوقف إجراَء المغادرة**: المندوُب يمضي بالمعاملة،
+        # والفشُل يُسجَّل ليراه من يُصلحه. ومستنٌد مساعٌد يُسقِط مرحلًة
+        # حكومية عطٌل أسوأ من غيابه.
+        logger.warning("تعذّر توليد غلاف المتابعة للطلب %s: %s", req.id, exc)
+
+
 def _warn_debt_before_travel(db: Session, req: models.Request, name: str) -> None:
     """**والسفُر ثاني لحظٍة يخرج فيها المال، وكانت صامتة.**
 
@@ -2565,8 +2640,18 @@ def _humanize_key(key: str) -> str:
 
 
 def generate_document(db: Session, req: models.Request, rt: models.RequestType,
-                      kind: str, actor: models.User) -> models.RequestDocument:
-    """يولّد مستند الطلب المعتمَد كملف PDF حقيقي (application/pdf) — لا HTML (FIX-007)."""
+                      kind: str, actor: models.User,
+                      od_override: str | None = None) -> models.RequestDocument:
+    """يولّد مستند الطلب المعتمَد كملف PDF حقيقي (application/pdf) — لا HTML (FIX-007).
+
+    ``od_override`` — **لمساٍر يُنتج أكثر من مستنٍد في مراحَل مختلفة.**
+    فالهويُّة تُحَل من السجلّ (``canonical_od_for``) ومن القالب حين يعلن
+    المساُر عدًدا؛ وذلك يُحسِم مستنًدا واحًدا لكل نوع. وإجازٌة تُعتمد ثم
+    يُجهَّز لها إذُن مغادرة تُنتج **اثنين**: قراَر الإجازة وغلاَف المتابعة.
+    **والتجاوُز مقيٌَّد بما يعلنه المسار** — فال يُخترَع صنٌف من خارج
+    السجلّ، وإال عاد ما أُصلح في ``P1-02``: قالٌب يحدّد هويًَّة قانونية
+    والسجلُّ ال يُقرأ.
+    """
     from . import verification
     from .pdf_export import render_request_pdf
 
@@ -2629,6 +2714,27 @@ def generate_document(db: Session, req: models.Request, rt: models.RequestType,
     # تُعرَف بعد سنة، ولا يُحتجّ بها، ولا يُعرَف أيّ قاعدة تحكمها.
     from . import v15_registry
     od_code = v15_registry.canonical_od_for(rt.code, rt.default_template_code)
+    if od_override:
+        entry = v15_registry.LEGACY_REQUEST_ALIASES.get(rt.code) or {}
+        canonical = entry.get("canonical") if isinstance(entry, dict) else None
+        declared = list((v15_registry.CANONICAL_WORKFLOWS.get(canonical)
+                         or {}).get("od") or [])
+        # **والمساُر المُرقَّى بالحمولة مسارٌ له مخرجاته.**
+        #
+        # ``leave`` يبقى ``WF-001`` ويُرقَّى إلى ``WF-002`` بـ
+        # ``travel_required`` (``_PAYLOAD_PROMOTIONS``)، وغلاُف المتابعة
+        # مخرُج المُرقَّى لا الأصلي. فتحقٌُّق يقرأ الأصلَّي وحده يرفض ما
+        # أعلنه السجلُّ نفسه — وهو ما وقع: رُفض ``OD-013`` بحجّة أنه ليس
+        # من مخرجات ``WF-001``، والسجلُّ يحتسبه لـ``WF-002``.
+        for base, _field, promoted in v15_registry._PAYLOAD_PROMOTIONS:
+            if canonical == base:
+                declared += list((v15_registry.CANONICAL_WORKFLOWS.get(promoted)
+                                  or {}).get("od") or [])
+        if od_override not in declared:
+            raise ValueError(
+                f"هويٌَّة من خارج السجلّ: {od_override} ليس من مخرجات "
+                f"{canonical} المعلَنة {declared}")
+        od_code = od_override
     if not od_code:
         entry = v15_registry.LEGACY_REQUEST_ALIASES.get(rt.code) or {}
         wf = (entry.get("canonical") if isinstance(entry, dict) else None) or "—"

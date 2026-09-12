@@ -1427,11 +1427,27 @@ def test_ac11_doc01_doc05_doc11_doc20_document_rules():
     assert roles == ["hr"], f"شهادة الراتب ما زالت بسلسلة شكلية: {roles}"
     assert cert["approval_chain_json"][0]["produces_document"]
 
-    # DOC-11 — لا مستند يولّده النظام لتجديد إذن العمل
+    # DOC-11 — **والثابُت «لا ورقٌة بشكل الإذن» لا «لا ورقَة أصًلا».**
+    #
+    # كان يُقاس بـ``not produces_document`` — وهو وكيٌل خشن. وقرَّر المالُك
+    # (2026-09-12) ربَط **الغلاف الداخلي**: ``OD-013`` تخطيطُه ``LAY-07``
+    # «أغلفة متابعة حكومية»، وملاحظتُه في السجلّ تقول إن الأصَل يُرفع من
+    # الجهة. والنظاُم يُنتجه لتجديد الإقامة أصًلا — فكان غياُبه عن إذن
+    # العمل عدَم اتّساٍق لا حماية.
+    #
+    # فيُقاس الثابُت الذي يحمي القاعدَة فعًلا: ما يُنتَج **غلاٌف** لا
+    # وثيقُة هويٍّة، وإذُن العمل نفسه يُرفَع لا يُولَّد.
+    from app import v15_registry as _R
+    from app.request_actions import EXECUTION_ACTIONS_BY_STATUS as _E
+
     wp = by_code["REQWP"]
-    assert not wp["produces_document"], "النظام يولّد إذن عمل حكومًيا"
-    assert not any(s.get("produces_document") for s in wp["approval_chain_json"]), \
-        "مرحلة في تجديد إذن العمل تولّد مستنًدا حكومًيا"
+    _wp_od = _R.canonical_od_for("REQWP", wp.get("default_template_code"))
+    assert _wp_od == "OD-013", f"إذُن العمل يُنتج غيَر الغلاف: {_wp_od}"
+    _cover = _R.CANONICAL_DOCUMENTS[_wp_od]
+    assert _cover["layout"] == "LAY-07", _cover
+    assert _cover.get("legal_note_ar"), "الغلاُف بلا ملاحظٍة قانونية"
+    assert _E["awaiting_delegate"]["via"] == "upload"
+    assert _E["awaiting_delegate"]["doc_kind"] == "exit_permit"
 
     # DOC-20 — نسخة القالب مثبَّتة على المستند
     cols = {c.name for c in models.RequestDocument.__table__.columns}
