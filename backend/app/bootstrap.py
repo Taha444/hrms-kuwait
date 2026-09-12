@@ -116,6 +116,21 @@ def _ensure_catalog() -> None:
     if report["request_types_added"] or report["templates_added"]:
         print(f"[bootstrap] ✓ catalog seeded: +{report['request_types_added']} request types, "
               f"+{report['templates_added']} templates")
+
+    # **ومصالحٌة تقع صامتًة ال يُعرَف أنها وقعت.**
+    #
+    # كانت الطباعُة مشروطًة بـ«المُضاف» وحده. وأوُل نشرٍة بعد المصالحة
+    # أضافت صفًرا وصالحت خمسًة وثالثين نوًعا — **فلم يقل سجلُّ النشر
+    # شيًئا**. ومن يقرأ السجل يستنتج أن شيًئا لم يقع.
+    updated = report.get("request_types_updated") or 0
+    if updated:
+        print(f"[bootstrap] ✓ صُولِح {updated} نوَع طلٍب مع الكتالوج: "
+              + "، ".join((report.get("request_types_updated_detail") or [])[:12])
+              + (" …" if updated > 12 else ""))
+    deferred = report.get("approval_chains_deferred") or []
+    if deferred:
+        print(f"[bootstrap] ⚠ أُجِّلت سلسلُة اعتماٍد لطلٍب جاٍر: {deferred} — "
+              "تُزامَن في الإقلاع التالي بعد إغلاقها")
     print(f"[bootstrap]   catalog totals: {report['request_types_total']} request types, "
           f"{report['templates_total']} templates")
 

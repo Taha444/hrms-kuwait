@@ -118,3 +118,22 @@ def test_the_reason_it_was_missed_is_recorded():
     src = inspect.getsource(ensure_default_catalog)
     assert "conftest" in src or "يبذر من جديد" in src, \
         "ال يُقال لماذا لم يُمسَك هذا"
+
+
+def test_the_deploy_log_says_what_was_reconciled():
+    """**ومصالحٌة تقع صامتًة ال يُعرَف أنها وقعت.**
+
+    ``bootstrap`` يُشغِّل المصالحَة في كل نشرة (``python -m app.bootstrap``
+    في أمر التشغيل). وكانت طباعتُه مشروطًة بـ«المُضاف» وحده — **فأوُل
+    نشرٍة بعد المصالحة أضافت صفًرا وصالحت خمسًة وثالثين نوًعا، ولم يقل
+    سجلُّ النشر شيًئا**. ومن يقرأ السجل يستنتج أن شيًئا لم يقع.
+    """
+    import inspect
+
+    import app.bootstrap as B
+
+    src = inspect.getsource(B._ensure_catalog)
+    assert "request_types_updated" in src, "المُصالَح ال يُطبَع"
+    assert "approval_chains_deferred" in src, "المؤجَّل ال يُطبَع"
+    # وال تبقى الطباعُة مشروطًة بالمُضاف وحده.
+    assert src.count("print(") >= 3, src[-400:]
