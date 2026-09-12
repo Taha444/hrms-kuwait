@@ -2,7 +2,7 @@
 """خزنة المستندات: رفع بنُسخ (versioning) + اقتراح OCR + تنزيل الأحدث + مهام متسلسلة."""
 import logging
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -457,7 +457,10 @@ def revoke_request_document(doc_id: int, request: Request, reason: str,
     if doc.revoked_at:
         return {"ok": True, "already_revoked": True}
 
-    doc.revoked_at = datetime.now()
+    # **لحظٌة مخزَّنة تُكتب بالساعة المعلَنة** — وهذا الملُف يكتب الواعيَة
+    # في موضٍع آخر. و``revoked_at`` يُقرأ في صفحة التحقّق العلنية، فساعٌة
+    # تحمل توقيَت المضيف تُظهر الإلغاَء قبل وقته أو بعده ثالث ساعات.
+    doc.revoked_at = datetime.now(timezone.utc)
     doc.revoked_by_user_id = user.id
     doc.revocation_reason = reason.strip()[:300]
     doc.lifecycle_status = "REVOKED"

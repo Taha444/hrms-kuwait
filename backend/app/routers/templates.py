@@ -377,7 +377,13 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
         "official_salary": ("" if emp.basic_salary is None else str(emp.basic_salary)),
         "employment_status": ("على رأس العمل / Active" if emp.status == "active" else ""),
         "payroll_cycle": "شهري / Monthly",
-        "ref_no": f"{emp.company_id}-{emp.id}-{datetime.now():%Y%m%d}",
+        # **ساعتان على ورقٍة واحدة.** ``date_today`` في هذا القاموس نفسه
+        # يُقرأ من ``kuwait_today()``، ورقُم الإشارة كان يُقرأ من ساعة
+        # المضيف. فبين منتصف الليل والثالثة فجًرا بتوقيت الكويت — والخادُم
+        # على UTC — يحمل المستنُد الرسمي **تاريَخ يوٍم ورقَم إشارٍة بتاريخ
+        # يوٍم قبله**. وهو ما بُني ``clock.py`` لأجله بنصّه: «النظام يحمل
+        # ساعتين».
+        "ref_no": f"{emp.company_id}-{emp.id}-{kuwait_today():%Y%m%d}",
         # P0-#11 — قيم افتراضية من قانون العمل الكويتي (قابلة للـoverride عبر extras):
         "probation_days": "100",
         "annual_leave_days": "30",

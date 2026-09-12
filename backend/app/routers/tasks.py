@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """صندوق المهام لكل مستخدم (Task Inbox) + تشغيل المسح اليومي يدويًا."""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
@@ -168,7 +168,8 @@ def update_status(task_id: int, status: str,
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
     task.status = status
     if status in ("done", "dismissed"):
-        task.completed_at = datetime.now()
+        # **يُقرأ المحفوُظ ويُختَم UTC** في ``sla_scan`` — فلتُكتَب بها.
+        task.completed_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True, "status": status}
 
@@ -195,7 +196,7 @@ def claim_task(task_id: int, user: models.User = Depends(get_current_user),
         raise HTTPException(status_code=409,
                             detail="المهمة ملتقطة من مستخدم آخر — انتظر إطلاقها أو تنفيذها")
     task.claimed_by_user_id = user.id
-    task.claimed_at = datetime.now()
+    task.claimed_at = datetime.now(timezone.utc)
     task.status = "in_progress"
     db.commit()
     return {"ok": True, "claimed_by_user_id": user.id,
@@ -238,7 +239,7 @@ def bulk_task_action(task_ids: list[int], action: str,
         models.Task.status.in_(("open", "in_progress")),
     )
     updated = 0
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     for t in db.scalars(q).all():
         t.status = action
         t.completed_at = now
@@ -271,7 +272,7 @@ def cleanup_orphan_tasks(request: Request,
     if cid is not None:
         q = q.where(models.Task.company_id == cid)
     fixed = 0
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     for t in db.scalars(q).all():
         req = db.get(models.Request, t.related_entity_id)
         if req and req.status in closed_statuses:
@@ -300,7 +301,7 @@ def retry_delivery(task_id: int,
         raise HTTPException(status_code=409,
                             detail=f"وصلت للحد الأقصى ({MAX_ATTEMPTS}) — لا مزيد من المحاولات")
     task.delivery_attempts += 1
-    task.last_delivery_at = datetime.now()
+    task.last_delivery_at = datetime.now(timezone.utc)
     try:
         from ..channels import redispatch_task
         redispatch_task(db, task)

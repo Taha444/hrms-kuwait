@@ -473,7 +473,12 @@ def close_attendance_month(period: str, request: Request,
     if existing:
         existing.status = "closed"
         existing.closed_by = user.id
-        existing.closed_at = datetime.now()
+        # **لحظٌة مخزَّنة تُكتب بالساعة المعلَنة.** هذا الملُف يكتب
+        # ``datetime.now(timezone.utc)`` في موضٍع آخر، وأحَد عشر موضًعا في
+        # النظام يقرأ المحفوَظ ويختمه UTC صراحًة. فلحظٌة عاريٌة تحمل توقيَت
+        # المضيف: تتّفق على Railway (UTC) وتُخطئ ثالث ساعات على مضيٍف
+        # كويتي — عطٌل يعمل في بيئٍة ويصمت في أخرى.
+        existing.closed_at = datetime.now(timezone.utc)
         existing.reopened_by = None
         existing.reopened_at = None
         existing.reopen_reason = None
@@ -511,7 +516,7 @@ def reopen_attendance_month(period: str, reason: str, request: Request,
         raise HTTPException(status_code=404, detail=f"لا يوجد شهر مقفل بهذه الفترة")
     c.status = "reopened"
     c.reopened_by = user.id
-    c.reopened_at = datetime.now()
+    c.reopened_at = datetime.now(timezone.utc)   # الساعُة المعلَنة (انظر أعاله)
     c.reopen_reason = reason.strip()
     audit(db, user, "attendance_month_reopen", "attendance_period", c.id,
           detail=f"{cid}/{period}: {reason}", request=request)
