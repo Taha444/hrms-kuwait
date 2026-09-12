@@ -97,14 +97,22 @@ def test_the_demo_credentials_hint_cannot_ship_by_accident():
     """
     import pathlib
 
+    # **وال يُمشى على المستودع كلّه لمعرفة ملفاٍت معدودة.** المشُي
+    # الشامل يقرأ ``frontend/dist`` وكلَّ ناتِج بناء، فيثقُل بنموّ
+    # المستودع ال بنموّ ما يفحصه. فتُسمّى المواضُع التي تخبز
+    # متغيّرات Vite.
     root = pathlib.Path(__file__).resolve().parents[2]
+    candidates = [root / "Dockerfile", root / "frontend" / "Dockerfile",
+                  root / "frontend" / "package.json",
+                  root / "frontend" / "vite.config.ts",
+                  root / "frontend" / "vite.config.js"]
+    candidates += sorted(root.glob(".env*"))
+    candidates += sorted((root / "frontend").glob(".env*"))
     enabling = []
-    for p in root.rglob("*"):
-        if p.is_dir() or "node_modules" in p.parts or ".git" in p.parts:
+    for p in candidates:
+        if not p.is_file():
             continue
-        if p.name.startswith(".env") or p.name in ("Dockerfile", "vite.config.ts",
-                                                   "vite.config.js", "package.json"):
-            body = p.read_text(encoding="utf-8", errors="ignore")
-            if "VITE_SHOW_DEMO_HINT" in body and "true" in body:
-                enabling.append(str(p.relative_to(root)))
+        body = p.read_text(encoding="utf-8", errors="ignore")
+        if "VITE_SHOW_DEMO_HINT" in body and "true" in body:
+            enabling.append(str(p.relative_to(root)))
     assert not enabling, f"ملفاٌت تُفعّل تلميح حسابات العرض: {enabling}"

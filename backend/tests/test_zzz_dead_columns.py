@@ -74,8 +74,17 @@ def _code_only(text: str) -> str:
     return chr(10).join(out)
 
 
+#: **وقياٌس يُعاد بناؤه لكل اختبار كلفٌة بال فائدة.** الشجرُة نفسها
+#: تُقرأ، فتُقرأ مرًة: اختباران هنا كانا يمشيان على الخادم والواجهة
+#: معًا (~2.3 ثانية لكل منهما).
+_CACHE: list[tuple[str, str]] | None = None
+
+
 def _unmentioned() -> list[tuple[str, str]]:
     """أعمدٌة لا **تقرؤها شيفرٌة** خارج ``models.py``."""
+    global _CACHE
+    if _CACHE is not None:
+        return _CACHE
     blob = "".join(_code_only(p.read_text(encoding="utf-8", errors="ignore"))
                    for p in BACK.rglob("*.py") if p.name != "models.py")
     front = BACK.parents[1] / "frontend" / "src"
@@ -91,6 +100,7 @@ def _unmentioned() -> list[tuple[str, str]]:
                 continue
             if not re.search(rf"\b{re.escape(n)}\b", blob):
                 out.append((cls, n))
+    _CACHE = out
     return out
 
 
