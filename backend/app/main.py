@@ -597,6 +597,26 @@ def health_deep(request: Request):
     except Exception as e:
         results["checks"]["notifications"] = {"status": "fail", "error": str(e)[:200]}
 
+    # 10) **إعداٌد غياُبه لا يُرى** — رابُط التحقّق العلني.
+    #
+    # الباركود على المستند يُرمِّز ``{public_base_url}/api/verify/{code}``
+    # متى ضُبط العنوان، وإلا رمَّز **الرمَز مجرًَّدا**. والسلوكان صحيحان
+    # (فرابٌط خاطئ أسوأ من رمٍز يُنسَخ بالي;د)، **لكنّ الفرق لا يظهر في
+    # شيء**: من نسي ضبطه يطبع أشهًرا من المستندات بباركوٍد لا يقود إلى
+    # موضع، ولا يعلم حتى يمسحه بنٌك ويجد نًصّا.
+    #
+    # فيُقال هنا. وليس ``fail``: النظاُم يعمل بلا الرابط، والقراُر قراُر
+    # صاحبه — ``degraded`` تُدرَّب على تجاهلها إن قيلت لما ليس عطًلا.
+    base = (getattr(settings, "public_base_url", "") or "").strip()
+    results["checks"]["public_verify_url"] = {
+        "status": "ok" if base else "not_configured",
+        "configured": bool(base),
+        "note": ("باركود المستندات يقود إلى صفحة التحقّق" if base
+                 else "PUBLIC_BASE_URL غير مضبوط — الباركود يحمل الرمز "
+                      "مجرًَّدا بلا رابٍط يفتحه. اضبطه ليقود إلى "
+                      "/api/verify/{code}"),
+    }
+
     body = results if _health_detail_allowed(request) else _redact(results)
     if not ok:
         from fastapi.responses import JSONResponse

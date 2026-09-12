@@ -105,3 +105,49 @@ def test_the_health_answer_never_carries_a_password():
     assert '"civil_id"' in block and '"role"' in block
     for bad in ("password", "full_name", "password_hash"):
         assert bad not in block, bad
+
+
+# ---------------------------------------------------------------------------
+# وإعداٌد غياُبه ال يُرى
+# ---------------------------------------------------------------------------
+
+def test_the_public_verify_url_is_reported(client):
+    """**إعداٌد غياُبه ال يُرى يُقال في الفحص.**
+
+    الباركود على المستند يُرمِّز ``{public_base_url}/api/verify/{code}``
+    متى ضُبط العنوان، وإال رمَّز **الرمَز مجرًَّدا**. والسلوكان صحيحان
+    (فرابٌط خاطئ أسوأ من رمٍز يُنسَخ بالي;د)، **لكنّ الفرق ال يظهر في
+    شيء**: من نسي ضبطه يطبع أشهًرا من المستندات بباركوٍد ال يقود إلى موضع،
+    وال يعلم حتى يمسحه بنٌك ويجد نًصّا.
+    """
+    r = client.get("/api/health/deep")
+    check = r.json()["checks"].get("public_verify_url")
+    assert check is not None, "الإعداُد ال يُقال في الفحص"
+    assert check["status"] in ("ok", "not_configured"), check
+
+
+def test_a_missing_verify_url_is_not_called_a_failure(client):
+    """**وتحذيٌر لما ليس عطًلا يُدرَّب على تجاهله.**
+
+    فالنظاُم يعمل بال الرابط، والقراُر قراُر صاحبه. فـ``not_configured``
+    ال ``fail``، وال تُسقِط الفحَص إلى 503 بذاتها.
+    """
+    import inspect
+
+    import app.main as M
+
+    src = inspect.getsource(M.health_deep)
+    block = src[src.index('"public_verify_url"'):]
+    block = block[:600]
+    assert "not_configured" in block
+    assert "ok = False" not in block, "غياُب رابٍط اختياري يُسقِط الفحَص كلَّه"
+
+
+def test_the_note_is_gated_but_the_status_is_not():
+    """والحالُة مكشوفٌة والتفصيُل محروس — قراُر F-001 بحرفه."""
+    import inspect
+
+    import app.main as M
+
+    redact = inspect.getsource(M._redact)
+    assert "status" in redact, "افتراُض القياس: الحجُب يُبقي الحالة"
