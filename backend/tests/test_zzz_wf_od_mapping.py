@@ -82,6 +82,9 @@ REVIEWED = {
     # (شخصية/**بنك**/جهة اتصال)»، و``REQDATA`` و``REQCONTACT`` يُنتجانه —
     # و``REQBANK``، الحالُة التي يسمّيها المستنُد بعينها، لم يكن يُنتجه.
     "REQBANK": "HRMS-PR-004",      # OD-021 — إشعار تحديث بيانات بنكية
+    # **وقالٌب يشير خارج مسارِه**: ADMVIO كان على HRMS-PR-013 ← OD-005
+    # «قرار تغيير وظيفي» وهو ليس من مخرجات WF-014. فصُحِّح إلى قالب شقيقه.
+    "ADMVIO": "HRMS-PR-022",       # OD-006 — «قرار إنذار / مخالفة» بالحرف
 }
 
 #: **أنواٌع هويُّة مستندها من السجلّ لا من قالب** (P1-02).
@@ -421,11 +424,24 @@ def test_every_template_question_is_now_decided():
              if not R.canonical_od_for(rt["code"], rt.get("default_template_code"))]
     assert not naked, f"نوع يُنتج مستنًدا بلا صنف قانوني: {naked}"
 
+    # **وأسرُة التأديب تُقرأ من موضعها ال من اسٍم مكتوب هنا.**
+    #
+    # كان الشرُط ``!= "ADMWARN"`` — أي أن اإلنذاَر وحده يجوز له المستنُد
+    # التأديبي. ثم وُصِل ``ADMVIO`` (تسجيل مخالفة) و**هو تأديبٌّي فعًلا**:
+    # اسُم المستند «قرار إنذار / **مخالفة**» يسمّيه بالحرف. فسقط الحارُس
+    # على شيفرٍة صحيحة — ألن قائمَته اسٌم واحٌد ال أسرة.
+    #
+    # و``workflow._DISCIPLINARY_NOTICE`` هي السجلُّ الذي يعلن األسرَة
+    # (``ADMWARN`` · ``ADMVIO`` · ``ADMDED``) ويقرؤه إخطاُر من صدر بحقّه
+    # الإجراء. فتُقرأ منه — فقائمٌة ثانية تنحرف عن األولى.
+    from app import workflow as _W
+
     disciplinary = R.LEGACY_PRN_ALIASES.get("HRMS-PR-022")
+    family = set(_W._DISCIPLINARY_NOTICE)
     wrong = [rt["code"] for rt in _types_producing_documents()
              if rt.get("default_template_code")
              and R.LEGACY_PRN_ALIASES.get(rt["default_template_code"]) == disciplinary
-             and rt["code"] != "ADMWARN"]
+             and rt["code"] not in family]
     assert not wrong, (
         f"نوع غير الإنذار يُصنَّف أثره تأديبًيا: {wrong}"
     )

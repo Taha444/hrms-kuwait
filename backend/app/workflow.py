@@ -541,9 +541,24 @@ _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_
            ["hr", "accountant", "company_manager"], requires_physical_signature=False,
            produces_document=True,
            default_template_code="HRMS-PR-021"),
+    # **مخالفٌة تُسجَّل بال قرار — وقالبُها يشير إلى مستنٍد ليس من مسارها.**
+    #
+    # قالبُه كان ``HRMS-PR-013`` ← ``OD-005`` «قرار تغيير **وظيفي**»، وهو
+    # ليس من مخرجات ``WF-014`` أصًلا — فـ``canonical_od_for`` تُعيد
+    # ``None``، أي **ورقٌة بال هويّة** فيصرخ المولّد أو ال يولّد.
+    #
+    # والصحيُح ``HRMS-PR-022`` ← ``OD-006`` «قرار إنذار / **مخالفة**» —
+    # اسمُه يسمّي الحالَة بالحرف، وهو قالُب شقيقه ``ADMWARN`` على المسار
+    # نفسه. فمخالفٌة تُسجَّل في ملّف موظٍف بال ورقٍة قراٍر ال يملك صاحبُها ما
+    # يحتجّ به، وال الشركُة ما تُثبت به.
+    #
+    # **وقياٌس بالمسار كان يُخفي هذا**: ``output_gaps`` تعُدّ المسارَ
+    # منتًجا إن أنتج **أيُّ** نوٍع من أنواعه — و``ADMWARN`` يُنتج
+    # ``OD-006``، فبقي شقيقُه خفًيا. فأُضيف قياٌس بالنوع.
     _simple("ADMVIO", "تسجيل مخالفة وظيفية", CAT_ADMIN,
            ["branch_supervisor", "hr", "company_manager"], requires_physical_signature=False,
-           default_template_code="HRMS-PR-013"),
+           produces_document=True,
+           default_template_code="HRMS-PR-022"),
     _simple("ADMWARN", "إصدار إنذار", CAT_ADMIN,
            ["hr", "company_manager"], requires_physical_signature=False, produces_document=True,
            default_template_code="HRMS-PR-022"),
