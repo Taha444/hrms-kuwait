@@ -110,3 +110,79 @@ def test_internal_keys_stay_case_sensitive():
     # ``civil_id`` أرقاٌم فال حالَة له — يُستثنى إن ظهر في البحث العامّ.
     offenders = [o for o in offenders if "civil_id" not in o]
     assert not offenders, offenders
+
+
+# ---------------------------------------------------------------------------
+# وطوُل العمود: SQLite يتجاهله وPostgreSQL يفرضه
+# ---------------------------------------------------------------------------
+
+def test_a_too_long_value_is_a_clear_400_not_a_confusing_404():
+    """**و``DataError`` يجمع عطلين مختلفين — فال يُردّان بجواٍب واحد.**
+
+    على PostgreSQL يرفعه ``NumericValueOutOfRange`` (معرٌِّف خارج مدى
+    العمود) **و**``StringDataRightTruncation`` (قيمٌة أطوُل من حقلها).
+    واألوُل «سجٌّل غير موجود» بحّق؛ والثاني ليس كذلك: من كتب رمَز فرٍع
+    بسبعة أحرف يُقال له «السجلّ غير موجود» **فال يفهم ما فعل** ويُعيد
+    المحاولة بالقيمة نفسها.
+
+    وال يُقاس هذا على القاعدة المحلّية: **SQLite يتجاهل طوَل العمود** فال
+    يرفع شيًئا. فيُقاس املعالُج نفسه بخطٍأ مُركَّب.
+    """
+    import app.main as M
+
+    class _Orig(Exception):
+        pass
+
+    _Orig.__name__ = "StringDataRightTruncation"
+
+    class _Err(Exception):
+        def __init__(self):
+            self.orig = _Orig()
+
+    r = M._out_of_range_response(None, _Err())
+    assert r.status_code == 400, r.status_code
+    body = r.body.decode("utf-8")
+    assert "أطوُل" in body or "أطول" in body, body
+
+    # واملدى العددي يبقى 404 — فال يُبدَّل عطٌل بعطل.
+    assert M._out_of_range_response(None, OverflowError("x")).status_code == 404
+
+
+def test_the_narrowest_free_text_input_is_capped_at_its_column():
+    """**وحٌدّ عند املدخل يسمّي الحقَل، واملركزُّي يُنجي من الخمسمئة.**
+
+    ``Branch.code`` عمودُه ستُة أحرف وهو **أضيُق مدخٍل حٍّر في النظام**،
+    ويدخل **الرقَم الوظيفي** لكل موظٍف في الفرع. فسبعُة أحرٍف كانت تُحفَظ
+    محلًّيا وتُسقِط الطلَب في اإلنتاج.
+    """
+    import pydantic
+
+    from app import schemas
+
+    for cls in (schemas.BranchIn, schemas.BranchUpdate):
+        f = cls.model_fields["code"]
+        limits = [getattr(md, "max_length", None) for md in (f.metadata or [])]
+        assert 6 in [x for x in limits if x], (cls.__name__, limits)
+
+    try:
+        schemas.BranchIn(name="فرع", code="ABCDEFG")
+    except pydantic.ValidationError as exc:
+        assert "code" in str(exc)
+    else:
+        raise AssertionError("قُبِلت سبعُة أحرف — الحدُّ ال يعمل")
+
+
+def test_the_column_limit_is_read_not_assumed():
+    """**والحدُّ من العمود ال من الذاكرة** — فلو وُسِّع العمود سقط الحارس.
+
+    فحٌدّ مكتوٌب بالي;د يصير أضيَق من عموده بعد ترحيٍل، فيرفض ما تقبله
+    القاعدة.
+    """
+    from app import models, schemas
+
+    col = models.Branch.__table__.c.code
+    declared = int(str(col.type)[8:-1])
+    f = schemas.BranchIn.model_fields["code"]
+    limits = [x for x in (getattr(md, "max_length", None)
+                          for md in (f.metadata or [])) if x]
+    assert limits and limits[0] == declared, (limits, declared)

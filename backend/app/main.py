@@ -273,6 +273,27 @@ def _out_of_range_response(request: Request, exc: Exception):
     """
     from fastapi.responses import JSONResponse
 
+    # **و``DataError`` يجمع عطلين مختلفين — فال يُردّان بجواٍب واحد.**
+    #
+    # على PostgreSQL يرفعه ``NumericValueOutOfRange`` (معرٌِّف خارج مدى
+    # العمود) **و**``StringDataRightTruncation`` (قيمٌة أطوُل من حقلها).
+    # واألوُل «سجٌّل غير موجود» بحّق؛ والثاني **ليس كذلك**: من كتب رمَز فرٍع
+    # بسبعة أحرف يُقال له «السجلّ غير موجود» فال يفهم ما فعل ويُعيد
+    # المحاولة بالقيمة نفسها.
+    #
+    # **وهو من صنف «يعمل محلًّيا ويفشل في اإلنتاج»**: SQLite **يتجاهل طوَل
+    # العمود** فيحفظ ما زاد، وPostgreSQL يفرضه. فقيس ثمانون حقَل مدخٍل
+    # يقابل عموًدا محدوَد الطول بال ``max_length`` — أضيقُها ``Branch.code``
+    # (ستُة أحرف) وهو مدخٌل حٌّر يدخل الرقَم الوظيفي.
+    #
+    # والعالُج مركزٌّي كما في المدى العددي: «المسارات بالمئات، فالعالج
+    # مركزيّ — قيٌد في كل توقيع يُنسى في المسار التالي».
+    orig = type(getattr(exc, "orig", None)).__name__
+    if "StringDataRightTruncation" in orig or "value too long" in str(exc):
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "قيمٌة أطوُل من الحقل الذي تُحفَظ فيه — "
+                               "اختصرها ثم أعد المحاولة."})
     return JSONResponse(status_code=404, content={"detail": "السجلّ غير موجود"})
 
 

@@ -375,9 +375,22 @@ class BranchIn(BaseModel):
 
     فكان الفرع يُولَد ناقًصا ولا يُكمَّل — ولا نقطة تحديث للفروع أصًلا.
     """
+    # **وحٌدّ عند المدخل يسمّي الحقَل، والمركزُّي يُنجي من الخمسمئة.**
+    #
+    # ``Branch.code`` عمودُه ستُة أحرف، وهو **أضيُق مدخٍل حٍّر في النظام**
+    # (قيس: ثمانون حقَل مدخٍل يقابل عموًدا محدوًدا بال ``max_length``).
+    # و``SQLite`` يتجاهل الطوَل فيحفظ ما زاد، و``PostgreSQL`` يفرضه — فسبعُة
+    # أحرٍف تُحفَظ محلًّيا وتُسقِط الطلَب في اإلنتاج.
+    #
+    # والرمُز يدخل **الرقَم الوظيفي** لكل موظٍف في الفرع
+    # (``GTC-SLM-00042``)، فهو حقٌل يُملأ بقصد ال بالسهو.
+    #
+    # ومعالُج ``DataError`` المركزي يردّ 400 مفهومة؛ لكنّ حًدّا هنا يسمّي
+    # **الحقَل** في جواب 422 — وذلك فرُق بين «قيمٌة أطول» و«رمُز الفرع
+    # أطول من ستة أحرف».
     name: str
     name_en: str | None = None
-    code: str | None = None
+    code: str | None = Field(default=None, max_length=6)
     governorate: str | None = None
     governorate_en: str | None = None
     latitude: float | None = None
@@ -395,7 +408,7 @@ class BranchUpdate(BaseModel):
     """
     name: str | None = None
     name_en: str | None = None
-    code: str | None = None
+    code: str | None = Field(default=None, max_length=6)   # انظر BranchIn
     governorate: str | None = None
     governorate_en: str | None = None
     latitude: float | None = None

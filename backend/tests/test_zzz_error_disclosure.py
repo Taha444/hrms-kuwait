@@ -109,5 +109,19 @@ def test_the_global_handler_returns_nothing_internal():
 
     src = inspect.getsource(M._out_of_range_response)
     assert '"detail": "السجلّ غير موجود"' in src, src[-200:]
-    for bad in ("traceback", "exc_info", "str(exc)", "{exc}"):
+    # **والقاعدُة منُع إخراجه لا منُع قراءته.**
+    #
+    # كان الحارُس يمنع ``str(exc)`` في الدالة — وهو وكيٌل خشن: املعالُج
+    # يحتاج أن **يفحص** سبَب الخطأ ليفرّق «معرًِّفا خارج املدى» من
+    # «قيمٍة أطوَل من حقلها»، والفرُق يغيّر الجواَب من 404 إلى 400.
+    #
+    # فيُقاس السلوُك: **رسالتان مختلفتان تُنتجان الجواَب نفسه** — فال
+    # يتسرّب نٌّص داخلي وإن قُرئ.
+    class _E(Exception):
+        pass
+
+    a = M._out_of_range_response(None, _E("secret-path /srv/app/x.py"))
+    b = M._out_of_range_response(None, _E("another internal detail"))
+    assert a.body == b.body, (a.body, b.body)
+    for bad in ("traceback", "exc_info"):
         assert bad not in src, bad
