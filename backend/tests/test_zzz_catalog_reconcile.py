@@ -216,3 +216,89 @@ def test_document_templates_are_named_never_overwritten():
               / "templates.py").read_text(encoding="utf-8")
     assert "@router.put" in router, "افتراُض القياس: القالُب يُحرَّر"
     assert "DocumentTemplateVersion" in router, "ال سجلَّ إصدارات"
+
+
+def test_the_loan_agreement_notice_actually_reaches_the_employee():
+    """**وإشعاٌر بُني وُحرِس واختُبر كان ال يصل أحًدا في اإلنتاج.**
+
+    ``NTF-075`` غاب من القاعدة، و``notify_from_template`` تُسقِط بصمٍت ما
+    ال قالَب له. فالحرّاُس السابقة كانت تقيس **أن الوصَل مكتوٌب** —
+    ويُقاس هنا **أن الرسالَة تصل**: صُّف مهمٍة بقالبه ونصّه ومستقبِله.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    from app import workflow as W
+
+    db = SessionLocal()
+    rid = None
+    try:
+        emp = db.scalar(select(models.Employee).where(
+            models.Employee.company_id == 1))
+        if emp is None:
+            import pytest
+            pytest.skip("ال موظَف في هذه القاعدة")
+        req = models.Request(
+            company_id=1, employee_id=emp.id, request_type_code="loan",
+            status="pending",
+            payload_json={"loan_type": "قرض", "amount": 600, "months": 6,
+                          "first_deduction_month": "2031-07", "reason": "قياس"})
+        db.add(req)
+        db.flush()
+        rid = req.id
+
+        ok, note = W._apply_loan(db, req)
+        db.commit()
+        assert ok, note
+
+        tasks = db.scalars(select(models.Task).where(
+            models.Task.dedup_key == f"loan_agreement:{rid}")).all()
+        assert tasks, "األثُر وقع واإلشعاُر لم يصل — القالُب مفقود"
+        assert all(t.template_code == "NTF-075" for t in tasks), \
+            [t.template_code for t in tasks]
+        # **ولا تُطابَق عربيٌة في حارس** — رابُع عثرٍة لي في ذلك
+        # («شؤون» بلا «ال»). فيُقاس المستقبُِل: حساُب الموظف نفسه.
+        emp_user = db.scalar(select(models.User).where(
+            models.User.employee_id == emp.id))
+        assert emp_user is not None, "لا حساَب للموظف"
+        assert {t.assignee_user_id for t in tasks} == {emp_user.id}, (
+            [(t.assignee_user_id, emp_user.id) for t in tasks])
+        assert all((t.detail or "").strip() for t in tasks), "نٌّص فارغ"
+    finally:
+        if rid:
+            db.execute(sa_delete(models.Task).where(
+                models.Task.dedup_key == f"loan_agreement:{rid}"))
+            db.execute(sa_delete(models.Deduction).where(
+                models.Deduction.request_id == rid))
+            db.execute(sa_delete(models.AuditLog).where(
+                models.AuditLog.entity_type == "request",
+                models.AuditLog.entity_id == rid))
+            db.execute(sa_delete(models.Request).where(models.Request.id == rid))
+            db.commit()
+        db.close()
+
+
+def test_every_template_the_code_sends_exists_in_the_database():
+    """**والقاعدُة العامّة ال الحالُة الواحدة**: كلُّ قالٍب يُنادى بكوده في
+    الشيفرة ال بدّ أن يكون في القاعدة — وإال سقط اإلشعاُر بصمت.
+
+    فـ``NTF-075`` لم يكن وحَده مرشًَّحا؛ **أيُّ قالٍب يُضاف غًدا** يقع في
+    الحفرة نفسها ما لم تُصالِحه المزامنة.
+    """
+    import pathlib
+    import re
+
+    app = pathlib.Path(__file__).resolve().parents[1] / "app"
+    called = set()
+    for p in app.rglob("*.py"):
+        if p.name == "notification_templates.py":
+            continue
+        called |= set(re.findall(r'code="(NTF-\d+)"', p.read_text(encoding="utf-8")))
+
+    db = SessionLocal()
+    try:
+        have = {r for r in db.scalars(
+            select(models.NotificationTemplate.code)).all()}
+    finally:
+        db.close()
+    missing = sorted(called - have)
+    assert not missing, f"قوالٌب تُنادى في الشيفرة وال وجوَد لها في القاعدة: {missing}"
