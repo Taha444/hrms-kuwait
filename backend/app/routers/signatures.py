@@ -13,6 +13,7 @@
 - الملف يُخزّن باسم عشوائي غير قابل للتخمين، ولا يُكشف مساره في الاستجابة
 """
 import io
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -27,6 +28,8 @@ from ..safe_files import read_limited, unique_path
 from ..storage import delete_key, file_response, key_exists, read_bytes, save_bytes
 from sqlalchemy import select as _select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/me/signature", tags=["signature"])
 
@@ -333,8 +336,19 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400,
-                            detail=f"تعذّرت معالجة الصورة: {exc}")
+        # **ونٌّص مستثًنى في الجواب يُفصح وال يُفيد.**
+        #
+        # هذا المساُر يرفع فيه **أيُّ موظف** صورَة توقيعه، ونصُّ Pillow
+        # يحمل أحياًنا مساَر ملٍّف أو عنواَن كائٍن في الذاكرة: يُفصح عن
+        # الداخل لمن ال يحتاجه، **وال يقول للموظف ما يفعل**. فالعبارُة
+        # تصف ما يُقبَل، والنصُّ الكامل يذهب إلى السجل حيث يقرؤه من
+        # يُصلحه.
+        logger.warning("فشل معالجة صورة التوقيع للمستخدم %s: %s",
+                       getattr(user, "id", None), exc)
+        raise HTTPException(
+            status_code=400,
+            detail="تعذّرت قراءة الصورة. ارفع صورًة واضحًة بصيغة PNG أو "
+                   "JPG، بخطٍّ داكن على خلفيٍة فاتحة.")
 
     # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
     # النتيجة دائمًا PNG (بغض النظر عن الإدخال) لدعم الشفافية
