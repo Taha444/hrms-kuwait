@@ -164,7 +164,10 @@ def test_the_cover_sheet_inconsistency_is_recorded_not_hidden():
     producers = sorted(wf for wf, ods in produced.items() if "OD-013" in ods)
     assert producers, "افتراُض القياس: النظاُم يُنتج OD-013 في مساٍر ما"
 
-    for key in ("WF-021/OD-013", "WF-022/OD-013", "WF-023/OD-013"):
+    # **والقراُر واحٌد لأربعتها لا أربعة قرارات**: إجازُة السفر معها —
+    # فالمندوُب يرفع إذَن المغادرة الحقيقي، والسؤاُل هو سؤاُل الغلاف نفسه.
+    for key in ("WF-002/OD-013", "WF-021/OD-013",
+                "WF-022/OD-013", "WF-023/OD-013"):
         why = R.OUTPUT_GAPS[key]["why"]
         assert "يُنتج OD-013 فعًلا" in why, f"{key}: التناقُض غيُر مقيَّد"
         assert "القاعدة 12" in why, f"{key}: ال يُقال إنه قراٌر لصاحبه"
