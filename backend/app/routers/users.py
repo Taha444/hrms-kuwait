@@ -294,8 +294,18 @@ def add_company_link(user_id: int, request: Request,
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if not target.is_cross_company:
-        raise HTTPException(status_code=400,
-                          detail="فعّل is_cross_company أولاً عبر /enable-cross-company")
+        # **وأمٌر بال باٍب أسوأ من منٍع بال سبب.** كانت الرسالُة تقول «عبر
+        # ``/enable-cross-company``» — مساٌر خاٌم ال شاشَة له في الواجهة
+        # أصًال (ال موضَع يناديه في ``frontend/src``). فمن يقرؤها ال
+        # يستطيع االستجابَة لها، ويظنُّ الخلَل في نفسه.
+        #
+        # فتقول الحقيقَة: من يفعله، وأنه فعٌل إداريٌّ بال شاشٍة بعد. وأما
+        # بناُء الشاشة فهو منُح وصوٍل عابٍر للشركات — قراُر مالك.
+        raise HTTPException(
+            status_code=400,
+            detail=("هذا الحساب غير مُهيَّأ لخدمة أكثر من شركة. يُهيّئه "
+                    "super_admin على الحساب أولاً (إجراٌء إداريٌّ بلا شاشة "
+                    "حتى الآن)، ثم يُعاد الربط"))
 
     company = db.get(models.Company, company_id)
     if not company:

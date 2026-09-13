@@ -317,7 +317,12 @@ def correct_attendance(record_id: int, request: Request, reason: str,
         if closed:
             raise HTTPException(
                 status_code=409,
-                detail=f"الشهر {period} مُقفل — أعد فتحه أولاً عبر /attendance/reopen-month"
+                # ATT-POL — **الرسالُة تسمّي الشاشَة ال المسار.** وكان
+                # «عبر /attendance/reopen-month»: نٌصّ داخليٌّ يتسّرب إلى
+                # المستخدم، وأمٌر بفعٍل بال باب. والشاشُة تفعله فعًلا
+                # (زرُّ «إعادة فتح الشهر» في «مراجعة الحضور»).
+                detail=(f"الشهر {period} مُقفل — أعد فتحه أولاً من «مراجعة الحضور» "
+                        "← «إعادة فتح الشهر» (بسبٍب موثَّق)")
             )
 
     before = {"check_in_at": str(rec.check_in_at), "check_out_at": str(rec.check_out_at),

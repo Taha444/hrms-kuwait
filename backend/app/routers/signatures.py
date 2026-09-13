@@ -515,12 +515,33 @@ def get_pending_image_for_hr(target_user_id: int,
 def approve_replacement(target_user_id: int, request: Request,
                         user: models.User = Depends(_require_hr),
                         db: Session = Depends(get_db)):
-    """يعتمد استبدال التوقيع: الجديد يحلّ محل القديم، القديم يُحذف."""
+    """يعتمد استبدال التوقيع: الجديد يحلّ محل القديم، القديم يُحذف.
+
+    **وال يعتمد أحٌد استبداَل توقيعه.** الطلُب يُرفَع **للنفس** دائًما
+    (``upload`` يكتب على ``user`` ال على هدف)، و``_require_hr`` يقبل
+    ``hr``؛ فموّظُف موارٍد بشرية كان يرفع استبداًال لتوقيعه ثم يعتمده
+    بنفسه — بال عيٍن ثانية.
+
+    **والتوقيُع ليس بياًنا في ملّف**: هو ما يُختَم على المستندات الرسمية،
+    و``signature_version`` يُثبَّت على كل مستنٍد صادر (DOC-20) لتبقى
+    حُّجيته على نسخته ال على نسخة اليوم. فمن يُبدِّله وحده يُبدِّل ما
+    سيُقرأ توقيًعا له على ورٍق رسمّي، والسجلُّ غيُر القابل للتعديل يُقيّد
+    ``approved_by`` = هو نفسه — فيشهد على الفعل بالفاعل نفسه.
+
+    وهو بحرفه قاعدُة «ممنوع Self Approval لكل الأدوار» المطبَّقة في
+    المسيّر (``_self_approval_blocked``) وفي نهاية الخدمة
+    (``calculated_by == user.id``). **وبالنمط نفسه**: يُستثنى
+    ``super_admin`` — فال تُقفَل شركٌة ليس فيها إال موظُف موارٍد واحد، وله
+    مخرٌج قائم (موارٌد أخرى أو الإدارة العليا).
+    """
     target = db.get(models.User, target_user_id)
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if user.role != "super_admin" and target.company_id != user.company_id:
         raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    if target.id == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail=(
+            "لا يمكنك اعتماد استبدال توقيعك بنفسك — فصل السلطات إلزامي"))
     if not target.pending_signature_path:
         raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
     old_active = target.signature_path

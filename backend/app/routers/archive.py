@@ -273,7 +273,9 @@ async def replace_custom_document(
         raise HTTPException(status_code=404, detail="المستند غير موجود")
     if not (old.document_type_code or "").startswith("custom:"):
         raise HTTPException(status_code=400,
-                          detail="هذا المسار للمستندات المخصّصة فقط — استخدم /documents/upload للثابتة")
+                          detail=("هذا المسار للمستندات المخصّصة فقط — "
+                                  "المستنداُت الثابتة تُرفَع من «ملف الموظف» "
+                                  "أو «الأرشيف» أو شاشة التعيين"))
     assert_same_company(user, old.company_id, db=db)
 
     # القديم → history
