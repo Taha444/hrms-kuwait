@@ -18,6 +18,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models
@@ -118,7 +119,28 @@ def set_flag(db: Session, key: str, value: str, *,
             updated_at=datetime.utcnow(), updated_by_user_id=updated_by_user_id,
         )
         db.add(row)
-    db.commit()
+    # **وupsert قراءٌة ثم كتابة، والقراءُة ال ترى الطلَب الموازي.**
+    # ``uq_feature_flags_key_company`` يُغلق النافذَة في القاعدة. والحسُم هنا
+    # **إعادُة القراءة ال انهيار**: نداءان يضبطان العلَم نفسه في اللحظة
+    # نفسها، والمقصوُد أن يستقرَّ على قيمٍة — ال أن يفشل أحدُهما بخمسمئة.
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = db.scalar(
+            select(models.FeatureFlag).where(
+                models.FeatureFlag.key == key,
+                models.FeatureFlag.company_id == company_id if company_id is not None
+                else models.FeatureFlag.company_id.is_(None),
+            )
+        )
+        if row is None:
+            raise
+        row.value = value
+        row.note = note
+        row.updated_at = datetime.utcnow()
+        row.updated_by_user_id = updated_by_user_id
+        db.commit()
     return row
 
 

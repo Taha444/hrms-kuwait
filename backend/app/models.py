@@ -36,6 +36,16 @@ def _now() -> datetime:
 class Company(Base):
     __tablename__ = "companies"
 
+    # **والسجلُّ التجاريُّ ال يتكرّر** — قيٌد كان في الترحيل وحده
+    # (``c5d6e7f8a9b0``) فال تراه االختبارات. و``_check_commercial_reg_unique``
+    # يفحص قبل الكتابة، **والفحُص ال يرى الطلَب الموازي**: نافذٌة بين القراءة
+    # والكتابة تُنشئ شركتين بسجٍّل واحد، فتُقيَّد عمالُة إحداهما على األخرى
+    # عند الجهات. فالقفُل في القاعدة، وهي الشيُء الوحيد الذي تتشاركه كل
+    # النسخ — وهو المنطُق نفسه المكتوب في ``job_lock`` وفي فهرس الحضور.
+    __table_args__ = (
+        UniqueConstraint("commercial_reg", name="uq_companies_commercial_reg"),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     name_en: Mapped[str | None] = mapped_column(String(200))
@@ -622,6 +632,22 @@ class FeatureFlag(Base):
     يُدير القيم super_admin فقط عبر `/api/feature-flags`؛ لا يتعامل معها المستخدم مباشرة.
     """
     __tablename__ = "feature_flags"
+
+    # **قيٌد في الترحيل وحده ال يراه االختبار** — والدرُس مكتوٌب أعاله عند
+    # ``uq_tasks_open_dedup``: ``conftest`` يبني القاعدَة بـ``create_all``
+    # من المخطَّط ال بـ``alembic``، فما لم يُعلَن هنا **غيُر موجوٍد في
+    # االختبارات**. فسباُق ``set_flag`` (قراءٌة ثم كتابة) يمرُّ أخضَر ويسقط
+    # في اإلنتاج بـ``IntegrityError``.
+    #
+    # وتفرٌُّد **مركَّب** ال يُعبِّر عنه ``unique=True`` على عمود — ولهذا
+    # أفلت وحدَه وأفلتت معه ``companies.commercial_reg``، بينما
+    # ``documents.reference_no`` و``request_documents.reference_no``
+    # يراهما المخطَُّط بعلَم العمود (واالسُم وحده كان في الترحيل).
+    #
+    # والاسُم نفسُه المُرحَّل (``a3b4c5d6e7f8``) فال يُنشأ قيٌد ثاٍن.
+    __table_args__ = (
+        UniqueConstraint("key", "company_id", name="uq_feature_flags_key_company"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(60), index=True)

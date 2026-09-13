@@ -2,6 +2,7 @@
 """الشركات: CRUD + تفعيل/تعطيل/أرشفة (الإدارة العليا)."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -45,7 +46,17 @@ def create_company(data: schemas.CompanyIn, request: Request,
     _check_commercial_reg_unique(db, data.commercial_reg)
     company = models.Company(**data.model_dump())
     db.add(company)
-    db.flush()
+    # **والفحُص أعاله ال يرى الطلَب الموازي.** ``uq_companies_commercial_reg``
+    # يُغلق النافذَة في القاعدة — **ويُترجَم إلى الرسالة نفسها**: قيٌد يردّ
+    # خمسمئة بادَل تسابًقا بانهيار، والمستخدُم ال يفرّق بين اثنين.
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(f"السجل التجاري '{(data.commercial_reg or '').strip()}' "
+                    "مستخدم بالفعل في شركة أخرى"))
     audit(db, user, "create_company", "company", company.id, request=request)
     db.commit()
     db.refresh(company)
