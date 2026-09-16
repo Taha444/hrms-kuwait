@@ -420,7 +420,8 @@ def branch_supervisor_users(db: Session, company_id: int | None,
     users = db.scalars(select(models.User).where(
         models.User.company_id == company_id,
         models.User.role == "branch_supervisor",
-        models.User.is_active.is_(True))).all()
+        models.User.is_active.is_(True),
+        employment_live_clause())).all()
     out = []
     for u in users:
         ids = resolve_scope(u, db).branch_ids
@@ -567,6 +568,22 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
 #:
 #: ولا تُمنَع «في إجازة» ولا «موقوف»: الخدمةُ قائمة، ومن في إجازةٍ يطلب.
 INACTIVE_EMPLOYMENT = ("archived", "terminated", "resigned", "retired")
+
+
+def employment_live_clause():
+    """شرطُ SQL: الحسابُ **بلا ملف موظف**، أو لموظفٍ خدمتُه قائمة.
+
+    **ومن يُختار معتمِدًا أو تصله مهمةٌ يُقاس به.** الإنهاءُ صار يُعطّل الحساب،
+    لكنّ من انتهت خدمته قبل ذلك ما زال ``is_active`` — فلا يدخل (بوّابةُ
+    الدخول)، **ويُختار معتمِدًا مع ذلك**: تصله مهمةُ الطلب ولا يستطيع فتحها،
+    فيقف الطلبُ صامتًا. فتقرأ نقاطُ التوجيه هذا الشرطَ مع ``is_active``.
+    """
+    from sqlalchemy import or_
+
+    ended = select(models.Employee.id).where(
+        models.Employee.status.in_(INACTIVE_EMPLOYMENT))
+    return or_(models.User.employee_id.is_(None),
+               models.User.employee_id.notin_(ended))
 
 
 def employment_ended(db: Session, user) -> bool:

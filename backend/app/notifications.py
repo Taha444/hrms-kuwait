@@ -200,7 +200,9 @@ def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list
     يحمل الدوَر في القاعدة كلّها. فالشركُة تُقرأ من الكيان، وكياٌن بلا
     شركٍة ليس سهًوا بل **شأُن نظام** — انظر ``notify_roles``.
     """
-    q = select(models.User).where(models.User.role.in_(roles), models.User.is_active == True)  # noqa: E712
+    from .deps import employment_live_clause
+    q = select(models.User).where(models.User.role.in_(roles), models.User.is_active == True,  # noqa: E712
+                                  employment_live_clause())
     if company_id is not None:
         q = q.where(models.User.company_id == company_id)
     return list(db.scalars(q).all())

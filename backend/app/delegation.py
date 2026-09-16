@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+from .deps import employment_ended
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -33,7 +34,8 @@ def active_delegates_for(db: Session, delegator_user_id: int,
     out: list[models.User] = []
     for row in rows:
         u = db.get(models.User, row.delegate_user_id)
-        if u and u.is_active:
+        # ومفوَّضٌ انتهت خدمته لا يُضاف معتمِدًا — انظر ``employment_ended``.
+        if u and u.is_active and not employment_ended(db, u):
             out.append(u)
     return out
 

@@ -886,8 +886,10 @@ def _stage_approvers_by_role(db: Session, req: models.Request,
         if emp and emp.direct_manager_id:
             mgr_emp = db.get(models.Employee, emp.direct_manager_id)
             if mgr_emp:
+                from .deps import employment_live_clause
                 mgr_user = db.scalar(select(models.User).where(
-                    models.User.employee_id == mgr_emp.id, models.User.is_active.is_(True)))
+                    models.User.employee_id == mgr_emp.id, models.User.is_active.is_(True),
+                    employment_live_clause()))
                 if mgr_user:
                     from .delegation import expand_approvers_with_delegates
                     return expand_approvers_with_delegates(db, [mgr_user], req.company_id)
