@@ -1447,6 +1447,27 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
         ))
 
     ctx = _resolve_authoritative_data(db, emp, extras={})
+
+    # **RNW-06 على الطريق الشقيق.** مساُر التجديد يرفض توليَد العقد بحقٍل
+    # ناقص ويسمّي الناقَص بالعربية؛ وهذا المساُر كان يبني السياَق بلا
+    # ``extras`` ويُصدر — و``_fill_html`` يحذف الناقَص صامًتا (FRM-01)،
+    # فيصدر عقُد تعييٍن يوقّعه الموظف وقد سقط منه اسُمه أو رقُمه المدني،
+    # ويُحفَظ مستنًدا صادًرا على ملفه. قاعدٌة واحدٌة في موضعين، والنسخُة
+    # الأصحُّ هي التي في التجديد — فتُقرأ هي ال تُكتب ثانيًة.
+    #
+    # **وعلى ما يستعمله القالُب فقط**: القالُب يكتبه المالك، وحقٌل ال
+    # يذكره ال يُطلَب منه.
+    import re as _re
+    from ..renewal import GOV_CONTRACT_REQUIRED_FIELDS
+    used = set(_re.findall(r"\{\{\s*([\w.]+)\s*\}\}", tpl.body_html or ""))
+    missing = [label for key, label in GOV_CONTRACT_REQUIRED_FIELDS.items()
+               if key in used and not str(ctx.get(key) or "").strip()]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"تعذّر توليد {title_ar} — بيانات ناقصة في ملف الموظف أو الشركة: "
+                    + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
+
     reference_no = _generate_reference_no(db, tpl_code, emp.company_id, tpl.version or 1)
     ctx["ref_no"] = reference_no
     rendered = _fill_html(tpl, ctx)

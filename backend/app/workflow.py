@@ -1980,6 +1980,20 @@ def _apply_allowance(db: Session, req: models.Request) -> tuple[bool, str]:
     if existing:
         return True, f"البدل مسجٌَّل سابًقا لهذا القرار (#{existing.id})"
 
+    # **ولا يبدأ بدٌل في شهٍر أُقفل** — القاعدُة نفسها المكتوبة على الخصم
+    # وعلى جدول القرض أعلاه، وكان هذا الموضُع وحده بلا فحص. فبدٌل نافٌذ في
+    # شهٍر اكتمل مسيُّره **لا يقرؤه أحد**: الطلُب يُغلَق «مكتمًلا» ورسالتُه
+    # تقول «بدٌل لمرٍّة واحدة في كذا» — ولا يُصرَف منه فلس. والمتكّرُر يفقد
+    # شهوَره المقفلة بصمت. فيُردّ إلى ``apply_failed`` بسببه، كإخوته.
+    month = f"{start:%Y-%m}"
+    run = db.scalar(select(models.PayrollRun).where(
+        models.PayrollRun.company_id == req.company_id,
+        models.PayrollRun.period == month))
+    if run and run.status in ("approved", "finalized", "locked"):
+        return False, (f"مسيّر {month} في حالة «{run.status}» — لا يبدأ بدٌل "
+                       f"في شهٍر أُقفل. اختر تاريخ نفاٍذ في شهٍر مفتوح، "
+                       f"أو أصدره بتسوية.")
+
     db.add(models.Allowance(
         company_id=req.company_id, employee_id=req.employee_id,
         request_id=req.id,
