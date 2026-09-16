@@ -880,6 +880,12 @@ def execute_termination(emp_id: int, request: Request = None,
     end_date = settlement.pop("_end_date", None)
     reason = settlement.pop("_reason", "termination")
     emp.status = "terminated"
+    # **والإنهاءُ يسحب الوصول** — انظر ``deps.revoke_employee_access``.
+    from ..deps import revoke_employee_access
+    _revoked = revoke_employee_access(db, emp)
+    if _revoked:
+        audit(db, user, "revoke_access_on_termination", "employee", emp.id,
+              detail=f"users={_revoked}", request=request)
     emp.termination_date = date.fromisoformat(end_date) if end_date else kuwait_today()
     emp.termination_reason = reason
     emp.eos_settlement_json = json.dumps(settlement, ensure_ascii=False)

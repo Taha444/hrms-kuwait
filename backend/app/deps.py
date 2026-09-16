@@ -569,6 +569,43 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
 INACTIVE_EMPLOYMENT = ("archived", "terminated", "resigned", "retired")
 
 
+def employment_ended(db: Session, user) -> bool:
+    """هل انتهت خدمةُ الموظف المرتبط بهذا الحساب؟ (بالقائمة الموحَّدة)
+
+    مستخدمٌ بلا ملف موظف (إداري، مالك، متعدد الشركات) لا حالةَ توظيفٍ له.
+    """
+    emp_id = getattr(user, "employee_id", None)
+    if not emp_id:
+        return False
+    st = db.scalar(select(models.Employee.status).where(models.Employee.id == emp_id))
+    return (st or "").strip().lower() in INACTIVE_EMPLOYMENT
+
+
+def revoke_employee_access(db: Session, emp) -> list[int]:
+    """**الإنهاءُ يسحب الوصول** — يُعطِّل حسابَ الموظف ويُبطل كلَّ رمزٍ صادر.
+
+    **العطل المقيس**: لا مسارَ إنهاءٍ (``terminate/execute`` ولا
+    ``settle_case``) يمسّ صفَّ المستخدم، والدخولُ يفحص ``user.is_active``
+    وحده. فموظفُ الموارد البشرية بعد إنهاء خدمته **دخل** واستعرض **كلَّ
+    الموظفين** — دورُه قائمٌ كاملًا وهو خارج الشركة.
+
+    والآليةُ هي نفسها التي تستعملها شاشةُ المستخدمين (``toggle_active``):
+    ``is_active=False`` و``tokens_valid_after`` — فتحرسها كلُّ البوّابات
+    القائمة (الدخول، ``get_current_user``، التجديد) بلا بوّابةٍ جديدة.
+    يُعيد معرّفاتِ الحسابات المعطَّلة لتُقيَّد في التدقيق.
+    """
+    now = datetime.now(timezone.utc)
+    ids = []
+    for u in db.scalars(select(models.User).where(
+            models.User.employee_id == emp.id,
+            models.User.is_active == True)).all():  # noqa: E712
+        u.is_active = False
+        u.status = "inactive"
+        u.tokens_valid_after = now
+        ids.append(u.id)
+    return ids
+
+
 def license_headcount(db: Session, license_id: int) -> int:
     """عمالةُ الترخيص — **من لم تنتهِ خدمته**، لا من حالتُه «نشط» وحده.
 

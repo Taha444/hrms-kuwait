@@ -196,6 +196,11 @@ def test_an_archived_employee_cannot_record_attendance(client):
     """
     from tests.conftest import auth_headers, login
 
+    # **والدخولُ صار يُرفض لمن انتهت خدمته** (``employment_ended``) — فيُؤخذ
+    # الرمزُ **قبل** الأرشفة: جلسةٌ صدرت والموظفُ على رأس العمل تبقى صالحةً
+    # حتى تنتهي، وبوّابةُ البصم هي ما يحرسها. فيُقاس الأمران معًا.
+    hdr = auth_headers(login(client, *EMP))
+
     db = SessionLocal()
     try:
         user = db.scalar(select(models.User).where(
@@ -208,7 +213,9 @@ def test_an_archived_employee_cannot_record_attendance(client):
         db.close()
 
     try:
-        hdr = auth_headers(login(client, *EMP))
+        again = client.post("/api/auth/login",
+                            json={"civil_id": EMP[0], "password": EMP[1]})
+        assert again.status_code == 403, (again.status_code, again.text[:200])
         r = client.post("/api/attendance/validate-qr", headers=hdr,
                         json={"qr_token": "أيًّا كان", "lat": 29.3, "lng": 47.9})
         assert r.status_code == 403, (r.status_code, r.text[:200])

@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+import pytest
+
 import re
 from pathlib import Path
 
@@ -32,6 +34,45 @@ HR = ("100000000002", "hr12345")
 MGR = ("100000000001", "manager123")
 ACC = ("100000000007", "account123")
 OWNER = ("111111111111", "owner123")   # الرقابة: يملك view_audit
+
+
+#: موظفو البذر الذين تُسوَّى خدمتُهم هنا — وتدخل بهم اختباراتٌ أخرى.
+_SEED_EXITS = ("100000000003", "100000000004", "100000000005")
+
+
+@pytest.fixture(autouse=True)
+def _restore_seed_exits():
+    """**وحارسٌ يُنهي خدمةً حقيقيةً يُعيدها** — الملفَّ والحسابَ معًا.
+
+    كان هذا الملفُّ يسوّي خدمةَ المندوبَين ومسؤولِ الفرع ويتركها ``terminated``.
+    ولم يكن ذلك يؤذي لأن الدخولَ لم يكن يقرأ حالةَ الملف؛ فلما صار الإنهاءُ
+    يسحب الوصول (``revoke_employee_access``) سقطت عشرةُ اختباراتٍ لاحقة تدخل
+    بهذه الحسابات — والعيبُ تنظيفٌ ناقصٌ هنا، لا الإصلاح.
+    """
+    db = SessionLocal()
+    try:
+        snap = []
+        for cid in _SEED_EXITS:
+            e = db.scalar(select(models.Employee).where(models.Employee.civil_id == cid))
+            us = db.scalars(select(models.User).where(models.User.employee_id == e.id)).all()
+            snap.append((e.id, e.status, e.termination_date, e.termination_reason,
+                         e.eos_settlement_json,
+                         [(u.id, u.is_active, u.status, u.tokens_valid_after) for u in us]))
+    finally:
+        db.close()
+    yield
+    db = SessionLocal()
+    try:
+        for eid, st, td, tr, js, users in snap:
+            e = db.get(models.Employee, eid)
+            e.status, e.termination_date, e.termination_reason = st, td, tr
+            e.eos_settlement_json = js
+            for uid, act, ust, tva in users:
+                u = db.get(models.User, uid)
+                u.is_active, u.status, u.tokens_valid_after = act, ust, tva
+        db.commit()
+    finally:
+        db.close()
 
 
 def _drive_to_settled(client, emp_id: int, emp_login: tuple[str, str]):

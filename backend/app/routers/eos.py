@@ -363,6 +363,12 @@ def settle_case(case_id: int, request: Request, payment_reference: str,
         _before = {"status": emp.status,
                    "termination_date": str(emp.termination_date or "")}
         emp.status = "terminated"
+        # **والإنهاءُ يسحب الوصول** — انظر ``deps.revoke_employee_access``.
+        from ..deps import revoke_employee_access
+        _revoked = revoke_employee_access(db, emp)
+        if _revoked:
+            audit(db, user, "revoke_access_on_termination", "employee", emp.id,
+                  detail=f"users={_revoked}", request=request)
         emp.termination_date = case.termination_date
         emp.termination_reason = case.termination_reason
         import json as _json

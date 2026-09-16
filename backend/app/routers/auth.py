@@ -130,6 +130,15 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
         msg = "الحساب موقوف" if user.status == "suspended" else "الحساب غير مفعّل"
         raise HTTPException(status_code=403, detail=msg)
 
+    # **ومن انتهت خدمته لا يدخل وإن بقي حسابُه نشطًا.** الإنهاءُ صار يُعطّل
+    # الحساب، لكنّ من أُنهيت خدمتُه قبل ذلك ما زال حسابُه ``is_active`` —
+    # فتُقرأ حالةُ الملف هنا، بلا تعديلٍ على بيانات قائمة.
+    from ..deps import employment_ended
+    if employment_ended(db, user):
+        _rate_record_failure(ip)
+        raise HTTPException(status_code=403,
+                            detail="انتهت خدمة صاحب هذا الحساب — لا يُسمح بالدخول")
+
     # V2.2 §9 — لو 2FA مفعّل، يجب تمرير رمز TOTP صحيح لتكتمل الجلسة.
     if user.totp_confirmed and user.totp_secret:
         if not data.totp_code:
@@ -313,6 +322,9 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
+    from ..deps import employment_ended
+    if employment_ended(db, user):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     # التجديد لا يمرّ بـget_current_user — يفكّ الرمز بنفسه. فبلا هذا الفحص
     # ينجو رمز التجديد من الخروج ومن إنهاء الانتحال، وهو الأخطر: يولّد رموز

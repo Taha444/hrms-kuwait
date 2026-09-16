@@ -181,11 +181,20 @@ def test_the_whole_cycle_completes_and_the_status_changes(client, emp_id):
         emp.eos_settlement_json = None
         db.execute(sa_delete(models.EosCase).where(
             models.EosCase.employee_id == emp_id))
+        # **والحسابُ يُعاد معه**: التنفيذُ صار يسحب الوصول
+        # (``revoke_employee_access``) — فحسابُ موظف البذرة يبقى معطَّلًا
+        # وتسقط بعده الاختباراتُ التي تدخل به. ويُقاس السحبُ نفسُه قبل الإعادة.
+        users = db.scalars(select(models.User).where(
+            models.User.employee_id == emp_id)).all()
+        revoked = [u.id for u in users if not u.is_active]
+        for u in users:
+            u.is_active, u.status, u.tokens_valid_after = True, "active", None
         db.commit()
     finally:
         db.close()
     assert status == "terminated", "نُفِّذت الدورة والحالة لم تتغيّر"
     assert pending is None, "بقيت المسودة بعد التنفيذ"
+    assert revoked or not users, "نُفِّذ الإنهاءُ وحسابُ الموظف ما زال نشطًا"
 
 
 def test_cancelling_frees_the_employee_for_another_attempt(client, emp_id):
