@@ -1029,7 +1029,11 @@ def _employee_name(db: Session, req: models.Request) -> str:
 #:
 #: والمنع هنا في ``create_request`` لا في الراوتر: كل مسار إنشاء يمرّ
 #: بها، فلا يبقى باب ثانٍ يُنسى.
-BLOCKED_EMPLOYEE_STATUSES = ("terminated", "archived", "resigned")
+#:
+#: **والقائمةُ تُقرأ من ``deps`` لا تُكتب هنا** — كانت نسخةً تخالف
+#: ``INACTIVE_EMPLOYMENT`` (بلا «متقاعد»)، والاسمُ باقٍ لأن البصمَ ونهايةَ
+#: الخدمة يقرآنه.
+from .deps import INACTIVE_EMPLOYMENT as BLOCKED_EMPLOYEE_STATUSES  # noqa: E402
 
 
 def request_fingerprint(employee_id: int, type_code: str, payload: dict | None) -> str:

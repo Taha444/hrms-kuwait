@@ -89,7 +89,15 @@ def test_the_rule_lives_in_one_place():
     """**وقاعدة موزَّعة على أبواب تُنسى في الباب التالي** — وهو ما وقع."""
     from app import deps
 
-    assert set(INACTIVE_EMPLOYMENT) == {"archived", "terminated"}, INACTIVE_EMPLOYMENT
+    # **وكانت في موضعين رغم هذا الحارس**: ``workflow.BLOCKED_EMPLOYEE_STATUSES``
+    # قائمةٌ ثانية بـ«مستقيل» وبلا «متقاعد». فوُحِّدتا، وصار ذاك اسمًا لهذه —
+    # انظر ``test_zzz_employment_status_gate``. والمجموعةُ هنا تتبع التوحيد.
+    from app import workflow
+
+    assert set(INACTIVE_EMPLOYMENT) == {"archived", "terminated", "resigned", "retired"}, \
+        INACTIVE_EMPLOYMENT
+    assert workflow.BLOCKED_EMPLOYEE_STATUSES is INACTIVE_EMPLOYMENT, \
+        "عادت القاعدةُ قائمتين"
     sig = (Path(__file__).resolve().parents[1] / "app" / "routers"
            / "signatures.py").read_text(encoding="utf-8")
     assert "assert_employment_active" in sig, (
