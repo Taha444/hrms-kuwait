@@ -446,7 +446,13 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                 <div className="field" style={{ margin: 0 }}>
                   <label htmlFor="epf-status">{t("emp_status")}</label>
                   <select id="epf-status" value={e.status} onChange={(ev) => changeStatus(ev.target.value)}>
-                    {Object.entries(EMP_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    {/* الإنهاءُ مسارُه «إنهاء الخدمة» والأرشفةُ لمن انتهت خدمته —
+                        فلا يُعرض ما يرفضه الخادم، إلا الحالةَ القائمة نفسها. */}
+                    {Object.entries(EMP_STATUS)
+                      .filter(([k]) => k === e.status
+                        || (k !== "terminated"
+                            && (k !== "archived" || ["terminated", "resigned", "retired"].includes(e.status))))
+                      .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
               )}

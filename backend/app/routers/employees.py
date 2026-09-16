@@ -581,6 +581,22 @@ def set_status(emp_id: int, status: str, request: Request = None,
         raise HTTPException(status_code=400, detail="حالة غير صالحة")
     emp = _get_emp(db, user, emp_id)
     old = emp.status
+
+    # **ولا تُنهى خدمةٌ بقائمةٍ منسدلة.** الإنهاءُ مسارٌ مبنيٌّ بفصل سلطات
+    # (تحضيرٌ بـ``terminate_employee`` ← اعتمادٌ من **غيره** بـ
+    # ``approve_termination`` ← إخلاءُ طرف ← إقرارُ الموظف ← تنفيذ، ومعه
+    # التسوية وسحبُ الوصول). وهذه النقطةُ بـ``edit_employee`` وحده كانت
+    # تكتب ``terminated`` فورًا — شخصٌ واحد يُنهي خدمةً بلا عينٍ ثانية ولا
+    # تسوية، وهو عينُ «ممنوع Self Approval لكل الأدوار».
+    if status == "terminated" and old != "terminated":
+        raise HTTPException(status_code=409, detail=(
+            "إنهاء الخدمة لا يُضبط من الحالة — يمرّ بمسار «إنهاء الخدمة» في "
+            "ملف الموظف (تحضير ثم اعتماد من شخص آخر ثم إخلاء طرف وإقرار)."))
+    # والأرشفةُ لمن انتهت خدمته: أرشفةُ موظفٍ على رأس عمله إنهاءٌ بلا مسار.
+    if status == "archived" and (old or "") not in ("terminated", "resigned", "retired", "archived"):
+        raise HTTPException(status_code=409, detail=(
+            f"لا يُؤرشف موظفٌ حالته «{old}» — الأرشفةُ لمن انتهت خدمته. "
+            "أنهِ الخدمة بمسارها أولًا."))
     emp.status = status
     audit(db, user, "employee_status", "employee", emp.id, detail=f"{old} → {status}", request=request)
     db.commit()
