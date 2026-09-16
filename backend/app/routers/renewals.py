@@ -333,6 +333,18 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
                                     models.Permit.status == "active").order_by(models.Permit.expiry_date))
     if not permit or not permit.expiry_date:
         raise HTTPException(status_code=400, detail="لا توجد إقامة سارية بتاريخ انتهاء لهذا الموظف")
+
+    # **ولا تُجدَّد إقامةُ من انتهت خدمته** — بابٌ ثالثٌ للقاعدة الموحَّدة
+    # ``INACTIVE_EMPLOYMENT``: ``create_request`` يمنعه والبصمُ يمنعه، وملفُّ
+    # التجديد كان يُفتح له. والتجديدُ معاملةٌ حكوميةٌ برسومها والتزامها،
+    # وإقامةُ من غادر تُحسم بالإلغاء أو التحويل لا بالتجديد.
+    from ..deps import INACTIVE_EMPLOYMENT
+    _emp = db.get(models.Employee, permit.employee_id)
+    if _emp and (_emp.status or "").strip().lower() in INACTIVE_EMPLOYMENT:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"لا يُفتح تجديدُ إقامةٍ لموظفٍ حالته «{_emp.status}» — "
+                    "إقامةُ من انتهت خدمته تُحسم بالإلغاء أو التحويل."))
     days_left = (permit.expiry_date - kuwait_today()).days
     rtype = R.classify(days_left)
     if rtype is None:

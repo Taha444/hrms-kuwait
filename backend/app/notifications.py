@@ -319,15 +319,31 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         name = emp.name if emp else f"#{permit.employee_id}"
         dk = f"permit_expiring:{permit.id}:{bucket}"
+
+        # **ومن انتهت خدمته لا يُقال عن إقامته «تجديد».** لا مساَر إنهاءٍ
+        # يمسّ حالةَ الإقامة، فتبقى ``active`` ويصل المندوبَ «تجديد الإقامة»
+        # لموظفٍ غادر — وإقامتُه تُحسم بالإلغاء أو التحويل. فيبقى الإنذار
+        # (لا صمت: الإقامةُ تنتهي والشركةُ كفيلُها)، بصياغةٍ صادقة — والنوعُ
+        # نفسه ليبقى في صندوق المندوب. ولا يُرسَل للموظف السابق «سيتم البدء
+        # في إجراءات التجديد».
+        from .deps import INACTIVE_EMPLOYMENT
+        ended = bool(emp and (emp.status or "").strip().lower() in INACTIVE_EMPLOYMENT)
+
         # شأن حكومي → للمندوب (PRO) فقط
         notify_roles(
             db, permit.company_id, ["delegate"],
             type="renew_residency" if permit.kind == "residency" else "renew_work_permit",
-            title=f"تجديد {kind_ar}: {name}",
-            detail=f"{kind_ar} للعامل {name} تنتهي خلال {days_left} يومًا ({permit.expiry_date}).",
+            title=(f"{kind_ar} موظفٍ انتهت خدمته: {name}" if ended
+                   else f"تجديد {kind_ar}: {name}"),
+            detail=((f"{kind_ar} للعامل {name} (حالته «{emp.status}») تنتهي خلال "
+                     f"{days_left} يومًا ({permit.expiry_date}) — تُحسم بالإلغاء أو "
+                     "التحويل لا بالتجديد.") if ended else
+                    f"{kind_ar} للعامل {name} تنتهي خلال {days_left} يومًا ({permit.expiry_date})."),
             related_entity_type="permit", related_entity_id=permit.id,
             severity=sev, due_date=permit.expiry_date, dedup_key=dk,
         )
+        if ended:
+            continue
         # للعامل بصياغة مناسبة
         notify_employee_self(
             db, permit.employee_id,
