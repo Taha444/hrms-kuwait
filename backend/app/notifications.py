@@ -452,11 +452,8 @@ def daily_scan(db: Session) -> dict:
                 )
         # تجاوز سعة العمالة
         if lic.allowed_workers:
-            actual = len(db.scalars(
-                select(models.Employee.id).where(
-                    models.Employee.license_id == lic.id, models.Employee.status == "active"
-                )
-            ).all())
+            from .deps import license_headcount
+            actual = license_headcount(db, lic.id)
             if actual > lic.allowed_workers:
                 notify_roles(
                     db, lic.company_id, ["delegate"],

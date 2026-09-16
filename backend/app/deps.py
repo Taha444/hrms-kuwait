@@ -5,7 +5,7 @@
 """
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
+from sqlalchemy import func, select
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -567,6 +567,22 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
 #:
 #: ولا تُمنَع «في إجازة» ولا «موقوف»: الخدمةُ قائمة، ومن في إجازةٍ يطلب.
 INACTIVE_EMPLOYMENT = ("archived", "terminated", "resigned", "retired")
+
+
+def license_headcount(db: Session, license_id: int) -> int:
+    """عمالةُ الترخيص — **من لم تنتهِ خدمته**، لا من حالتُه «نشط» وحده.
+
+    السعةُ عند الجهة تُعَدّ بمن هو مسجَّلٌ على الترخيص، والإجازةُ والإيقافُ
+    لا يُخرجانه منه. وكان العدُّ ``status == "active"`` في موضعين (إنذارُ
+    تجاوز السعة وشاشةُ التراخيص): فموظفٌ «في إجازة» يُطرح من العدد، فيمرّ
+    ترخيصٌ ممتلئٌ بلا إنذار — وتُقبَل عليه عمالةٌ جديدة. **والخطأُ هنا في
+    الاتجاه الخطِر**: عدٌّ ناقصٌ يُسكت الإنذار الذي بُني ليُسمَع.
+
+    ومن انتهت خدمته يُقرأ من ``INACTIVE_EMPLOYMENT`` نفسها.
+    """
+    return db.scalar(select(func.count(models.Employee.id)).where(
+        models.Employee.license_id == license_id,
+        models.Employee.status.notin_(INACTIVE_EMPLOYMENT))) or 0
 
 
 def assert_employment_active(db: Session, user, *, action: str = "هذا الإجراء"):

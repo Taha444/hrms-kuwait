@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import (assert_same_company, audit, get_current_user, require_perm,
+from ..deps import (license_headcount, assert_same_company, audit, get_current_user, require_perm,
                     resolve_scope, scope_company_id)
 from ..qr import current_code, seconds_remaining
 from ..clock import today as kuwait_today
@@ -397,9 +397,7 @@ def list_licenses(company_id: int | None = None,
     rows = db.scalars(q).all()
     out = []
     for lic in rows:
-        actual = len(db.scalars(select(models.Employee.id).where(
-            models.Employee.license_id == lic.id,
-            models.Employee.status == "active")).all())
+        actual = license_headcount(db, lic.id)
         out.append({
             "id": lic.id, "name": lic.name, "license_no": lic.license_no,
             "issuing_authority": lic.issuing_authority, "status": lic.status,
