@@ -8,6 +8,9 @@ import { fmtKuwaitDateTime, fmtKuwaitDate } from "../utils/datetime";
 
 // ملف الموظف كحاوية تبويبات قابلة للتضمين داخل التخطيط الرئيسي-التفصيلي.
 // يقبل id كخاصية (وضع مُضمَّن) أو يقرأه من المسار (صفحة مستقلة).
+/** حقولٌ لا تُغيَّر من نموذج التعديل — مسارُها «اقتراح تعديل» (CHANGEABLE_FIELDS). */
+const CRITICAL_EDIT_FIELDS = ["basic_salary", "hire_date", "job_title"];
+
 export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number; onChanged?: () => void } = {}) {
   const params = useParams();
   const id = idProp ?? (params.id ? Number(params.id) : undefined);
@@ -517,13 +520,18 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               ] as [string, string, string][]).map(([k, label, type]) => (
                 <div className="field" key={k}>
                   <label htmlFor={`epf-edit-${k}`}>{label}</label>
+                  {/* الراتبُ وتاريخُ التعيين والمسمّى تُغيَّر بـ«اقتراح تعديل» يعتمده
+                      غيرُك — والخادمُ يرفض تغييرَها من هنا، فتُعرض للقراءة. */}
                   <input id={`epf-edit-${k}`} type={type} value={editForm[k] ?? ""}
+                    readOnly={CRITICAL_EDIT_FIELDS.includes(k)}
+                    title={CRITICAL_EDIT_FIELDS.includes(k) ? "يُغيَّر من «اقتراح تعديل» — يعتمده مستخدمٌ آخر" : undefined}
                     onChange={(ev) => setEditForm({ ...editForm, [k]: ev.target.value })} />
                 </div>
               ))}
               <div className="field">
                 <label htmlFor="epf-edit-contract">{t("epf_contract")}</label>
-                <select id="epf-edit-contract" value={editForm.contract_type}
+                <select id="epf-edit-contract" value={editForm.contract_type} disabled
+                  title="يُغيَّر من «اقتراح تعديل» — يعتمده مستخدمٌ آخر"
                   onChange={(ev) => setEditForm({ ...editForm, contract_type: ev.target.value })}>
                   <option value="indefinite">{contractTypeAr("indefinite")}</option>
                   <option value="definite">{contractTypeAr("definite")}</option>

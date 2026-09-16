@@ -230,6 +230,27 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     # دمج صحيح للـPUT بلا تغيير عقد الواجهة.
     payload = data.model_dump(exclude_unset=True)
     payload.pop("company_id", None)  # لا يُغيَّر انتماء الشركة عبر التعديل العادي
+
+    # **والحقولُ الحرجة لا تُغيَّر من هنا.** ``propose_salary_change`` مكتوبٌ
+    # فيه: «لا يُطبَّق على الموظف حتى الاعتماد» من مستخدمٍ آخر — للراتب وتاريخ
+    # التعيين والمسمّى ونوع العقد (``CHANGEABLE_FIELDS``). وهذا الـPUT بـ
+    # ``edit_employee`` وحدها كان يكتبها **فورًا** (يُقيّدها في السجلّ بلا
+    # اعتماد): شخصٌ واحدٌ يرفع راتبًا بلا عينٍ ثانية — عينُ «ممنوع Self
+    # Approval». والنموذجُ يُرسل القيمَ القائمة كما هي، فلا يُرفض إلا ما تغيّر.
+    def _norm(v):
+        return None if v in (None, "") else str(v).strip()
+
+    changed_critical = sorted(
+        k for k in payload
+        if k in CHANGEABLE_FIELDS and _norm(payload[k]) != _norm(getattr(emp, k, None))
+        and not (k in ("basic_salary", "actual_salary")
+                 and payload[k] is not None and getattr(emp, k, None) is not None
+                 and float(payload[k]) == float(getattr(emp, k))))
+    if changed_critical:
+        labels = "، ".join(_FIELD_LABEL.get(k, k) for k in changed_critical)
+        raise HTTPException(status_code=409, detail=(
+            f"تعديل {labels} لا يُطبَّق مباشرةً — قدّمه من «اقتراح تعديل» في ملف "
+            "الموظف ليعتمده مستخدمٌ آخر."))
     _assert_no_duplicates(db, emp.company_id,
                           payload.get("civil_id", emp.civil_id),
                           payload.get("passport_number", emp.passport_number),
