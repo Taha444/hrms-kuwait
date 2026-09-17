@@ -46,7 +46,7 @@ def _drive_termination(client, emp_id: int) -> dict:
     end = (date.today() + timedelta(days=5)).isoformat()
 
     r = client.post(f"/api/employees/{emp_id}/terminate",
-                    headers=hr, params={"end_date": end, "reason": "termination"})
+                    headers=hr, params={"end_date": end, "reason": "termination", "notice_served": "false"})
     assert r.status_code == 200, r.text[:250]
     for path, hdr in ((f"/api/employees/{emp_id}/terminate/approve", acc),
                       (f"/api/employees/{emp_id}/terminate/clearance", hr),

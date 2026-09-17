@@ -106,6 +106,8 @@ def calculate_eos(
     annual_leave_days=30,
     day_divisor=26,
     max_months=18,
+    notice_days_owed=0,
+    notice=None,
 ):
     """يحسب مكافأة نهاية الخدمة ويُرجع قاموسًا تفصيليًا.
 
@@ -175,7 +177,14 @@ def calculate_eos(
         "فقط. لتطبيق خصم فعلي يلزم قرار وسياسة موثقة من الإدارة."
     ) if remaining_leave < 0 else None
 
-    total_settlement = indemnity + leave_payout
+    # قرار المالك (2026-09-17) — بدل الإنذار (المادة 44) جزءٌ من التسوية عن
+    # الجزء غير المُبلَّغ من مدة الإنذار. المدةُ أيامٌ تقويمية، فالأجرُ عنها
+    # بالشهر (÷30): تسعون يومًا = ثلاثة رواتب أساسية لا ٣٫٤٦. ويُحسب عددُ
+    # الأيام خارج المحرّك (``notice_owed_days``) لأنه يقرأ السياسة والملف.
+    notice_days_owed = max(float(notice_days_owed or 0), 0.0)
+    notice_payout = basic_salary / 30 * notice_days_owed
+
+    total_settlement = indemnity + leave_payout + notice_payout
 
     return {
         "inputs": {
@@ -215,6 +224,9 @@ def calculate_eos(
         "factor_note": factor_note,
         "indemnity": round(indemnity, 3),
         "leave_payout": round(leave_payout, 3),
+        "notice": {**(notice or {}), "owed_days": round(notice_days_owed, 2),
+                   "daily_basis": "basic/30"},
+        "notice_payout": round(notice_payout, 3),
         "total_settlement": round(total_settlement, 3),
         "currency": "KWD",
         "disclaimer": (
@@ -225,8 +237,27 @@ def calculate_eos(
     }
 
 
-def notice_pay(basic_salary, day_divisor=26, notice_days=90):
-    """بدل الإشعار/الإنذار التقريبي (المادة 44): راتب فترة الإشعار."""
-    basic_salary = float(basic_salary or 0)
-    daily = basic_salary / (int(day_divisor) or 26)
-    return round(daily * float(notice_days or 0), 3)
+#: الأسبابُ التي يُستحق عنها بدلُ الإنذار: فصلُ صاحب العمل غير التأديبي وحده
+#: (قرار المالك 2026-09-17). والفصلُ التأديبي (م41) والاستقالةُ لا بدل فيهما.
+NOTICE_PAY_REASONS = {"termination"}
+
+
+def notice_owed_days(reason, notice_days, served, served_date, termination_date):
+    """أيامُ الإنذار غير المُبلَّغة — أو ``None`` إن لزم الجوابُ ولم يُسجَّل.
+
+    - سببٌ لا بدل فيه ← 0.
+    - لم يُبلَّغ ← المدةُ كاملة.
+    - أُبلغ بتاريخ ← ما بقي من المدة بين الإبلاغ وتاريخ الإنهاء.
+    - أُبلغ بلا تاريخ ← يُعدّ ناقصًا (``None``): لا يُفترض أنه استُوفي.
+    """
+    if reason not in NOTICE_PAY_REASONS:
+        return 0.0
+    if served is None:
+        return None
+    notice_days = float(notice_days or 0)
+    if not served:
+        return notice_days
+    if served_date is None:
+        return None
+    given = (_parse_date(termination_date) - _parse_date(served_date)).days
+    return max(notice_days - max(given, 0), 0.0)

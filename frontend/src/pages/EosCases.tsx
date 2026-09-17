@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api, { errMsg } from "../api";
+import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { fmtKuwaitDateTime } from "../utils/datetime";
 
@@ -26,6 +27,7 @@ type Case = {
   stage_index: number; total_stages: number;
   employee_id: number; employee_name: string | null; employee_no: string | null;
   termination_date: string | null; termination_reason: string | null;
+  notice_served: boolean | null; notice_served_date: string | null;
   settlement: any; source_request_id: number | null;
   clearance_notes: string | null; acknowledgment_note: string | null;
   payment_reference: string | null; filing_location: string | null;
@@ -65,6 +67,8 @@ const ACTION_PATH: Record<string, string> = {
 
 export default function EosCases() {
   const { lang } = useI18n();
+  const { can } = useAuth();
+  const [notice, setNotice] = useState({ served: "", date: "" });
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<Case[]>([]);
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -87,7 +91,11 @@ export default function EosCases() {
   }, []);
 
   const open = (id: number) =>
-    api.get(`/eos/cases/${id}`).then((r) => { setSel(r.data); setNote(""); })
+    api.get(`/eos/cases/${id}`).then((r) => {
+      setSel(r.data); setNote("");
+      setNotice({ served: r.data.notice_served === null ? "" : String(r.data.notice_served),
+                  date: r.data.notice_served_date || "" });
+    })
       .catch((e) => setErr(errMsg(e, "تعذّر فتح الحالة")));
 
   /** هل يملك هذا المستخدم الخطوة التالية؟ — بقائمة الخادم لا بقائمة هنا. */
@@ -111,6 +119,22 @@ export default function EosCases() {
       await open(sel.id);
     } catch (e: any) {
       setErr(errMsg(e, "تعذّر تنفيذ الخطوة"));
+    } finally { setBusy(false); }
+  };
+
+  // قرار المالك (2026-09-17) — «أُبلغ الإنذار؟» يُسجَّل قبل الحساب؛ والخادم
+  // يرفض حساب فصلٍ غير تأديبي بلا جواب.
+  const saveNotice = async () => {
+    if (!sel || !notice.served) return;
+    setErr(""); setMsg(""); setBusy(true);
+    try {
+      const q: Record<string, string> = { served: notice.served };
+      if (notice.served === "true") q.served_date = notice.date;
+      await api.post(`/eos/cases/${sel.id}/notice`, null, { params: q });
+      setMsg("سُجّل الإنذار");
+      await open(sel.id);
+    } catch (e: any) {
+      setErr(errMsg(e, "تعذّر تسجيل الإنذار"));
     } finally { setBusy(false); }
   };
 
@@ -229,9 +253,50 @@ export default function EosCases() {
             })}
           </div>
 
+          {sel.termination_reason === "termination" && (
+            <div style={{ marginTop: 14 }}>
+              <h4 style={{ margin: "0 0 6px" }}>الإنذار</h4>
+              {sel.status === "initiated" && can("terminate_employee") ? (
+                <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <div className="field">
+                    <label htmlFor="eosc-notice">أُبلغ الإنذار؟</label>
+                    <select id="eosc-notice" value={notice.served}
+                            onChange={(e) => setNotice({ ...notice, served: e.target.value })}>
+                      <option value="">— اختر —</option>
+                      <option value="true">نعم</option>
+                      <option value="false">لا</option>
+                    </select>
+                  </div>
+                  {notice.served === "true" && (
+                    <div className="field">
+                      <label htmlFor="eosc-notice-date">تاريخ الإبلاغ</label>
+                      <input id="eosc-notice-date" type="date" value={notice.date}
+                             onChange={(e) => setNotice({ ...notice, date: e.target.value })} />
+                    </div>
+                  )}
+                  <button className="ghost" disabled={busy || !notice.served
+                            || (notice.served === "true" && !notice.date)}
+                          onClick={saveNotice}>سجّل</button>
+                </div>
+              ) : (
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {sel.notice_served === null ? "لم يُسجَّل بعد — يلزم قبل الحساب"
+                    : sel.notice_served ? `أُبلغ في ${sel.notice_served_date}` : "لم يُبلَّغ"}
+                </div>
+              )}
+            </div>
+          )}
+
           {sel.settlement && (
             <div style={{ marginTop: 14 }}>
               <h4 style={{ margin: "0 0 6px" }}>التسوية</h4>
+              <div className="muted" style={{ fontSize: 12 }}>
+                المكافأة: {money(sel.settlement?.indemnity)}
+                {" · "}بدل الإجازات: {money(sel.settlement?.leave_payout)}
+                {typeof sel.settlement?.notice_payout === "number" && (
+                  <>{" · "}بدل الإنذار: {money(sel.settlement.notice_payout)}</>
+                )}
+              </div>
               <div className="muted" style={{ fontSize: 12 }}>
                 الإجمالي: {money(sel.settlement?.total_settlement)}
               </div>

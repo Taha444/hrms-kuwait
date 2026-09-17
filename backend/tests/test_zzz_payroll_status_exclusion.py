@@ -1,36 +1,33 @@
 # -*- coding: utf-8 -*-
-"""المسيّر يختار بالحالة لا بمدّة الخدمة — يُحرَس ليُرى، لا ليُقَرّ.
+"""من على الرواتب — قرارُ المالك (2026-09-17) مُثبَّتًا.
 
-**المقيس** (محاكاة، ``rollback``): ``compute_payroll`` يختار
-``status == "active"`` وحده. وشاشةُ ملف الموظف تضبط أيًّا من
-``EMP_STATUSES`` — فـ«**في إجازة**» تُسقط الموظف من المسيّر **كلّه**، والإجازةُ
-السنوية مدفوعة ومسجَّلةٌ صفوفَ ``Leave`` يقرؤها المسيّرُ فلا يعدّها غيابًا.
+كان ``compute_payroll`` يختار ``status == "active"`` وحده، فكان:
 
-**والشهرُ الأخير**: ``settle_case`` يكتب ``terminated`` مع
-``termination_date``؛ فإن سُوِّيت الخدمةُ قبل المسيّر سقط الموظف من شهره
-الأخير كلّه، ومنطقُ التناسب المكتوبُ لهذا الشهر لا يبلغه. والتسويةُ لا تحمله.
+- «**في إجازة**» (من شاشة ملف الموظف) يُسقط راتبَ الشهر كلّه، والإجازةُ
+  السنوية مدفوعة ومسجَّلةٌ صفوفَ ``Leave``.
+- ومن سُوِّيت خدمتُه قبل المسيّر يسقط من **شهره الأخير** كلّه — ومنطقُ التناسب
+  المكتوبُ لهذا الشهر لا يبلغه (إنهاءٌ في 20/9 على 2,500 = 1,666.667 لا يُدفع).
 
-**ولا يُصلَح بلا كلمة**: أيُّ الحالات تُدفَع قرارٌ ماليٌّ وقانوني — والقاعدةُ
-أن Payroll لا يُمسّ بلا اعتماد. فيُثبَّت الحالُ: من يغيّره يُسقط هذا الحارس،
-فيُعلَم أن مالًا تغيّر **بقصد**. والتقريرُ في ``scripts/payroll_exclusions.py``.
+**والقرار**: «في إجازة» و«موقوف» يُدفعان (``PAYABLE_STATUSES``)، ومن انتهت
+خدمته يبقى في مسيّر شهر إنهائه حتى تاريخ الإنهاء. ولا يمتدّ لما بعده.
 
-**ودرسُ قياس**: المحاكاةُ الأولى قالت «الموظف المنتهية خدمته ما زال في
-المسيّر» — و``SessionLocal`` بـ``autoflush=False``، فلم يبلغ التغييرُ
-الاستعلام. فيُكتب ``flush`` صريحًا قبل كل قراءة.
+**ودرسُ قياس**: ``SessionLocal`` بـ``autoflush=False`` — فالحرّاسُ تكتب
+``flush`` صريحًا قبل كل قراءة.
 """
 from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from sqlalchemy import select
 
-from app import models, payroll as P
+from app import deps, models, payroll as P
 from app.database import SessionLocal
 
 
-def _in_run(db, emp_id: int, cid: int) -> bool:
-    return any(r["employee_id"] == emp_id
-               for r in P.compute_payroll(db, cid, 2026, 9)["payslips"])
+def _slip(db, emp_id: int, cid: int, y: int, m: int):
+    rows = [r for r in P.compute_payroll(db, cid, y, m)["payslips"] if r["employee_id"] == emp_id]
+    return rows[0] if rows else None
 
 
 def _paid_employee(db):
@@ -40,48 +37,71 @@ def _paid_employee(db):
         models.Employee.hire_date < date(2026, 1, 1)))
 
 
-def test_a_vacation_status_drops_the_whole_month_today():
-    """**قرارٌ معلَّق**: «في إجازة» تُخرج من المسيّر. فإن صارت تُدفَع سقط هذا."""
+@pytest.mark.parametrize("status", ["vacation", "suspended"])
+def test_leave_and_suspension_stay_on_the_payroll(status):
     db = SessionLocal()
     try:
         emp = _paid_employee(db)
-        assert emp is not None
-        assert _in_run(db, emp.id, emp.company_id), "النشطُ خارج المسيّر — تغيّر شيءٌ أعمق"
-        emp.status = "vacation"
+        full = _slip(db, emp.id, emp.company_id, 2026, 9)["net"]
+        emp.status = status
         db.flush()
-        assert not _in_run(db, emp.id, emp.company_id), (
-            "صار «في إجازة» يُدفَع — يُرفَع هذا الحارس ويُكتب بدله ما يقيس الأجر")
+        s = _slip(db, emp.id, emp.company_id, 2026, 9)
+        assert s is not None, f"«{status}» سقط من المسيّر — والقرارُ أنه يُدفع"
+        assert s["net"] == full, (status, s["net"], full)
     finally:
         db.rollback()
         db.close()
 
 
-def test_a_settled_employee_misses_the_final_partial_month_today():
-    """والتسويةُ قبل المسيّر تُسقط الشهرَ الأخير — والتناسبُ يعمل لو بقي نشطًا."""
+def test_a_settled_employee_is_paid_up_to_the_termination_date():
     db = SessionLocal()
     try:
         emp = _paid_employee(db)
+        emp.status = "terminated"
         emp.termination_date = date(2026, 9, 20)
         db.flush()
-        rows = [r for r in P.compute_payroll(db, emp.company_id, 2026, 9)["payslips"]
-                if r["employee_id"] == emp.id]
-        assert rows and rows[0]["partial_month"], "التناسبُ نفسُه لا يعمل"
+        s = _slip(db, emp.id, emp.company_id, 2026, 9)
+        assert s is not None, "المُسوّى سقط من مسيّر شهره الأخير"
         expected = round(float(emp.basic_salary) / 30 * 20, 3)
-        assert abs(rows[0]["earned_basic"] - expected) < 0.01, (rows[0]["earned_basic"], expected)
-
-        emp.status = "terminated"
-        db.flush()
-        assert not _in_run(db, emp.id, emp.company_id), (
-            "صار الشهرُ الأخير يُدفَع بعد التسوية — يُرفَع هذا الحارس")
+        assert abs(s["earned_basic"] - expected) < 0.01, (s["earned_basic"], expected)
+        assert s["partial_month"]
     finally:
         db.rollback()
         db.close()
 
 
-def test_the_status_filter_is_still_the_only_gate():
-    """والبوّابةُ نصٌّ واحد — فإن تغيّرت عُلم."""
+def test_the_month_after_termination_pays_nothing():
+    db = SessionLocal()
+    try:
+        emp = _paid_employee(db)
+        emp.status = "terminated"
+        emp.termination_date = date(2026, 9, 20)
+        db.flush()
+        assert _slip(db, emp.id, emp.company_id, 2026, 10) is None
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_an_ended_service_without_a_date_is_not_paid():
+    """ومن انتهت خدمته بلا تاريخٍ مُسجَّل لا يُتناسَب له — فلا يُدرَج."""
+    db = SessionLocal()
+    try:
+        emp = _paid_employee(db)
+        emp.status = "resigned"
+        emp.termination_date = None
+        db.flush()
+        assert _slip(db, emp.id, emp.company_id, 2026, 9) is None
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_the_decision_lives_in_one_constant():
+    assert deps.PAYABLE_STATUSES == ("active", "vacation", "suspended")
     import inspect
 
-    src = inspect.getsource(P.compute_payroll)
-    assert 'models.Employee.status == "active"' in src, (
-        "تغيّرت بوّابةُ الحالة في المسيّر — يُراجَع هذا البند")
+    from app.routers import payroll as RP
+
+    assert "PAYABLE_STATUSES" in inspect.getsource(P.compute_payroll)
+    assert "PAYABLE_STATUSES" in inspect.getsource(RP.finalize_run)

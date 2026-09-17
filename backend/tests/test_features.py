@@ -186,7 +186,7 @@ def test_terminate_employee_computes_eos(client):
 
     # 1) HR يحضّر المسودة — لا يتغير الـstatus
     prep = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                       params={"end_date": "2025-01-01", "reason": "termination"})
+                       params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     assert prep.status_code == 200, prep.text
     assert prep.json()["stage"] == "prepared"
     assert prep.json()["status"] != "terminated"

@@ -765,6 +765,12 @@ const dict: Record<string, { ar: string; en: string }> = {
   epf_settlement_title: { ar: "مكافأة نهاية الخدمة (تقديرية)", en: "End-of-Service Settlement (estimate)" },
   epf_total_settlement: { ar: "إجمالي التسوية (د.ك)", en: "Total Settlement (KWD)" },
   epf_indemnity: { ar: "المكافأة", en: "Indemnity" }, epf_leave_payout: { ar: "بدل الإجازات", en: "Leave Payout" },
+  epf_notice_payout: { ar: "بدل الإنذار", en: "Notice Pay" },
+  epf_notice_served: { ar: "أُبلغ الإنذار؟", en: "Notice served?" },
+  epf_notice_unset: { ar: "— اختر —", en: "— choose —" },
+  epf_notice_yes: { ar: "نعم", en: "Yes" }, epf_notice_no: { ar: "لا", en: "No" },
+  epf_notice_date: { ar: "تاريخ إبلاغ الإنذار", en: "Notice served on" },
+  epf_notice_detail: { ar: "بدل الإنذار عن {days} يومًا غير مُبلَّغ من {total}", en: "Notice pay for {days} unserved day(s) of {total}" },
   // حاسبة نهاية الخدمة
   eos_title: { ar: "مكافأة نهاية الخدمة (قانون العمل الكويتي 6/2010)", en: "End-of-Service Settlement (Kuwait Labor Law 6/2010)" },
   eos_basic_salary: { ar: "الراتب الأساسي (د.ك)", en: "Basic Salary (KWD)" },

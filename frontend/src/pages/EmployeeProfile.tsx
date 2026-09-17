@@ -26,7 +26,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [editForm, setEditForm] = useState<any>({});
   const [editErr, setEditErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [term, setTerm] = useState({ end_date: "", reason: "termination" });
+  const [term, setTerm] = useState({ end_date: "", reason: "termination",
+                                     notice_served: "", notice_served_date: "" });
   const [settlement, setSettlement] = useState<any>(null);
   const [exit_, setExit] = useState<any>(null);   // EXIT-UI — مسودة إنهاء الخدمة
   const [consumed, setConsumed] = useState(0);
@@ -228,7 +229,19 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     if (!term.end_date) return;
     if (!confirm(t("epf_term_confirm"))) return;
     // يُرسَل المستهلَك فقط؛ المتبقّي يُحسب آليًا في الخادم
-    const r = await api.post(`/employees/${id}/terminate`, null, { params: { ...term, used_leave_days: consumed } });
+    // قرار المالك (2026-09-17) — بدل الإنذار في الفصل غير التأديبي وحده،
+    // والخادم يرفض الحساب بلا الجواب؛ فلا يُرسَل حقلٌ فارغ يُقرأ «لا».
+    const params: Record<string, any> = { end_date: term.end_date, reason: term.reason,
+                                          used_leave_days: consumed };
+    if (term.reason === "termination") {
+      if (!term.notice_served) { setMsg(t("epf_notice_served")); return; }
+      params.notice_served = term.notice_served;
+      if (term.notice_served === "true") params.notice_served_date = term.notice_served_date;
+    }
+    let r;
+    try {
+      r = await api.post(`/employees/${id}/terminate`, null, { params });
+    } catch (ex: any) { setMsg(errMsg(ex, t("epf_term_btn"))); return; }
     setSettlement(r.data.settlement); setMsg(t("epf_term_drafted")); load(); loadExit(); onChanged?.();
   };
 
@@ -835,6 +848,18 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <select id="epf-term-reason" value={term.reason} onChange={(ev) => setTerm({ ...term, reason: ev.target.value })}>
                     {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select></div>
+                {term.reason === "termination" && (
+                  <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-notice">{t("epf_notice_served")}</label>
+                    <select id="epf-term-notice" value={term.notice_served} onChange={(ev) => setTerm({ ...term, notice_served: ev.target.value })}>
+                      <option value="">{t("epf_notice_unset")}</option>
+                      <option value="true">{t("epf_notice_yes")}</option>
+                      <option value="false">{t("epf_notice_no")}</option>
+                    </select></div>
+                )}
+                {term.reason === "termination" && term.notice_served === "true" && (
+                  <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-notice-date">{t("epf_notice_date")}</label>
+                    <input id="epf-term-notice-date" type="date" value={term.notice_served_date} onChange={(ev) => setTerm({ ...term, notice_served_date: ev.target.value })} /></div>
+                )}
                 <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-used-leave">{t("eos_used_leave")}</label>
                   <input id="epf-term-used-leave" type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
                 <div className="field" style={{ alignSelf: "flex-end" }}>
@@ -859,7 +884,13 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <div className="stat accent"><div className="num">{s.total_settlement}</div><div className="lbl">{t("epf_total_settlement")}</div></div>
                   <div className="stat"><div className="num">{s.indemnity}</div><div className="lbl">{t("epf_indemnity")}</div></div>
                   <div className="stat"><div className="num">{s.leave_payout}</div><div className="lbl">{t("epf_leave_payout")}</div></div>
+                  {s.notice_payout !== undefined && (
+                    <div className="stat"><div className="num">{s.notice_payout}</div><div className="lbl">{t("epf_notice_payout")}</div></div>
+                  )}
                 </div>
+                {s.notice?.applies && (
+                  <p className="muted">{t("epf_notice_detail", { days: s.notice.owed_days, total: s.notice.notice_days })}</p>
+                )}
                 {s.leave && (
                   <p className="muted">{t("eos_leave_detail", {
                     accrued: s.leave.accrued_days, used: s.leave.used_days, remaining: s.leave.remaining_days })}</p>

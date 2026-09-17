@@ -218,7 +218,7 @@ def test_P0_8_terminate_creates_draft_not_terminates(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     emp_id = _make_test_emp(client, hr, name_suffix=101)
     r = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                    params={"end_date": "2025-01-01", "reason": "termination"})
+                    params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     assert r.status_code == 200
     assert r.json()["stage"] == "prepared"
     assert r.json()["status"] != "terminated"
@@ -229,7 +229,7 @@ def test_P0_8_execute_before_approve_rejected(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     emp_id = _make_test_emp(client, hr, name_suffix=102)
     client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                params={"end_date": "2025-01-01", "reason": "termination"})
+                params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     execd = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
     assert execd.status_code == 409
 
@@ -242,7 +242,7 @@ def test_P0_8_bad_inputs_rejected(client):
                              params={"end_date": "2025-01-01", "reason": "xxx"})
     assert bad_reason.status_code == 400
     bad_date = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                           params={"end_date": "2010-01-01", "reason": "termination"})
+                           params={"end_date": "2010-01-01", "reason": "termination", "notice_served": "false"})
     assert bad_date.status_code == 400
     # موظف براتب سالب/صفري في القاعدة (تجاوز الـschema — سيناريو موروث)
     from app.database import SessionLocal
@@ -258,7 +258,7 @@ def test_P0_8_bad_inputs_rejected(client):
     finally:
         dbs.close()
     zero_r = client.post(f"/api/employees/{zero_id}/terminate", headers=hr,
-                        params={"end_date": "2025-01-01", "reason": "termination"})
+                        params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     assert zero_r.status_code == 400
 
 
@@ -267,9 +267,9 @@ def test_P0_8_duplicate_draft_rejected(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     emp_id = _make_test_emp(client, hr, name_suffix=105)
     client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                params={"end_date": "2025-01-01", "reason": "termination"})
+                params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     dup = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                     params={"end_date": "2025-02-01", "reason": "termination"})
+                     params={"end_date": "2025-02-01", "reason": "termination", "notice_served": "false"})
     assert dup.status_code == 409
 
 
@@ -280,7 +280,7 @@ def test_P0_8_full_workflow_terminates(client):
     admin = auth_headers(login(client, "000000000000", "admin123"))
     emp_id = _make_test_emp(client, hr, name_suffix=106)
     client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                params={"end_date": "2025-01-01", "reason": "termination"})
+                params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     client.post(f"/api/employees/{emp_id}/terminate/approve", headers=acc)
     # V2.2 §13 — execute مباشرة بعد approve مرفوض (يشترط clearance + ack)
     early_exec = client.post(f"/api/employees/{emp_id}/terminate/execute", headers=hr)
@@ -303,12 +303,12 @@ def test_P0_8_cancel_draft(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     emp_id = _make_test_emp(client, hr, name_suffix=107)
     client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                params={"end_date": "2025-01-01", "reason": "termination"})
+                params={"end_date": "2025-01-01", "reason": "termination", "notice_served": "false"})
     cancel = client.post(f"/api/employees/{emp_id}/terminate/cancel", headers=hr)
     assert cancel.status_code == 200
     # بعد الإلغاء يمكن تحضير مسودة جديدة
     new_draft = client.post(f"/api/employees/{emp_id}/terminate", headers=hr,
-                            params={"end_date": "2025-02-01", "reason": "termination"})
+                            params={"end_date": "2025-02-01", "reason": "termination", "notice_served": "false"})
     assert new_draft.status_code == 200
 
 

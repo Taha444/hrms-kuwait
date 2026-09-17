@@ -30,11 +30,26 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
 
     # QA-18 — سجلات الوصول/الصلاحية ليست وظائف على الكشف: المندوب الذي يخدم
     # شركتين له سجل في كل منهما وراتب في واحدة، فكان يدخل كشف الثانية براتب صفر.
+    # **قراران للمالك (2026-09-17)** — وكان المسيّر يختار ``status == "active"``
+    # وحده:
+    #
+    # 1. **«في إجازة» و«موقوف» يُدفعان** (``PAYABLE_STATUSES``): الخدمةُ قائمة،
+    #    والحالةُ من شاشة الملف كانت تُسقط راتبَ الشهر كلّه.
+    # 2. **ومن انتهت خدمته يبقى في مسيّر شهر إنهائه** حتى تاريخ الإنهاء:
+    #    ``settle_case`` يكتب ``terminated`` مع ``termination_date``، فإن سُوِّيت
+    #    الخدمةُ قبل المسيّر سقط الموظف من شهره الأخير كلّه — ومنطقُ التناسب
+    #    أدناه كُتب لهذا الشهر بعينه ولم يكن يبلغه. ويبقى شرطُ التداخل
+    #    (``termination_date < p_start``) مانعًا لما بعده. ومن انتهت خدمته بلا
+    #    تاريخٍ مُسجَّل لا يُتناسَب له فلا يُدرَج.
+    from .deps import INACTIVE_EMPLOYMENT, PAYABLE_STATUSES
+
     employees = db.scalars(select(models.Employee).where(
         models.Employee.company_id == company_id,
-        models.Employee.status == "active",
+        models.Employee.status.in_(PAYABLE_STATUSES + INACTIVE_EMPLOYMENT),
         or_(models.Employee.non_payroll.is_(False),
             models.Employee.non_payroll.is_(None)))).all()
+    employees = [e for e in employees
+                 if e.status in PAYABLE_STATUSES or e.termination_date is not None]
 
     # **الأهلية تُقاس بمدة التوظيف لا بالحالة وحدها.**
     #

@@ -171,6 +171,8 @@ def _serialize_case(db: Session, case: models.EosCase) -> dict:
         "termination_date": case.termination_date,
         "termination_reason": case.termination_reason,
         "used_leave_days": case.used_leave_days,
+        "notice_served": case.notice_served,
+        "notice_served_date": case.notice_served_date,
         "settlement": case.settlement_json,
         "initiated_by": case.initiated_by, "initiated_at": case.initiated_at,
         "calculated_by": case.calculated_by, "calculated_at": case.calculated_at,
@@ -204,6 +206,8 @@ def _advance(db: Session, user: models.User, request: Request, case: models.EosC
 @router.post("/cases", status_code=201)
 def initiate_case(request: Request, employee_id: int,
                   termination_date: date, reason: str,
+                  notice_served: bool | None = None,
+                  notice_served_date: date | None = None,
                   user: models.User = Depends(require_perm("terminate_employee")),
                   db: Session = Depends(get_db)):
     """QA §6 — المرحلة 1: HR يفتح حالة إنهاء خدمة.
@@ -223,12 +227,45 @@ def initiate_case(request: Request, employee_id: int,
     # مًعا. كان مكتوًبا هنا وحده، فربطُ الطلبات به كان يعني نسخة ثانية.
     case = exit_case.open_case(
         db, emp, termination_date=termination_date, reason=reason,
-        actor_user_id=user.id)
+        actor_user_id=user.id,
+        notice_served=notice_served, notice_served_date=notice_served_date)
     audit(db, user, "eos_initiated", "eos_case", case.id,
           detail=f"employee={emp.id} reason={reason} date={termination_date}",
           request=request, company_id=emp.company_id,
           correlation_id=f"eos:{case.id}",
           after={"status": "initiated", "employee_id": emp.id})
+    db.commit()
+    return _serialize_case(db, case)
+
+
+@router.post("/cases/{case_id}/notice")
+def record_notice(case_id: int, request: Request, served: bool,
+                  served_date: date | None = None,
+                  user: models.User = Depends(require_perm("terminate_employee")),
+                  db: Session = Depends(get_db)):
+    """قرار المالك (2026-09-17) — تسجيلُ «هل أُبلغ الإنذار؟» وتاريخه.
+
+    قبل الحساب وحده: بعده صار الرقمُ جزءًا من تسويةٍ تُعتمد، وتصحيحُه لا يمرّ
+    بتعديلٍ جانبي.
+    """
+    case = _get_case(db, user, case_id)
+    _require_stage(case, "initiated")
+    if served and served_date is None:
+        raise HTTPException(status_code=400, detail="أدخل تاريخ إبلاغ الإنذار")
+    if served and case.termination_date and served_date > case.termination_date:
+        raise HTTPException(status_code=400, detail="تاريخ إبلاغ الإنذار بعد تاريخ الإنهاء")
+
+    def _snap():
+        return {"notice_served": case.notice_served,
+                "notice_served_date": (str(case.notice_served_date)
+                                       if case.notice_served_date else None)}
+    before = _snap()
+    case.notice_served = served
+    case.notice_served_date = served_date if served else None
+    audit(db, user, "eos_notice_recorded", "eos_case", case.id,
+          detail=f"served={served} date={case.notice_served_date}",
+          request=request, company_id=case.company_id,
+          correlation_id=f"eos:{case.id}", before=before, after=_snap())
     db.commit()
     return _serialize_case(db, case)
 
@@ -254,6 +291,9 @@ def calculate_case(case_id: int, request: Request, used_leave_days: float = 0,
             f"بيانات الموظف ناقصة (الراتب/تاريخ التعيين) — أكمل الملف قبل الحساب"
         ))
     company = db.get(models.Company, case.company_id)
+    owed, notice = exit_case.notice_terms(
+        db, case.company_id, case.termination_reason, case.notice_served,
+        case.notice_served_date, case.termination_date)
     try:
         result = eos_engine.calculate_eos(
             basic_salary=emp.basic_salary, hire_date=emp.hire_date,
@@ -261,6 +301,7 @@ def calculate_case(case_id: int, request: Request, used_leave_days: float = 0,
             contract_type=emp.contract_type, used_leave_days=used_leave_days,
             annual_leave_days=company.annual_leave_days,
             day_divisor=company.eos_day_divisor, max_months=company.eos_max_months,
+            notice_days_owed=owed, notice=notice,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

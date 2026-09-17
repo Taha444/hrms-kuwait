@@ -846,6 +846,8 @@ def _validate_termination_inputs(emp: models.Employee, end_date: date, reason: s
 @router.post("/{emp_id}/terminate")
 def prepare_termination(emp_id: int, end_date: date, reason: str = "termination",
                         used_leave_days: int = 0, request: Request = None,
+                        notice_served: bool | None = None,
+                        notice_served_date: date | None = None,
                         user: models.User = Depends(require_perm("terminate_employee")),
                         db: Session = Depends(get_db)):
     """PILOT-P0-8 — تحضير مسودة إنهاء الخدمة (لا فصل فوري).
@@ -869,12 +871,17 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
         raise HTTPException(status_code=400, detail="أيام الإجازة المستهلكة لا يمكن أن تكون سالبة")
     _validate_termination_inputs(emp, end_date, reason)
     company = db.get(models.Company, emp.company_id)
+    from .. import exit_case as _notice_src
+    owed, notice = _notice_src.notice_terms(
+        db, emp.company_id, reason, notice_served,
+        notice_served_date if notice_served else None, end_date)
     try:
         settlement = eos_engine.calculate_eos(
             basic_salary=emp.basic_salary, hire_date=emp.hire_date, end_date=end_date,
             reason=reason, contract_type=emp.contract_type,
             used_leave_days=used_leave_days, annual_leave_days=company.annual_leave_days,
-            day_divisor=company.eos_day_divisor, max_months=company.eos_max_months)
+            day_divisor=company.eos_day_divisor, max_months=company.eos_max_months,
+            notice_days_owed=owed, notice=notice)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     settlement["_end_date"] = str(end_date)

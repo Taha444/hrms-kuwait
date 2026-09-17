@@ -76,7 +76,7 @@ def emp_id(client):
 def _prepare(client, hdr, eid):
     end = (date.today() + timedelta(days=15)).isoformat()
     return client.post(f"/api/employees/{eid}/terminate"
-                       f"?end_date={end}&reason=termination&used_leave_days=0",
+                       f"?end_date={end}&reason=termination&used_leave_days=0&notice_served=false",
                        headers=hdr)
 
 

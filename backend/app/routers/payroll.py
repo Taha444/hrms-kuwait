@@ -222,7 +222,7 @@ def finalize_run(run_id: int, request: Request,
     """PILOT-P0-7 — finalize بعد الاعتماد (approved → finalized). قابل للـlock بعده.
     SEC2-17: يمنع finalize في وضع STRICT فقط (SEC2_17_STRICT_FINALIZE=true)."""
     import os
-    from ..deps import assert_same_company
+    from ..deps import PAYABLE_STATUSES, assert_same_company
     from sqlalchemy import or_
     pr = db.get(models.PayrollRun, run_id)
     if not pr:
@@ -234,7 +234,8 @@ def finalize_run(run_id: int, request: Request,
     if os.environ.get("SEC2_17_STRICT_FINALIZE", "").lower() in ("1", "true", "yes"):
         unresolved = db.scalar(select(models.Employee).where(
             models.Employee.company_id == pr.company_id,
-            models.Employee.status == "active",
+            # من على الرواتب — القائمةُ نفسها التي يقرؤها المسيّر.
+            models.Employee.status.in_(PAYABLE_STATUSES),
             models.Employee.attendance_mode == "none",
             or_(models.Employee.attendance_exempt.is_(False),
                 models.Employee.attendance_exempt.is_(None)),

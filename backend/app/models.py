@@ -173,6 +173,11 @@ class EosCase(Base):
     termination_reason: Mapped[str | None] = mapped_column(String(40))
     used_leave_days: Mapped[float] = mapped_column(Float, default=0)
     settlement_json: Mapped[dict | None] = mapped_column(JSON)
+    # قرار المالك (2026-09-17) — هل أُبلغ الإنذار، ومتى. بدلُ الإنذار يُحسب
+    # عن الجزء غير المُبلَّغ منه، فلا يُحسب بلا هذا الجواب في الفصل غير
+    # التأديبي. ``None`` = لم يُسجَّل بعد.
+    notice_served: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    notice_served_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     initiated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     initiated_at: Mapped[datetime | None] = mapped_column(DateTime)

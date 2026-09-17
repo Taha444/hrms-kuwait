@@ -82,7 +82,7 @@ def _open_case(client, eid: int):
 def _open_draft(client, eid: int):
     return client.post(f"/api/employees/{eid}/terminate",
                        headers=auth_headers(login(client, *HR)),
-                       params={"end_date": "2026-11-15", "reason": "termination"})
+                       params={"end_date": "2026-11-15", "reason": "termination", "notice_served": "false"})
 
 
 def _open_request(client, eid: int, code: str, payload: dict):

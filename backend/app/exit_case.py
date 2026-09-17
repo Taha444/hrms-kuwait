@@ -29,9 +29,41 @@ from . import eos as eos_engine, models
 NOT_CLOSED = "filed"
 
 
+def notice_terms(db, company_id: int, reason: str, served: bool | None,
+                 served_date: date | None, termination_date: date) -> tuple[float, dict]:
+    """أيامُ بدل الإنذار ووصفُها — مصدرٌ واحد لمسار الحالة ومسودة الإنهاء.
+
+    قرار المالك (2026-09-17): يُصرف عن الجزء غير المُبلَّغ من مدة الإنذار في
+    الفصل غير التأديبي وحده. والمدةُ من السياسة ``eos.notice_days``. وإن لزم
+    الجوابُ ولم يُسجَّل رُفض الحساب (409) — لا يُفترض أنه أُبلغ ولا أنه لم يُبلَّغ.
+    """
+    from . import policy
+    pol = policy.get(db, company_id, "eos.notice_days", on_date=termination_date)
+    notice_days = float((pol.get("value") or {}).get("days") or 0)
+    if served and served_date and served_date > termination_date:
+        raise HTTPException(status_code=400, detail=(
+            "تاريخ إبلاغ الإنذار بعد تاريخ الإنهاء"))
+    owed = eos_engine.notice_owed_days(reason, notice_days, served, served_date,
+                                       termination_date)
+    if owed is None:
+        raise HTTPException(status_code=409, detail=(
+            "الفصل غير التأديبي يستحق بدل إنذار عمّا لم يُبلَّغ من مدته — "
+            "سجّل «هل أُبلغ الإنذار؟» (وتاريخ الإبلاغ إن أُبلغ) قبل الحساب"))
+    return owed, {
+        "applies": reason in eos_engine.NOTICE_PAY_REASONS,
+        "served": served,
+        "served_date": served_date.isoformat() if served_date else None,
+        "notice_days": notice_days,
+        "policy_source": pol.get("source"),
+        "policy_version": pol.get("version"),
+    }
+
+
 def open_case(db, emp: models.Employee, *, termination_date: date, reason: str,
               actor_user_id: int | None,
-              source_request_id: int | None = None) -> models.EosCase:
+              source_request_id: int | None = None,
+              notice_served: bool | None = None,
+              notice_served_date: date | None = None) -> models.EosCase:
     """يفتح حالة نهاية خدمة، أو يرفع 409 إن تعذّر.
 
     ``source_request_id`` هو **الرابط** الذي يطلبه البند: من يقرأ الحالة
@@ -60,6 +92,8 @@ def open_case(db, emp: models.Employee, *, termination_date: date, reason: str,
         termination_date=termination_date, termination_reason=reason,
         initiated_by=actor_user_id, initiated_at=now,
         source_request_id=source_request_id,
+        notice_served=notice_served,
+        notice_served_date=notice_served_date if notice_served else None,
     )
     db.add(case)
     db.flush()

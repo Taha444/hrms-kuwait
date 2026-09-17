@@ -570,6 +570,12 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
 INACTIVE_EMPLOYMENT = ("archived", "terminated", "resigned", "retired")
 
 
+#: **قرارُ المالك (2026-09-17)**: الحالاتُ التي تبقى على الرواتب — الخدمةُ قائمة.
+#: «في إجازة» كانت تُسقط راتبَ الشهر كاملًا والإجازةُ السنوية مدفوعة؛ و«موقوف»
+#: يُدفع وخصمُ الإيقاف بلا أجرٍ يُسجَّل خصمًا صريحًا بقرار، لا بإسقاط الموظف.
+PAYABLE_STATUSES = ("active", "vacation", "suspended")
+
+
 def employment_live_clause():
     """شرطُ SQL: الحسابُ **بلا ملف موظف**، أو لموظفٍ خدمتُه قائمة.
 
