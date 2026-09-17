@@ -290,6 +290,21 @@ def test_templates_exists_endpoint(client):
     assert data == {"NO-SUCH-TEMPLATE": False, "ANOTHER-NOPE": False}
 
 
+
+def _employee_ready_for_gov_contract(client, headers) -> int:
+    """موظٌف ملفُّه مكتمٌل لنموذج الهيئة.
+
+    اختباراتٌ أخرى تُنشئ موظفين بلا جواز، و«أوُّل موظٍف في القائمة» يتغيّر
+    بترتيب التشغيل — فيُرفَض العقُد بحقٍّ (النموذج فيه خانُة جواز) ويسقط
+    اختباٌر يقيس آليَة الإصدار لا اكتماَل البيانات.
+    """
+    rows = client.get("/api/employees", headers=headers).json()
+    for e in rows:
+        if all(e.get(k) for k in ("name", "civil_id", "nationality",
+                                  "passport_number", "job_title")):
+            return e["id"]
+    return rows[0]["id"]
+
 def test_hire_contract_generate_gov_and_company(client):
     """R9 §4 — توليد عقدي التعيين يُنتج issued docs مع reference + checksum."""
     _seed_contract_template(client, "GOV-CONTRACT-HIRE")
@@ -297,9 +312,7 @@ def test_hire_contract_generate_gov_and_company(client):
 
     mgr = auth_headers(login(client, *MGR))
     # اختر أول موظف من الشركة
-    emps = client.get("/api/employees", headers=mgr).json()
-    assert emps
-    emp_id = emps[0]["id"]
+    emp_id = _employee_ready_for_gov_contract(client, mgr)
 
     r_gov = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
     assert r_gov.status_code == 200, r_gov.text
@@ -337,7 +350,7 @@ def test_hire_contract_pdf_format(client):
 def test_hire_contract_fails_without_template(client):
     """404 لو القالب مش موجود — يُخبر الأدمن بالخطوة التالية."""
     mgr = auth_headers(login(client, *MGR))
-    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+    emp_id = _employee_ready_for_gov_contract(client, mgr)
     # تأكد قالب "NO-SUCH-CODE" غير موجود — نستدعي endpoint يبحث بكود مختلف
     # (نتحقق من رسالة GOV-CONTRACT-HIRE لو ما اتبذرش)
     # إن كان اتبذر في تست سابق، انسخ اسم مختلف
@@ -2171,29 +2184,27 @@ def test_gov_contract_autofills_employee_fields(client):
     """P0-#12 — العقد الحكومي يُمَلأ بالحقول الموثوقة من ملف الموظف."""
     _seed_contract_template(client, "GOV-CONTRACT-HIRE")
     mgr = auth_headers(login(client, *MGR))
-    emps = client.get("/api/employees", headers=mgr).json()
-    if not emps:
-        return
-    emp = emps[0]
-    emp_id = emp["id"]
+    emp_id = _employee_ready_for_gov_contract(client, mgr)
+    emp = next(e for e in client.get("/api/employees", headers=mgr).json()
+               if e["id"] == emp_id)
 
-    r = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    html = body["html"]
+    # العقُد الحكوميُّ صار ورقَة الهيئة نفسها (قرار المالك 2026-09-17) —
+    # فتُقرأ القيُم من الـPDF لا من HTML.
+    r = client.post(f"/api/employees/{emp_id}/gov-contract/generate?format=pdf",
+                    headers=mgr)
+    assert r.status_code == 200, r.text[:300]
+    import io as _io
 
-    # بيانات الموظف الأساسية لازم تظهر في الـHTML
-    if emp.get("name"):
-        assert emp["name"] in html, "employee name should appear in generated contract"
+    from pypdf import PdfReader as _R
+    text = "\n".join((p.extract_text() or "") for p in _R(_io.BytesIO(r.content)).pages)
     if emp.get("civil_id"):
-        assert emp["civil_id"] in html, "civil_id should appear"
-    if emp.get("job_title"):
-        assert emp["job_title"] in html, "job_title should appear"
-
-    # metadata من الـissued document
-    assert body["reference_no"].startswith("GOV-CONTRACT-HIRE/")
-    assert len(body["checksum_sha256"]) == 64
-    assert body["document_id"] > 0
+        assert emp["civil_id"] in text, "civil_id should appear"
+    # metadata من الـissued document (الجواب الافتراضي بيانات لا ملف)
+    meta = client.post(f"/api/employees/{emp_id}/gov-contract/generate",
+                       headers=mgr).json()
+    assert meta["reference_no"].startswith("GOV-CONTRACT-HIRE/")
+    assert len(meta["checksum_sha256"]) == 64
+    assert meta["document_id"] > 0
 
 
 def test_gov_contract_pdf_and_html_both_generate(client):
@@ -2227,7 +2238,7 @@ def test_contract_regeneration_bumps_version_single_current(client):
 
     _seed_contract_template(client, "GOV-CONTRACT-HIRE")
     mgr = auth_headers(login(client, *MGR))
-    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+    emp_id = _employee_ready_for_gov_contract(client, mgr)
 
     r1 = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
     assert r1.status_code == 200
@@ -2264,7 +2275,7 @@ def test_gov_contract_saves_as_issued_document(client):
     """P0-#12 — التوليد يحفظ صف Document بـis_issued=True مع كل الـmetadata."""
     _seed_contract_template(client, "GOV-CONTRACT-HIRE")
     mgr = auth_headers(login(client, *MGR))
-    emp_id = client.get("/api/employees", headers=mgr).json()[0]["id"]
+    emp_id = _employee_ready_for_gov_contract(client, mgr)
 
     r = client.post(f"/api/employees/{emp_id}/gov-contract/generate", headers=mgr)
     doc_id = r.json()["document_id"]

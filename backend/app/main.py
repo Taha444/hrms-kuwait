@@ -351,7 +351,9 @@ def _redact(results: dict) -> dict:
         if isinstance(body, dict):
             slim = {"status": body.get("status")}
             # قيمتان لا تكشفان شيًئا ويحتاجهما من ينشر
-            for keep in ("up_to_date", "can_render_pdf"):
+            # و«بصمُة نموذج الهيئة» منها: من ينشر يحتاج أن يرى أن الورقة
+            # الرسمية لم تُبدَّل، وهي قيمٌة لا تكشف عن الشركة شيًئا.
+            for keep in ("up_to_date", "can_render_pdf", "form_fingerprint_ok"):
                 if keep in body:
                     slim[keep] = body[keep]
             checks[name] = slim
@@ -454,12 +456,11 @@ def health_deep(request: Request):
     # 3) Scheduler
     results["checks"]["scheduler"] = {"status": "ok" if settings.scheduler_enabled else "disabled"}
 
-    # GC-09 — جاهزية إخراج العقد الحكومي. لا تُسقط الفحص: النظام يعمل
-    # بلا LibreOffice ويسلّم docx. لكنها تُعرَض لأن الحال الأسوأ — أداة
-    # موجودة بلا خطوط عربية — يُنتج عقًدا بمربّعات فارغة يبدو توليده ناجًحا،
-    # ولا يُكتشف إلا حين يفتح موظف الهيئة الورقة.
+    # GC-09 — جاهزية إخراج العقد الحكومي: نموذج الهيئة ببصمته، والخطّ
+    # العربي المضمَّن. والحال الأسوأ — توليٌد يبدو ناجًحا وورقٌة بمربّعات
+    # فارغة أو بنموذج مبدَّل — لا يُكتشف إلا حين يفتحها موظف الهيئة.
     try:
-        from .gov_contract_docx import environment_report
+        from .gov_contract_form import environment_report
         results["checks"]["gov_contract"] = environment_report()
     except Exception as e:
         results["checks"]["gov_contract"] = {"status": "unknown", "error": str(e)[:200]}

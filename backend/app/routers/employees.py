@@ -1685,18 +1685,86 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
     }
 
 
+def _issue_gov_contract(db: Session, user: models.User, request: Request,
+                        emp: models.Employee, format: str = "pdf"):
+    """يملأ نموذج الهيئة ويحفظه مستندًا صادرًا على الموظف."""
+    import hashlib
+
+    from .. import gov_contract_data, gov_contract_form
+    from .templates import _generate_reference_no, _resolve_authoritative_data
+
+    company = db.get(models.Company, emp.company_id)
+    ctx = _resolve_authoritative_data(db, emp, extras={})
+    ctx.update(gov_contract_data.contract_context(db, emp, company))
+
+    content_bytes, ext, mime, missing, snap = gov_contract_form.generate(ctx)
+    # GC-08 — خانٌة فارغة في ورقة تُقدَّم للهيئة إقراٌر مطبوع بأن البيانات
+    # ناقصة. فيُسمّى الناقصُ ولا يُولَّد.
+    if missing:
+        raise HTTPException(status_code=400, detail=(
+            "تعذّر توليد العقد الحكومي — بيانات ناقصة في ملف الموظف أو الشركة: "
+            + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
+
+    tpl = db.scalar(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.code == "GOV-CONTRACT-HIRE",
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+    ))
+    template_version = (tpl.version if tpl else 1) or 1
+    reference_no = _generate_reference_no(db, "GOV-CONTRACT-HIRE", emp.company_id,
+                                          template_version)
+    checksum = hashlib.sha256(content_bytes).hexdigest()
+    safe_ref = reference_no.replace("/", "_")
+    fpath = save_at_key(content_bytes, f"hire_contracts/{safe_ref}.{ext}")
+
+    doc_type_code = f"gov_contract_hire_{emp.id}"
+    prev = db.scalars(select(models.Document).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == emp.id,
+        models.Document.document_type_code == doc_type_code,
+    )).all()
+    next_version = max((d.version for d in prev), default=0) + 1
+    for d in prev:
+        d.is_current = False
+    doc = models.Document(
+        company_id=emp.company_id, entity_type="employee", entity_id=emp.id,
+        document_type_code=doc_type_code,
+        title=f"العقد الحكومي — تعيين — {emp.name}",
+        file_path=fpath, mime=mime,
+        version=next_version, is_current=True, uploaded_by=user.id,
+        is_issued=True, reference_no=reference_no,
+        template_version=template_version, checksum_sha256=checksum,
+        generated_at=datetime.utcnow(), generated_by=user.id,
+    )
+    db.add(doc)
+    db.flush()
+    audit(db, user, "generate_hire_contract", "employee", emp.id,
+          detail=(f"GOV-CONTRACT-HIRE → {reference_no} (pdf, "
+                  f"{snap.get('contract_term')}, أجر {snap.get('wage')} "
+                  f"من {snap.get('wage_source') or '-'})"),
+          request=request, company_id=emp.company_id)
+    # ``format=pdf`` يُنزّل الورقة، وغيرُه يعيد بياناتِ الإصدار (المرجع
+    # والبصمة) — وهو ما كان يعود به هذا المسار قبل النموذج الرسمي.
+    if (format or "").lower() == "pdf":
+        return file_response(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
+    return {"ok": True, "document_id": doc.id, "reference_no": reference_no,
+            "checksum_sha256": checksum, "template_code": "GOV-CONTRACT-HIRE",
+            "contract_term": snap.get("contract_term")}
+
+
 @router.post("/{emp_id}/gov-contract/generate")
 def generate_employee_gov_contract(emp_id: int, request: Request,
-                                   format: str = "html",
+                                   format: str = "json",
                                    user: models.User = Depends(require_perm("upload_documents")),
                                    db: Session = Depends(get_db)):
-    """R9 — يُولّد العقد الحكومي للتعيين (GOV-CONTRACT-HIRE) بيانات الموظف تلقائيًا.
-    يُحفظ كـissued document على الموظف مع reference_no وchecksum.
-    format=pdf يُعيد FileResponse مباشرة (R9 §5)."""
+    """العقد الحكومي للتعيين — **من نموذج الهيئة نفسه** (قرار المالك 2026-09-17).
+
+    كان هذا المسار يبني HTML يقلّد النموذج بينما مسارُ التجديد يملأ النموذج
+    الرسمي: ورقٌة واحدة تُقدَّم للهيئة بشكلين حسب الباب الذي خرجت منه.
+    فصارا يقرآن الملفَ نفسه (``gov_contract_form``) والحقولَ نفسها
+    (``gov_contract_data``).
+    """
     emp = _get_emp(db, user, emp_id)
-    result = _generate_hire_contract(db, user, request, emp,
-                                     "GOV-CONTRACT-HIRE", "العقد الحكومي — تعيين",
-                                     format=format)
+    result = _issue_gov_contract(db, user, request, emp, format=format)
     db.commit()
     return result
 

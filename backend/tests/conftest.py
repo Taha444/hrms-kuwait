@@ -41,15 +41,11 @@ def login(client, civil_id, password):
 
 @pytest.fixture(autouse=True)
 def _fresh_environment_report():
-    """فحصُ بيئة العقد مُخزَّنٌ لساعة في التشغيل — والاختباراتُ تُبدّل ما يقرؤه.
-
-    فذاكرةٌ من اختبارٍ سابق كانت ستُعيد نتيجته لمن بعده.
+    """كان فحصُ بيئة العقد مُخزًَّنا لساعة (مولّد الـdocx). والمولّدُ الحالي
+    يقرأ الملفَّ والخطَّ في كل نداء، فلا ذاكرة تُنظَّف — ويبقى التركيبُ
+    ليُعلَم أن الشرط كان قائًما ولم يُنسَ.
     """
-    from app import gov_contract_docx
-
-    gov_contract_docx._ENV_CACHE = None
     yield
-    gov_contract_docx._ENV_CACHE = None
 
 
 def auth_headers(token):

@@ -103,7 +103,10 @@ def _issued(emp_id: int) -> int:
 
 
 def test_a_hire_contract_missing_a_used_field_is_refused(client):
-    """**ولا مستنَد يُحفَظ** — والرسالُة تسمّي الناقَص بالعربية كما في التجديد."""
+    """**ولا مستنَد يُحفَظ** — والرسالُة تسمّي الناقَص بالعربية كما في التجديد.
+
+    والجنسيُة خانٌة في نموذج الهيئة، فغيابُها يوقف الإصدار.
+    """
     emp_id, nat, tpl_id = _setup(
         "<p>{{employee_name}} — {{civil_id}} — {{nationality}}</p>")
     try:
@@ -117,17 +120,17 @@ def test_a_hire_contract_missing_a_used_field_is_refused(client):
         _teardown(emp_id, nat, tpl_id)
 
 
-def test_a_field_the_template_does_not_use_is_not_demanded(client):
-    """**والقائمُة لا تمنع قالًبا لا يطلبها** — فالجنسيُة الفارغة لا تعني شيًئا هنا."""
-    emp_id, nat, tpl_id = _setup("<p>{{employee_name}} — {{civil_id}}</p>")
-    try:
-        _blank_nationality(emp_id)
-        r = client.post(f"/api/employees/{emp_id}/gov-contract/generate",
-                        headers=auth_headers(login(client, *HR1)))
-        assert r.status_code == 200, (r.status_code, r.text[:250])
-        assert _issued(emp_id) == 1, _issued(emp_id)
-    finally:
-        _teardown(emp_id, nat, tpl_id)
+def test_every_required_field_has_a_box_on_the_official_form():
+    """**والقائمُة قائمُة الورقة**: كلُّ حقٍل واجٍب له خانٌة تُطبع فيه.
+
+    كانت القائمُة تتبع مواضَع القالب (``{{...}}``) لأن العقَد كان HTML يكتبه
+    المالك. وصار العقُد نموذَج الهيئة نفسه (قرار المالك 2026-09-17) —
+    فالواجُب ما تطلبه الورقُة، وكلُّ واجٍب يُطبع في خانته.
+    """
+    from app import gov_contract_form as F
+
+    for key in F.REQUIRED:
+        assert key in F.BOXES or f"{key}_en" in F.BOXES, key
 
 
 def test_the_two_paths_read_one_list():
@@ -136,6 +139,6 @@ def test_the_two_paths_read_one_list():
 
     from app.routers import employees, renewals
 
-    assert "GOV_CONTRACT_REQUIRED_FIELDS" in inspect.getsource(
-        employees._generate_hire_contract)
-    assert "GOV_CONTRACT_REQUIRED_FIELDS" in inspect.getsource(renewals)
+    assert "gov_contract_form.generate" in inspect.getsource(
+        employees._issue_gov_contract)
+    assert "gov_contract_form.generate" in inspect.getsource(renewals)

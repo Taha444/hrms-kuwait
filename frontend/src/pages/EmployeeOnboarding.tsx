@@ -257,11 +257,14 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
       .then((r) => setHireTplExists(r.data))
       .catch(() => setHireTplExists(null));
   }, []);
-  const generateHireContract = async (kind: "gov" | "company", format: "html" | "pdf" = "html") => {
+  const generateHireContract = async (kind: "gov" | "company", fmt: "html" | "pdf" = "html") => {
+    let format = fmt;
     if (!savedEmp?.id) return;
     setErr(""); setBusy(true);
     try {
       const endpoint = kind === "gov" ? "gov-contract/generate" : "company-contract/generate";
+      // العقدُ الحكوميُّ ورقُة الهيئة نفسها: PDF دائًما.
+      if (kind === "gov") format = "pdf";
       if (format === "pdf") {
         // R9 §5 — نطلب PDF ونحفظه كملف
         const r = await api.post(`/employees/${savedEmp.id}/${endpoint}?format=pdf`, null,
@@ -785,13 +788,9 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                 </p>
                 {/* R9 §11 — تحذير عند غياب قالب */}
                 {hireTplExists && (
-                  (hireTplExists["COMPANY-CONTRACT-HIRE"] === false ||
-                   hireTplExists["GOV-CONTRACT-HIRE"] === false) && (
+                  (hireTplExists["COMPANY-CONTRACT-HIRE"] === false) && (
                     <div className="err" style={{ fontSize: 12, marginBottom: 8 }}>
-                      ⚠ {hireTplExists["COMPANY-CONTRACT-HIRE"] === false && <code>COMPANY-CONTRACT-HIRE</code>}
-                      {hireTplExists["COMPANY-CONTRACT-HIRE"] === false && hireTplExists["GOV-CONTRACT-HIRE"] === false && " · "}
-                      {hireTplExists["GOV-CONTRACT-HIRE"] === false && <code>GOV-CONTRACT-HIRE</code>}
-                      : {isEn ? "template(s) missing — auto-generate disabled. Ask admin to create in /templates."
+                      ⚠ <code>COMPANY-CONTRACT-HIRE</code>: {isEn ? "template(s) missing — auto-generate disabled. Ask admin to create in /templates."
                              : "قالب/قوالب غير موجودة — التوليد التلقائي معطّل. اطلب من الإدارة إنشائها في /templates."}
                     </div>
                   )
@@ -810,18 +809,11 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                           className="ghost" title="PDF">
                     📄 PDF
                   </button>
-                  <button onClick={() => generateHireContract("gov", "html")}
-                          disabled={busy || (hireTplExists?.["GOV-CONTRACT-HIRE"] === false)}
-                          style={{
-                            background: (hireTplExists?.["GOV-CONTRACT-HIRE"] === false) ? "#999" : "#0a7f3f",
-                            cursor: (hireTplExists?.["GOV-CONTRACT-HIRE"] === false) ? "not-allowed" : "pointer",
-                          }}>
-                    {isEn ? "🖨️ Government Contract (HTML)" : "🖨️ العقد الحكومي (HTML)"}
-                  </button>
+                  {/* العقدُ الحكوميُّ يُملأ على نموذج الهيئة نفسه — PDF لا HTML. */}
                   <button onClick={() => generateHireContract("gov", "pdf")}
-                          disabled={busy || (hireTplExists?.["GOV-CONTRACT-HIRE"] === false)}
-                          className="ghost" title="PDF">
-                    📄 PDF
+                          disabled={busy}
+                          style={{ background: "#0a7f3f" }}>
+                    {isEn ? "📄 Government contract (official form)" : "📄 العقد الحكومي (نموذج الهيئة)"}
                   </button>
                 </div>
                 {contractsGenerated.length > 0 && (

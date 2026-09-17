@@ -19,7 +19,6 @@ import struct
 
 import pytest
 
-from app import gov_contract_docx
 from app.font_coverage import (ARABIC_PROBES, find_arabic_fonts,
                                font_supports_arabic)
 
@@ -117,104 +116,30 @@ def test_a_corrupt_file_reads_as_no_not_as_yes(tmp_path):
 # ---------------------------------------------------------------------------
 # أثر ذلك على فحص الجاهزية الذي يقرأه المسلِّم
 # ---------------------------------------------------------------------------
-def test_report_never_lists_a_font_it_did_not_verify(monkeypatch):
-    """كل اسم يُعرض دليًلا يجب أن يجتاز القياس نفسه.
+def test_the_bundled_font_really_carries_arabic():
+    """الخطُّ المضمَّن مع النموذج هو ما يُرسَم به — فيُقاس لا يُفترَض."""
+    from app import gov_contract_form as F
 
-    تقرير الإنتاج سقط في هذا: عرض خمسة أسماء لا يجتاز أيٌّ منها.
-    """
-    report = gov_contract_docx.environment_report()
-    for name in report["arabic_fonts_found"]:
-        assert any(font_supports_arabic(p) for p in _system_paths(name)), (
-            f"«{name}» عُرض دليًلا على العربية وهو لا يحملها"
-        )
+    assert F.FONT.exists(), "الخطُّ العربيُّ المضمَّن مفقود"
+    assert font_supports_arabic(F.FONT), "الخطُّ المضمَّن لا يحمل العربية"
 
 
-def _system_paths(name: str):
-    from pathlib import Path
-    for root in ("/usr/share/fonts", "/usr/local/share/fonts",
-                 r"C:\Windows\Fonts"):
-        d = Path(root)
-        if d.is_dir():
-            yield from d.rglob(name)
+def test_report_is_not_ok_without_the_font(monkeypatch, tmp_path):
+    """بلا خطٍّ عربيّ تخرج الورقةُ بمربّعات — و«جاهز» هنا كذب."""
+    from app import gov_contract_form as F
+
+    monkeypatch.setattr(F, "FONT", tmp_path / "missing.ttf")
+    r = F.environment_report()
+    assert r["status"] == "degraded" and r["can_render_pdf"] is False
 
 
-def test_engine_without_arabic_fonts_is_not_ok(monkeypatch):
-    """محرّك بلا خطوط: ``ok`` هنا تعني ورقة بمربّعات فارغة."""
-    monkeypatch.setattr(gov_contract_docx, "soffice_path",
-                        lambda: "/usr/bin/soffice")
-    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts", lambda: [])
-    r = gov_contract_docx.environment_report()
-    assert r["status"] == "degraded"
-    assert r["can_render_pdf"] is False, (
-        "«يقدر» على إخراج PDF غير مقروء ليست قدرة — والمسلِّم يقرأها جاهزية"
-    )
-    assert "مربّعات" in r["note"]
+def test_report_is_not_ok_when_the_official_form_changes(monkeypatch, tmp_path):
+    """وبصمُة النموذج: من بدّل ورقَة الهيئة يوقف التوليد، لا يمرّ صامًتا."""
+    from app import gov_contract_form as F
 
-
-def test_the_note_does_not_deny_an_installed_engine(monkeypatch):
-    """المحرّك مثبَّت والخطوط ناقصة: لا يُقال «غير مثبَّت».
-
-    فرعُ الرسالة كان معلًَّقا بـ``can_pdf``، فلمّا صار معناه «يُخرج ورقة
-    مقروءة» صار ينفي وجود محرّك قائم ويرسل من يقرأ إلى إصلاح غير العطل.
-    """
-    monkeypatch.setattr(gov_contract_docx, "soffice_path",
-                        lambda: "/usr/bin/soffice")
-    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts", lambda: [])
-    note = gov_contract_docx.environment_report()["note"]
-    assert "غير مثبَّت" not in note, f"نفى محرًّكا موجوًدا: {note}"
-
-
-def test_fonts_without_engine_is_degraded_too(monkeypatch):
-    """خطوط بلا محرّك: يُسلَّم docx — حالة معروفة لا «جاهز»."""
-    monkeypatch.setattr(gov_contract_docx, "soffice_path", lambda: None)
-    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts",
-                        lambda: ["NotoNaskhArabic-Regular.ttf"])
-    r = gov_contract_docx.environment_report()
-    assert r["status"] == "degraded"
-    assert r["can_render_pdf"] is False
-
-
-def test_ready_only_when_both_are_present(monkeypatch):
-    """والحالة الوحيدة التي تُقال فيها «جاهز»."""
-    monkeypatch.setattr(gov_contract_docx, "soffice_path",
-                        lambda: "/usr/bin/soffice")
-    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts",
-                        lambda: ["NotoNaskhArabic-Regular.ttf"])
-    r = gov_contract_docx.environment_report()
-    assert r["status"] == "ok"
-    assert r["can_render_pdf"] is True
-
-
-# ---------------------------------------------------------------------------
-# وكلفةُ الفحص — كان يقرأ مئاتِ الميغابايتات في كل نداء صحة
-# ---------------------------------------------------------------------------
-
-def test_the_scan_reads_arabic_named_files_first(tmp_path, monkeypatch):
-    """**~٢٤٫٥ ثانية لكل نداء على الإنتاج.** الترتيبُ كان أبجديًا والقراءةُ كاملة،
-    وخطوطُ CJK الكبيرة تسبق «Arabic». فيُقاس عددُ الملفات المقروءة: مئةُ ملفٍّ
-    قبله أبجديًا، والخطُّ العربيُّ يُقرأ أولًا.
-    """
-    from app import font_coverage as FC
-
-    for i in range(100):
-        (tmp_path / f"AAA-NotoSansCJK-{i:03d}.ttc").write_bytes(LATIN_ONLY_FONT)
-    (tmp_path / "ZZZ-NotoNaskhArabic-Regular.ttf").write_bytes(ARABIC_FONT)
-
-    reads = []
-    real = FC.font_supports_arabic
-    monkeypatch.setattr(FC, "font_supports_arabic",
-                        lambda p: reads.append(__import__("pathlib").Path(p).name) or real(p))
-    found = FC.find_arabic_fonts([str(tmp_path)], limit=1)
-    assert found == ["ZZZ-NotoNaskhArabic-Regular.ttf"], found
-    assert len(reads) == 1, f"قُرئ {len(reads)} ملفًّا قبل الخطّ العربي"
-
-
-def test_the_environment_report_is_cached_between_health_calls(monkeypatch):
-    """والخطوطُ لا تتغيّر بين نشرتين — فلا يُعاد المسحُ في كل نداء صحة."""
-    calls = []
-    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts",
-                        lambda: calls.append(1) or ["x.ttf"])
-    monkeypatch.setattr(gov_contract_docx, "soffice_path", lambda: "/usr/bin/soffice")
-    gov_contract_docx.environment_report()
-    gov_contract_docx.environment_report()
-    assert len(calls) == 1, f"مُسحت الخطوطُ {len(calls)} مرّات"
+    fake = tmp_path / "other.pdf"
+    fake.write_bytes(b"%PDF-1.4 not the official form")
+    monkeypatch.setattr(F, "ASSET", fake)
+    r = F.environment_report()
+    assert r["status"] == "degraded" and r["form_fingerprint_ok"] is False
+    assert "بصمت" in r["note"]
