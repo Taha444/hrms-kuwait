@@ -2010,6 +2010,8 @@ def test_wf09_approved_request_actually_changes_the_record(client):
     })
     assert created.status_code in (200, 201), created.text
     req_id = created.json()["id"]
+    from tests.conftest import attach_file
+    attach_file(client, emp_hdr, req_id)
 
     status = _drive_to_completion(client, req_id)
     assert status == "completed", f"الطلب انتهى بحالة {status}"

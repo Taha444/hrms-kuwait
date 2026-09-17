@@ -93,6 +93,11 @@ export default function RequestDetail() {
             )}
             {/* QA-07 — تفاصيل مقروءة من الـschema بدل JSON خام */}
             <PayloadView typeCode={req.type} payload={req.payload} />
+            {(req.missing_attachments || []).length > 0 && (
+              <div className="err" role="alert" style={{ marginTop: 8 }}>
+                مرفقٌ مطلوبٌ لم يُرفع بعد: {req.missing_attachments.join("، ")} — لا يُعتمد الطلب قبله.
+              </div>
+            )}
             {req.leave_days_warning && (
               <div className="err" role="alert" style={{ marginTop: 8 }}>{req.leave_days_warning}</div>
             )}

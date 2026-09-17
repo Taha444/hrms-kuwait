@@ -39,8 +39,38 @@ def login(client, civil_id, password):
     return r.json()["access_token"]
 
 
+@pytest.fixture(autouse=True)
+def _fresh_environment_report():
+    """فحصُ بيئة العقد مُخزَّنٌ لساعة في التشغيل — والاختباراتُ تُبدّل ما يقرؤه.
+
+    فذاكرةٌ من اختبارٍ سابق كانت ستُعيد نتيجته لمن بعده.
+    """
+    from app import gov_contract_docx
+
+    gov_contract_docx._ENV_CACHE = None
+    yield
+    gov_contract_docx._ENV_CACHE = None
+
+
 def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def attach_file(client, headers, req_id: int):
+    """يرفع ملفًّا حقيقيًا بنوع ``attachment`` — كما يفعل صاحبُ الطلب من صفحته.
+
+    المرفقُ المطلوب صار ملفًّا قبل الاعتماد لا اسمًا يُدّعى في الحمولة
+    (``test_zzz_required_attachments``)؛ فالاختباراتُ التي تعتمد نوعًا يستوجبه
+    ترفعه كما يرفعه المستخدم.
+    """
+    import io as _io
+
+    r = client.post(f"/api/requests/{req_id}/documents", headers=headers,
+                    data={"kind": "attachment"},
+                    files={"file": ("attachment.pdf", _io.BytesIO(b"%PDF-1.4 test"),
+                                    "application/pdf")})
+    assert r.status_code in (200, 201), r.text[:200]
+    return r
 
 
 def purge(db, table_name: str, ids) -> None:

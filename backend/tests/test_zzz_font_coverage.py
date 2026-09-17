@@ -183,3 +183,38 @@ def test_ready_only_when_both_are_present(monkeypatch):
     r = gov_contract_docx.environment_report()
     assert r["status"] == "ok"
     assert r["can_render_pdf"] is True
+
+
+# ---------------------------------------------------------------------------
+# وكلفةُ الفحص — كان يقرأ مئاتِ الميغابايتات في كل نداء صحة
+# ---------------------------------------------------------------------------
+
+def test_the_scan_reads_arabic_named_files_first(tmp_path, monkeypatch):
+    """**~٢٤٫٥ ثانية لكل نداء على الإنتاج.** الترتيبُ كان أبجديًا والقراءةُ كاملة،
+    وخطوطُ CJK الكبيرة تسبق «Arabic». فيُقاس عددُ الملفات المقروءة: مئةُ ملفٍّ
+    قبله أبجديًا، والخطُّ العربيُّ يُقرأ أولًا.
+    """
+    from app import font_coverage as FC
+
+    for i in range(100):
+        (tmp_path / f"AAA-NotoSansCJK-{i:03d}.ttc").write_bytes(LATIN_ONLY_FONT)
+    (tmp_path / "ZZZ-NotoNaskhArabic-Regular.ttf").write_bytes(ARABIC_FONT)
+
+    reads = []
+    real = FC.font_supports_arabic
+    monkeypatch.setattr(FC, "font_supports_arabic",
+                        lambda p: reads.append(__import__("pathlib").Path(p).name) or real(p))
+    found = FC.find_arabic_fonts([str(tmp_path)], limit=1)
+    assert found == ["ZZZ-NotoNaskhArabic-Regular.ttf"], found
+    assert len(reads) == 1, f"قُرئ {len(reads)} ملفًّا قبل الخطّ العربي"
+
+
+def test_the_environment_report_is_cached_between_health_calls(monkeypatch):
+    """والخطوطُ لا تتغيّر بين نشرتين — فلا يُعاد المسحُ في كل نداء صحة."""
+    calls = []
+    monkeypatch.setattr(gov_contract_docx, "find_arabic_fonts",
+                        lambda: calls.append(1) or ["x.ttf"])
+    monkeypatch.setattr(gov_contract_docx, "soffice_path", lambda: "/usr/bin/soffice")
+    gov_contract_docx.environment_report()
+    gov_contract_docx.environment_report()
+    assert len(calls) == 1, f"مُسحت الخطوطُ {len(calls)} مرّات"

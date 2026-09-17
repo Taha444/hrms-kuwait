@@ -156,6 +156,17 @@ def font_supports_arabic(path: str | Path) -> bool:
         return False
 
 
+#: أجزاءُ أسماءٍ تدلّ على خطٍّ عربيٍّ غالبًا — للترتيب وحده لا للحكم.
+_ARABIC_NAME_HINTS = ("arab", "kufi", "naskh", "amiri", "tajawal", "cairo",
+                      "scheherazade", "lateef", "dejavu", "freefont", "arial",
+                      "tahoma", "times")
+
+
+def _looks_arabic(name: str) -> bool:
+    n = name.lower()
+    return any(h in n for h in _ARABIC_NAME_HINTS)
+
+
 def find_arabic_fonts(roots: list[str] | None = None,
                       limit: int = 5) -> list[str]:
     """أسماء الخطوط المثبَّتة التي تدعم العربية **فعًلا**.
@@ -171,9 +182,15 @@ def find_arabic_fonts(roots: list[str] | None = None,
         if not d.is_dir():
             continue
         try:
-            for f in sorted(d.rglob("*")):
-                if f.suffix.lower() not in _FONT_SUFFIXES:
-                    continue
+            # **والمرشَّحُ أولًا.** كان الترتيبُ أبجديًا ويُقرأ كلُّ ملفٍّ بكامله
+            # حتى يُعثر على خمسة — وفي صورة Debian بخطوط Noto آلافُ الملفات،
+            # منها خطوطُ CJK بعشرين ميغابايت تسبق «Arabic» في الأبجدية. فكان
+            # فحصُ الصحة يقرأ مئاتِ الميغابايتات في كل نداء (~٢٤٫٥ ثانية على
+            # الإنتاج)، ولا يظهر على Windows حيث الخطوطُ العربيةُ مبكرة.
+            # والحكمُ لا يتغيّر: الملفُّ المرشَّحُ يُقرأ ``cmap``ـه كغيره.
+            files = [f for f in d.rglob("*") if f.suffix.lower() in _FONT_SUFFIXES]
+            files.sort(key=lambda f: (not _looks_arabic(f.name), f.stat().st_size, str(f)))
+            for f in files:
                 if font_supports_arabic(f):
                     out.append(f.name)
                     if len(out) >= limit:

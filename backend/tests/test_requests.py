@@ -64,6 +64,8 @@ def test_accountant_can_decide_approval_stage_assigned_to_them(client):
         "payload_json": {"payroll_period": "2026-06", "reason": "خطأ حساب",
                          "_attachments": ["payslip_copy"]},
     }).json()["id"]
+    from tests.conftest import attach_file
+    attach_file(client, auth_headers(emp), rid)
     acc = login(client, "100000000007", "account123")
     r = client.post(f"/api/requests/{rid}/decide", headers=auth_headers(acc), json={"decision": "approved"})
     assert r.status_code == 200, r.text

@@ -1187,6 +1187,9 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         "no_actions_reason": request_actions.why_not(db, req, viewer),
         # **عددُ الأيام المُعلَن يُقارَن بما يُعفيه المسيّر** — لا يُفرض.
         "leave_days_warning": (None if is_own else _leave_days_warning(db, req)),
+        # والمرفقُ المطلوب الذي لم يُرفع — يراه المعتمِد قبل أن يضغط «اعتماد».
+        "missing_attachments": (workflow.missing_attachments(db, req)
+                                if req.status == "pending" else []),
         # P11-34 — ومن يُقال له «أعد التطبيق» يحتاج زًرا يفعله.
         #
         # ``retry-apply`` بُنيت لتفتح مخرج ``apply_failed``، ثم بقيت بلا

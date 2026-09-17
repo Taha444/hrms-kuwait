@@ -910,6 +910,30 @@ def get_schema(code: str) -> dict | None:
     return None
 
 
+#: أسماءُ المرفقات بالعربية — رسالةٌ تسمّي ``medical_report`` تخاطب الجدول.
+ATTACHMENT_LABELS: dict[str, str] = {
+    "medical_report": "التقرير الطبي", "medical_note": "الإفادة الطبية",
+    "supporting_doc": "المستند الداعم", "receipt": "الإيصال",
+    "passport_copy": "صورة الجواز", "civil_id_copy": "صورة البطاقة المدنية",
+    "passport_scan": "صورة الجواز", "civil_id_scan": "صورة البطاقة المدنية",
+    "bank_letter": "كتاب البنك", "payslip_copy": "صورة قسيمة الراتب",
+}
+
+
+def required_attachments(code: str, payload: dict | None) -> set[str]:
+    """المرفقاتُ التي يستوجبها النوعُ بحمولته — الدائمةُ والشرطية معًا."""
+    s = get_schema(code)
+    if not s:
+        return set()
+    payload = payload or {}
+    out = set((s.get("attachments") or {}).get("required") or [])
+    for cond in s.get("conditional") or []:
+        when = cond.get("when") or {}
+        if all(payload.get(k) == v for k, v in when.items()):
+            out |= set(cond.get("require_attachments") or [])
+    return out
+
+
 def validate_payload(code: str, payload: dict, strict: bool | None = None) -> list[str]:
     """يتحقق من الـpayload وفق الـschema — يعيد قائمة أخطاء (فارغة = نجاح).
     الأخطاء بصيغة "{field}: {message}" للعرض بجانب الحقل الصحيح في الواجهة.
@@ -935,24 +959,13 @@ def validate_payload(code: str, payload: dict, strict: bool | None = None) -> li
     # القيود الشرطية: يُضاف "مطلوب" لحقول conditional.require
     # نفس دالة المطابقة التي يستخدمها _missing_required_fields — لا استنساخ.
     dynamic_required, hidden = conditional_requirements(s, payload)
-    dynamic_required_attachments: set[str] = set()
-    for cond in s.get("conditional") or []:
-        when = cond.get("when") or {}
-        if all(payload.get(k) == v for k, v in when.items()):
-            # R7-E — مرفقات مطلوبة شرطيًا (مثلاً "leave sick" → medical_report)
-            for att in cond.get("require_attachments") or []:
-                dynamic_required_attachments.add(att)
-
-    # التحقق من المرفقات دائمًا — لا يعتمد على strict_validation
-    required_atts = set((s.get("attachments") or {}).get("required") or []) \
-                   | dynamic_required_attachments
-    if required_atts:
-        uploaded = set(payload.get("_attachments") or [])
-        missing_atts = required_atts - uploaded
-        if missing_atts:
-            errors.append(
-                f"_attachments: مرفقات مطلوبة مفقودة — {', '.join(sorted(missing_atts))}"
-            )
+    # **والمرفقُ المطلوب لا يُشترط هنا.** كان يُفحص على
+    # ``payload["_attachments"]`` — قائمةِ أسماءٍ **يكتبها العميل** — فكان
+    # (١) الادّعاءُ يكفي: ``["medical_report"]`` بلا ملفٍّ ← 201، و(٢) الشاشةُ
+    # لا ترسلها قطّ، فأحدَ عشرَ نوعًا (سبعةٌ دائمًا وأربعةٌ بشرط) **لا تُقدَّم
+    # من الواجهة أصلًا** — والشاشةُ نفسها تقول «ترفعها من صفحة الطلب بعد
+    # الإنشاء». فصار الشرطُ ملفًّا حقيقيًا قبل الاعتماد
+    # (``workflow.missing_attachments``)، والحسابُ في ``required_attachments``.
 
     # P9-32 — **حقل مخفيّ لا يحمل قيمة**: تناقض بين ما رآه المستخدم وما وصل.
     #

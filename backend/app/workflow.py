@@ -1424,11 +1424,39 @@ def claim_decision(db: Session, req: models.Request, *,
     return False
 
 
+def missing_attachments(db: Session, req: models.Request) -> list[str]:
+    """أسماءُ المرفقات المطلوبة إن لم يُرفع للطلب **ملفٌّ** واحدٌ على الأقل.
+
+    المرفقُ يُرفع بعد الإنشاء (``POST /requests/{id}/documents``، النوع
+    ``attachment``)، والمستندُ المرفوع لا يحمل اسمَه المنطقي — فالشرطُ وجودُ
+    ملفٍّ حقيقي، لا ادّعاءُ اسم.
+    """
+    from . import form_schemas
+
+    need = form_schemas.required_attachments(req.request_type_code, req.payload_json)
+    if not need:
+        return []
+    has = db.scalar(select(models.RequestDocument.id).where(
+        models.RequestDocument.request_id == req.id,
+        models.RequestDocument.kind == "attachment").limit(1))
+    if has:
+        return []
+    return sorted(form_schemas.ATTACHMENT_LABELS.get(k, k) for k in need)
+
+
 def decide(db: Session, req: models.Request, user: models.User, decision: str,
            note: str | None, rt: models.RequestType,
            action: str | None = None) -> models.Request:
     chain = _chain(rt, req)
     stage = chain[req.current_stage]
+    # **ولا يُعتمد طلبٌ يستوجب مرفقًا قبل أن يُرفع ملفُّه.** الرفضُ والإرجاعُ
+    # يبقيان — فالمعتمِد لا يُحبس أمام طلبٍ ناقص.
+    if decision not in ("rejected", "returned"):
+        _missing = missing_attachments(db, req)
+        if _missing:
+            raise HTTPException(status_code=409, detail=(
+                "لا يُعتمد قبل رفع المرفق المطلوب: " + "، ".join(_missing)
+                + " — يرفعه صاحب الطلب من صفحة الطلب، أو أرجِع الطلب له."))
     approval = models.RequestApproval(
         request_id=req.id, stage_order=req.current_stage,
         stage_label=stage.get("label", ""), approver_role=user.role,

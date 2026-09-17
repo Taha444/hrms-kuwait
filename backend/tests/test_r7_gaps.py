@@ -14,22 +14,30 @@ from tests.conftest import auth_headers, login
 # =========================================================================
 
 def test_r7e_payroll_objection_requires_payslip_copy(client):
-    """اعتراض راتب بلا payslip_copy مرفق → مرفوض."""
+    """اعتراض راتب بلا payslip_copy **لا يُعتمد** — والملفُّ الحقيقيُّ شرطُه.
+
+    كان الشرطُ عند الإنشاء على ``_attachments`` — قائمةِ أسماءٍ يكتبها
+    العميل: فالادّعاءُ كان يكفي، والشاشةُ لا ترسلها فلا يُقدَّم النوعُ منها
+    أصلًا. فصار الإنشاءُ يُقبل، والاعتمادُ يُرفض حتى يُرفع ملفٌّ
+    (``test_zzz_required_attachments``). والمقيسُ هنا: المتطلَّبُ مُعلَنٌ ومُطبَّق.
+    """
+    from app import workflow
+    from app.database import SessionLocal
+    from app import models
+
     emp = auth_headers(login(client, "100000000101", "emp12345"))
     r = client.post("/api/requests", headers=emp, json={
         "request_type_code": "REQPAY",
         "payload_json": {"payroll_period": "2026-06", "reason": "خطأ"},
     })
-    assert r.status_code == 400
-    assert "payslip_copy" in r.text
-
-    # مع المرفق → 201
-    r2 = client.post("/api/requests", headers=emp, json={
-        "request_type_code": "REQPAY",
-        "payload_json": {"payroll_period": "2026-07", "reason": "خطأ",
-                         "_attachments": ["payslip_copy"]},
-    })
-    assert r2.status_code == 201, r2.text
+    assert r.status_code == 201, r.text
+    db = SessionLocal()
+    try:
+        req = db.get(models.Request, r.json()["id"])
+        missing = workflow.missing_attachments(db, req)
+        assert any("قسيمة الراتب" in m for m in missing), missing
+    finally:
+        db.close()
 
 
 def test_r7e_schema_defines_required_attachments_for_named_types(client):
@@ -54,14 +62,12 @@ def test_r7e_schema_defines_required_attachments_for_named_types(client):
 
 def test_r7e_sick_leave_requires_medical_report_conditionally(client):
     """conditional attachment: leave_type=sick → require medical_report."""
-    from app.form_schemas import validate_payload
-    # ملاحظة: نستخدم الدالة مباشرة لأن schema REQLV لديها strict_validation=False
-    # (للتوافق الخلفي)، لكن attachment validation تعمل دائمًا
-    errors = validate_payload("REQLV", {
-        "leave_type": "sick", "start_date": "2026-08-01", "end_date": "2026-08-03",
-        # بلا _attachments
-    })
-    assert any("medical_report" in e for e in errors)
+    from app.form_schemas import required_attachments
+
+    assert "medical_report" in required_attachments("REQLV", {
+        "leave_type": "sick", "start_date": "2026-08-01", "end_date": "2026-08-03"})
+    assert "medical_report" not in required_attachments("REQLV", {
+        "leave_type": "annual", "start_date": "2026-08-01", "end_date": "2026-08-03"})
 
 
 # =========================================================================

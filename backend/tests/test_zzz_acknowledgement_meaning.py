@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from app import models, request_actions, workflow
 from app.database import SessionLocal
-from tests.conftest import auth_headers, login
+from tests.conftest import attach_file, auth_headers, login
 
 EMP = ("100000000101", "emp12345")
 HR = ("100000000002", "hr12345")
@@ -70,6 +70,7 @@ def test_a_validation_step_is_not_recorded_as_an_approval(client):
         "payload_json": BANK})
     assert r.status_code == 201, r.text[:250]
     rid = r.json()["id"]
+    attach_file(client, hdr, rid)
 
     hh = auth_headers(login(client, *HR))
     body = client.get(f"/api/requests/{rid}", headers=hh).json()
@@ -105,6 +106,7 @@ def test_the_screen_says_what_was_actually_done(client):
     rid = client.post("/api/requests", headers=hdr, json={
         "employee_id": eid, "request_type_code": "REQBANK",
         "payload_json": BANK}).json()["id"]
+    attach_file(client, hdr, rid)
     hh = auth_headers(login(client, *HR))
     client.post(f"/api/requests/{rid}/decide", headers=hh,
                 json={"decision": "approved", "action": "valid"})
@@ -127,6 +129,7 @@ def test_a_forged_action_is_refused(client):
     rid = client.post("/api/requests", headers=hdr, json={
         "employee_id": eid, "request_type_code": "REQBANK",
         "payload_json": BANK}).json()["id"]
+    attach_file(client, hdr, rid)
 
     hh = auth_headers(login(client, *HR))
     r = client.post(f"/api/requests/{rid}/decide", headers=hh,
@@ -151,6 +154,7 @@ def test_omitting_the_action_still_works(client):
     rid = client.post("/api/requests", headers=hdr, json={
         "employee_id": eid, "request_type_code": "REQBANK",
         "payload_json": BANK}).json()["id"]
+    attach_file(client, hdr, rid)
     hh = auth_headers(login(client, *HR))
     r = client.post(f"/api/requests/{rid}/decide", headers=hh,
                     json={"decision": "approved"})

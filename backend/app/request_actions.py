@@ -64,6 +64,7 @@ ACTION_LABELS: dict[str, dict[str, str]] = {
     "dispute": {"ar": "اعتراض", "en": "Dispute"},
     # P11-36 — أفعال المراحل التي **تُنفَّذ ولا تُقرَّر**.
     "upload_signed_scan": {"ar": "رفع النسخة الموقّعة", "en": "Upload Signed Copy"},
+    "upload_attachment": {"ar": "رفع المرفق المطلوب", "en": "Upload Required Attachment"},
     "upload_exit_permit": {"ar": "رفع إذن المغادرة", "en": "Upload Exit Permit"},
     "confirm_received": {"ar": "تسجيل استلام العامل", "en": "Confirm Receipt"},
 }
@@ -239,6 +240,17 @@ def allowed_actions(db: Session, req: models.Request,
 
     if req.status != "pending":
         return []
+
+    # **والمرفقُ المطلوب يرفعه صاحبُ الطلب** (أو من قدّمه نيابةً) — وكان بلا
+    # باب: الشاشةُ تقول «ترفعها من صفحة الطلب بعد الإنشاء» ولا فعلَ يعرضها.
+    if (user.employee_id and user.employee_id == req.employee_id)             or (req.requester_user_id and req.requester_user_id == user.id):
+        missing = workflow.missing_attachments(db, req)
+        if missing:
+            return [{"action": "upload_attachment", "via": "upload",
+                     "decision": None, "doc_kind": "attachment",
+                     "label_ar": f"{ACTION_LABELS['upload_attachment']['ar']}: "
+                                 + "، ".join(missing),
+                     "label_en": ACTION_LABELS["upload_attachment"]["en"]}]
 
     rt = workflow.get_request_type(db, req.company_id, req.request_type_code)
     chain = workflow._chain(rt, req)

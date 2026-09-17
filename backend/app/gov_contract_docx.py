@@ -456,6 +456,10 @@ def generate(ctx: dict) -> tuple[bytes, str, str, list[str], dict]:
 # ---------------------------------------------------------------------------
 # GC-09 — جاهزية البيئة لإخراج عربية سليمة
 # ---------------------------------------------------------------------------
+_ENV_CACHE: tuple[float, dict] | None = None
+_ENV_TTL_SECONDS = 3600
+
+
 def environment_report() -> dict:
     """هل تستطيع هذه البيئة إخراج العقد بعربية سليمة؟
 
@@ -469,13 +473,19 @@ def environment_report() -> dict:
     خطًّا عربيًّا، فردّ على الإنتاج ``ok`` وأدرج دليلاً من خطوط سنهالية
     وماليالامية ولاوية. والقياس الآن بجدول ``cmap``: أفيه ألف ولام وميم؟
     """
+    # **والنتيجةُ تُخزَّن**: الخطوطُ والمحرّكُ لا يتغيّران بين نشرتين، وفحصُ
+    # الصحة يُنادى كل دقيقة. فالقراءةُ مرّةً لكل عملية، وتُعاد بعد ساعة.
+    import time as _time
+    global _ENV_CACHE
+    if _ENV_CACHE and _time.monotonic() - _ENV_CACHE[0] < _ENV_TTL_SECONDS:
+        return dict(_ENV_CACHE[1])
     exe = soffice_path()
     fonts = find_arabic_fonts()
 
     # «يقدر» تعني يُخرج ورقة **مقروءة**. المحرّك وحده يُخرج PDF بمربّعات
     # فارغة وينجح — فلو حُسب ذلك قدرة لقرأها المسلِّم جاهزيةً وسلّم الورقة.
     can_pdf = bool(exe) and bool(fonts)
-    return {
+    report = {
         "libreoffice": exe or None,
         "arabic_fonts_found": fonts[:5],
         "can_render_pdf": can_pdf,
@@ -489,3 +499,5 @@ def environment_report() -> dict:
                  if exe else
                  "LibreOffice غير مثبَّت — يُسلَّم docx بالتخطيط الرسمي بدل PDF"),
     }
+    _ENV_CACHE = (_time.monotonic(), dict(report))
+    return report
