@@ -816,7 +816,9 @@ def render_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reques
 def _wrap_printable(t: "models.DocumentTemplate", ctx: dict, body: str) -> str:
     """يبني هيكل الصفحة ثنائي اللغة الموحّد (ترويسة الشركة، العنوان، صف المرجع/التاريخ،
     صف الشركة/الفرع/الحالة، شبكة بيانات الموظف)، ويضع محتوى الصيغة الخاص بها (body) في الوسط."""
-    title_en = t.name_en or ""
+    # **والاسمُ الإنجليزي يُهرَّب كالعربي** — كان وحده خامًا في ``<h1>``، والجسمُ
+    # نفسه يُنقّى بـ``bleach``. والصيغةُ المولَّدة تُخدَم HTML.
+    title_en = html.escape(t.name_en or "")
     ref_no = html.escape(str(ctx.get("ref_no", "")))
     date_today = html.escape(str(ctx.get("date_today", "")))
     company_name = html.escape(str(ctx.get("company_name", "")))

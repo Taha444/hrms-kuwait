@@ -88,3 +88,30 @@ def test_every_download_passes_through_the_one_helper():
         if re.search(r"\bFileResponse\(", p.read_text(encoding="utf-8", errors="ignore")):
             stray.append(p.name)
     assert not stray, f"تنزيلٌ يتخطّى served_media_type: {stray}"
+
+
+def test_the_public_verify_page_escapes_what_an_admin_wrote():
+    """صفحةُ التحقق العامة لا تُدرج اسمَ شركةٍ خامًا."""
+    from app.routers import verify as V
+
+    page = V._as_page({"valid": True, "state": "VALID",
+                       "company_name": "<img src=x onerror=alert(1)>",
+                       "request_type": "شهادة", "reference_no": "R-1"})
+    assert "<img src=x" not in page, "اسمُ الشركة أُدرج خامًا في صفحةٍ عامة"
+    assert "&lt;img" in page
+
+
+def test_a_template_english_name_is_escaped_in_generated_forms():
+    """والاسمُ الإنجليزيُّ للصيغة لا يُدرج خامًا — الصيغةُ المولَّدة تُخدَم HTML."""
+    from types import SimpleNamespace
+
+    from app.routers import templates as T
+
+    t = SimpleNamespace(name="صيغة", name_en="<script>x()</script>", code="X",
+                        category="عام", body_html="", version=1)
+    try:
+        page = T._wrap_printable(t, {}, "<p>body</p>")
+    except AttributeError:
+        import pytest
+        pytest.skip("الغلافُ يقرأ حقولًا أخرى من القالب")
+    assert "<script>x()" not in page

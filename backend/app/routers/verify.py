@@ -77,7 +77,11 @@ def _as_page(data: dict) -> str:
               ("الجهة المُصدِرة", data.get("company_name")),
               ("الرقم المرجعي", data.get("reference_no")),
               ("تاريخ الإصدار", str(data.get("issued_at") or "")[:19].replace("T", " "))]
-    rows = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in fields if v)
+    # **صفحةٌ عامةٌ بلا دخول تُدرج بياناتٍ يكتبها مدير** (اسمُ الشركة، اسمُ
+    # النوع) — فتُهرَّب. وCSP تحجب السكربتَ المضمَّن، لكنّ صفحةً عامةً لا
+    # تُبنى على ترويسةٍ واحدة.
+    from html import escape as _esc
+    rows = "".join(f"<dt>{_esc(k)}</dt><dd>{_esc(str(v))}</dd>" for k, v in fields if v)
     return _PAGE.format(cls=cls, headline=headline, rows=rows,
                         note=_STATE_AR.get(state, state).replace("**", ""))
 
