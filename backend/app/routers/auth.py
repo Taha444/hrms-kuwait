@@ -155,6 +155,14 @@ def login(data: schemas.LoginIn, request: Request, db: Session = Depends(get_db)
             audit(db, user, "totp_recovery_used", "user", user.id, request=request,
                   detail=f"remaining={len(user.totp_recovery_hashes or [])}")
         else:
+            # **والرمزُ الثنائيُّ يُحصى على الحساب كما تُحصى كلمتُه.** كان الحدُّ
+            # لكل عنوانٍ وحده، فمن عرف كلمةَ المرور يوزّع تخميناتِ الأرقام
+            # الستة على عناوين كثيرة بلا قفل — والمصادقةُ الثنائية وُضعت
+            # لتصمد بالضبط حين تُعرف الكلمة.
+            user.failed_attempts += 1
+            if user.failed_attempts >= MAX_FAILED:
+                user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
+                user.failed_attempts = 0
             _rate_record_failure(ip)
             audit(db, user, "totp_login_fail", "user", user.id, request=request)
             db.commit()
@@ -432,7 +440,15 @@ def reset_password(data: schemas.ResetPasswordIn, request: Request,
     # ACCESS — كلمة مؤقّتة عشوائية لكل شخص، لا كلمة موحّدة من الإعدادات.
     # الموحّدة كانت تعني أن معرفة قيمة واحدة تفتح كل حساب أُعيد تعيينه.
     from ..security import generate_temp_password
-    new_pw = data.new_password or generate_temp_password()
+    # **وقاعدةُ المالك نصًّا**: «ممنوع كلمة مرور موحدة أو مشتركة — أنشئ كلمة
+    # مرور مؤقتة عشوائية ومختلفة لكل شخص». وكان ``new_password`` يقبل كلمةً
+    # يختارها المدير — فيضع الكلمةَ نفسها لكثيرين، ويعرف كلمةَ غيره. والشاشةُ
+    # لا ترسله أصلًا؛ فهو بابٌ في الـAPI وحده، ويُغلق.
+    if data.new_password:
+        raise HTTPException(status_code=400, detail=(
+            "لا تُحدَّد كلمة المرور عند إعادة التعيين — يولّد النظام كلمة مؤقتة "
+            "عشوائية لكل شخص، ويغيّرها صاحبها عند أول دخول."))
+    new_pw = generate_temp_password()
     target.password_hash = hash_password(new_pw)
     target.must_change_password = True
     target.failed_attempts = 0

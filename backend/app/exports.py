@@ -7,13 +7,37 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 
+import re
+
+_NUMERIC = re.compile(r"^[+-]?[\d\s.,]*$")
+
+
+def neutralize(value):
+    """نصٌّ يبدأ بما يقرؤه الجدولُ صيغةً يُسبق بفاصلةٍ عليا — والأرقامُ لا تُمسّ.
+
+    **حقنُ الصيغ** (OWASP CSV Injection): الأسماءُ والمسمّياتُ وأسبابُ الطلبات
+    يكتبها مستخدمون، والتصديرُ يُفتح في Excel عند من يملك صلاحيةً أعلى.
+    و``openpyxl`` يكتب كلَّ نصٍّ يبدأ بـ``=`` **صيغةً** تُنفَّذ عند الفتح —
+    ``=HYPERLINK(...)`` يسرّب، و``=cmd|...`` في CSV يُشغّل. فلا تحييدَ كان.
+
+    ويُترك ``+965…`` و``-5`` على حالهما: رقمٌ لا صيغة، وسبقُه يُفسد هاتفًا.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    first = value[0]
+    if first in ("=", "@", "\t", "\r") or (
+            first in ("+", "-") and not _NUMERIC.match(value)):
+        return "'" + value
+    return value
+
+
 def to_csv(headers: list[str], rows: list[list]) -> bytes:
     """CSV بترميز UTF-8 مع BOM ليُفتح بالعربية في Excel مباشرة."""
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(headers)
+    writer.writerow([neutralize(h) for h in headers])
     for r in rows:
-        writer.writerow(r)
+        writer.writerow([neutralize(v) for v in r])
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
@@ -34,7 +58,12 @@ def to_xlsx(title: str, headers: list[str], rows: list[list], text_columns: set[
         cell.fill = header_fill
         cell.font = header_font
     for r in rows:
-        ws.append(r)
+        ws.append([neutralize(v) for v in r])
+    # و``openpyxl`` يستنتج الصيغةَ من ``=`` عند الإسناد — فيُثبَّت النصُّ نصًّا.
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
     if text_columns:
         for col_idx in text_columns:
             col_letter = ws.cell(row=1, column=col_idx + 1).column_letter

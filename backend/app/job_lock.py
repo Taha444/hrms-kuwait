@@ -107,6 +107,24 @@ def run_once(db: Session, job: str, run_key: str):
                 db.commit()
 
 
+def running_elsewhere(db: Session, job: str, exclude_key: str | None = None) -> bool:
+    """هل جولةٌ أخرى من المهمة نفسها تعمل الآن — بأي مفتاح؟
+
+    ``run_once`` يمنع **تكرارَ الجولة** (مفتاحُها اليوم)، لا **التزامنَ** بين
+    جولتين بمفتاحين. والمسحُ اليدوي (``/tasks/run-scan``) كان يُشغّل
+    ``daily_scan`` بلا قفلٍ أصلًا: فإن تزامن مع المجدوَل تسابقا على مفاتيح
+    المهام نفسها، فيسقط أحدُهما بتصادم القيد (``uq_tasks_open_dedup``) —
+    يدويٌّ يردّ خمسمئة، أو مجدولٌ يُقيَّد «فشل مهمة مجدولة».
+    """
+    cutoff = (kuwait_now() - STALE_AFTER).replace(tzinfo=None)
+    q = select(models.JobRun.run_key).where(
+        models.JobRun.job == job, models.JobRun.status == "running",
+        models.JobRun.started_at >= cutoff)
+    if exclude_key is not None:
+        q = q.where(models.JobRun.run_key != exclude_key)
+    return db.scalar(q.limit(1)) is not None
+
+
 def daily_key(job: str, at: datetime | None = None) -> str:
     d = (at or kuwait_now()).date()
     return f"{d.isoformat()}"

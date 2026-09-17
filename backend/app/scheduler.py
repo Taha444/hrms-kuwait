@@ -50,8 +50,14 @@ def _run_daily_scan():
     try:
         # AWS-02 — مرة واحدة عبر كل النسخ. التخطّي ليس عطًلا: نسخة
         # أخرى نفّذت هذه الجولة.
-        with run_once(db, "daily_scan", daily_key("daily_scan")) as granted:
+        key = daily_key("daily_scan")
+        with run_once(db, "daily_scan", key) as granted:
             if not granted:
+                return
+            # **ولا يتزامن مع مسحٍ يدويٍّ جارٍ** — كلاهما ``daily_scan`` كاملًا.
+            from .job_lock import running_elsewhere
+            if running_elsewhere(db, "daily_scan", exclude_key=key):
+                logger.info("daily_scan: مسحٌ يدويٌّ جارٍ — يُكتفى به لهذه الجولة")
                 return
             result = daily_scan(db)
             logger.info("daily_scan: %s", result)

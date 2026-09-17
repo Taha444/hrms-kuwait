@@ -179,8 +179,23 @@ def update_status(task_id: int, status: str,
 
 @router.post("/run-scan")
 def run_scan(user: models.User = Depends(require_perm("manage_tasks")), db: Session = Depends(get_db)):
-    """تشغيل المسح اليومي يدويًا لتوليد المهام (يستخدمه HR/المدير عند الحاجة)."""
-    return daily_scan(db)
+    """تشغيل المسح اليومي يدويًا لتوليد المهام (يستخدمه HR/المدير عند الحاجة).
+
+    **ولا يتزامن مع جولةٍ جارية** — مجدولةٍ أو يدويةٍ أخرى. ويُسجَّل كجولةٍ
+    بمفتاحها (``manual:…``) فيراه المجدوَلُ ويراه نقرٌ ثانٍ.
+    """
+    from ..clock import now as _now
+    from ..job_lock import run_once, running_elsewhere
+
+    if running_elsewhere(db, "daily_scan"):
+        raise HTTPException(status_code=409, detail=(
+            "المسح اليومي يعمل الآن — أعد المحاولة بعد انتهائه."))
+    key = f"manual:{_now():%Y-%m-%dT%H:%M:%S}:u{user.id}"
+    with run_once(db, "daily_scan", key) as granted:
+        if not granted:
+            raise HTTPException(status_code=409, detail=(
+                "المسح اليومي يعمل الآن — أعد المحاولة بعد انتهائه."))
+        return daily_scan(db)
 
 
 @router.post("/{task_id}/claim")

@@ -179,6 +179,17 @@ def verify(data: VerifyIn, request: Request,
     if not (user.totp_secret and user.totp_confirmed):
         raise HTTPException(status_code=400, detail="2FA غير مفعّل لحسابك")
     if not _verify_code(user.totp_secret, data.code):
+        # وكان بلا حدٍّ أصلًا: ستةُ أرقامٍ تُخمَّن بلا قفلٍ ولا إبطاء. فيُحصى
+        # الفشلُ على الحساب بقاعدة الدخول نفسها، وبعد الحدّ تُبطَل الجلسة.
+        from datetime import timedelta as _td
+        from .auth import LOCK_MINUTES, MAX_FAILED
+
+        user.failed_attempts = (user.failed_attempts or 0) + 1
+        if user.failed_attempts >= MAX_FAILED:
+            now = datetime.now(timezone.utc)
+            user.locked_until = now + _td(minutes=LOCK_MINUTES)
+            user.failed_attempts = 0
+            user.tokens_valid_after = now
         audit(db, user, "totp_fail", "user", user.id, request=request)
         db.commit()
         raise HTTPException(status_code=400, detail="الرمز غير صالح")
