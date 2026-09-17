@@ -293,4 +293,5 @@ export const screens: Record<string, { ar: string; en: string }> = {
   push_register_failed: { ar: "تعذّر تسجيل الجهاز", en: "Could not register the device" },
   push_update: { ar: "تحديث", en: "Update" },
   date: { ar: "التاريخ", en: "Date" },
+  att_pol_needs_manager: { ar: "يثبّتها من يملك «إدارة الحضور والانصراف» (الموارد البشرية)", en: "Set by someone with “manage attendance” (HR)" },
 };

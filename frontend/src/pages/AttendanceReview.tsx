@@ -152,12 +152,18 @@ export default function AttendanceReview() {
                     <td><b>{g.name}</b>{g.employee_no && <><br /><span className="muted">{g.employee_no}</span></>}</td>
                     <td className="muted">{g.hire_date || "—"}</td>
                     <td>
+                      {/* العرضُ بـview_attendance (المحاسب يحتاجه: هؤلاء يوقفون إقفال
+                          المسيّر)، والتثبيتُ بـmanage_attendance — فلا يُعرض زرٌّ يرفضه الخادم. */}
+                      {!can("manage_attendance")
+                        ? <span className="sub">{t("att_pol_needs_manager")}</span>
+                        : (
                       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                         <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "qr")}>{t("att_pol_qr")}</button>
                         <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "gps")}>{t("att_pol_gps")}</button>
                         <button className="sm" disabled={busy} onClick={() => setPolicy(g.id, "both")}>{t("att_pol_both")}</button>
                         <button className="ghost sm" disabled={busy} onClick={() => setPolicy(g.id, "none")}>{t("att_pol_exempt")}</button>
                       </div>
+                        )}
                     </td>
                   </tr>
                 ))}

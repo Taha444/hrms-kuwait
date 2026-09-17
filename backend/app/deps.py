@@ -243,6 +243,7 @@ def get_user_perms(user: models.User, db: Session) -> set[str]:
 
 def require_perm(perm: str):
     """مولّد تبعية تتحقق من امتلاك المستخدم صلاحية معيّنة."""
+    from .permissions import PERMISSIONS
 
     def checker(
         user: models.User = Depends(get_current_user),
@@ -253,7 +254,8 @@ def require_perm(perm: str):
         if not check_legacy(user.role, assigned, perm):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"ليس لديك صلاحية: {perm}",
+                # اسمُ الصلاحية لا رمزُها الداخلي — الرسالةُ تُعرض للمستخدم كما هي.
+                detail=f"ليس لديك صلاحية: {PERMISSIONS.get(perm, perm)}",
             )
         return user
 
@@ -267,6 +269,8 @@ def require_any_perm(*perms: str):
     مرحلة إذن مغادرة البلاد، الذي يملك process_delegate_tasks لا approve_request).
     """
 
+    from .permissions import PERMISSIONS
+
     def checker(
         user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db),
@@ -275,15 +279,20 @@ def require_any_perm(*perms: str):
         if not any(check_legacy(user.role, assigned, p) for p in perms):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"ليس لديك صلاحية: {' أو '.join(perms)}",
+                detail="ليس لديك صلاحية: " + " أو ".join(PERMISSIONS.get(p, p) for p in perms),
             )
         return user
 
     return checker
 
 
+_ACTION_AR = {"read": "العرض", "add": "الإضافة", "edit": "التعديل", "delete": "الحذف",
+              "print": "الطباعة", "export": "التصدير", "approve": "الاعتماد"}
+
+
 def require_page_action(page: str, action: str):
     """مولّد تبعية تتحقق من صلاحية (صفحة، فعل) دقيقة — للأفعال كالطباعة/التصدير."""
+    from .permissions import PAGE_LABELS
 
     def checker(
         user: models.User = Depends(get_current_user),
@@ -293,7 +302,7 @@ def require_page_action(page: str, action: str):
         if not has_page_action(user.role, assigned, page, action):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"ليس لديك صلاحية: {page}.{action}",
+                detail=f"ليس لديك صلاحية: {_ACTION_AR.get(action, action)} — {PAGE_LABELS.get(page, page)}",
             )
         return user
 
