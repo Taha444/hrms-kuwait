@@ -56,6 +56,43 @@ def _assert_branch_in_scope(db: Session, user: models.User, *branch_ids: int | N
             raise HTTPException(status_code=403, detail="لا يمكنك إضافة موظف لفرع خارج نطاقك")
 
 
+#: حقولٌ تحمل معرّفَ كيانٍ آخر — ويجب أن يكون من شركة الموظف نفسها.
+_COMPANY_REFS = {
+    "direct_manager_id": (models.Employee, "المدير المباشر"),
+    "branch_id": (models.Branch, "الفرع"),
+    "actual_branch_id": (models.Branch, "فرع العمل الفعلي"),
+    "department_id": (models.Department, "القسم"),
+    "shift_id": (models.Shift, "الوردية"),
+    "license_id": (models.License, "الترخيص"),
+    "actual_license_id": (models.License, "ترخيص الدوام الفعلي"),
+}
+
+
+def _assert_refs_in_company(db: Session, company_id: int | None, payload: dict,
+                            self_id: int | None = None) -> None:
+    """**كلُّ معرّفٍ مُسنَدٍ من شركة الموظف** — لا من أي شركة.
+
+    **القياس**: موظفُ موارد الشركة الأولى عدّل موظفًا فيها بمديرٍ مباشرٍ وفرعٍ
+    وترخيصٍ ووردّيةٍ وقسمٍ **من الشركة الثانية** — والخمسةُ ردّت 200. وفحصُ
+    الفرع القائم (``_assert_branch_in_scope``) يعمل لمن نطاقُه فروعٌ محددة
+    وحده؛ ومن نطاقُه الشركة لا يُفحص له شيء. والأثر: طلباتُ الموظف تُوجَّه
+    إلى مديرٍ في شركةٍ أخرى (يصله اسمُه ونوعُ طلبه)، وتُعَدّ عمالتُه على ترخيص
+    غيرِ شركته، ويُحسب غيابُه بوردّيةٍ ليست لشركته.
+    """
+    if company_id is None:
+        return
+    for field, (model, label) in _COMPANY_REFS.items():
+        ref = payload.get(field)
+        if not ref:
+            continue
+        row = db.get(model, ref)
+        if row is None or getattr(row, "company_id", None) != company_id:
+            raise HTTPException(status_code=400,
+                                detail=f"{label} غير موجود في شركة الموظف")
+        if field == "direct_manager_id" and self_id is not None and ref == self_id:
+            raise HTTPException(status_code=400, detail="لا يكون الموظف مديرًا مباشرًا لنفسه")
+
+
 def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
     emp = db.get(models.Employee, emp_id)
     if not emp:
@@ -153,6 +190,7 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
         raise HTTPException(status_code=400, detail="يجب تحديد الشركة")
     _assert_no_duplicates(db, cid, payload.get("civil_id"), payload.get("passport_number"))
     _assert_branch_in_scope(db, user, payload.get("branch_id"), payload.get("actual_branch_id"))
+    _assert_refs_in_company(db, cid, payload)
     emp = models.Employee(company_id=cid, created_by=user.id, **payload)
     db.add(emp)
     db.flush()
@@ -260,6 +298,7 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     _assert_branch_in_scope(db, user,
                             payload.get("branch_id", emp.branch_id),
                             payload.get("actual_branch_id", emp.actual_branch_id))
+    _assert_refs_in_company(db, emp.company_id, payload, self_id=emp.id)
 
     # PERM-02 — إعدادات الحضور تُعدَّل من هنا أيًضا، فتسري عليها نفس ضوابط
     # endpoint السياسة المخصص بدل أن يكون الـPUT بابًا خلفيًا يتخطّاها:
