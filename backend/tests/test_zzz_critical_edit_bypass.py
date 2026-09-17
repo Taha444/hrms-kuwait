@@ -84,3 +84,102 @@ def test_the_edit_form_shows_critical_fields_read_only():
            / "EmployeeProfile.tsx").read_text(encoding="utf-8")
     assert 'CRITICAL_EDIT_FIELDS = ["basic_salary", "hire_date", "job_title"]' in src
     assert "readOnly={CRITICAL_EDIT_FIELDS.includes(k)}" in src
+
+
+# ---------------------------------------------------------------------------
+# ورصيدُ الإجازة يُعدَّل مُقيَّدًا في دفتره
+# ---------------------------------------------------------------------------
+
+def test_a_manual_leave_balance_change_is_written_to_the_ledger(client):
+    """**تسويةٌ يدويةٌ بلا صفٍّ في الدفتر** — ``adjustment`` مُعلَنٌ ولم يُكتب قط.
+
+    كلُّ تغييرٍ آخر على الرصيد يُقيَّد في ``LeaveLedger``؛ والـPUT كان يغيّره
+    بلا صفّ، فينحرف الدفترُ عن الرصيد. ولا يُمنع: هو بابُ الرصيد الافتتاحي.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    eid, ident, sal, hire, job, contract = _emp()
+    db = SessionLocal()
+    try:
+        old_bal = float(db.get(models.Employee, eid).annual_leave_balance or 0)
+    finally:
+        db.close()
+    try:
+        r = client.put(f"/api/employees/{eid}",
+                       params={"change_reason": "رصيد افتتاحي منقول"},
+                       json=_body(ident, sal, hire, job or "", contract,
+                                  annual_leave_balance=old_bal + 7),
+                       headers=auth_headers(login(client, *HR)))
+        assert r.status_code == 200, (r.status_code, r.text[:200])
+        db = SessionLocal()
+        try:
+            row = db.scalar(select(models.LeaveLedger).where(
+                models.LeaveLedger.employee_id == eid,
+                models.LeaveLedger.kind == "adjustment"
+            ).order_by(models.LeaveLedger.id.desc()))
+            assert row is not None, "عُدِّل الرصيدُ بلا صفٍّ في الدفتر"
+            assert row.balance_before == old_bal and row.balance_after == old_bal + 7
+            assert row.days == 7 and "رصيد افتتاحي" in (row.note or "")
+        finally:
+            db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            db.get(models.Employee, eid).annual_leave_balance = old_bal
+            db.execute(sa_delete(models.LeaveLedger).where(
+                models.LeaveLedger.employee_id == eid,
+                models.LeaveLedger.kind == "adjustment"))
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_an_unchanged_balance_writes_no_ledger_row(client):
+    eid, ident, sal, hire, job, contract = _emp()
+    db = SessionLocal()
+    try:
+        bal = float(db.get(models.Employee, eid).annual_leave_balance or 0)
+        n0 = len(db.scalars(select(models.LeaveLedger).where(
+            models.LeaveLedger.employee_id == eid)).all())
+    finally:
+        db.close()
+    r = client.put(f"/api/employees/{eid}",
+                   json=_body(ident, sal, hire, job or "", contract, annual_leave_balance=bal),
+                   headers=auth_headers(login(client, *HR)))
+    assert r.status_code == 200, r.text[:200]
+    db = SessionLocal()
+    try:
+        n1 = len(db.scalars(select(models.LeaveLedger).where(
+            models.LeaveLedger.employee_id == eid)).all())
+        assert n1 == n0, "صفُّ دفترٍ لتعديلٍ لم يغيّر شيئًا"
+    finally:
+        db.close()
+
+
+def test_a_direct_actual_salary_edit_appears_in_the_change_history(client):
+    """والنقطةُ المباشرةُ للراتب الفعلي تُقيَّد في السجلّ الذي تعرضه الشاشة."""
+    from sqlalchemy import delete as sa_delete
+
+    eid = _emp()[0]
+    db = SessionLocal()
+    try:
+        old = db.get(models.Employee, eid).actual_salary
+    finally:
+        db.close()
+    acc = auth_headers(login(client, "100000000007", "account123"))
+    try:
+        r = client.post(f"/api/employees/{eid}/actual-salary",
+                        params={"amount": float(old or 0) + 11}, headers=acc)
+        assert r.status_code == 200, (r.status_code, r.text[:200])
+        hist = client.get(f"/api/employees/{eid}/change-history", headers=acc).json()
+        assert any(h["field_name"] == "actual_salary" for h in hist), hist[:3]
+    finally:
+        db = SessionLocal()
+        try:
+            db.get(models.Employee, eid).actual_salary = old
+            db.execute(sa_delete(models.EmployeeFieldChange).where(
+                models.EmployeeFieldChange.employee_id == eid,
+                models.EmployeeFieldChange.field_name == "actual_salary"))
+            db.commit()
+        finally:
+            db.close()

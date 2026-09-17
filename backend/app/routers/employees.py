@@ -299,6 +299,21 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
                 new_value=None if v is None else str(v),
                 effective_date=eff, changed_by=user.id, reason=change_reason,
             ))
+        # **ورصيدُ الإجازة يُعدَّل مُقيَّدًا في دفتره.** كلُّ تغييرٍ آخر عليه
+        # (استهلاكٌ، عكسٌ) يكتب ``LeaveLedger`` برصيدٍ قبل وبعد، والدفترُ
+        # يُعلن ``adjustment = تسوية يدوية`` — ولم يكن أحدٌ يكتبه: هذا الـPUT
+        # هو التسويةُ اليدوية، وكان يغيّر الرصيدَ بلا صفّ. فينحرف الدفترُ عن
+        # الرصيد ولا يُعرف من زاد يومًا ولماذا. ولا يُمنع: هو بابُ الرصيد
+        # الافتتاحي للموظفين المُرحَّلين، ولا بابَ غيره.
+        if k == "annual_leave_balance" and (old or 0) != (v or 0):
+            before_bal, after_bal = float(old or 0), float(v or 0)
+            db.add(models.LeaveLedger(
+                company_id=emp.company_id, employee_id=emp.id, kind="adjustment",
+                days=abs(after_bal - before_bal),
+                balance_before=before_bal, balance_after=after_bal,
+                note=((change_reason or "").strip() or "تسوية يدوية من ملف الموظف")[:300],
+                created_by=user.id,
+            ))
         setattr(emp, k, v)
     audit(db, user, "update_employee", "employee", emp.id, request=request)
     db.commit()
@@ -366,6 +381,15 @@ def set_actual_salary(emp_id: int, amount: float, request: Request = None,
         raise HTTPException(status_code=400, detail="القيمة لا يمكن أن تكون سالبة")
     emp = _get_emp(db, user, emp_id)
     old = emp.actual_salary
+    # **وسجلُّ التغييرات الحرجة يراه** — ``actual_salary`` في
+    # ``CRITICAL_FIELDS``، وشاشةُ «سجل التعديلات» تعرضه للمحاسب؛ وهذه النقطةُ
+    # كانت تكتب التدقيقَ وحده، فيغيب تغييرُها عن السجلّ الذي يُقرأ فعلًا.
+    if (old or 0) != (amount or 0):
+        db.add(models.EmployeeFieldChange(
+            company_id=emp.company_id, employee_id=emp.id, field_name="actual_salary",
+            old_value=None if old is None else str(old), new_value=str(amount),
+            effective_date=kuwait_today(), changed_by=user.id,
+            reason="تعديل الراتب الفعلي (صلاحية مالية خاصة)"))
     emp.actual_salary = amount
     audit(db, user, "edit_actual_salary", "employee", emp.id,
           detail=f"{old} → {amount}", request=request)
