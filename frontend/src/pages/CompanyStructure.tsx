@@ -12,6 +12,29 @@ export default function CompanyStructure() {
   const [data, setData] = useState<any>(null);
   const [stats, setStats] = useState<Record<number, any>>({});
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  // الأقساُم تُقرأ في شاشة الموظف ولا شاشَة تُنشئها — ``POST /departments``
+  // مبنيٌّة بلا باب. وهذه هي، خلف صلاحيتها كما يفرضها الخادم.
+  const [depts, setDepts] = useState<any[]>([]);
+  const [dept, setDept] = useState({ name: "", branch_id: "" });
+  const [busy, setBusy] = useState(false);
+  const loadDepts = () => api.get("/departments").then((r) => setDepts(r.data))
+    .catch(() => setDepts([]));
+  const addDept = async () => {
+    if (!dept.name.trim()) return;
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const params: any = { name: dept.name.trim() };
+      if (dept.branch_id) params.branch_id = Number(dept.branch_id);
+      await api.post("/departments", null, { params });
+      setDept({ name: "", branch_id: "" });
+      setMsg(t("cs_dept_added"));
+      loadDepts();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+    finally { setBusy(false); }
+  };
+
+  useEffect(() => { loadDepts(); }, []);
 
   useEffect(() => {
     api.get("/org/structure")
@@ -85,6 +108,46 @@ export default function CompanyStructure() {
           );
         })}
         {!data.branches.length && <div className="card empty">{t("no_data")}</div>}
+      </div>
+
+      {/* الأقسام — تُعرض للجميع، وتُنشأ بصلاحية إدارتها. */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3 style={{ marginTop: 0 }}>{t("cs_depts")} ({depts.length})</h3>
+        {msg && <div className="ok">{msg}</div>}
+        {depts.length === 0 ? (
+          <div className="muted">{t("cs_dept_none")}</div>
+        ) : (
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {depts.map((d: any) => (
+              <span key={d.id} className="pill neutral">
+                {d.name}
+                <span className="muted" style={{ marginInlineStart: 6, fontSize: 11 }}>
+                  {t("cs_dept_count", { n: d.employee_count })}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+        {can("manage_departments") && (
+          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="field">
+              <label htmlFor="cs-dept-name">{t("cs_dept_name")}</label>
+              <input id="cs-dept-name" value={dept.name}
+                     onChange={(e) => setDept({ ...dept, name: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="cs-dept-branch">{t("cs_dept_branch")}</label>
+              <select id="cs-dept-branch" value={dept.branch_id}
+                      onChange={(e) => setDept({ ...dept, branch_id: e.target.value })}>
+                <option value="">{t("cs_dept_all")}</option>
+                {data.branches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <button disabled={busy || !dept.name.trim()} onClick={addDept}>{t("cs_dept_add")}</button>
+          </div>
+        )}
       </div>
     </div>
   );

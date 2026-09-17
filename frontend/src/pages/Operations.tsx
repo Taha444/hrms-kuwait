@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api";
+import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import Icon from "../Icon";
 
@@ -8,13 +9,37 @@ const U_PILL: Record<string, string> = { expired: "critical", critical: "critica
 
 export default function Operations() {
   const { t } = useI18n();
+  const { can } = useAuth();
+  // إنشاءُ ترخيص — النقطُة مبنيٌة والسعُة تُعَدّ عليه، ولا شاشَة تناديها.
+  const [lic, setLic] = useState({ name: "", license_no: "", issuing_authority: "",
+                                   allowed_workers: "" });
+  const [licBusy, setLicBusy] = useState(false);
   const KIND: Record<string, string> = { residency: t("kind_residency"), work_permit: t("kind_work_permit") };
   const days = (d: number) => (d < 0 ? t("expired_since", { n: -d }) : `${d} ${t("days_unit")}`);
   const [branches, setBranches] = useState<any[]>([]);
   const [branch, setBranch] = useState("");
   const [data, setData] = useState<any>(null);
+  const [licMsg, setLicMsg] = useState("");
 
   const load = (b = branch) => api.get("/operations", { params: { branch_id: b || undefined } }).then((r) => setData(r.data));
+
+  const addLicense = async () => {
+    if (!lic.name.trim()) return;
+    setLicBusy(true); setLicMsg("");
+    try {
+      await api.post("/licenses", null, { params: {
+        name: lic.name.trim(),
+        license_no: lic.license_no.trim() || undefined,
+        issuing_authority: lic.issuing_authority.trim() || undefined,
+        allowed_workers: Number(lic.allowed_workers) || 0,
+      } });
+      setLic({ name: "", license_no: "", issuing_authority: "", allowed_workers: "" });
+      setLicMsg(t("ops_lic_added"));
+      load();
+    } catch (e: any) {
+      setLicMsg(e?.response?.data?.detail || t("error"));
+    } finally { setLicBusy(false); }
+  };
   useEffect(() => { api.get("/branches").then((r) => setBranches(r.data)).catch(() => {}); load(); }, []);
   if (!data) return <div className="empty">{t("loading")}</div>;
 
@@ -117,6 +142,35 @@ export default function Operations() {
             {!data.licenses.length && <tr><td colSpan={4} className="empty">{t("none_good")}</td></tr>}
           </tbody>
         </table>
+        {/* ``POST /licenses`` كانت مبنيًّة بلا باب: لا شاشَة تُنشئ ترخيًصا،
+            وسعُة العمالة تُعَدّ عليه. */}
+        {can("manage_licenses") && (
+          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="field">
+              <label htmlFor="ops-lic-name">{t("ops_lic_name")}</label>
+              <input id="ops-lic-name" value={lic.name}
+                     onChange={(e) => setLic({ ...lic, name: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="ops-lic-no">{t("ops_lic_no")}</label>
+              <input id="ops-lic-no" value={lic.license_no}
+                     onChange={(e) => setLic({ ...lic, license_no: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="ops-lic-auth">{t("ops_lic_authority")}</label>
+              <input id="ops-lic-auth" value={lic.issuing_authority}
+                     onChange={(e) => setLic({ ...lic, issuing_authority: e.target.value })} />
+            </div>
+            <div className="field" style={{ width: 140 }}>
+              <label htmlFor="ops-lic-allowed">{t("ops_lic_allowed")}</label>
+              <input id="ops-lic-allowed" type="number" min={0} value={lic.allowed_workers}
+                     onChange={(e) => setLic({ ...lic, allowed_workers: e.target.value })} />
+            </div>
+            <button disabled={licBusy || !lic.name.trim()} onClick={addLicense}>{t("ops_lic_add")}</button>
+            <div className="sub" style={{ width: "100%" }}>{t("ops_lic_hint")}</div>
+            {licMsg && <div className="sub" style={{ width: "100%" }}>{licMsg}</div>}
+          </div>
+        )}
       </div>
 
       {/* قرار المالك (2026-09-17) — تنبيهٌ تفتيشي: العمل على غير ترخيص التسجيل. */}
