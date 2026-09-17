@@ -74,6 +74,12 @@ export default function EosCases() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // P6-27 — «تُفتح … أو مباشرة من هنا» كانت جملًة بلا باب: النقطة مبنيّة
+  // (``POST /eos/cases``) ولا تناديها شاشة. وهذا الباب.
+  const [opening, setOpening] = useState(false);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [form, setForm] = useState({ employee_id: "", termination_date: "", reason: "resignation",
+                                     notice_served: "", notice_served_date: "" });
 
   const statusFilter = params.get("status") || "";
 
@@ -86,6 +92,37 @@ export default function EosCases() {
   useEffect(() => {
     api.get("/eos/cases/stage-roles").then((r) => setPolicy(r.data)).catch(() => {});
   }, []);
+
+  const startOpen = () => {
+    setErr(""); setMsg(""); setOpening(true);
+    if (!employees.length) {
+      api.get("/employees").then((r) => setEmployees(r.data)).catch(() => setEmployees([]));
+    }
+  };
+
+  const submitOpen = async () => {
+    if (!form.employee_id || !form.termination_date) return;
+    setErr(""); setMsg(""); setBusy(true);
+    try {
+      const q: Record<string, string> = {
+        employee_id: form.employee_id, termination_date: form.termination_date,
+        reason: form.reason,
+      };
+      if (form.reason === "termination" && form.notice_served) {
+        q.notice_served = form.notice_served;
+        if (form.notice_served === "true") q.notice_served_date = form.notice_served_date;
+      }
+      const r = await api.post("/eos/cases", null, { params: q });
+      setMsg(t("eosc_opened"));
+      setOpening(false);
+      setForm({ employee_id: "", termination_date: "", reason: "resignation",
+                notice_served: "", notice_served_date: "" });
+      await load();
+      await open(r.data.id);
+    } catch (e: any) {
+      setErr(errMsg(e, t("eosc_open_failed")));
+    } finally { setBusy(false); }
+  };
 
   const open = (id: number) =>
     api.get(`/eos/cases/${id}`).then((r) => {
@@ -146,6 +183,10 @@ export default function EosCases() {
           <h2 id="eosc-title">{t("eosc_title")}</h2>
           <div className="sub">{t("eosc_sub")}</div>
         </div>
+        <div className="row" style={{ gap: 8 }}>
+          {can("terminate_employee") && !opening && (
+            <button onClick={startOpen}>{t("eosc_open_btn")}</button>
+          )}
         <select value={statusFilter}
                 onChange={(e) => setParams(e.target.value ? { status: e.target.value } : {})}
                 aria-label={t("eosc_filter")}>
@@ -154,7 +195,65 @@ export default function EosCases() {
             <option key={s} value={s}>{stageLabel(s)}</option>
           ))}
         </select>
+        </div>
       </div>
+
+      {opening && can("terminate_employee") && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--brand)" }}>
+          <h3 style={{ marginTop: 0 }}>{t("eosc_open_title")}</h3>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("eosc_open_hint")}</div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div className="field" style={{ minWidth: 240 }}>
+              <label htmlFor="eosc-emp">{t("eosc_open_emp")}</label>
+              <select id="eosc-emp" value={form.employee_id}
+                      onChange={(e) => setForm({ ...form, employee_id: e.target.value })}>
+                <option value="">{t("eosc_choose")}</option>
+                {employees.map((e: any) => (
+                  <option key={e.id} value={e.id}>
+                    {e.employee_no ? `[${e.employee_no}] ` : ""}{e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="eosc-date">{t("eosc_open_date")}</label>
+              <input id="eosc-date" type="date" value={form.termination_date}
+                     onChange={(e) => setForm({ ...form, termination_date: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="eosc-reason">{t("eosc_open_reason")}</label>
+              <select id="eosc-reason" value={form.reason}
+                      onChange={(e) => setForm({ ...form, reason: e.target.value })}>
+                {Object.keys(policy?.reasons || {}).map((k) => (
+                  <option key={k} value={k}>{reasonLabel(k)}</option>
+                ))}
+              </select>
+            </div>
+            {/* قرار المالك (2026-09-17): الفصل غير التأديبي يُسأل عن الإنذار قبل الحساب. */}
+            {form.reason === "termination" && (
+              <div className="field">
+                <label htmlFor="eosc-open-notice">{t("eosc_notice_q")}</label>
+                <select id="eosc-open-notice" value={form.notice_served}
+                        onChange={(e) => setForm({ ...form, notice_served: e.target.value })}>
+                  <option value="">{t("eosc_choose")}</option>
+                  <option value="true">{t("eosc_yes")}</option>
+                  <option value="false">{t("eosc_no")}</option>
+                </select>
+              </div>
+            )}
+            {form.reason === "termination" && form.notice_served === "true" && (
+              <div className="field">
+                <label htmlFor="eosc-open-notice-date">{t("eosc_notice_date")}</label>
+                <input id="eosc-open-notice-date" type="date" value={form.notice_served_date}
+                       onChange={(e) => setForm({ ...form, notice_served_date: e.target.value })} />
+              </div>
+            )}
+            <button disabled={busy || !form.employee_id || !form.termination_date}
+                    onClick={submitOpen}>{t("eosc_open_save")}</button>
+            <button className="ghost" onClick={() => setOpening(false)}>{t("eosc_open_cancel")}</button>
+          </div>
+        </div>
+      )}
 
       {err && <div className="err" role="alert">{err}</div>}
       {msg && <div className="ok" role="status">{msg}</div>}

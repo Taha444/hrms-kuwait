@@ -174,3 +174,16 @@ def test_the_screen_is_reachable_only_where_the_server_allows(client):
     # ومن لا يملكها يُرفض على الخادم أيًضا — فالإخفاء ليس الحماية الوحيدة.
     r = client.get("/api/eos/cases", headers=auth_headers(login(client, *EMP)))
     assert r.status_code == 403, r.status_code
+
+
+def test_the_screen_can_open_a_case_as_it_promises():
+    """**وجملٌة تعِد ببابٍ**: «تُفتح من الاستقالة أو طلب التسوية، **أو مباشرة
+    من هنا**» — و``POST /eos/cases`` مبنيّةٌ ولا تناديها شاشة. فلا سبيل لفتح
+    معاملةٍ مباشرةً، والمعاملةُ هي المرجع بقرار المالك.
+    """
+    page = SCREEN.read_text(encoding="utf-8")
+    assert 'api.post("/eos/cases"' in page, "الجملة تعِد بما لا يقع"
+    # ولا يُعرض البابُ لمن لا يملكه — نفس صلاحية الخادم.
+    assert 'can("terminate_employee")' in page
+    # والإنذارُ يُسأل عنه عند الفتح في الفصل غير التأديبي (قرار 2026-09-17).
+    assert "notice_served" in page
