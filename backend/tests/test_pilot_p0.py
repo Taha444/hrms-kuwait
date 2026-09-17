@@ -527,15 +527,16 @@ def test_v22_login_requires_totp_when_enabled(client):
     import pyotp
     # ننشئ مستخدم HR جديد لهذا الاختبار (لأن المحاسب قد يكون معطّل من اختبار سابق)
     admin = auth_headers(login(client, "000000000000", "admin123"))
-    client.post("/api/users", headers=admin, json={
+    # الكلمة يولّدها الخادم ويعيدها مرة واحدة — لا يختارها المُنشئ.
+    tmp = client.post("/api/users", headers=admin, json={
         "civil_id": "555999888777", "full_name": "2FA test",
-        "role": "hr", "company_id": 1, "password": "temp12345",
-    })
-    tok = login(client, "555999888777", "temp12345")
+        "role": "hr", "company_id": 1,
+    }).json()["temporary_password"]
+    tok = login(client, "555999888777", tmp)
     h = auth_headers(tok)
     # لازم يغيّر كلمة السر أول شيء
     client.post("/api/auth/change-password", headers=h, json={
-        "old_password": "temp12345", "new_password": "NewPass123",
+        "old_password": tmp, "new_password": "NewPass123",
     })
     # نسجل مرة أخرى بعد تغيير كلمة السر
     tok2 = login(client, "555999888777", "NewPass123")

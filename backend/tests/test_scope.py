@@ -24,31 +24,33 @@ def test_supervisor_cannot_open_other_branch_employee(client):
 def test_admin_can_set_and_clear_user_scope(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)
-    uid = client.post("/api/users", headers=ah, json={
+    created = client.post("/api/users", headers=ah, json={
         "civil_id": "666000111000", "full_name": "موظف مقيّد", "role": "admin_employee",
-        "company_id": 1, "password": "temp123456"}).json()["id"]
+        "company_id": 1}).json()
+    uid, tmp = created["id"], created["temporary_password"]
     # منح قراءة الموظفين + تقييده بالفرع 2
     client.post(f"/api/users/{uid}/matrix", headers=ah, json={"grants": {"employees": ["read"]}})
     r = client.post(f"/api/users/{uid}/scope", headers=ah, params={"branch_id": 2})
     assert r.status_code == 200 and r.json()["scope_branch_id"] == 2
 
-    tok = login(client, "666000111000", "temp123456")
+    tok = login(client, "666000111000", tmp)
     client.post("/api/auth/change-password", headers=auth_headers(tok),
-                json={"old_password": "temp123456", "new_password": "NewPass123"})
+                json={"old_password": tmp, "new_password": "NewPass123"})
     tok = login(client, "666000111000", "NewPass123")
     rows = client.get("/api/employees", headers=auth_headers(tok)).json()
     assert all(e["branch_id"] == 2 for e in rows)  # الفرع 2 فقط
 
 
 def _mk_user(client, ah, civil_id, **extra):
-    """ينشئ مستخدمًا بكلمة مرور معروفة ويتجاوز إجبار التغيير، ويعيد توكنه."""
+    """ينشئ مستخدمًا بكلمته المؤقتة (يولّدها الخادم) ويتجاوز إجبار التغيير، ويعيد توكنه."""
     body = {"civil_id": civil_id, "full_name": "اختبار النطاق", "role": "admin_employee",
-            "company_id": 1, "password": "temp123456", **extra}
-    uid = client.post("/api/users", headers=ah, json=body).json()["id"]
+            "company_id": 1, **extra}
+    created = client.post("/api/users", headers=ah, json=body).json()
+    uid, tmp = created["id"], created["temporary_password"]
     client.post(f"/api/users/{uid}/matrix", headers=ah, json={"grants": {"employees": ["read"]}})
-    tok = login(client, civil_id, "temp123456")
+    tok = login(client, civil_id, tmp)
     client.post("/api/auth/change-password", headers=auth_headers(tok),
-                json={"old_password": "temp123456", "new_password": "NewPass123"})
+                json={"old_password": tmp, "new_password": "NewPass123"})
     return uid, login(client, civil_id, "NewPass123")
 
 

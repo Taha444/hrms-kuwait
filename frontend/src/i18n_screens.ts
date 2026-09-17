@@ -294,4 +294,6 @@ export const screens: Record<string, { ar: string; en: string }> = {
   push_update: { ar: "تحديث", en: "Update" },
   date: { ar: "التاريخ", en: "Date" },
   att_pol_needs_manager: { ar: "يثبّتها من يملك «إدارة الحضور والانصراف» (الموارد البشرية)", en: "Set by someone with “manage attendance” (HR)" },
+  onb_account_by_admin: { ar: "حساب الدخول يُنشئه من يملك «إدارة المستخدمين» من شاشة المستخدمين بعد الحفظ.", en: "The login account is created afterwards from the Users screen by someone with “manage users”." },
+  onb_permits_by_pro: { ar: "الإقامة وإذن العمل يُسجّلهما المندوب (صلاحية «إدارة الإقامات») من ملف الموظف.", en: "Residency and work permit are recorded by the PRO (“manage permits”) from the employee file." },
 };

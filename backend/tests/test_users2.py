@@ -6,18 +6,19 @@ from tests.conftest import auth_headers, login
 def test_user_status_suspend_blocks_login(client):
     admin = login(client, "000000000000", "admin123")
     ah = auth_headers(admin)
-    uid = client.post("/api/users", headers=ah, json={
+    created = client.post("/api/users", headers=ah, json={
         "civil_id": "888000111000", "full_name": "مستخدم اختبار", "role": "hr",
-        "company_id": 1, "password": "temp123456"}).json()["id"]
+        "company_id": 1}).json()
+    uid, tmp = created["id"], created["temporary_password"]
 
     # إيقاف → يُمنع الدخول
     client.post(f"/api/users/{uid}/status", headers=ah, params={"status": "suspended"})
-    r = client.post("/api/auth/login", json={"civil_id": "888000111000", "password": "temp123456"})
+    r = client.post("/api/auth/login", json={"civil_id": "888000111000", "password": tmp})
     assert r.status_code == 403
 
     # إعادة تفعيل → يدخل
     client.post(f"/api/users/{uid}/status", headers=ah, params={"status": "active"})
-    r2 = client.post("/api/auth/login", json={"civil_id": "888000111000", "password": "temp123456"})
+    r2 = client.post("/api/auth/login", json={"civil_id": "888000111000", "password": tmp})
     assert r2.status_code == 200
 
 

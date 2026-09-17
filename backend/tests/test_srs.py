@@ -53,14 +53,14 @@ def test_admin_employee_role_starts_with_no_permissions(client):
     ah = auth_headers(admin)
     r = client.post("/api/users", headers=ah, json={
         "civil_id": "777000111000", "full_name": "موظف إداري", "role": "admin_employee",
-        "company_id": 1, "password": "temp123456"})
+        "company_id": 1})
     assert r.status_code == 201, r.text
-    uid = r.json()["id"]
+    uid, tmp = r.json()["id"], r.json()["temporary_password"]
 
     # أول دخول: تغيير كلمة المرور
-    tok = login(client, "777000111000", "temp123456")
+    tok = login(client, "777000111000", tmp)
     client.post("/api/auth/change-password", headers=auth_headers(tok),
-                json={"old_password": "temp123456", "new_password": "NewPass123"})
+                json={"old_password": tmp, "new_password": "NewPass123"})
     tok = login(client, "777000111000", "NewPass123")
     h = auth_headers(tok)
     # بلا صلاحيات افتراضية → ممنوع

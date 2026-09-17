@@ -24,10 +24,11 @@ def test_must_change_password_enforced_server_side(client):
     # أنشئ مستخدمًا جديدًا (يُجبر على تغيير كلمة المرور)
     r = client.post("/api/users", headers=auth_headers(admin), json={
         "civil_id": "555000111222", "full_name": "مستخدم جديد", "role": "hr",
-        "company_id": 1, "password": "temp123456"})
+        "company_id": 1})
     assert r.status_code == 201, r.text
+    tmp = r.json()["temporary_password"]
 
-    tok = login(client, "555000111222", "temp123456")
+    tok = login(client, "555000111222", tmp)
     h = auth_headers(tok)
     # قبل التغيير: ممنوع استخدام الـ API الفعلي
     assert client.get("/api/employees", headers=h).status_code == 403
@@ -35,7 +36,7 @@ def test_must_change_password_enforced_server_side(client):
     # لكن /me و change-password مسموحة
     assert client.get("/api/auth/me", headers=h).status_code == 200
     chg = client.post("/api/auth/change-password", headers=h,
-                      json={"old_password": "temp123456", "new_password": "NewPass123"})
+                      json={"old_password": tmp, "new_password": "NewPass123"})
     assert chg.status_code == 200
     # بعد التغيير: يعمل كل شيء
     tok2 = login(client, "555000111222", "NewPass123")

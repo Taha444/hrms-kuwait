@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { openAndPrint } from "../printDoc";
 import api, { errMsg } from "../api";
+import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { permitKindAr } from "../labels";
 
@@ -44,7 +45,12 @@ const emptyForm = {
 
 export default function EmployeeOnboarding({ branches, departments, onDone, onCancel }: Props) {
   const { t, lang } = useI18n();
+  const { can } = useAuth();
   const isEn = lang === "en";
+  // ولا تُعرض خطوةٌ يرفضها الخادم: إنشاءُ الحساب بـmanage_users، والإقامات
+  // بـmanage_permits — وموظفُ الموارد البشرية لا يملك أيًّا منهما افتراضًا.
+  const canCreateAccount = can("manage_users");
+  const canAddPermits = can("manage_permits");
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<any>(emptyForm);
   const [savedEmp, setSavedEmp] = useState<any>(null);
@@ -70,31 +76,13 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
   const [uploadedDocs, setUploadedDocs] = useState<string[]>([]);
 
   // User account state — يُنشأ تلقائيًا بعد الحفظ (checkbox قابل للإلغاء)
-  const [createUserAccount, setCreateUserAccount] = useState(true);
+  const [createUserAccount, setCreateUserAccount] = useState(() => can("manage_users"));
   const [userCredentials, setUserCredentials] = useState<{
     civil_id: string; password: string; user_id: number;
   } | null>(null);
   const [copyToast, setCopyToast] = useState("");
 
   const setField = (k: string, v: any) => setForm({ ...form, [k]: v });
-
-  // كلمة سر عشوائية قوية: 12 حرف، حروف كبيرة/صغيرة/أرقام/رموز
-  const genPassword = (): string => {
-    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // بلا I/O لتجنب اللبس
-    const lower = "abcdefghjkmnpqrstuvwxyz";
-    const digits = "23456789";
-    const symbols = "!@#$%&*";
-    const all = upper + lower + digits + symbols;
-    // تضمين نوع واحد على الأقل من كل فئة
-    const required = [
-      upper[Math.floor(Math.random() * upper.length)],
-      lower[Math.floor(Math.random() * lower.length)],
-      digits[Math.floor(Math.random() * digits.length)],
-      symbols[Math.floor(Math.random() * symbols.length)],
-    ];
-    const rest = Array.from({ length: 8 }, () => all[Math.floor(Math.random() * all.length)]);
-    return [...required, ...rest].sort(() => Math.random() - 0.5).join("");
-  };
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -191,20 +179,19 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
       setSavedEmp(r.data);
       setStep(4);
       // إنشاء حساب المستخدم تلقائيًا لو HR اختار (الافتراضي)
-      if (createUserAccount) {
-        const pw = genPassword();
+      if (createUserAccount && canCreateAccount) {
         try {
+          // الكلمة المؤقتة يولّدها الخادم لكل حساب ويعيدها مرة واحدة — قاعدة المالك.
           const userR = await api.post("/users", {
             civil_id: r.data.civil_id,
             full_name: r.data.name,
             role: "employee",
             company_id: r.data.company_id,
             employee_id: r.data.id,
-            password: pw,
           });
           setUserCredentials({
             civil_id: r.data.civil_id,
-            password: pw,
+            password: userR.data.temporary_password,
             user_id: userR.data.id,
           });
         } catch (userErr: any) {
@@ -602,6 +589,7 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
               <p>{isEn
                 ? "Ready to save the employee. Permits and documents can be added after."
                 : "جاهز لحفظ الموظف. أذونات الإقامة والمستندات ستُضاف بعد الحفظ."}</p>
+              {canCreateAccount ? (
               <div className="field" style={{ marginTop: 12, marginBottom: 12 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input type="checkbox" checked={createUserAccount}
@@ -616,6 +604,9 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                   </span>
                 </label>
               </div>
+              ) : (
+                <p className="muted" style={{ fontSize: 12 }}>{t("onb_account_by_admin")}</p>
+              )}
               <button onClick={saveEmployee} disabled={busy} aria-busy={busy}>
                 {busy
                   ? (isEn ? "Saving..." : "جارٍ الحفظ...")
@@ -695,6 +686,9 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
               )}
 
               {/* Permits */}
+              {!canAddPermits ? (
+                <p className="muted" style={{ fontSize: 12 }}>{t("onb_permits_by_pro")}</p>
+              ) : (
               <div className="card" style={{ background: "#fafafa" }}>
                 <h4>{isEn ? "Residency & Work Permit" : "الإقامة وإذن العمل"}</h4>
                 <div className="row">
@@ -737,6 +731,7 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                   </ul>
                 )}
               </div>
+              )}
 
               {/* Document upload */}
               <div className="card" style={{ background: "#fafafa", marginTop: 12 }}>

@@ -115,9 +115,19 @@ def create_user(data: schemas.UserIn, request: Request,
             )
 
     # ACCESS — كل حساب يُنشأ بكلمة مؤقّتة خاصّة به، تُعرض لمنشئه مرة واحدة.
+    #
+    # **ولا تُقبل كلمةٌ يختارها المُنشئ** — قاعدة المالك نصًّا: «ممنوع كلمة
+    # مرور موحدة أو مشتركة — أنشئ كلمة مرور مؤقتة عشوائية ومختلفة لكل شخص».
+    # وكان هذا الحقل بابًا في الـAPI: معالجُ تسجيل الموظف يولّد كلمته في
+    # المتصفّح (``Math.random``) ويرسلها، ومن شاء أرسل الكلمة نفسها للجميع.
+    # وهو شقيقُ ما أُغلق في ``/auth/reset-password``.
+    if data.password:
+        raise HTTPException(status_code=400, detail=(
+            "لا تُحدَّد كلمة المرور عند إنشاء الحساب — يولّد النظام كلمة مؤقتة "
+            "عشوائية خاصة بالحساب وتُعرض لك مرة واحدة"))
     from ..security import generate_temp_password
-    pw = data.password or generate_temp_password()
-    pw_generated = not data.password
+    pw = generate_temp_password()
+    pw_generated = True
     new_user = models.User(
         civil_id=data.civil_id, full_name=data.full_name, role=data.role,
         company_id=company_id, email=data.email, phone=data.phone,
