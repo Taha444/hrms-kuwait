@@ -315,6 +315,20 @@ def require_super_admin(user: models.User = Depends(get_current_user)) -> models
     return user
 
 
+def require_owner_or_admin(user: models.User = Depends(get_current_user)) -> models.User:
+    """صاحبُ الشركات أو الإدارة العليا.
+
+    **قرار المالك (2026-09-18)**: إجراءاتٌ حُصرت في ``super_admin`` وقاعدتُه
+    «لا تمنح أي مستخدم Super Admin» — فتبقى بلا فاعل. وأولُها فكُّ قفل
+    التحقق الثنائي: من يفقد هاتفه ورموزَ الاسترداد معًا يبقى محبوسًا خارج
+    النظام، والمخرجُ الوحيد تدخّلٌ في قاعدة البيانات.
+    """
+    if user.role not in ("super_admin", "company_owner"):
+        raise HTTPException(status_code=403,
+                            detail="هذا الإجراء لصاحب الشركة أو الإدارة العليا فقط")
+    return user
+
+
 def assert_role_allowed(user: "models.User", blocked_roles: set[str],
                         emp_id: int | None = None, reason: str = "") -> None:
     """R2 §2 — يرفض الأدوار المحجوبة من الـendpoint. تُستدعى داخل الدالة (ليست dependency).

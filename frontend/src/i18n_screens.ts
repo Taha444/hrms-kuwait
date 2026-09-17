@@ -334,4 +334,7 @@ export const screens: Record<string, { ar: string; en: string }> = {
   ops_lic_add: { ar: "أضف الترخيص", en: "Add licence" },
   ops_lic_added: { ar: "أُضيف الترخيص", en: "Licence added" },
   ops_lic_hint: { ar: "سعة الترخيص تُقاس بعدد المسجَّلين عليه — أدخل العدد المسموح كما في الترخيص.", en: "Licence capacity is measured against those registered on it — enter the allowed number as printed on the licence." },
+  user_2fa_reset: { ar: "فكّ التحقق الثنائي", en: "Reset 2FA" },
+  user_2fa_reason: { ar: "سبب فكّ التحقق الثنائي (يُسجَّل):", en: "Reason for resetting 2FA (recorded):" },
+  user_2fa_done: { ar: "فُكّ التحقق الثنائي — يُطلَب تفعيله عند أول دخول", en: "2FA reset — the user must enrol again at next login" },
 };

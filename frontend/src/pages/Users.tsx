@@ -151,6 +151,19 @@ export default function Users() {
     finally { setLinkBusy(false); }
   };
 
+  // قرار المالك (2026-09-18): فكُّ قفل التحقق الثنائي لصاحب الشركة —
+  // ``POST /users/{id}/2fa/reset`` كانت مبنيًّة بلا باب، والقفلُ بلا مخرج.
+  const reset2fa = async (id: number, name: string) => {
+    const reason = window.prompt(`${t("user_2fa_reason")} ${name}`);
+    if (!reason || !reason.trim()) return;
+    setErr(""); setMsg("");
+    try {
+      await api.post(`/users/${id}/2fa/reset`, null, { params: { reason: reason.trim() } });
+      setMsg(t("user_2fa_done"));
+      load();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -276,6 +289,11 @@ export default function Users() {
               <td className="row">
                 <button className="ghost sm" onClick={() => openPerms(u)}>{t("user_perms")}</button>
                 <button className="ghost sm" onClick={() => reset(u.id, u.full_name)}>{t("user_password")}</button>
+                {["super_admin", "company_owner"].includes(me?.role || "") && (
+                  <button className="ghost sm" onClick={() => reset2fa(u.id, u.full_name)}>
+                    {t("user_2fa_reset")}
+                  </button>
+                )}
                 {me?.role === "super_admin" && u.role !== "super_admin" && (
                   <button className="ghost sm" onClick={() => impersonate(u.id)}>{t("user_impersonate")}</button>
                 )}

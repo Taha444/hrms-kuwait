@@ -8,7 +8,8 @@ from .. import models, schemas
 from ..config import settings
 from ..database import get_db
 from ..deps import (
-    audit, get_current_user, get_user_perms, require_perm, require_super_admin, scope_company_id,
+    audit, get_current_user, get_user_perms, require_owner_or_admin, require_perm,
+    require_super_admin, scope_company_id,
 )
 from ..permissions import (
     ACTIONS_AR,
@@ -768,7 +769,7 @@ def _get_scoped_user(db: Session, actor: models.User, user_id: int) -> models.Us
 
 @router.post("/{user_id}/2fa/reset")
 def reset_user_2fa(user_id: int, request: Request, reason: str,
-                   user: models.User = Depends(require_super_admin),
+                   user: models.User = Depends(require_owner_or_admin),
                    db: Session = Depends(get_db)):
     """QA-30 — إعادة تعيين 2FA لمستخدم فقد جهازه ورموز الاسترداد مًعا.
 

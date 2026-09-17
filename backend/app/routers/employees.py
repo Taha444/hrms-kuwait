@@ -321,6 +321,18 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
                             payload.get("actual_branch_id", emp.actual_branch_id))
     _assert_refs_in_company(db, emp.company_id, payload, self_id=emp.id)
 
+    # **والنقلُ بطلبه** (قرار المالك 2026-09-18). فرعُ التسجيل وترخيصُه
+    # يكتبهما ``REQTRF``/``REQTRFLIC`` بعد اعتماد، وهذا الـPUT كان يكتبهما
+    # بصلاحية التعديل وحدها — بابٌ جانبيٌّ حول مسارٍ بُني ليمرّ باعتماد.
+    # و«الفعليّ» (``actual_branch_id``/``actual_license_id``) يبقى تحريريًّا:
+    # رصدُ واقعٍ لا قرارُ نقل — وعليه يقوم تنبيه «العمل على غير ترخيصه».
+    moved = [_TRANSFER_LABEL[k] for k in ("branch_id", "license_id")
+             if k in payload and payload[k] != getattr(emp, k, None)]
+    if moved:
+        raise HTTPException(status_code=409, detail=(
+            f"تغيير {'، '.join(moved)} لا يُطبَّق مباشرةً — قدّمه من «طلب نقل» "
+            "ليعتمده مستخدمٌ آخر."))
+
     # PERM-02 — إعدادات الحضور تُعدَّل من هنا أيًضا، فتسري عليها نفس ضوابط
     # endpoint السياسة المخصص بدل أن يكون الـPUT بابًا خلفيًا يتخطّاها:
     #  1) SEC2-17 — mode='none' يشترط إعفاًء صريًحا بسبب موثّق
@@ -1281,6 +1293,9 @@ def list_employees_without_policy(company_id: int | None = None,
 # R7-G §4 — Salary Change Approval Workflow (maker-checker)
 # HR/Manager يقترح، Manager/Owner/super_admin يعتمد. المُقترِح ≠ المُعتمِد.
 # =============================================================================
+#: ما لا يُنقَل إلا بطلبٍ معتمَد — بأسمائه كما يقرؤها من يُوجَّه إليه.
+_TRANSFER_LABEL = {"branch_id": "الفرع", "license_id": "ترخيص التسجيل"}
+
 CHANGEABLE_FIELDS = {"basic_salary", "actual_salary", "hire_date", "job_title",
                     "contract_type"}
 
