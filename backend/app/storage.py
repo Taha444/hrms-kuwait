@@ -250,9 +250,47 @@ def read_bytes(key: str) -> bytes:
     return get_storage().read(key)
 
 
+#: نوعُ الردّ من امتداد المفتاح المخزَّن — لا من إعلان العميل.
+_SERVED_TYPES = {
+    ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".csv": "text/csv", ".txt": "text/plain",
+}
+
+#: مفاتيحُ يكتبها النظامُ نفسه (``save_at_key``) — وحدها تُخدَم ``text/html``.
+_SYSTEM_HTML_PREFIXES = ("forms/", "generated/")
+
+
+def served_media_type(key: str) -> str:
+    """النوعُ الذي يُخدَم به الملف — **مشتقٌّ من امتداده المخزَّن بقائمة سماح**.
+
+    **العطل المقيس**: الأرشيفُ والمستنداتُ والتجديدُ تحفظ
+    ``mime=file.content_type`` — النوعَ الذي **يُعلنه العميل** — وتُعيده عند
+    التنزيل. فملفٌّ امتدادُه ``.pdf`` ومحتواه HTML يُرفع بترويسة ``text/html``
+    فيُخدَم HTML، و``nosniff`` يجعل المتصفحَ يصدّق الترويسة؛ والواجهةُ تفتحه
+    بـ``createObjectURL`` فترث وثيقتُه أصلَ التطبيق. ومستنداتُ الطلب تُعيد
+    ``text/html`` لكل ``.html`` — وكلُّ ``.html`` هناك مرفوعٌ من مستخدم.
+
+    والحمايةُ الباقية كانت ترويسةً واحدة (``script-src`` بلا
+    ``unsafe-inline``). فصار النوعُ يُشتقّ هنا: ``text/html`` لما يكتبه
+    النظام وحده، وكلُّ مجهولٍ ``application/octet-stream`` (يُنزَّل لا يُعرض).
+    """
+    k = _to_key(key or "").lower()
+    ext = os.path.splitext(k)[1]
+    if ext == ".html":
+        return ("text/html; charset=utf-8" if k.startswith(_SYSTEM_HTML_PREFIXES)
+                else "application/octet-stream")
+    return _SERVED_TYPES.get(ext, "application/octet-stream")
+
+
 def file_response(key: str, filename: str | None = None,
                   media_type: str | None = None) -> Response:
-    return get_storage().response(key, filename, media_type)
+    # ``media_type`` من المُنادي لا يُعتمد — قد يكون ما أعلنه العميل عند الرفع.
+    return get_storage().response(key, filename, served_media_type(key))
 
 
 def delete_key(key: str) -> bool:
