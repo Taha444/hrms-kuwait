@@ -1,9 +1,11 @@
 // نظام ترجمة ثنائي اللغة (عربي/إنجليزي) — تبديل اللغة يقلب الواجهة بالكامل (RTL/LTR)
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { screens } from "./i18n_screens";
 
 type Lang = "ar" | "en";
 
 const dict: Record<string, { ar: string; en: string }> = {
+  ...screens,
   app_name: { ar: "نظام الموارد البشرية", en: "HRMS Kuwait" },
   app_tagline: { ar: "الكويت · منصّة متعددة الشركات", en: "Kuwait · Multi-company Platform" },
   login: { ar: "تسجيل الدخول", en: "Login" },
@@ -650,6 +652,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   rsn_termination: { ar: "فصل (غير تأديبي)", en: "Termination (non-disciplinary)" }, rsn_contract_expiry: { ar: "انتهاء العقد", en: "Contract Expiry" },
   rsn_resignation: { ar: "استقالة", en: "Resignation" }, rsn_death: { ar: "وفاة", en: "Death" },
   rsn_disability: { ar: "عجز", en: "Disability" }, rsn_misconduct: { ar: "فصل تأديبي", en: "Misconduct" },
+  rsn_marriage: { ar: "استقالة المرأة للزواج (خلال سنة)", en: "Resignation for marriage (within a year)" },
+  rsn_retirement: { ar: "تقاعد", en: "Retirement" },
   epf_job: { ar: "المسمى", en: "Job Title" }, epf_nationality: { ar: "الجنسية", en: "Nationality" },
   epf_salary: { ar: "الراتب", en: "Salary" }, epf_hire: { ar: "التعيين", en: "Hire" }, epf_contract: { ar: "نوع العقد", en: "Contract Type" },
   epf_gender: { ar: "الجنس", en: "Gender" }, epf_dob: { ar: "الميلاد", en: "DOB" }, epf_marital: { ar: "الحالة الاجتماعية", en: "Marital Status" },
@@ -765,6 +769,13 @@ const dict: Record<string, { ar: string; en: string }> = {
   epf_settlement_title: { ar: "مكافأة نهاية الخدمة (تقديرية)", en: "End-of-Service Settlement (estimate)" },
   epf_total_settlement: { ar: "إجمالي التسوية (د.ك)", en: "Total Settlement (KWD)" },
   epf_indemnity: { ar: "المكافأة", en: "Indemnity" }, epf_leave_payout: { ar: "بدل الإجازات", en: "Leave Payout" },
+  ops_lic_mismatch_title: { ar: "العمل على غير ترخيص التسجيل", en: "Working under a different licence" },
+  ops_lic_mismatch_hint: { ar: "موظفون مسجَّلون على ترخيص ويعملون فعليًا على غيره — مخاطرة عند التفتيش. صحّح التسجيل بطلب نقل الترخيص أو صحّح ترخيص الدوام الفعلي.", en: "Employees registered under one licence but actually working under another — an inspection risk. Fix via a licence-transfer request or correct the actual licence." },
+  lic_registered: { ar: "ترخيص التسجيل", en: "Registered licence" },
+  lic_actual: { ar: "ترخيص الدوام الفعلي", en: "Actual work licence" },
+  lic_none: { ar: "— غير محدد —", en: "— none —" },
+  lic_same_as_registered: { ar: "نفس ترخيص التسجيل", en: "Same as registered" },
+  lic_mismatch_warn: { ar: "⚠ يعمل على غير ترخيص تسجيله — مخاطرة تفتيش", en: "⚠ Working under a licence other than the registered one — inspection risk" },
   hol_title: { ar: "العطل الرسمية", en: "Public holidays" },
   hol_hint: { ar: "العطلة لا تُعدّ «غير مسجَّل» ولا تُحتسب من الإجازة، والعمل فيها إضافي بنسبة العطل بعد اعتماد طلب «عمل إضافي». لا تُعدَّل في شهر مُقفل.", en: "A holiday is not counted as unrecorded or as leave; work on it is holiday overtime once an overtime request is approved. Locked in a closed month." },
   hol_name: { ar: "اسم العطلة", en: "Holiday name" },
@@ -1112,3 +1123,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 }
 
 export const useI18n = () => useContext(Ctx);
+
+/** اللغة الحالية خارج المكوّنات (الوحدات العادية: api/push/التواريخ/الجولات). */
+export function currentLang(): Lang {
+  try { return (localStorage.getItem("lang") as Lang) || "ar"; } catch { return "ar"; }
+}
+
+/** مترجمٌ بلا hook — للوحدات التي ليست مكوّنات React. */
+export function tr(k: string, vars?: Record<string, any>): string {
+  let s = dict[k]?.[currentLang()] ?? k;
+  if (vars) for (const [key, v] of Object.entries(vars)) s = s.replace(`{${key}}`, String(v));
+  return s;
+}

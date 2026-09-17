@@ -45,8 +45,8 @@ FE = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src"
 
 #: حقٌل معلٌَن ال يقرؤه شيء — ولكلٍّ **سببُه وأثرُه** مكتوًبا.
 _DECLARED_NEVER_CONSUMED = {
-    "actual_license_id":
-        "ترخيُص الدوام الفعلي — لم يُملأ قطّ، والسعُة تُعَدّ بـlicense_id",
+    # ``actual_license_id`` بُني تنبيهًا تفتيشيًا بقرار المالك (2026-09-17) —
+    # وحارسُه السلوكي في ``test_zzz_license_mismatch``.
 }
 
 

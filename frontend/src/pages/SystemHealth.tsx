@@ -102,7 +102,7 @@ export default function SystemHealth() {
   );
 
   if (loading) return <div className="card">{t("loading")}</div>;
-  if (!health) return <div className="card">{t("load_failed") || "فشل تحميل الحالة"}</div>;
+  if (!health) return <div className="card">{t("load_failed")}</div>;
 
   const c = health.checks;
   const allGreen = health.status === "ok";

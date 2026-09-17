@@ -4,6 +4,7 @@ import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { fmtKuwaitDateTime } from "../utils/datetime";
+import { roleAr } from "../labels";
 
 /**
  * P6-27 — شاشة حالات نهاية الخدمة.
@@ -44,10 +45,6 @@ type Policy = {
   you: string; you_label: string;
 };
 
-const STAGE_AR: Record<string, string> = {
-  initiated: "فُتحت", calculated: "حُسبت", approved: "اعتُمدت",
-  clearance: "أُخلي الطرف", acknowledged: "أقرّ الموظف", settled: "صُرفت",
-};
 
 /** الخطوة التالية لكل حالة — من ترتيب المسار لا من قائمة مكتوبة ثانية. */
 function nextStep(flow: string[], status: string): string | null {
@@ -55,10 +52,6 @@ function nextStep(flow: string[], status: string): string | null {
   return i >= 0 && i + 1 < flow.length ? flow[i + 1] : null;
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  calculated: "احسب التسوية", approved: "اعتمد", clearance: "سجّل إخلاء الطرف",
-  acknowledged: "أقرّ بالاطلاع", settled: "سجّل الصرف",
-};
 
 const ACTION_PATH: Record<string, string> = {
   calculated: "calculate", approved: "approve", clearance: "clearance",
@@ -66,8 +59,12 @@ const ACTION_PATH: Record<string, string> = {
 };
 
 export default function EosCases() {
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const { can } = useAuth();
+  const stageLabel = (s: string) => (t(`eosc_st_${s}`) !== `eosc_st_${s}` ? t(`eosc_st_${s}`) : s);
+  const actionLabel = (s: string) => (t(`eosc_act_${s}`) !== `eosc_act_${s}` ? t(`eosc_act_${s}`) : s);
+  const reasonLabel = (r: string | null) =>
+    !r ? "" : t(`rsn_${r}`) !== `rsn_${r}` ? t(`rsn_${r}`) : (policy?.reasons?.[r] || r);
   const [notice, setNotice] = useState({ served: "", date: "" });
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<Case[]>([]);
@@ -83,7 +80,7 @@ export default function EosCases() {
   const load = () =>
     api.get("/eos/cases", { params: statusFilter ? { status: statusFilter } : {} })
       .then((r) => setRows(r.data))
-      .catch((e) => setErr(errMsg(e, "تعذّر تحميل الحالات")));
+      .catch((e) => setErr(errMsg(e, t("eosc_err_load"))));
 
   useEffect(() => { load(); }, [statusFilter]);
   useEffect(() => {
@@ -96,7 +93,7 @@ export default function EosCases() {
       setNotice({ served: r.data.notice_served === null ? "" : String(r.data.notice_served),
                   date: r.data.notice_served_date || "" });
     })
-      .catch((e) => setErr(errMsg(e, "تعذّر فتح الحالة")));
+      .catch((e) => setErr(errMsg(e, t("eosc_err_open"))));
 
   /** هل يملك هذا المستخدم الخطوة التالية؟ — بقائمة الخادم لا بقائمة هنا. */
   const mayDo = (step: string) =>
@@ -114,11 +111,11 @@ export default function EosCases() {
     if (step === "settled") q.payment_reference = note.trim();
     try {
       await api.post(`/eos/cases/${sel.id}/${ACTION_PATH[step]}`, null, { params: q });
-      setMsg("تمّ تسجيل الخطوة");
+      setMsg(t("eosc_step_done"));
       await load();
       await open(sel.id);
     } catch (e: any) {
-      setErr(errMsg(e, "تعذّر تنفيذ الخطوة"));
+      setErr(errMsg(e, t("eosc_err_step")));
     } finally { setBusy(false); }
   };
 
@@ -131,33 +128,30 @@ export default function EosCases() {
       const q: Record<string, string> = { served: notice.served };
       if (notice.served === "true") q.served_date = notice.date;
       await api.post(`/eos/cases/${sel.id}/notice`, null, { params: q });
-      setMsg("سُجّل الإنذار");
+      setMsg(t("eosc_notice_saved"));
       await open(sel.id);
     } catch (e: any) {
-      setErr(errMsg(e, "تعذّر تسجيل الإنذار"));
+      setErr(errMsg(e, t("eosc_err_notice")));
     } finally { setBusy(false); }
   };
 
   const money = (n: any) =>
-    typeof n === "number" ? `${n.toFixed(3)} د.ك` : "—";
+    typeof n === "number" ? t("eosc_kwd", { n: n.toFixed(3) }) : "—";
 
   return (
     <div aria-labelledby="eosc-title">
       <div className="page-head">
         <div>
-          <div className="eyebrow">نهاية الخدمة</div>
-          <h2 id="eosc-title">معاملات نهاية الخدمة</h2>
-          <div className="sub">
-            المرجع الرسمي لمسار الخروج — تُفتح من الاستقالة أو طلب التسوية،
-            أو مباشرة من هنا.
-          </div>
+          <div className="eyebrow">{t("eosc_eyebrow")}</div>
+          <h2 id="eosc-title">{t("eosc_title")}</h2>
+          <div className="sub">{t("eosc_sub")}</div>
         </div>
         <select value={statusFilter}
                 onChange={(e) => setParams(e.target.value ? { status: e.target.value } : {})}
-                aria-label="تصفية بالحالة">
-          <option value="">كل الحالات</option>
+                aria-label={t("eosc_filter")}>
+          <option value="">{t("eosc_all")}</option>
           {(policy?.flow || []).map((s) => (
-            <option key={s} value={s}>{STAGE_AR[s] || s}</option>
+            <option key={s} value={s}>{stageLabel(s)}</option>
           ))}
         </select>
       </div>
@@ -169,11 +163,11 @@ export default function EosCases() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "right", padding: 8 }}>المرجع</th>
-              <th style={{ textAlign: "right", padding: 8 }}>الموظف</th>
-              <th style={{ padding: 8 }}>تاريخ المغادرة</th>
-              <th style={{ padding: 8 }}>المرحلة</th>
-              <th style={{ padding: 8 }}>المصدر</th>
+              <th style={{ textAlign: "start", padding: 8 }}>{t("eosc_col_ref")}</th>
+              <th style={{ textAlign: "start", padding: 8 }}>{t("eosc_col_emp")}</th>
+              <th style={{ padding: 8 }}>{t("eosc_col_leave")}</th>
+              <th style={{ padding: 8 }}>{t("eosc_col_stage")}</th>
+              <th style={{ padding: 8 }}>{t("eosc_col_source")}</th>
               <th style={{ padding: 8 }} />
             </tr>
           </thead>
@@ -190,7 +184,7 @@ export default function EosCases() {
                 </td>
                 <td style={{ padding: 8, textAlign: "center" }}>
                   <span className={`pill ${c.status === "settled" ? "success" : "gold"}`}>
-                    {STAGE_AR[c.status] || c.status}
+                    {stageLabel(c.status)}
                   </span>
                   <div className="muted" style={{ fontSize: 11 }}>
                     {c.stage_index + 1} / {c.total_stages}
@@ -200,18 +194,18 @@ export default function EosCases() {
                   {/* P6-27 — الرابط: من يقرأ المرجع يعرف من أين جاء. */}
                   {c.source_request_id
                     ? <a href={`/requests/${c.source_request_id}`}>
-                        طلب #{c.source_request_id}
+                        {t("eosc_request_n", { n: c.source_request_id })}
                       </a>
-                    : <span className="muted">فُتحت مباشرة</span>}
+                    : <span className="muted">{t("eosc_direct")}</span>}
                 </td>
                 <td style={{ padding: 8, textAlign: "center" }}>
-                  <button className="ghost" onClick={() => open(c.id)}>تفاصيل</button>
+                  <button className="ghost" onClick={() => open(c.id)}>{t("eosc_details")}</button>
                 </td>
               </tr>
             ))}
             {!rows.length && (
               <tr><td colSpan={6} style={{ padding: 16 }} className="muted">
-                لا معاملات نهاية خدمة {statusFilter ? "بهذه الحالة" : "بعد"}.
+                {t(statusFilter ? "eosc_none_status" : "eosc_none")}
               </td></tr>
             )}
           </tbody>
@@ -224,17 +218,16 @@ export default function EosCases() {
             <h3 style={{ margin: 0 }}>
               {sel.reference_no || `#${sel.id}`} — {sel.employee_name}
             </h3>
-            <button className="ghost" onClick={() => setSel(null)}>إغلاق</button>
+            <button className="ghost" onClick={() => setSel(null)}>{t("eosc_close")}</button>
           </div>
 
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             {/* التسمية من الخادم: قائمة ترجمة هنا تتقادم مع أول سبب يُضاف. */}
-            {policy?.reasons?.[sel.termination_reason || ""]
-              || sel.termination_reason} · المغادرة {sel.termination_date}
+            {reasonLabel(sel.termination_reason)} · {t("eosc_leaving", { d: sel.termination_date })}
             {sel.source_request_id
-              ? <> · بموجب <a href={`/requests/${sel.source_request_id}`}>
-                  طلب #{sel.source_request_id}</a></>
-              : <> · فُتحت مباشرة</>}
+              ? <> · {t("eosc_under")} <a href={`/requests/${sel.source_request_id}`}>
+                  {t("eosc_request_n", { n: sel.source_request_id })}</a></>
+              : <> · {t("eosc_direct")}</>}
           </div>
 
           {/* خطّ المراحل: ما تمّ ومتى — والفراغ يعني «لم يقع بعد» لا خطأ. */}
@@ -246,7 +239,7 @@ export default function EosCases() {
               return (
                 <div key={s} className="timeline-item"
                      style={{ opacity: done ? 1 : 0.45, paddingBottom: 10 }}>
-                  <strong>{STAGE_AR[s] || s}</strong>
+                  <strong>{stageLabel(s)}</strong>
                   {at && <span className="muted"> · {fmtKuwaitDateTime(at, lang)}</span>}
                 </div>
               );
@@ -255,33 +248,34 @@ export default function EosCases() {
 
           {sel.termination_reason === "termination" && (
             <div style={{ marginTop: 14 }}>
-              <h4 style={{ margin: "0 0 6px" }}>الإنذار</h4>
+              <h4 style={{ margin: "0 0 6px" }}>{t("eosc_notice_h")}</h4>
               {sel.status === "initiated" && can("terminate_employee") ? (
                 <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                   <div className="field">
-                    <label htmlFor="eosc-notice">أُبلغ الإنذار؟</label>
+                    <label htmlFor="eosc-notice">{t("eosc_notice_q")}</label>
                     <select id="eosc-notice" value={notice.served}
                             onChange={(e) => setNotice({ ...notice, served: e.target.value })}>
-                      <option value="">— اختر —</option>
-                      <option value="true">نعم</option>
-                      <option value="false">لا</option>
+                      <option value="">{t("eosc_choose")}</option>
+                      <option value="true">{t("eosc_yes")}</option>
+                      <option value="false">{t("eosc_no")}</option>
                     </select>
                   </div>
                   {notice.served === "true" && (
                     <div className="field">
-                      <label htmlFor="eosc-notice-date">تاريخ الإبلاغ</label>
+                      <label htmlFor="eosc-notice-date">{t("eosc_notice_date")}</label>
                       <input id="eosc-notice-date" type="date" value={notice.date}
                              onChange={(e) => setNotice({ ...notice, date: e.target.value })} />
                     </div>
                   )}
                   <button className="ghost" disabled={busy || !notice.served
                             || (notice.served === "true" && !notice.date)}
-                          onClick={saveNotice}>سجّل</button>
+                          onClick={saveNotice}>{t("eosc_save")}</button>
                 </div>
               ) : (
                 <div className="muted" style={{ fontSize: 12 }}>
-                  {sel.notice_served === null ? "لم يُسجَّل بعد — يلزم قبل الحساب"
-                    : sel.notice_served ? `أُبلغ في ${sel.notice_served_date}` : "لم يُبلَّغ"}
+                  {sel.notice_served === null ? t("eosc_notice_unset")
+                    : sel.notice_served ? t("eosc_notice_on", { d: sel.notice_served_date })
+                    : t("eosc_notice_not")}
                 </div>
               )}
             </div>
@@ -289,27 +283,27 @@ export default function EosCases() {
 
           {sel.settlement && (
             <div style={{ marginTop: 14 }}>
-              <h4 style={{ margin: "0 0 6px" }}>التسوية</h4>
+              <h4 style={{ margin: "0 0 6px" }}>{t("eosc_settlement")}</h4>
               <div className="muted" style={{ fontSize: 12 }}>
-                المكافأة: {money(sel.settlement?.indemnity)}
-                {" · "}بدل الإجازات: {money(sel.settlement?.leave_payout)}
+                {t("eosc_indemnity")}: {money(sel.settlement?.indemnity)}
+                {" · "}{t("eosc_leave_pay")}: {money(sel.settlement?.leave_payout)}
                 {typeof sel.settlement?.notice_payout === "number" && (
-                  <>{" · "}بدل الإنذار: {money(sel.settlement.notice_payout)}</>
+                  <>{" · "}{t("eosc_notice_pay")}: {money(sel.settlement.notice_payout)}</>
                 )}
               </div>
               <div className="muted" style={{ fontSize: 12 }}>
-                الإجمالي: {money(sel.settlement?.total_settlement)}
+                {t("eosc_total")}: {money(sel.settlement?.total_settlement)}
               </div>
             </div>
           )}
 
           {sel.clearance_notes && (
             <div className="s-note" style={{ marginTop: 10 }}>
-              إخلاء الطرف: {sel.clearance_notes}
+              {t("eosc_clearance")}: {sel.clearance_notes}
             </div>
           )}
           {sel.payment_reference && (
-            <div className="s-note">مرجع الدفع: {sel.payment_reference}</div>
+            <div className="s-note">{t("eosc_payref")}: {sel.payment_reference}</div>
           )}
 
           {/* الخطوة التالية — وحدها. ولا يُعرض ما لا يملكه هذا المستخدم. */}
@@ -317,15 +311,17 @@ export default function EosCases() {
             const step = policy ? nextStep(policy.flow, sel.status) : null;
             if (!step) {
               return <div className="muted" style={{ marginTop: 14 }}>
-                بلغت المعاملة نهايتها المالية (صُرفت).
+                {t("eosc_finished")}
               </div>;
             }
             if (!mayDo(step)) {
               return <div className="muted" style={{ marginTop: 14 }}>
-                الخطوة التالية «{ACTION_LABEL[step] || step}» من صلاحية:
-                {" "}{(policy?.roles[step] || [])
-                       .map((r) => policy?.role_labels?.[r] || r)
-                       .join("، ") || "—"} — لست منهم.
+                {t("eosc_not_yours", {
+                  step: actionLabel(step),
+                  roles: (policy?.roles[step] || [])
+                    .map((r) => roleAr(r))
+                    .join(lang === "ar" ? "، " : ", ") || "—",
+                })}
               </div>;
             }
             const needsNote = step === "clearance" || step === "settled";
@@ -334,13 +330,13 @@ export default function EosCases() {
                 {needsNote && (
                   <input value={note} onChange={(e) => setNote(e.target.value)}
                          placeholder={step === "settled"
-                           ? "مرجع الدفع (إلزامي)"
-                           : "ملاحظات إخلاء الطرف (إلزامية)"} />
+                           ? t("eosc_payref_ph")
+                           : t("eosc_clear_ph")} />
                 )}
                 <div>
                   <button disabled={busy || (needsNote && !note.trim())}
                           onClick={() => act(step)}>
-                    {ACTION_LABEL[step] || step}
+                    {actionLabel(step)}
                   </button>
                 </div>
               </div>

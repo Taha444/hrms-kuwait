@@ -67,7 +67,7 @@ export default function Payroll() {
     if (!requirePeriod()) return;
     try {
       const r = await api.post("/payroll/run", null, { params: { period } });
-      setData(r.data); setRunId(r.data.run_id); setMsg("تم تشغيل المسيّر وحفظه");
+      setData(r.data); setRunId(r.data.run_id); setMsg(t("pay_run_saved"));
       loadRuns();
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
@@ -170,7 +170,7 @@ export default function Payroll() {
                 </td>
               </tr>
             ))}
-            {!runs.length && <tr><td colSpan={6} className="empty">لا توجد مسيّرات محفوظة</td></tr>}
+            {!runs.length && <tr><td colSpan={6} className="empty">{t("pay_no_runs")}</td></tr>}
           </tbody>
         </table>
       </div>

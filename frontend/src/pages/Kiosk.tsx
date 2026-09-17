@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import QRCode from "qrcode";
+import { currentLang, tr } from "../i18n";
 
 // صفحة عرض QR للفرع (Kiosk) — مستقلة بلا تسجيل دخول، مُصرّحة بمفتاح الفرع فقط.
 // الرمز ثابت لكل فرع (لا يتغيّر) — يُجلب مرة واحدة ويُعاد المحاولة فقط عند الانقطاع.
@@ -27,7 +28,7 @@ export default function Kiosk() {
         await QRCode.toCanvas(canvasRef.current, data.token, { width: 320, margin: 1 });
       setLoaded(true);
     } catch (e: any) {
-      setError(e.message === "403" ? "مفتاح الشاشة غير صالح" : "إعادة الاتصال…");
+      setError(e.message === "403" ? "invalid" : "reconnect");
     } finally {
       fetching.current = false;
     }
@@ -38,7 +39,7 @@ export default function Kiosk() {
 
   // إعادة محاولة فقط لو لسه ما اتحمّلش وفيه انقطاع
   useEffect(() => {
-    if (loaded || !error || error.includes("غير صالح")) return;
+    if (loaded || !error || error === "invalid") return;
     const r = setInterval(fetchToken, 4000);
     return () => clearInterval(r);
   }, [error, loaded]);
@@ -47,18 +48,18 @@ export default function Kiosk() {
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", gap: 18,
-      background: "#0b3b38", color: "#fff", direction: "rtl",
+      background: "#0b3b38", color: "#fff", direction: currentLang() === "ar" ? "rtl" : "ltr",
     }}>
-      <h1 style={{ fontSize: 40, margin: 0 }}>{branchName || "شاشة الحضور"}</h1>
-      <p style={{ opacity: 0.8, margin: 0 }}>امسح الرمز من تطبيق الموظف لتسجيل الحضور</p>
+      <h1 style={{ fontSize: 40, margin: 0 }}>{branchName || tr("kiosk_title")}</h1>
+      <p style={{ opacity: 0.8, margin: 0 }}>{tr("kiosk_scan")}</p>
       <div style={{ background: "#fff", padding: 20, borderRadius: 20 }}>
-        {error && !error.includes("غير صالح") && !loaded
-          ? <div style={{ width: 320, height: 320, display: "grid", placeItems: "center", color: "#0b3b38" }}>{error}</div>
+        {error && error !== "invalid" && !loaded
+          ? <div style={{ width: 320, height: 320, display: "grid", placeItems: "center", color: "#0b3b38" }}>{tr(`kiosk_${error}`)}</div>
           : <canvas ref={canvasRef} />}
       </div>
-      {error.includes("غير صالح")
-        ? <div style={{ color: "#fecaca", fontSize: 22 }}>⚠ {error}</div>
-        : <div style={{ fontSize: 22, opacity: 0.85 }}>رمز الفرع الثابت — علّقه في مكان الحضور</div>}
+      {error === "invalid"
+        ? <div style={{ color: "#fecaca", fontSize: 22 }}>⚠ {tr("kiosk_invalid")}</div>
+        : <div style={{ fontSize: 22, opacity: 0.85 }}>{tr("kiosk_static")}</div>}
     </div>
   );
 }

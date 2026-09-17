@@ -144,8 +144,8 @@ export default function Users() {
       setLinkReport(r.data);
       const n = r.data.linked?.length || 0;
       setMsg(n > 0
-        ? `تم ربط ${n} حساب بموظفاتهم`
-        : "لا حسابات جديدة للربط — كل الحسابات مربوطة بالفعل");
+        ? t("usr_linked_n", { n })
+        : t("usr_nothing_to_link"));
       load();
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
     finally { setLinkBusy(false); }
@@ -157,8 +157,8 @@ export default function Users() {
         <h2>{t("users_title")}</h2>
         <div className="row" style={{ gap: 8 }}>
           <button onClick={runAutoLink} disabled={linkBusy} className="ghost"
-                  title="يربط أي حساب بلا employee بموظف مطابق نفس الرقم المدني والشركة">
-            🔗 ربط تلقائي بالموظفين
+                  title={t("usr_autolink_title")}>
+            {t("usr_autolink")}
           </button>
           <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>
         </div>
@@ -214,29 +214,29 @@ export default function Users() {
       {linkReport && (
         <div className="card" style={{ borderInlineStart: "4px solid var(--brand)", marginBottom: 12 }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <h4 style={{ margin: 0 }}>تقرير الربط التلقائي</h4>
+            <h4 style={{ margin: 0 }}>{t("usr_report")}</h4>
             <button className="ghost sm" onClick={() => setLinkReport(null)}>×</button>
           </div>
           <div style={{ fontSize: 13, marginTop: 8 }}>
-            <div>✓ <b>{linkReport.linked?.length || 0}</b> ربط ناجح</div>
+            <div>✓ <b>{linkReport.linked?.length || 0}</b> {t("usr_ok_n")}</div>
             {linkReport.no_employee?.length > 0 && (
               <div style={{ color: "#b45309" }}>
-                ⚠ <b>{linkReport.no_employee.length}</b> حساب بدون موظف مطابق — يحتاج إنشاء Employee record:
+                ⚠ <b>{linkReport.no_employee.length}</b> {t("usr_no_emp")}
                 <ul style={{ marginTop: 4 }}>
                   {linkReport.no_employee.slice(0, 5).map((x: any) => (
-                    <li key={x.user_id}>{x.role} — {x.name} ({x.civil_id})</li>
+                    <li key={x.user_id}>{roleAr(x.role)} — {x.name} ({x.civil_id})</li>
                   ))}
-                  {linkReport.no_employee.length > 5 && <li>... و{linkReport.no_employee.length - 5} آخرين</li>}
+                  {linkReport.no_employee.length > 5 && <li>{t("usr_more", { n: linkReport.no_employee.length - 5 })}</li>}
                 </ul>
               </div>
             )}
             {linkReport.conflicts?.length > 0 && (
               <div style={{ color: "var(--danger)" }}>
-                ⚠ <b>{linkReport.conflicts.length}</b> تعارض (الموظف مربوط بحساب آخر)
+                ⚠ <b>{linkReport.conflicts.length}</b> {t("usr_conflicts")}
               </div>
             )}
             <div className="muted" style={{ marginTop: 4 }}>
-              فُحص إجمالاً: {linkReport.total_scanned} حساب unlinked
+              {t("usr_scanned", { n: linkReport.total_scanned })}
             </div>
           </div>
         </div>

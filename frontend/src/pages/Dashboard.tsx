@@ -96,7 +96,7 @@ export default function Dashboard() {
         <div className="page-head" data-tour="dashboard-header">
           <div>
             <div className="eyebrow">{t("dash_eyebrow")}</div>
-            <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}، {user?.full_name}</h2>
+            <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}{t("list_sep")}{user?.full_name}</h2>
             <div className="sub">{t("dash_sub")}</div>
           </div>
         </div>
@@ -138,7 +138,7 @@ export default function Dashboard() {
       <div className="page-head">
         <div>
           <div className="eyebrow">{t("dash_eyebrow")}</div>
-          <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}، {user?.full_name}</h2>
+          <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}{t("list_sep")}{user?.full_name}</h2>
           <div className="sub">{t("dash_sub")}</div>
         </div>
       </div>

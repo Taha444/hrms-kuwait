@@ -21,11 +21,11 @@ export default function CompanyStructure() {
           api.get(`/branches/${b.id}/stats`).then((s) =>
             setStats((prev) => ({ ...prev, [b.id]: s.data }))).catch(() => {}));
       })
-      .catch((e) => setErr(errMsg(e, "تعذّر تحميل الهيكل (اختر شركة أولًا)")));
+      .catch((e) => setErr(errMsg(e, t("cs_load_failed"))));
   }, []);
 
   if (err) return <div className="card empty">{err}</div>;
-  if (!data) return <div className="empty">جارِ التحميل…</div>;
+  if (!data) return <div className="empty">{t("loading_dots")}</div>;
 
   const Mini = ({ icon, val, lbl }: any) => (
     <div style={{ textAlign: "center" }}>
@@ -59,7 +59,7 @@ export default function CompanyStructure() {
               </div>
               {b.supervisors?.length > 0 ? (
                 <div className="muted" style={{ fontSize: 12, margin: "6px 0" }}>
-                  {t("supervisor")}: {b.supervisors.join("، ")}
+                  {t("supervisor")}: {b.supervisors.join(t("list_sep"))}
                 </div>
               ) : (
                 // BR-27 — الغياب يُعرَض كما يُعرَض الوجود. كان السطر يُخفى عند

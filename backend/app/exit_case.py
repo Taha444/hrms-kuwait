@@ -32,7 +32,8 @@ NOT_CLOSED = "filed"
 #: الحالةُ التي يكتبها المسارُ عند بلوغ نهايته — بسبب الإنهاء.
 #: قرار المالك (2026-09-17): الاستقالةُ تمرّ بمسار الإنهاء لا بقائمة الحالة،
 #: فيكتب المسارُ «مستقيل» لسببها بدل «منتهية خدمته» للجميع.
-FINAL_STATUS_BY_REASON = {"resignation": "resigned", "marriage": "resigned"}
+FINAL_STATUS_BY_REASON = {"resignation": "resigned", "marriage": "resigned",
+                          "retirement": "retired"}
 
 
 def final_status(reason: str | None) -> str:

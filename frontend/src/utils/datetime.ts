@@ -71,5 +71,5 @@ export function fmtRelative(raw: string | Date | null | undefined,
 }
 
 /** لوحة تفريقية توضح "بتوقيت الكويت" (badge صغير) — تُلحق بالجداول الحسّاسة. */
-export const KUWAIT_TZ_LABEL = "بتوقيت الكويت (UTC+3)";
+export const KUWAIT_TZ_LABEL = "بتوقيت الكويت (UTC+3)";  // i18n: data (يقابله KUWAIT_TZ_LABEL_EN)
 export const KUWAIT_TZ_LABEL_EN = "Kuwait Time (UTC+3)";

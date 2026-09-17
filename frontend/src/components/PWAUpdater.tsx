@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
+import { tr } from "../i18n";
 
 /**
  * R3-B §4 — يتحكم في تحديثات PWA Service Worker.
@@ -39,10 +40,10 @@ export default function PWAUpdater() {
       maxWidth: 340, fontSize: 14,
     }}>
       <div style={{ fontWeight: 600, marginBottom: 6 }}>
-        🔄 نسخة جديدة متاحة
+        {tr("pwa_new")}
       </div>
       <div style={{ opacity: 0.9, marginBottom: 10, fontSize: 12 }}>
-        اضغط للتحديث فورًا — البيانات المفتوحة ستُحفظ.
+        {tr("pwa_hint")}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button
@@ -53,7 +54,7 @@ export default function PWAUpdater() {
             fontWeight: 600,
           }}
         >
-          حدّث الآن
+          {tr("pwa_now")}
         </button>
         <button
           onClick={() => setNeedsRefresh(false)}
@@ -63,7 +64,7 @@ export default function PWAUpdater() {
             padding: "6px 14px", borderRadius: 6, cursor: "pointer",
           }}
         >
-          لاحقًا
+          {tr("pwa_later")}
         </button>
       </div>
     </div>

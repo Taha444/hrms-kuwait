@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../api";
+import { tr } from "../i18n";
 
 /**
  * يبني نموذج الطلب من الـschema الذي يعرّفه الخادم (GET /requests/types/{code}/schema).
@@ -113,7 +114,7 @@ export default function SchemaForm({
     };
   }, [typeCode]);
 
-  if (state === "loading") return <p className="muted">جاري تحميل النموذج…</p>;
+  if (state === "loading") return <p className="muted">{tr("sf_loading")}</p>;
   if (!schema) return null;
 
   const { required: condRequired, hidden } = evalConditionals(schema, payload);
@@ -152,7 +153,7 @@ export default function SchemaForm({
                 required={isRequired}
                 onChange={(e) => set(f.code, e.target.value || undefined)}
               >
-                <option value="">— اختر —</option>
+                <option value="">{tr("sf_choose")}</option>
                 {(f.options || []).map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -275,8 +276,7 @@ export default function SchemaForm({
 
       {!!schema.attachments?.required?.length && (
         <p className="muted" style={{ fontSize: 12 }}>
-          مرفقات مطلوبة: {schema.attachments.required.join("، ")} — ترفعها من صفحة
-          الطلب بعد الإنشاء.
+          {tr("sf_attachments", { list: schema.attachments.required.join(tr("list_sep")) })}
         </p>
       )}
     </>

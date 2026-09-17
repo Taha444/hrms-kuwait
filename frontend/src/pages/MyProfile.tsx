@@ -125,13 +125,13 @@ export default function MyProfile() {
         <div>
           <div className="eyebrow">{t("my_profile")}</div>
           <h2 id="profile-title" style={{ margin: "2px 0 0" }}>{e.name}</h2>
-          <div className="sub" aria-label={`المسمى الوظيفي: ${e.job_title || "غير محدد"}`}>{e.job_title || "—"}</div>
+          <div className="sub" aria-label={t("mp_job_aria", { v: e.job_title || t("mp_not_set") })}>{e.job_title || "—"}</div>
           {e.employee_no && (
             <div style={{
               display: "inline-block", marginTop: 6, background: "#e0ece8",
               color: "#0b3b38", padding: "3px 10px", borderRadius: 6,
               fontFamily: "monospace", fontWeight: 600, fontSize: 13,
-            }} aria-label={`الرقم الوظيفي: ${e.employee_no}`}>
+            }} aria-label={t("mp_empno_aria", { v: e.employee_no })}>
               {e.employee_no}
             </div>
           )}

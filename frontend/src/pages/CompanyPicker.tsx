@@ -26,7 +26,7 @@ export default function CompanyPicker() {
     nav("/", { replace: true });
   };
 
-  const mono = (name: string) => (name || "؟").trim().slice(0, 2);
+  const mono = (name: string) => (name || "?").trim().slice(0, 2);
 
   return (
     <div className="picker-wrap">

@@ -178,4 +178,7 @@ def test_the_screen_offers_the_path_and_hides_what_would_be_refused():
 def test_the_screen_asks_for_the_reason_the_server_requires():
     """والسبب إلزامي على الخادم — يُطلَب في الشاشة لا يُردّ الطلب."""
     page = PAGE.read_text(encoding="utf-8")
-    assert "سبب التغيير إلزامي" in page, "الشاشة ترسل ما تعرف أنه سيُرفض"
+    # النصُّ في القاموس منذ الواجهة الإنجليزية — يُقاس المفتاحُ ونصُّه.
+    screens = (PAGE.parents[1] / "i18n_screens.ts").read_text(encoding="utf-8")
+    assert 'setPropErr(t("fcp_err_reason"))' in page, "الشاشة ترسل ما تعرف أنه سيُرفض"
+    assert 'fcp_err_reason: { ar: "سبب التغيير إلزامي"' in screens

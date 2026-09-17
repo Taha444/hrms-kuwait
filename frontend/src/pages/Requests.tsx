@@ -89,7 +89,7 @@ export default function Requests() {
         // حالة منفصلة عن err: تأثير [typeCode] يمسح err عند تغيير النوع، فكانت
         // هذه الرسالة تُمحى في نفس اللحظة التي تُعرض فيها.
         if (wanted && !exists)
-          setLinkErr(`نوع الطلب «${wanted}» غير متاح لحسابك — اختر نوًعا من القائمة`);
+          setLinkErr(t("req_type_unavailable", { code: wanted }));
       });
     if (canActOnBehalf) api.get("/employees").then((r) => setEmployees(r.data)).catch(() => {});
   }, []);
@@ -112,7 +112,7 @@ export default function Requests() {
     setErr("");
     // V2.2 §3 — منع تقديم "لنفسي" من مستخدم غير مرتبط بملف موظف قبل إرسال الطلب
     if (canActOnBehalf && !onBehalfOf && !hasOwnEmployeeProfile) {
-      setErr("حسابك غير مرتبط بملف موظف — اختر موظفًا محددًا من القائمة");
+      setErr(t("req_no_profile"));
       return;
     }
     const clean = Object.fromEntries(
@@ -126,7 +126,7 @@ export default function Requests() {
       ? missingFields(activeSchema, clean).map((f) => f.label)
       : Object.keys(clean).length === 0 ? [t("req_details")] : [];
     if (missing.length) {
-      setErr(`${t("req_missing_fields")}: ${missing.join("، ")}`);
+      setErr(`${t("req_missing_fields")}: ${missing.join(t("list_sep"))}`);
       return;
     }
     try {
@@ -188,7 +188,7 @@ export default function Requests() {
               <select id="req-on-behalf" value={onBehalfOf} onChange={(e) => setOnBehalfOf(e.target.value ? +e.target.value : "")}>
                 {hasOwnEmployeeProfile
                   ? <option value="">{t("req_myself")}</option>
-                  : <option value="" disabled>— اختر موظفًا —</option>}
+                  : <option value="" disabled>{t("req_pick_employee")}</option>}
                 {employees.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.employee_no ? `[${e.employee_no}] ` : ""}{e.name} — {e.job_title || "—"}
@@ -197,7 +197,7 @@ export default function Requests() {
               </select>
               {!hasOwnEmployeeProfile && (
                 <span className="muted" style={{ fontSize: 12 }}>
-                  حسابك الإداري غير مرتبط بملف موظف — يجب اختيار موظف محدد
+                  {t("req_admin_no_profile")}
                 </span>
               )}
             </div>

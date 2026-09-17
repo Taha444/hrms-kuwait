@@ -39,10 +39,14 @@ TERMINATION_REASONS = {
     "marriage": "استقالة المرأة للزواج (خلال سنة)",
     "resignation": "استقالة العامل",
     "misconduct": "فصل تأديبي (المادة 41)",
+    # قرار المالك (2026-09-17): التقاعد باستحقاقٍ كامل، بلا بدل إنذار، والحالة
+    # «متقاعد». وخصمُ اشتراكات التأمينات للكويتيين (م51) مراجعةٌ يدوية.
+    "retirement": "التقاعد",
 }
 
 # الأسباب التي تمنح الاستحقاق الكامل مباشرةً (عقد غير محدد المدة)
-FULL_ENTITLEMENT_REASONS = {"termination", "contract_expiry", "death", "disability", "marriage"}
+FULL_ENTITLEMENT_REASONS = {"termination", "contract_expiry", "death", "disability", "marriage",
+                            "retirement"}
 
 
 def _parse_date(value):

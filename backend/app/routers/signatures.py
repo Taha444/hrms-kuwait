@@ -86,7 +86,11 @@ def _create_pending_signature_task(db: Session, target_user: models.User) -> Non
     """P1-#15 — ينشئ HR task واحدة لطلب استبدال معلّق. dedup بـuser id."""
     from ..notifications import create_task, users_by_role
     dk = f"sig_replacement_pending:u{target_user.id}"
-    for hr in users_by_role(db, target_user.company_id, ["hr"]):
+    # قرار المالك (2026-09-17): يعتمده HR أو مدير الشركة — ولا يُكلَّف أحدٌ
+    # بمراجعة توقيعه هو.
+    for hr in users_by_role(db, target_user.company_id, list(SIGNATURE_APPROVER_ROLES)):
+        if hr.id == target_user.id:
+            continue
         create_task(
             db, company_id=target_user.company_id, assignee_user_id=hr.id,
             type="signature_replacement", severity="warning",
@@ -312,7 +316,8 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     - أول رفع لمستخدم بدون توقيع = تطبيق مباشر
     - أي استبدال لاحق = يُخزَّن كـ "استبدال معلّق" ولا يُفعَّل حتى موافقة HR،
       والتوقيع القديم يفضل نشطًا في كل المستندات الجديدة
-    - HR/super_admin يستبدلون توقيع أنفسهم مباشرة (ثقة إدارية)
+    - ولا استثناء لأحد (قرار المالك 2026-09-17): كان HR/super_admin
+      يستبدلون توقيع أنفسهم مباشرةً ويُقيَّدون «معتمِدين» — اعتمادٌ ذاتي.
 
     القبول: PNG/JPG ≤500KB. الإخراج دائمًا PNG بغض النظر عن الإدخال."""
     # وبوابة حالة التوظيف: من انتهت خدمته لا يبدأ معاملة جديدة. كان
@@ -358,10 +363,8 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
     now = datetime.now(timezone.utc)
     # PILOT-P0-5: يفصل بين "أول رفع" و"استبدال يحتاج موافقة"
     is_first_upload = not user.signature_path
-    is_privileged = user.role in ("hr", "super_admin")
-
-    if is_first_upload or is_privileged:
-        # تطبيق مباشر: أول رفع، أو المستخدم HR/Super Admin
+    if is_first_upload:
+        # تطبيق مباشر: أول رفع وحده
         old = user.signature_path
         old_pending = user.pending_signature_path
         old_version = user.signature_version
@@ -375,9 +378,9 @@ async def upload_my_signature(request: Request, file: UploadFile = File(...),
         # QA §12 — سجّل النسخة في السجل غير القابل للتعديل
         _record_signature_version(
             db, user, version=user.signature_version, file_path=path,
-            stage="first_upload" if is_first_upload else "direct",
+            stage="first_upload",
             reason=(reason or "").strip() or None,
-            approver=user if is_privileged and not is_first_upload else None,
+            approver=None,
             before={"signature_version": old_version},
             after={"signature_version": user.signature_version},
         )
@@ -450,12 +453,22 @@ def get_my_pending_signature_image(user: models.User = Depends(get_current_user)
 # ============================================================================
 hr_router = APIRouter(prefix="/signatures/pending", tags=["signature"])
 
+#: من يعتمد استبدال التوقيع — قرار المالك (2026-09-17). ولا يعتمد أحدٌ توقيعه.
+SIGNATURE_APPROVER_ROLES = ("hr", "company_manager", "company_owner", "super_admin")
+
 
 def _require_hr(user: models.User = Depends(get_current_user)) -> models.User:
-    if user.role not in ("hr", "super_admin"):
-        raise HTTPException(status_code=403,
-                            detail="إدارة استبدالات التوقيع مقتصرة على الموارد البشرية")
+    if user.role not in SIGNATURE_APPROVER_ROLES:
+        raise HTTPException(status_code=403, detail=(
+            "إدارة استبدالات التوقيع مقتصرة على الموارد البشرية ومدير الشركة وصاحبها"))
     return user
+
+
+def _in_scope(user: models.User, target: models.User) -> None:
+    # صاحبُ الشركات يملك كلَّ شركاته (قاعدة المالك) — كغيره من العابرين.
+    from ..permissions import CROSS_COMPANY_ROLES
+    if user.role not in CROSS_COMPANY_ROLES and target.company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
 
 
 @hr_router.get("")
@@ -464,8 +477,11 @@ def list_pending_replacements(user: models.User = Depends(_require_hr),
     """قائمة طلبات استبدال التوقيع المعلّقة ضمن نطاق شركة HR."""
     from sqlalchemy import select as _select
     q = _select(models.User).where(models.User.pending_signature_path.isnot(None))
-    if user.role != "super_admin" and user.company_id is not None:
+    from ..permissions import CROSS_COMPANY_ROLES
+    if user.role not in CROSS_COMPANY_ROLES:
         q = q.where(models.User.company_id == user.company_id)
+    # ولا يُعرض على أحدٍ طلبُه هو — لا يملك قراره.
+    q = q.where(models.User.id != user.id)
     rows = db.scalars(q).all()
     return [
         {"user_id": u.id, "civil_id": u.civil_id, "full_name": u.full_name,
@@ -484,8 +500,7 @@ def get_signature_history_for_hr(target_user_id: int,
     target = db.get(models.User, target_user_id)
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    if user.role != "super_admin" and target.company_id != user.company_id:
-        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    _in_scope(user, target)
     rows = db.scalars(_select(models.UserSignatureVersion).where(
         models.UserSignatureVersion.user_id == target_user_id
     ).order_by(models.UserSignatureVersion.version.desc())).all()
@@ -504,8 +519,7 @@ def get_pending_image_for_hr(target_user_id: int,
     target = db.get(models.User, target_user_id)
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    if user.role != "super_admin" and target.company_id != user.company_id:
-        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    _in_scope(user, target)
     if not target.pending_signature_path or not key_exists(target.pending_signature_path):
         raise HTTPException(status_code=404, detail="لا يوجد توقيع معلّق لهذا المستخدم")
     return file_response(target.pending_signature_path, media_type="image/png")
@@ -530,15 +544,14 @@ def approve_replacement(target_user_id: int, request: Request,
 
     وهو بحرفه قاعدُة «ممنوع Self Approval لكل الأدوار» المطبَّقة في
     المسيّر (``_self_approval_blocked``) وفي نهاية الخدمة
-    (``calculated_by == user.id``). **وبالنمط نفسه**: يُستثنى
-    ``super_admin`` — فال تُقفَل شركٌة ليس فيها إال موظُف موارٍد واحد، وله
-    مخرٌج قائم (موارٌد أخرى أو الإدارة العليا).
+    (``calculated_by == user.id``). **ولا استثناء** (قرار المالك
+    2026-09-17): ولكي لا تُقفَل شركةٌ فيها موظفُ مواردٍ واحد، يعتمد
+    استبدالَ توقيعه مديرُ الشركة أو صاحبها (``SIGNATURE_APPROVER_ROLES``).
     """
     target = db.get(models.User, target_user_id)
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    if user.role != "super_admin" and target.company_id != user.company_id:
-        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    _in_scope(user, target)
     if target.id == user.id:
         raise HTTPException(status_code=403, detail=(
             "لا يمكنك اعتماد استبدال توقيعك بنفسك — فصل السلطات إلزامي"))
@@ -588,8 +601,7 @@ def reject_replacement(target_user_id: int, request: Request, reason: str | None
     target = db.get(models.User, target_user_id)
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    if user.role != "super_admin" and target.company_id != user.company_id:
-        raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
+    _in_scope(user, target)
     if not target.pending_signature_path:
         raise HTTPException(status_code=400, detail="لا يوجد طلب استبدال معلّق")
     old_pending = target.pending_signature_path

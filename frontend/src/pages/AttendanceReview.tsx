@@ -5,7 +5,7 @@ import { useI18n } from "../i18n";
 import { attAr } from "../labels";
 
 // مراجعة الحضور الشهري (للسوبر أدمن/المالك/مدير الشركة): مصفوفة موظف × يوم.
-const WD_AR = ["ح", "ن", "ث", "ر", "خ", "ج", "س"]; // الأحد..السبت
+const WD_AR = ["ح", "ن", "ث", "ر", "خ", "ج", "س"];  // i18n: data (يقابله WD_EN) // الأحد..السبت
 const WD_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MARK: Record<string, string> = { present: "✓", late: "!", absent: "✗", leave: "L", off: "", future: "", holiday: "H" };
 
@@ -287,17 +287,17 @@ export default function AttendanceReview() {
                     <td className="emp" title={e.job_title || ""}>
                       {e.name}
                       {e.exempt && (
-                        <span title={e.exempt_reason || "معفى"} style={{
+                        <span title={e.exempt_reason || t("att_exempt_tag")} style={{
                           marginInlineStart: 6, fontSize: 10, background: "#e0ece8",
                           color: "#0b3b38", padding: "1px 6px", borderRadius: 4,
                           fontWeight: 600,
-                        }}>معفى</span>
+                        }}>{t("att_exempt_tag")}</span>
                       )}
                     </td>
                     {e.exempt ? (
                       <td className="cell muted" colSpan={data.days.length + 3}
                           style={{ textAlign: "center", fontSize: 12, color: "#6b7280" }}>
-                        {e.exempt_reason || "معفى من الحضور — لا تسجيل يومي"}
+                        {e.exempt_reason || t("att_exempt_row")}
                       </td>
                     ) : (
                       <>

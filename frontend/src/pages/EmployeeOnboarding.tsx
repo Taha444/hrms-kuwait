@@ -39,7 +39,7 @@ const emptyForm = {
   nationality: "", gender: "" as string,
   date_of_birth: "" as string,
   passport_number: "", passport_expiry: "" as string,
-  phone: "", email: "", worker_type: "موظف",
+  phone: "", email: "", worker_type: "موظف",  // i18n: data (قيمةٌ مخزَّنة لا نصُّ واجهة)
 };
 
 export default function EmployeeOnboarding({ branches, departments, onDone, onCancel }: Props) {

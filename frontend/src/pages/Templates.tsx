@@ -7,11 +7,14 @@ import Icon from "../Icon";
 import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // وحدة الصيغ والنماذج: تسجيل صيغة بمتغيّرات {{...}}، تعبئتها تلقائيًا ببيانات الموظف، وطباعتها.
-const NEW_TEMPLATE = `<h2>عنوان الصيغة</h2>
-<p>التاريخ: {{date_today}}</p>
-<p>السيد/ة <b>{{employee_name}}</b> — الرقم المدني {{civil_id}} — وظيفة {{job_title}}.</p>
-<p>اكتب نص الصيغة هنا...</p>
-<br><br><p>التوقيع: ............................</p>`;
+// نصُّ صيغةٍ عربيةٍ ابتدائي — محتوى مستند لا نصُّ واجهة.
+const NEW_TEMPLATE = [
+  "<h2>عنوان الصيغة</h2>",  // i18n: data
+  "<p>التاريخ: {{date_today}}</p>",  // i18n: data
+  "<p>السيد/ة <b>{{employee_name}}</b> — الرقم المدني {{civil_id}} — وظيفة {{job_title}}.</p>",  // i18n: data
+  "<p>اكتب نص الصيغة هنا...</p>",  // i18n: data
+  "<br><br><p>التوقيع: ............................</p>",  // i18n: data
+].join("\n");
 
 export default function Templates() {
   const { user } = useAuth();
@@ -81,25 +84,25 @@ export default function Templates() {
       if (w) {
         const banner = `<div style="background:#fef3c7;border:2px solid #fbbf24;padding:12px;
           margin:0 0 16px;font-family:sans-serif;text-align:center;font-weight:600;">
-          ⚠ معاينة فقط — Preview Only — ليست مستندًا رسميًا
+          ${t("tpl_preview_banner")}
           </div>`;
         openAndPrint(banner + r.data.html, false);  // معاينة — لا تُطبع تلقائًيا
       }
-      setMsg("معاينة فقط — لم يُحفظ أي مستند.");
+      setMsg(t("tpl_preview_msg"));
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
   // R1-A §8 — Generate: يُصدر مستندًا رسميًا برقم مرجعي وbصمة SHA-256.
   const generateOfficial = async () => {
-    if (!confirm("سيتم إصدار مستند رسمي بختم مرجعي دائم. متابعة؟")) return;
+    if (!confirm(t("tpl_generate_confirm"))) return;
     setErr(""); setLastGenerated(null);
     try {
       const r = await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
       setLastGenerated(r.data);
       if (!openAndPrint(r.data.html)) {
-        setErr("مانع النوافذ المنبثقة منع فتح المستند — اسمح بالنوافذ لهذا الموقع.");
+        setErr(t("tpl_popup_blocked"));
       }
-      setMsg(`✓ تم إصدار المستند — رقم مرجعي: ${r.data.reference_no}`);
+      setMsg(t("tpl_issued", { ref: r.data.reference_no }));
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
 
@@ -182,11 +185,11 @@ export default function Templates() {
           )}
           <div className="row">
             <button className="ghost" onClick={previewOnly}>
-              <Icon name="doc" size={16} /> معاينة (Preview)
+              <Icon name="doc" size={16} /> {t("tpl_preview_btn")}
             </button>
             <button onClick={generateOfficial}
               style={{ background: "#0e5a54", color: "white" }}>
-              <Icon name="doc" size={16} /> توليد مستند رسمي (Generate)
+              <Icon name="doc" size={16} /> {t("tpl_generate_btn")}
             </button>
             <button className="ghost" onClick={() => { setFilling(null); setLastGenerated(null); }}>
               {t("close")}
@@ -198,17 +201,17 @@ export default function Templates() {
               background: "#d1fae5", border: "1px solid #10b981", padding: 12,
               borderRadius: 8, marginTop: 12, fontSize: 13,
             }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>✓ مستند رسمي صادر</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>{t("tpl_issued_title")}</div>
               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px" }}>
-                <span><b>رقم مرجعي:</b></span>
+                <span><b>{t("tpl_ref")}</b></span>
                 <code style={{ fontFamily: "monospace" }}>{lastGenerated.reference_no}</code>
-                <span><b>نسخة القالب:</b></span>
+                <span><b>{t("tpl_version")}</b></span>
                 <span>v{lastGenerated.template_version}</span>
                 <span><b>Checksum:</b></span>
                 <code style={{ fontFamily: "monospace", fontSize: 10 }}>
                   {lastGenerated.checksum_sha256.slice(0, 32)}...
                 </code>
-                <span><b>وقت الإصدار:</b></span>
+                <span><b>{t("tpl_issued_at")}</b></span>
                 <span>{fmtKuwaitDateTime(lastGenerated.generated_at, lang)} <span className="muted" style={{ fontSize: 10 }}>(UTC+3)</span></span>
               </div>
             </div>

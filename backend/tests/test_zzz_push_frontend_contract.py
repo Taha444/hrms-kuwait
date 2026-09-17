@@ -101,8 +101,14 @@ def test_the_permission_is_asked_by_a_click_not_on_load():
 def test_the_client_reports_why_it_failed():
     """ومن يضغط الزرّ ولا يحدث شيء يحتاج سبًبا لا صمًتا."""
     text = CLIENT.read_text(encoding="utf-8")
-    for phrase in ("لا يدعم", "محظورة", "لم يُمنَح"):
-        assert phrase in text, f"لا رسالة لحالة «{phrase}»"
+    # النصوصُ في القاموس منذ الواجهة الإنجليزية — يُقاس المفتاحُ في العميل ونصُّه.
+    import re
+    screens = (CLIENT.parent / "i18n_screens.ts").read_text(encoding="utf-8")
+    for key, phrase in (("push_unsupported", "لا يدعم"), ("push_denied", "محظورة"),
+                        ("push_not_granted", "لم يُمنَح")):
+        assert f'tr("{key}")' in text, f"لا رسالة لحالة «{phrase}»"
+        m = re.search(rf'{key}: {{ ar: "([^"]*)"', screens)
+        assert m and phrase in m.group(1), f"لا رسالة لحالة «{phrase}»"
 
 
 def test_the_worker_shows_only_what_the_server_sent():

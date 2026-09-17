@@ -21,8 +21,7 @@ type Shift = {
 };
 
 //: 0 = الأحد — كما يخزّنها الخادم (`work_days` نصٌّ بفواصل).
-const DAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس",
-              "الجمعة", "السبت"];
+const DAY_KEYS = ["day_0", "day_1", "day_2", "day_3", "day_4", "day_5", "day_6"];
 
 const EMPTY = {
   name: "", start_time: "08:00", end_time: "17:00",
@@ -31,6 +30,7 @@ const EMPTY = {
 
 export default function Shifts() {
   const { t } = useI18n();
+  const DAYS = DAY_KEYS.map((k) => t(k));
   const { can } = useAuth();
   const manage = can("manage_attendance");
 
@@ -93,7 +93,7 @@ export default function Shifts() {
 
   const dayNames = (csv: string) =>
     (csv || "").split(",").filter(Boolean)
-      .map((d) => DAYS[Number(d)] ?? d).join("، ");
+      .map((d) => (DAYS[Number(d)] ?? d)).join(t("list_sep"));
 
   return (
     <div>

@@ -103,29 +103,42 @@ def _upload(client, who, reason: str | None = None):
 # ما هو واقٌع فعًلا — يُحرَس ليُرى
 # ---------------------------------------------------------------------------
 
-def test_an_hr_signature_change_needs_no_second_pair_of_eyes(client):
-    """**قراٌر مكتوٌب يُحرَس ليُرى**: موارُد البشرية تُبدِّل توقيعها مباشرًة.
+def test_an_hr_signature_change_waits_for_the_manager(client):
+    """**قرار المالك (2026-09-17)**: لا استبدال مباشر لموارد البشرية.
 
-    وهو المسلُك القائم (``is_privileged``): ال طلَب معّلًقا وال معتمًِدا
-    غيرها، والسجلُّ يُقيّد ``stage="direct"``. ويخالف حرَف «ممنوع Self
-    Approval لكل الأدوار» — فإن أُريد تغييرُه فليكن بقصد.
+    كان ``is_privileged`` يطبّق استبدالَ HR فورًا ويقيّده «معتمِدًا» لنفسه.
+    فصار معلَّقًا كغيره: لا يراه HR نفسُه في قائمته ولا يعتمده، ويعتمده
+    مديرُ الشركة — فلا تُقفَل شركةٌ فيها موظفُ مواردٍ واحد.
     """
     uid, path0, ver0, pend0 = _snapshot(HR1[0])
     try:
-        r = _upload(client, HR1, reason="قياُس فصل السلطات")
+        _upload(client, HR1)                      # يُثبِّت توقيعًا إن لم يكن
+        _, _, ver1, _ = _snapshot(HR1[0])
+        r = _upload(client, HR1, reason="قياس فصل السلطات")
         assert r.status_code in (200, 201), (r.status_code, r.text[:250])
-        assert r.json().get("status") == "active", r.json()
+        assert r.json().get("status") == "pending_approval", r.json()
 
+        hr = auth_headers(login(client, *HR1))
+        mine = client.get("/api/signatures/pending", headers=hr).json()
+        assert uid not in [x["user_id"] for x in mine], "يُعرض عليه طلبُه هو"
+        own = client.post(f"/api/signatures/pending/{uid}/approve", headers=hr)
+        assert own.status_code == 403, own.status_code
+
+        mgr = auth_headers(login(client, *MGR1))
+        listed = client.get("/api/signatures/pending", headers=mgr)
+        assert listed.status_code == 200, listed.text[:200]
+        assert uid in [x["user_id"] for x in listed.json()]
+        ok = client.post(f"/api/signatures/pending/{uid}/approve", headers=mgr)
+        assert ok.status_code == 200, ok.text[:200]
         db = SessionLocal()
         try:
             u = db.get(models.User, uid)
-            assert not u.pending_signature_path, "صار له طلٌب معلَّق — المسلُك تغيّر"
-            assert u.signature_version == (ver0 or 0) + 1, (ver0, u.signature_version)
+            assert not u.pending_signature_path
+            assert u.signature_version == (ver1 or 0) + 1
             last = db.scalar(select(models.UserSignatureVersion).where(
                 models.UserSignatureVersion.user_id == uid
             ).order_by(models.UserSignatureVersion.version.desc()))
-            assert last is not None and last.stage in ("direct", "first_upload"), \
-                getattr(last, "stage", None)
+            assert last.stage == "approved"
         finally:
             db.close()
     finally:

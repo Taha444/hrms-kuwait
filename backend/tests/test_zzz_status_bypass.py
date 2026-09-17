@@ -129,3 +129,28 @@ def test_the_path_writes_resigned_for_a_resignation(client):
     from app.routers import employees as RE, eos as RO
     assert "_exit_status(reason)" in inspect.getsource(RE.execute_termination)
     assert "final_status(case.termination_reason)" in inspect.getsource(RO.settle_case)
+
+
+def test_retirement_is_a_reason_with_full_entitlement():
+    """قرار المالك (2026-09-17): التقاعد سببٌ في المسار — كاملُ الاستحقاق، بلا
+    إنذار، ويكتب «متقاعد». وبدونه صارت الحالةُ لا يكتبها شيء."""
+    from app import eos, exit_case
+    assert "retirement" in eos.TERMINATION_REASONS
+    assert exit_case.final_status("retirement") == "retired"
+    r = eos.calculate_eos(1000, "2020-01-01", "2026-01-01", reason="retirement")
+    full = eos.calculate_eos(1000, "2020-01-01", "2026-01-01", reason="termination")
+    assert r["entitlement_factor"] == 1.0
+    assert r["indemnity"] == full["indemnity"]
+    assert eos.notice_owed_days("retirement", 90, None, None, "2026-01-01") == 0.0
+
+
+def test_the_profile_offers_every_server_reason():
+    import pathlib
+    import re
+
+    from app import eos
+    src = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
+           / "EmployeeProfile.tsx").read_text(encoding="utf-8")
+    block = re.search(r"const REASONS: Record<string, string> = \{(.*?)\};", src, re.S).group(1)
+    offered = set(re.findall(r"(\w+): t\(", block))
+    assert offered == set(eos.TERMINATION_REASONS), (offered ^ set(eos.TERMINATION_REASONS))

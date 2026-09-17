@@ -1,5 +1,6 @@
 import Icon from "../Icon";
 import { fmtKuwaitDateTime } from "../utils/datetime";
+import { currentLang, tr } from "../i18n";
 
 // مسار الطلب الهرمي: يعرض كل مرحلة وحالتها (تمّ/الحالي/قادم/مرفوض) بوضوح.
 type Stage = {
@@ -12,22 +13,15 @@ type Stage = {
   action?: string | null; action_label?: string | null;
 };
 
-const CURRENT_SUBLABEL: Record<string, string> = {
-  awaiting_signature: "بانتظار حضور الموظف للتوقيع",
-  awaiting_delegate: "قيد إجراءات المندوب (إذن المغادرة)",
-  ready_for_pickup: "جاهز للاستلام",
-  pending: "بانتظار الاعتماد",
-};
-
-const STATE_PILL: Record<string, string> = {
-  done: "تمّ الاعتماد", current: "الآن", pending: "لم يصل بعد",
-  rejected: "مرفوض", cancelled: "أُلغي", skipped: "غير مطلوب", returned: "أُعيد للتصحيح",
-};
+const SUBLABEL_STATUSES = ["awaiting_signature", "awaiting_delegate", "ready_for_pickup", "pending"];
+const subLabel = (status: string) =>
+  tr(`rs_sub_${SUBLABEL_STATUSES.includes(status) ? status : "pending"}`);
+const statePill = (state: string) => tr(`rs_st_${state}`);
 
 export function ProgressMini({ current, total, status }: { current: number; total: number; status: string }) {
   const done = ["completed"].includes(status) ? total : current;
   return (
-    <span className="progress-mini" title={`المرحلة ${Math.min(current + 1, total)} من ${total}`}>
+    <span className="progress-mini" title={tr("rs_stage_of", { n: Math.min(current + 1, total), total })}>
       {Array.from({ length: total }).map((_, i) => (
         <span key={i} className={`seg ${i < done ? "on" : i === current && !["rejected", "cancelled", "completed", "returned"].includes(status) ? "cur" : ""}`} />
       ))}
@@ -36,14 +30,14 @@ export function ProgressMini({ current, total, status }: { current: number; tota
 }
 
 export default function RequestSteps({ stages, status }: { stages: Stage[]; status: string }) {
-  if (!stages?.length) return <div className="empty">لا توجد مراحل معرّفة لهذا الطلب.</div>;
+  if (!stages?.length) return <div className="empty">{tr("rs_no_stages")}</div>;
   // R1-C — كل timestamps تظهر بتوقيت الكويت (UTC+3) بدل التوقيت المحلي للمتصفح
-  const fmt = (d?: string | null) => (d ? fmtKuwaitDateTime(d, "ar") : "");
+  const fmt = (d?: string | null) => (d ? fmtKuwaitDateTime(d, currentLang()) : "");
 
   return (
     <div className="steps">
       {stages.map((s, i) => {
-        const sub = s.state === "current" ? (CURRENT_SUBLABEL[status] || CURRENT_SUBLABEL.pending) : "";
+        const sub = s.state === "current" ? subLabel(status) : "";
         return (
           <div key={s.order} className={`step ${s.state}`}>
             <div className="rail">
@@ -71,13 +65,13 @@ export default function RequestSteps({ stages, status }: { stages: Stage[]; stat
                 )}
                 {s.delegated_from && (
                   <span className="pill info" style={{ marginInlineStart: 4 }}>
-                    بدًلا عن {s.role_label}
+                    {tr("rs_instead_of", { role: s.role_label })}
                   </span>
                 )}
                 <span className={`pill ${s.state === "done" ? "success" : s.state === "current" ? "gold"
                   : s.state === "rejected" || s.state === "cancelled" ? "danger"
                   : s.state === "returned" ? "warning" : "neutral"}`}>
-                  {STATE_PILL[s.state]}
+                  {statePill(s.state)}
                 </span>
                 {s.approver_name && <span>· {s.approver_name}</span>}
                 {/* P11-35 — لفظ الفعل نفسه: «تحقّق من البيانات» ليس
@@ -87,8 +81,8 @@ export default function RequestSteps({ stages, status }: { stages: Stage[]; stat
                     تحته. الاسم وحده كان يُبقي اعتماد مدير النظام منسوًبا
                     للشؤون القانونية أمام من يراجع بعد شهور. */}
                 {s.on_behalf && s.acted_by && (
-                  <span title="نُفِّذ بانتحال مؤقّت لجلسة الدعم">
-                    · نفّذه {s.acted_by}
+                  <span title={tr("rs_impersonated")}>
+                    {tr("rs_done_by", { name: s.acted_by })}
                   </span>
                 )}
                 {s.decided_at && <span>· {fmt(s.decided_at)}</span>}

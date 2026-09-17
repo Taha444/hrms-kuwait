@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { tr } from "../i18n";
 
 interface Props { children: ReactNode }
 interface State { error: Error | null }
@@ -21,13 +22,12 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div style={{ padding: 40, textAlign: "center" }}>
-          <h2>حدث خطأ غير متوقع / Something went wrong</h2>
+          <h2>{tr("err_boundary_title")}</h2>
           <p className="muted">
-            برجاء إعادة تحميل الصفحة. إن تكرر الخطأ يرجى إبلاغ الدعم الفني.
-            <br />Please reload the page. If this keeps happening, contact support.
+            {tr("err_boundary_body")}
           </p>
           <button onClick={() => { this.setState({ error: null }); window.location.assign("/"); }}>
-            العودة للصفحة الرئيسية / Back to Home
+            {tr("err_boundary_home")}
           </button>
         </div>
       );

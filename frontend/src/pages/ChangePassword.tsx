@@ -14,7 +14,7 @@ export default function ChangePassword() {
   const [err, setErr] = useState("");
 
   // نفس سياسة الخادم (SEC-01): 8 أحرف على الأقل وحرف ورقم — تحقّق فوري بدل انتظار 422 (QA-P1-AUTH-01)
-  const pwValid = newP.length >= 8 && /[A-Za-z؀-ۿ]/.test(newP) && /\d/.test(newP);
+  const pwValid = newP.length >= 8 && /[A-Za-z\u0600-\u06FF]/.test(newP) && /\d/.test(newP);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

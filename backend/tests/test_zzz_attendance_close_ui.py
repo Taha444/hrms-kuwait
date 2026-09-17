@@ -86,7 +86,9 @@ def test_every_new_label_exists_in_both_languages():
     import re
 
     src = REVIEW.read_text(encoding="utf-8")
-    i18n = I18N.read_text(encoding="utf-8")
+    # والقاموسُ ملفّان منذ الواجهة الإنجليزية (``i18n_screens.ts``).
+    i18n = I18N.read_text(encoding="utf-8") + chr(10) + (
+        I18N.parent / "i18n_screens.ts").read_text(encoding="utf-8")
     keys = set(re.findall(r't\("(att_[a-z_]+)"\)', src))
     assert keys, "لا مفاتيح نصّية — تحقّق من الشاشة"
     for k in sorted(keys):

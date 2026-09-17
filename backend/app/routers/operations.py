@@ -115,7 +115,12 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
         "warning": sum(1 for x in all_items if x["urgency"] == "warning"),
     }
 
+    # قرار المالك (2026-09-17) — من يعمل على غير ترخيص تسجيله.
+    from ..license_mismatch import mismatches
+    license_mismatch = [m for m in mismatches(db, cid)
+                        if not branch_id or m["branch_id"] == branch_id]
     return {
+        "license_mismatch": license_mismatch,
         "compliance": compliance,
         "permits": permits,
         "licenses": licenses,

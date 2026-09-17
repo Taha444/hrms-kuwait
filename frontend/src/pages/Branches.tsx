@@ -36,9 +36,7 @@ export default function Branches() {
   useEffect(() => { branches.forEach((b) => loadLink(b.id)); }, [branches]);
 
   const rotate = async (branch: any) => {
-    if (links[branch.id]?.masked && !confirm(
-      "تدوير المفتاح سيُبطل الحالي فورًا. أي شاشة تستخدمه ستتوقف. متابعة؟"
-    )) return;
+    if (links[branch.id]?.masked && !confirm(t("br_rotate_confirm"))) return;
     const r = await api.post(`/branches/${branch.id}/kiosk-key/rotate`);
     setLinks((l) => ({
       ...l,
@@ -56,7 +54,7 @@ export default function Branches() {
   };
   const copy = (text: string, label: string) => {
     navigator.clipboard?.writeText(text);
-    setMsg(`✓ ${label} تم نسخه`);
+    setMsg(t("br_label_copied", { label }));
   };
 
   // BR-EDIT — إنشاء الفرع وتعديله. **ولم تكن للفروع شاشٌة تُنشئ ولا
@@ -182,7 +180,7 @@ export default function Branches() {
               <div className="row">
                 <button className="ghost" onClick={() => openEdit(b)}>{t("br_edit")}</button>
                 <button onClick={() => rotate(b)}>
-                  {link?.masked ? "تدوير المفتاح" : t("br_rotate")}
+                  {link?.masked ? t("br_rotate_again") : t("br_rotate")}
                 </button>
                 {link?.path && (
                   <button className="ghost" onClick={() => window.open(link.path!, "_blank")}>
@@ -194,13 +192,13 @@ export default function Branches() {
 
             {link?.masked ? (
               <div style={{ marginTop: 10, fontSize: 13 }}>
-                <span className="muted">مفتاح الشاشة: </span>
+                <span className="muted">{t("br_screen_key")}</span>
                 <code style={{
                   background: "#f3f7f5", padding: "2px 8px", borderRadius: 4,
                   fontFamily: "monospace",
                 }}>{link.masked}</code>
                 <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>
-                  (المفتاح الكامل يُعرض مرة واحدة عند التوليد فقط)
+                  {t("br_key_once")}
                 </span>
               </div>
             ) : (
@@ -211,7 +209,7 @@ export default function Branches() {
               <div className="row" style={{ marginTop: 10 }}>
                 <input aria-label={t("br_copy")} readOnly value={link.path}
                        onFocus={(e) => e.target.select()} />
-                <button className="ghost" onClick={() => copy(link.path!, "رابط الشاشة")}>
+                <button className="ghost" onClick={() => copy(link.path!, t("br_screen_link"))}>
                   {t("br_copy")}
                 </button>
               </div>
@@ -238,7 +236,7 @@ export default function Branches() {
                  maxWidth: 560, width: "100%",
                }}>
             <h3 style={{ margin: "0 0 8px", color: "#065f46" }}>
-              ✓ مفتاح جديد لـ{revealed.branchName}
+              {t("br_new_key_for", { name: revealed.branchName })}
             </h3>
             <div style={{
               background: "#fee2e2", border: "2px solid #ef4444", padding: 10,
@@ -248,30 +246,30 @@ export default function Branches() {
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>المفتاح الكامل:</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{t("br_full_key")}</div>
               <div className="row">
                 <input readOnly value={revealed.key}
                        style={{ fontFamily: "monospace", fontSize: 12 }}
                        onFocus={(e) => e.target.select()} />
-                <button onClick={() => copy(revealed.key, "المفتاح")}>نسخ</button>
+                <button onClick={() => copy(revealed.key, t("br_key"))}>{t("br_copy_btn")}</button>
               </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>رابط الشاشة:</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{t("br_screen_link_label")}</div>
               <div className="row">
                 <input readOnly value={revealed.url}
                        onFocus={(e) => e.target.select()} />
-                <button onClick={() => copy(revealed.url, "الرابط")}>نسخ</button>
+                <button onClick={() => copy(revealed.url, t("br_link"))}>{t("br_copy_btn")}</button>
               </div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button onClick={() => window.open(revealed.url, "_blank")}>
-                فتح الشاشة الآن
+                {t("br_open_now")}
               </button>
               <button className="ghost" onClick={() => setRevealed(null)}>
-                حفظت المفتاح، إغلاق
+                {t("br_saved_close")}
               </button>
             </div>
           </div>

@@ -24,6 +24,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   // تعديل بيانات الموظف — لم يكن له نموذج في الواجهة إطلاًقا
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
+  const [licOpts, setLicOpts] = useState<any[]>([]);
   const [editErr, setEditErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [term, setTerm] = useState({ end_date: "", reason: "termination",
@@ -71,6 +72,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const REASONS: Record<string, string> = {
     termination: t("rsn_termination"), contract_expiry: t("rsn_contract_expiry"), resignation: t("rsn_resignation"),
     death: t("rsn_death"), disability: t("rsn_disability"), misconduct: t("rsn_misconduct"),
+    marriage: t("rsn_marriage"), retirement: t("rsn_retirement"),
   };
   // EXIT-UI — لكل مرحلة لونها: مسودٌة معلَّقة ليست إنجاًزا.
   const EXIT_PILL: Record<string, string> = {
@@ -90,17 +92,17 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
 
   const proposeChange = async () => {
     setPropErr(""); setPropMsg("");
-    if (!prop.new_value.trim()) { setPropErr("القيمة الجديدة مطلوبة"); return; }
-    if (!prop.effective_date) { setPropErr("تاريخ السريان مطلوب"); return; }
+    if (!prop.new_value.trim()) { setPropErr(t("fcp_err_value")); return; }
+    if (!prop.effective_date) { setPropErr(t("fcp_err_eff")); return; }
     // الخادم يشترطه صراحًة — يُطلَب هنا بدل أن يُردّ الطلب بخطأ.
-    if (!prop.reason.trim()) { setPropErr("سبب التغيير إلزامي"); return; }
+    if (!prop.reason.trim()) { setPropErr(t("fcp_err_reason")); return; }
     setPropBusy(true);
     try {
       await api.post(`/employees/${id}/salary-change-request`, null, {
         params: { field_name: prop.field_name, new_value: prop.new_value.trim(),
                   effective_date: prop.effective_date, reason: prop.reason.trim() },
       });
-      setPropMsg("أُرسل الاقتراح — ينتظر اعتماد غيرك");
+      setPropMsg(t("fcp_sent"));
       setProp({ ...prop, new_value: "", reason: "" });
       loadChangeReqs();
     } catch (e: any) { setPropErr(errMsg(e, t("error"))); }
@@ -109,14 +111,14 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
 
   const decideChange = async (reqId: number, decision: string) => {
     const note = decision === "rejected"
-      ? window.prompt("سبب الرفض (اختياري):") ?? "" : "";
+      ? window.prompt(t("fcp_reject_reason")) ?? "" : "";
     if (decision === "approved"
-        && !window.confirm("اعتماد التغيير؟ يُطبَّق على ملف الموظف فوًرا ويُقيَّد في السجل.")) return;
+        && !window.confirm(t("fcp_approve_confirm"))) return;
     setPropBusy(true); setPropErr(""); setPropMsg("");
     try {
       await api.post(`/employees/salary-change-requests/${reqId}/decide`, null,
                      { params: { decision, note: note || undefined } });
-      setPropMsg(decision === "approved" ? "طُبِّق التغيير" : "رُفض الاقتراح");
+      setPropMsg(t(decision === "approved" ? "fcp_applied_msg" : "fcp_rejected_msg"));
       loadChangeReqs(); loadExtras(); load();
       window.dispatchEvent(new Event("tasks:changed"));
     } catch (e: any) { setPropErr(errMsg(e, t("error"))); }
@@ -197,7 +199,9 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       attendance_exempt_reason: e.attendance_exempt_reason ?? "",
       official_work_hours: e.official_work_hours ?? "",
       actual_work_hours: e.actual_work_hours ?? "",
+      actual_license_id: e.actual_license_id ?? "",
     });
+    api.get(`/employees/${id}/license-options`).then((r) => setLicOpts(r.data)).catch(() => setLicOpts([]));
     setEditing(true);
   };
 
@@ -207,6 +211,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       // PUT يستقبل الكائن كامًلا — ندمج التعديلات فوق الحالي حتى لا نمسح
       // حقًلا لا يعرضه هذا النموذج
       const body: any = { ...e, ...editForm };
+      body.actual_license_id = body.actual_license_id === "" || body.actual_license_id == null
+        ? null : Number(body.actual_license_id);
       for (const k of ["official_work_hours", "actual_work_hours"]) {
         body[k] = body[k] === "" || body[k] == null ? null : +body[k];
       }
@@ -350,7 +356,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
     ["personal", t("tab_personal")], ["employment", t("tab_employment")],
     ["documents", t("tab_documents")], ["leave", t("tab_leave")],
     ["eos", t("tab_eos")], ["warnings", t("tab_warnings")],
-    ["history", "سجل التعديلات"],  // R3-C — تبويب جديد لتاريخ التغييرات الحرجة
+    ["history", t("tab_history")],  // R3-C — تبويب جديد لتاريخ التغييرات الحرجة
   ];
   const ALLOWED_BY_SCOPE: Record<string, Set<string>> = {
     // المحاسب: بيانات الرواتب فقط (employment + history للراتب) — لا هوية/مستندات/إجازات
@@ -385,10 +391,10 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
           background: "#fef3c7", border: "1px solid #fbbf24", padding: 10,
           borderRadius: 8, marginBottom: 10, fontSize: 13,
         }}>
-          <b>🔒 عرض محدود حسب دورك:</b>{" "}
+          <b>{t("epf_limited_view")}</b>{" "}
           {scope === "accountant"
-            ? "المحاسب يرى فقط بيانات الرواتب. الجواز والرقم المدني والمستندات الشخصية والإجازات والإنذارات مخفية بموجب سياسة فصل الواجبات."
-            : "المندوب يرى فقط الوثائق الحكومية. الراتب والعقد والمسمى الوظيفي مخفية."}
+            ? t("epf_limited_acc")
+            : t("epf_limited_pro")}
         </div>
       )}
       <div className="tabs">
@@ -401,13 +407,21 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       {tab === "personal" && (
         <div className="grid cards">
           <div className="card">
-            {e.employee_no && (<><b>الرقم الوظيفي:</b> <code style={{ background: "#e0ece8", padding: "1px 6px", borderRadius: 4 }}>{e.employee_no}</code><br /></>)}
+            {e.employee_no && (<><b>{t("epf_emp_no")}</b> <code style={{ background: "#e0ece8", padding: "1px 6px", borderRadius: 4 }}>{e.employee_no}</code><br /></>)}
             <b>{t("fld_civil_id")}:</b> {e.civil_id || "—"}<br /><b>{t("epf_nationality")}:</b> {e.nationality || "—"}<br />
             <b>{t("epf_gender")}:</b> {genderLabel(e.gender)}<br /><b>{t("epf_dob")}:</b> {e.date_of_birth || "—"}<br />
             <b>{t("epf_marital")}:</b> {e.marital_status || "—"}</div>
           <div className="card"><b>{t("epf_email")}:</b> {e.email || "—"}<br /><b>{t("emp_phone")}:</b> {e.phone || "—"}<br />
             <b>{t("epf_passport")}:</b> {e.passport_number || "—"}<br /><b>{t("epf_passport_expiry")}:</b> {e.passport_expiry || "—"}<br />
             <b>{t("epf_health")}:</b> {e.health_insurance || "—"}</div>
+          {/* قرار المالك (2026-09-17) — الترخيصان واختلافُهما (تنبيهٌ تفتيشي). */}
+          {p.licenses && (
+            <div className="card">
+              <b>{t("lic_registered")}:</b> {p.licenses.registered?.name || t("lic_none")}<br />
+              <b>{t("lic_actual")}:</b> {p.licenses.actual?.name || t("lic_same_as_registered")}
+              {p.licenses.mismatch && <div className="err" style={{ marginTop: 6 }}>{t("lic_mismatch_warn")}</div>}
+            </div>
+          )}
         </div>
       )}
 
@@ -539,17 +553,27 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                       غيرُك — والخادمُ يرفض تغييرَها من هنا، فتُعرض للقراءة. */}
                   <input id={`epf-edit-${k}`} type={type} value={editForm[k] ?? ""}
                     readOnly={CRITICAL_EDIT_FIELDS.includes(k)}
-                    title={CRITICAL_EDIT_FIELDS.includes(k) ? "يُغيَّر من «اقتراح تعديل» — يعتمده مستخدمٌ آخر" : undefined}
+                    title={CRITICAL_EDIT_FIELDS.includes(k) ? t("epf_via_proposal") : undefined}
                     onChange={(ev) => setEditForm({ ...editForm, [k]: ev.target.value })} />
                 </div>
               ))}
               <div className="field">
                 <label htmlFor="epf-edit-contract">{t("epf_contract")}</label>
                 <select id="epf-edit-contract" value={editForm.contract_type} disabled
-                  title="يُغيَّر من «اقتراح تعديل» — يعتمده مستخدمٌ آخر"
+                  title={t("epf_via_proposal")}
                   onChange={(ev) => setEditForm({ ...editForm, contract_type: ev.target.value })}>
                   <option value="indefinite">{contractTypeAr("indefinite")}</option>
                   <option value="definite">{contractTypeAr("definite")}</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="epf-edit-actual-lic">{t("lic_actual")}</label>
+                <select id="epf-edit-actual-lic" value={editForm.actual_license_id ?? ""}
+                  onChange={(ev) => setEditForm({ ...editForm, actual_license_id: ev.target.value })}>
+                  <option value="">{t("lic_same_as_registered")}</option>
+                  {licOpts.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}{l.license_no ? ` (${l.license_no})` : ""}</option>
+                  ))}
                 </select>
               </div>
               <div className="field">
@@ -956,24 +980,22 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
             مقترِحها**. المسار كان مبنًيا ومقاًسا على الخادم وبلا مدخل من
             الواجهة، فلم يكن أحد يستطيع اقتراح تغيير راتب ولا اعتماده. */}
         <div className="card">
-          <h3>اقتراحات تغيير الحقول الحرجة</h3>
+          <h3>{t("fcp_title")}</h3>
           <p className="muted" style={{ fontSize: 12 }}>
-            الراتب وتاريخ التعيين والمسمى والعقد لا تُعدَّل مباشرًة: تُقترَح
-            بسبب مكتوب، ويعتمدها مدير الشركة أو الإدارة العليا — ولا يعتمد
-            أحٌد اقتراحه.
+            {t("fcp_hint")}
           </p>
           {propMsg && <div className="ok">{propMsg}</div>}
           {propErr && <div className="err">{propErr}</div>}
 
           {!changeReqs.length ? (
-            <div className="muted">لا اقتراحات.</div>
+            <div className="muted">{t("fcp_none")}</div>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>الحقل</th><th>من</th><th>إلى</th><th>السريان</th>
-                    <th>السبب</th><th>المُقترِح</th><th>الحالة</th><th />
+                    <th>{t("fcp_col_field")}</th><th>{t("fcp_col_from")}</th><th>{t("fcp_col_to")}</th><th>{t("fcp_col_eff")}</th>
+                    <th>{t("fcp_col_reason")}</th><th>{t("fcp_col_by")}</th><th>{t("fcp_col_status")}</th><th />
                   </tr>
                 </thead>
                 <tbody>
@@ -988,8 +1010,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                       <td>
                         <span className={`pill ${r.status === "applied" ? "completed"
                                           : r.status === "rejected" ? "rejected" : "pending"}`}>
-                          {r.status === "applied" ? "طُبِّق"
-                            : r.status === "rejected" ? "مرفوض" : "بانتظار الاعتماد"}
+                          {t(r.status === "applied" ? "fcp_st_applied"
+                            : r.status === "rejected" ? "fcp_st_rejected" : "fcp_st_pending")}
                         </span>
                         {r.status === "rejected" && r.rejected_reason && (
                           <div className="sub">{r.rejected_reason}</div>
@@ -1003,14 +1025,14 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                           && r.proposed_by !== user?.id && (
                           <div className="row">
                             <button className="sm" disabled={propBusy}
-                                    onClick={() => decideChange(r.id, "approved")}>اعتماد</button>
+                                    onClick={() => decideChange(r.id, "approved")}>{t("fcp_approve")}</button>
                             <button className="ghost sm" disabled={propBusy}
                                     style={{ color: "var(--danger)" }}
-                                    onClick={() => decideChange(r.id, "rejected")}>رفض</button>
+                                    onClick={() => decideChange(r.id, "rejected")}>{t("fcp_reject")}</button>
                           </div>
                         )}
                         {r.status === "pending" && r.proposed_by === user?.id && (
-                          <span className="sub">ينتظر اعتماد غيرك</span>
+                          <span className="sub">{t("fcp_waiting")}</span>
                         )}
                       </td>
                     </tr>
@@ -1022,21 +1044,21 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
 
           {can("edit_employee") && (
             <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-              <h4>اقتراح تغيير</h4>
+              <h4>{t("fcp_new")}</h4>
               <div className="row">
                 <div className="field">
-                  <label htmlFor="scr-field">الحقل</label>
+                  <label htmlFor="scr-field">{t("fcp_col_field")}</label>
                   <select id="scr-field" value={prop.field_name}
                           onChange={(e) => setProp({ ...prop, field_name: e.target.value })}>
-                    <option value="basic_salary">الراتب الأساسي</option>
-                    <option value="actual_salary">الراتب الفعلي</option>
-                    <option value="hire_date">تاريخ التعيين</option>
-                    <option value="job_title">المسمى الوظيفي</option>
-                    <option value="contract_type">نوع العقد</option>
+                    <option value="basic_salary">{t("fcp_f_basic")}</option>
+                    <option value="actual_salary">{t("fcp_f_actual")}</option>
+                    <option value="hire_date">{t("fcp_f_hire")}</option>
+                    <option value="job_title">{t("fcp_f_job")}</option>
+                    <option value="contract_type">{t("fcp_f_contract")}</option>
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="scr-value">القيمة الجديدة *</label>
+                  <label htmlFor="scr-value">{t("fcp_new_value")}</label>
                   <input id="scr-value"
                          type={prop.field_name === "hire_date" ? "date"
                                : prop.field_name.includes("salary") ? "number" : "text"}
@@ -1044,41 +1066,40 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                          onChange={(e) => setProp({ ...prop, new_value: e.target.value })} />
                 </div>
                 <div className="field">
-                  <label htmlFor="scr-eff">تاريخ السريان *</label>
+                  <label htmlFor="scr-eff">{t("fcp_eff_date")}</label>
                   <input id="scr-eff" type="date" value={prop.effective_date}
                          onChange={(e) => setProp({ ...prop, effective_date: e.target.value })} />
                 </div>
                 <div className="field">
-                  <label htmlFor="scr-reason">السبب *</label>
+                  <label htmlFor="scr-reason">{t("fcp_reason")}</label>
                   <input id="scr-reason" value={prop.reason}
                          onChange={(e) => setProp({ ...prop, reason: e.target.value })} />
                 </div>
               </div>
-              <button disabled={propBusy} onClick={proposeChange}>إرسال الاقتراح</button>
+              <button disabled={propBusy} onClick={proposeChange}>{t("fcp_send")}</button>
             </div>
           )}
         </div>
 
         <div className="card">
-          <h3>سجل التعديلات على البيانات الحرجة</h3>
+          <h3>{t("fch_title")}</h3>
           <p className="muted" style={{ fontSize: 12 }}>
-            كل تعديل على الراتب أو تاريخ التعيين أو المسمى الوظيفي أو العقد يُسجَّل هنا
-            بتاريخ التسجيل + تاريخ السريان + المُنفِّذ + السبب.
+            {t("fch_hint")}
           </p>
           {!history.length ? (
-            <div className="muted">لا يوجد سجل تعديلات بعد.</div>
+            <div className="muted">{t("fch_none")}</div>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>الحقل</th>
-                    <th>القيمة السابقة</th>
-                    <th>القيمة الجديدة</th>
-                    <th>تاريخ السريان</th>
-                    <th>وقت التسجيل</th>
-                    <th>المُنفِّذ</th>
-                    <th>السبب</th>
+                    <th>{t("fcp_col_field")}</th>
+                    <th>{t("fch_old")}</th>
+                    <th>{t("fch_new")}</th>
+                    <th>{t("fch_eff")}</th>
+                    <th>{t("fch_at")}</th>
+                    <th>{t("fch_by")}</th>
+                    <th>{t("fcp_col_reason")}</th>
                   </tr>
                 </thead>
                 <tbody>

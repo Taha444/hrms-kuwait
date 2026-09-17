@@ -36,7 +36,8 @@ export default function Signatories() {
   const { can, user } = useAuth();
   const manage = can("manage_users");
   // SIG-REPL — اعتماد استبدال التوقيع مقتصر على الموارد البشرية في الخادم.
-  const isHr = user?.role === "hr" || user?.role === "super_admin";
+  // من يعتمد استبدال التوقيع — كقائمة الخادم (SIGNATURE_APPROVER_ROLES).
+  const isHr = ["hr", "company_manager", "company_owner", "super_admin"].includes(user?.role || "");
 
   const [rows, setRows] = useState<Sig[]>([]);
   const [users, setUsers] = useState<any[]>([]);

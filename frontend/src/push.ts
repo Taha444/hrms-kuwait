@@ -1,4 +1,5 @@
 import api from "./api";
+import { tr } from "./i18n";
 
 /**
  * الإشعارات الفورية — طلب الإذن، وتسجيل الجهاز، واستقبال الرسالة.
@@ -42,8 +43,8 @@ export async function loadConfig(): Promise<PushConfig | null> {
     const status = e?.response?.status;
     const detail = e?.response?.data?.detail;
     lastConfigError = status
-      ? `تعذّر قراءة إعدادات الإشعارات من الخادم (${status}${detail ? ": " + detail : ""})`
-      : "تعذّر الوصول إلى الخادم لقراءة إعدادات الإشعارات";
+      ? tr("push_cfg_error", { status: `${status}${detail ? ": " + detail : ""}` })
+      : tr("push_unreachable");
     return null;
   }
 }
@@ -64,24 +65,24 @@ async function registerWorker(cfg: PushConfig) {
 export async function enablePush(label?: string): Promise<string | null> {
   const state = permissionState();
   if (state === "unsupported") {
-    return "هذا المتصفّح لا يدعم الإشعارات الفورية";
+    return tr("push_unsupported");
   }
   if (state === "denied") {
     // الرفض دائم في Chrome — ولا يُعاد السؤال. فيُقال أين يُغيَّر.
-    return "الإشعارات محظورة لهذا الموقع — غيّرها من إعدادات المتصفّح";
+    return tr("push_denied");
   }
 
   const cfg = await loadConfig();
-  if (!cfg) return lastConfigError || "تعذّر قراءة إعدادات الإشعارات";
+  if (!cfg) return lastConfigError || tr("push_cfg_unreadable");
   if (!cfg.enabled) {
     // سبب الخادم أدقّ من أي نصّ نكتبه هنا: يسمّي الناقص بعينه.
-    return cfg.reason || "الإشعارات الفورية غير مضبوطة على الخادم";
+    return cfg.reason || tr("push_not_configured");
   }
 
   const granted = state === "granted"
     ? "granted"
     : await Notification.requestPermission();
-  if (granted !== "granted") return "لم يُمنَح الإذن";
+  if (granted !== "granted") return tr("push_not_granted");
 
   try {
     const { initializeApp, getApps } = await import("firebase/app");
@@ -95,7 +96,7 @@ export async function enablePush(label?: string): Promise<string | null> {
       vapidKey: cfg.vapid_key,
       serviceWorkerRegistration: reg,
     });
-    if (!token) return "لم يُصدر المتصفّح رمز جهاز";
+    if (!token) return tr("push_no_token");
 
     await api.post("/notifications/devices", {
       token,
@@ -105,7 +106,7 @@ export async function enablePush(label?: string): Promise<string | null> {
     });
     return null;
   } catch (e: any) {
-    return e?.message || "تعذّر تسجيل الجهاز";
+    return e?.message || tr("push_register_failed");
   }
 }
 
@@ -126,7 +127,7 @@ export async function listenInApp(onMessage: (t: string, b: string, link: string
       : initializeApp(cfg.firebase as any);
     onMsg(getMessaging(appInstance), (payload) => {
       const n = payload.notification || {};
-      onMessage(n.title || "تحديث", n.body || "",
+      onMessage(n.title || tr("push_update"), n.body || "",
                 (payload.data as any)?.link || "/tasks");
     });
   } catch {

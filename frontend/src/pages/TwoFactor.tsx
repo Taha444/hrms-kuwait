@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // V2.2 §9 — نصوص ثنائية اللغة (dictionary صغير محلي للـpage)
+// i18n: local-dictionary (كتلتا ar/en بالمفاتيح نفسها — يفحصها test_zzz_ui_english)
 const L = {
   ar: {
     security: "الأمان",

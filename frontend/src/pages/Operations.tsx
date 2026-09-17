@@ -118,6 +118,25 @@ export default function Operations() {
           </tbody>
         </table>
       </div>
+
+      {/* قرار المالك (2026-09-17) — تنبيهٌ تفتيشي: العمل على غير ترخيص التسجيل. */}
+      <div className="card">
+        <h3>{t("ops_lic_mismatch_title")} ({(data.license_mismatch || []).length})</h3>
+        <div className="sub" style={{ marginBottom: 8 }}>{t("ops_lic_mismatch_hint")}</div>
+        <table>
+          <thead><tr><th>{t("col_employee")}</th><th>{t("lic_registered")}</th><th>{t("lic_actual")}</th></tr></thead>
+          <tbody>
+            {(data.license_mismatch || []).map((m: any) => (
+              <tr key={m.employee_id}>
+                <td><a href={`/employees/${m.employee_id}`}><b>{m.name}</b></a></td>
+                <td className="muted">{m.license_name || t("lic_none")}</td>
+                <td><span className="pill warning">{m.actual_license_name}</span></td>
+              </tr>
+            ))}
+            {!(data.license_mismatch || []).length && <tr><td colSpan={3} className="empty">{t("none_good")}</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

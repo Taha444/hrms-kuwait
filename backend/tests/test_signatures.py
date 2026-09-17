@@ -107,27 +107,31 @@ def test_upload_signature_rejects_too_large(client):
     assert r.status_code == 413
 
 
-def test_replace_signature_by_hr_deletes_old_file_directly(client):
-    """PILOT-P0-5: HR/super_admin يستبدلون توقيعهم مباشرة (تصفير الملف القديم)."""
+def test_replace_signature_by_hr_goes_to_pending(client):
+    """قرار المالك (2026-09-17): HR لا يستبدل توقيعه مباشرة — ينتظر المدير.
+
+    والملفُّ القديم يبقى نشطًا حتى الاعتماد، ثم يُحذف.
+    """
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     png1 = _minimal_png(width=100, height=40)
-    r = client.post("/api/me/signature", headers=hr,
-                    files={"file": ("a.png", png1, "image/png")})
-    assert r.json()["status"] == "active"
+    client.post("/api/me/signature", headers=hr,
+                files={"file": ("a.png", png1, "image/png")})
     from app.database import SessionLocal
     from app import models
     db = SessionLocal()
     try:
         u = db.query(models.User).filter_by(civil_id="100000000002").one()
-        old_path = u.signature_path
+        old_path, uid = u.signature_path, u.id
     finally:
         db.close()
     assert old_path and key_exists(old_path)
     png2 = _minimal_png(width=150, height=50)
-    r = client.post("/api/me/signature", headers=hr,
+    r = client.post("/api/me/signature", headers=hr, params={"reason": "خط جديد"},
                     files={"file": ("b.png", png2, "image/png")})
-    # HR direct replace → status = active، الملف القديم انحذف
-    assert r.json()["status"] == "active"
+    assert r.json()["status"] == "pending_approval"
+    assert key_exists(old_path), "القديم حُذف قبل الاعتماد"
+    mgr = auth_headers(login(client, "100000000001", "manager123"))
+    assert client.post(f"/api/signatures/pending/{uid}/approve", headers=mgr).status_code == 200
     assert not key_exists(old_path)
 
 

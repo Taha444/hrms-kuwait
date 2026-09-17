@@ -30,7 +30,7 @@ export default function Login() {
       // V2.2 §9 — backend returns {requires_2fa: true} on first login attempt for TOTP-enabled users
       if (detail && typeof detail === "object" && detail.requires_2fa) {
         setRequires2fa(true);
-        setErr(detail.message || "أدخل رمز التحقق الثنائي");
+        setErr(detail.message || t("login_enter_2fa"));
       } else {
         setErr(errMsg(e, t("login_failed")));
       }
@@ -50,7 +50,7 @@ export default function Login() {
         <div className="field">
           <label htmlFor="login-civil-id">{t("civil_id")}</label>
           <input id="login-civil-id" value={civilId} onChange={(e) => setCivilId(e.target.value)} inputMode="numeric"
-            placeholder="٠٠٠٠٠٠٠٠٠٠٠٠" autoFocus dir="ltr" style={{ textAlign: "center", letterSpacing: 2 }}
+            placeholder={t("login_civil_ph")} autoFocus dir="ltr" style={{ textAlign: "center", letterSpacing: 2 }}
             autoComplete="username" required aria-required="true" />
         </div>
         <div className="field">
@@ -60,7 +60,7 @@ export default function Login() {
         </div>
         {requires2fa && (
           <div className="field">
-            <label htmlFor="login-totp">رمز التحقق الثنائي (2FA)</label>
+            <label htmlFor="login-totp">{t("login_2fa_label")}</label>
             {/* QA-30 — الحقل كان يحذف كل ما ليس رقًما ويقصّ عند 6، فرمز
                 الاسترداد (A1B2-C3D4) يستحيل إدخاله — ويبقى فاقد الهاتف محبوًسا
                 رغم وجود المخرج في الخادم. */}
@@ -71,7 +71,7 @@ export default function Login() {
               style={{ textAlign: "center", letterSpacing: 4, fontSize: 20 }}
               autoComplete="one-time-code" required aria-required="true" />
             <span className="muted" style={{ fontSize: 12 }}>
-              افتح تطبيق Authenticator وأدخل الرمز الظاهر (6 خانات)، أو استخدم أحد رموز الاسترداد إن فقدت الجهاز
+              {t("login_2fa_hint")}
             </span>
           </div>
         )}

@@ -1,6 +1,7 @@
 // سياق المصادقة: يحفظ المستخدم الحالي وصلاحياته ويوفّر تسجيل الدخول/الخروج
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import api, { setTokens } from "./api";
+import { tr } from "./i18n";
 
 export type User = {
   id: number;
@@ -153,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const r = await api.post(`/users/${userId}/impersonate`, null, { params: { reason } });
     localStorage.setItem("imp_backup_access", localStorage.getItem("access_token") || "");
     localStorage.setItem("imp_backup_refresh", localStorage.getItem("refresh_token") || "");
-    localStorage.setItem("imp_name", r.data.impersonated.full_name || "مستخدم");
+    localStorage.setItem("imp_name", r.data.impersonated.full_name || tr("user_fallback"));
     setTokens(r.data.access_token, r.data.refresh_token);
     localStorage.removeItem("active_company_id");
     window.location.href = "/";

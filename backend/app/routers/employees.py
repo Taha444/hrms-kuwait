@@ -204,6 +204,25 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
     return emp
 
 
+@router.get("/license-mismatch")
+def license_mismatch_list(company_id: int | None = None,
+                          user: models.User = Depends(require_perm("view_employee")),
+                          db: Session = Depends(get_db)):
+    """من يعمل على غير ترخيص تسجيله — قرار المالك (2026-09-17)."""
+    from ..license_mismatch import mismatches
+    return mismatches(db, scope_company_id(user, company_id))
+
+
+@router.get("/{emp_id}/license-options")
+def license_options(emp_id: int, user: models.User = Depends(require_perm("edit_employee")),
+                    db: Session = Depends(get_db)):
+    """تراخيص شركة الموظف — لاختيار «ترخيص الدوام الفعلي» في نموذج التعديل."""
+    emp = _get_emp(db, user, emp_id)
+    rows = db.scalars(select(models.License).where(
+        models.License.company_id == emp.company_id).order_by(models.License.name)).all()
+    return [{"id": l.id, "name": l.name, "license_no": l.license_no} for l in rows]
+
+
 @router.get("/{emp_id}")
 def get_employee(emp_id: int, user: models.User = Depends(require_perm("view_employee")),
                  db: Session = Depends(get_db)):
@@ -244,6 +263,8 @@ CRITICAL_FIELDS = {
     "attendance_mode", "attendance_exempt", "attendance_exempt_reason", "shift_id",
     # مكان الدوام الرسمي والفعلي
     "branch_id", "actual_branch_id",
+    # والترخيص الرسمي والفعلي (قرار المالك 2026-09-17: تنبيهٌ تفتيشي)
+    "license_id", "actual_license_id",
 }
 
 
@@ -558,8 +579,17 @@ def employee_profile(emp_id: int, user: models.User = Depends(require_perm("view
     }
     allowed_tabs = [t for t in _tabs_by_scope[_scope] if t != "eos" or _can_eos or is_self]
 
+    # قرار المالك (2026-09-17) — الترخيصان واختلافُهما، مقروءةً للعرض.
+    from ..license_mismatch import is_mismatch
+
+    def _lic(lid):
+        lic = db.get(models.License, lid) if lid else None
+        return {"id": lic.id, "name": lic.name, "license_no": lic.license_no} if lic else None
+    licenses_view = {"registered": _lic(emp.license_id), "actual": _lic(emp.actual_license_id),
+                     "mismatch": is_mismatch(emp)}
     return {
         "employee": emp_out,
+        "licenses": licenses_view,
         "pii_masked": not can_view_pii,
         # R2 §2 — العلامة اللي الفرونت يستخدمها لتخفي التبويبات الممنوعة
         "view_scope": _scope,

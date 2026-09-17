@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import Icon from "../Icon";
+import { useI18n } from "../i18n";
+import { roleAr } from "../labels";
 
 // R9 §16 — شاشة اختيار الشركة لمستخدم متعدد الشركات (مثل مندوب يخدم شركتين).
 // تختلف عن CompanyPicker (اللي للـsuper_admin بيختار من كل الشركات):
@@ -10,6 +12,7 @@ import Icon from "../Icon";
 // اللي بيرد access_token جديد بـactive_company_id claim.
 export default function SelectCompany() {
   const { user, selectCompany, logout } = useAuth();
+  const { t } = useI18n();
   const nav = useNavigate();
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +31,7 @@ export default function SelectCompany() {
     }
     api.get("/auth/my-companies")
       .then((r) => setCompanies(r.data.companies || []))
-      .catch((e) => setErr(errMsg(e, "فشل تحميل قائمة الشركات")))
+      .catch((e) => setErr(errMsg(e, t("sc_load_failed"))))
       .finally(() => setLoading(false));
   }, []);
 
@@ -38,13 +41,13 @@ export default function SelectCompany() {
       await selectCompany(companyId);
       nav("/", { replace: true });
     } catch (e: any) {
-      setErr(errMsg(e, "فشل اختيار الشركة"));
+      setErr(errMsg(e, t("sc_choose_failed")));
     } finally {
       setBusy(null);
     }
   };
 
-  const mono = (name: string) => (name || "؟").trim().slice(0, 2);
+  const mono = (name: string) => (name || "?").trim().slice(0, 2);
 
   return (
     <div className="picker-wrap">
@@ -53,29 +56,29 @@ export default function SelectCompany() {
           <div className="row" style={{ gap: 12 }}>
             <div className="company-switch" style={{ cursor: "default" }}>
               <span className="mono">HR</span>
-              <span>{user?.full_name || "مستخدم متعدد الشركات"}</span>
+              <span>{user?.full_name || t("sc_multi_user")}</span>
             </div>
           </div>
           <button className="ghost" onClick={logout}>
-            <Icon name="logout" size={16} /> تسجيل خروج
+            <Icon name="logout" size={16} /> {t("sc_logout")}
           </button>
         </div>
 
         <div style={{ margin: "10px 0 26px" }}>
-          <div className="eyebrow">مرحبًا</div>
-          <h2 style={{ fontSize: 30, margin: "4px 0 4px" }}>اختر الشركة اللي تشتغل فيها الآن</h2>
+          <div className="eyebrow">{t("sc_hello")}</div>
+          <h2 style={{ fontSize: 30, margin: "4px 0 4px" }}>{t("sc_title")}</h2>
           <p className="muted">
-            حسابك مسجّل في {companies.length} شركة. البيانات معزولة تمامًا بين الشركات.
+            {t("sc_count", { n: companies.length })}
           </p>
         </div>
 
         {err && <div className="err" style={{ marginBottom: 12 }}>{err}</div>}
 
         {loading ? (
-          <div className="empty">جاري التحميل...</div>
+          <div className="empty">{t("sc_loading")}</div>
         ) : companies.length === 0 ? (
           <div className="empty">
-            لا توجد شركات مربوطة بحسابك — تواصل مع الإدارة.
+            {t("sc_none")}
           </div>
         ) : (
           <div className="grid cards">
@@ -91,11 +94,11 @@ export default function SelectCompany() {
                 <h3>{c.name}</h3>
                 <p className="muted">{c.name_en || "—"}</p>
                 <div style={{ marginTop: 10 }}>
-                  <span className="pill info">{c.role || "delegate"}</span>
+                  <span className="pill info">{roleAr(c.role || "delegate")}</span>
                 </div>
                 {busy === c.id && (
                   <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    جاري الاختيار...
+                    {t("sc_choosing")}
                   </p>
                 )}
               </button>
@@ -104,7 +107,7 @@ export default function SelectCompany() {
         )}
 
         <p className="muted" style={{ marginTop: 20, fontSize: 12, textAlign: "center" }}>
-          💡 تقدر تغيّر الشركة في أي وقت من قائمة الحساب في أعلى الشاشة (بعد الدخول).
+          {t("sc_tip")}
         </p>
       </div>
     </div>

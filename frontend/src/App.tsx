@@ -116,7 +116,7 @@ function Sidebar({ open }: { open: boolean }) {
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="brand">
           <div className="logo">H<span>R</span></div>
-          <b>نظام الموارد البشرية</b>
+          <b>{t("app_name")}</b>
         </div>
         <div className="nav-group">
           <div className="nav-label">{t("main_section")}</div>
@@ -129,8 +129,8 @@ function Sidebar({ open }: { open: boolean }) {
         </div>
         <div className="sb-foot">
           <Item to="/change-password" icon="key" label={t("change_password")} />
-          <Item to="/two-factor" icon="lock" label="التحقق الثنائي" />
-          <Item to="/notification-prefs" icon="bell" label="تفضيلات الإشعارات" />
+          <Item to="/two-factor" icon="lock" label={t("nav_two_factor")} />
+          <Item to="/notification-prefs" icon="bell" label={t("nav_notification_prefs")} />
         </div>
       </aside>
     );
@@ -140,7 +140,7 @@ function Sidebar({ open }: { open: boolean }) {
     <aside className={`sidebar ${open ? "open" : ""}`}>
       <div className="brand">
         <div className="logo">H<span>R</span></div>
-        <b>نظام الموارد البشرية</b>
+        <b>{t("app_name")}</b>
       </div>
 
       <div className="nav-group">
@@ -154,7 +154,7 @@ function Sidebar({ open }: { open: boolean }) {
       {/* R2 §3 — Dual Persona */}
       {isEmployee && (
         <div className="nav-group">
-          <div className="nav-label">{t("self_service_section") || "خدمتي الذاتية"}</div>
+          <div className="nav-label">{t("self_service_section")}</div>
           <Item to="/my-profile" icon="employees" label={t("my_profile")} tour="nav-my-profile" />
           {can("record_attendance") && <Item to="/attendance" icon="attendance" label={t("attendance")} tour="nav-attendance" />}
         </div>
@@ -174,7 +174,7 @@ function Sidebar({ open }: { open: boolean }) {
             يتابعها من الطلبات لا من بوابات الجهات مباشرة. أُزيلت تدريجًيا من
             HR ثم المدير، وهذه الخطوة تحصرها فيه فعلًا كما يشترط معيار القبول. */}
         {user?.role === "delegate" && (
-          <Item to="/gov-portals" icon="globe" label={t("gov_portals_nav") || "روابط حكومية"} />
+          <Item to="/gov-portals" icon="globe" label={t("gov_portals_nav")} />
         )}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
         {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
@@ -212,7 +212,7 @@ function Sidebar({ open }: { open: boolean }) {
       <div className="sb-foot">
         {/* R9 §16 — مستخدم متعدد الشركات (مثل مندوب يخدم شركتين): زر تبديل الشركة */}
         {(user as any)?.needs_company_selection === true && (
-          <Item to="/select-company" icon="companies" label={t("switch_company") || "تبديل الشركة"} />
+          <Item to="/select-company" icon="companies" label={t("switch_company")} />
         )}
         <Item to="/change-password" icon="key" label={t("change_password")} />
         {/* الشريط الجانبي مكتوب مرّتين في هذا الملف، والرابط كان في
@@ -309,7 +309,7 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
       await refreshUser();
       setAvatarModal(false);
     } catch (e: any) {
-      setAvatarErr(e?.response?.data?.detail || "فشل رفع الصورة");
+      setAvatarErr(e?.response?.data?.detail || t("avatar_upload_failed"));
     } finally { setAvatarBusy(false); }
   };
   const deleteAvatar = async () => {
@@ -320,7 +320,7 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
       await refreshUser();
       setAvatarModal(false);
     } catch (e: any) {
-      setAvatarErr(e?.response?.data?.detail || "فشل الحذف");
+      setAvatarErr(e?.response?.data?.detail || t("avatar_delete_failed"));
     } finally { setAvatarBusy(false); }
   };
 
@@ -435,14 +435,15 @@ function Topbar({ onMenu }: { onMenu?: () => void }) {
 
 function ImpersonationBanner() {
   const { impersonatingName, stopImpersonating } = useAuth();
+  const { t } = useI18n();
   if (!impersonatingName) return null;
   return (
     <div style={{ background: "#8a6d10", color: "#fff", padding: "8px 24px", display: "flex",
       alignItems: "center", gap: 12, fontSize: 13.5 }}>
       <Icon name="users" size={16} />
-      <span>أنت تتصفّح كـ <b>{impersonatingName}</b> (انتحال هوية)</span>
+      <span>{t("imp_browsing_as")} <b>{impersonatingName}</b> {t("imp_tag")}</span>
       <button className="ghost" style={{ marginInlineStart: "auto", padding: "4px 12px" }}
-        onClick={stopImpersonating}>إنهاء الانتحال</button>
+        onClick={stopImpersonating}>{t("imp_stop")}</button>
     </div>
   );
 }
@@ -450,16 +451,17 @@ function ImpersonationBanner() {
 function Layout({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const loc = useLocation();
+  const { t } = useI18n();
   // إغلاق القائمة الجانبية تلقائيًا عند الانتقال لصفحة (مهم على الموبايل)
   useEffect(() => { setNavOpen(false); }, [loc.pathname]);
   return (
     <div className="app">
       <a href="#main-content" className="skip-link">
-        تخطّي إلى المحتوى الرئيسي
+        {t("skip_to_content")}
       </a>
       <Sidebar open={navOpen} />
       {navOpen && <div className="nav-overlay" onClick={() => setNavOpen(false)}
-                       role="button" aria-label="إغلاق القائمة الجانبية" tabIndex={-1} />}
+                       role="button" aria-label={t("close_sidebar")} tabIndex={-1} />}
       <div className="main">
         <ImpersonationBanner />
         <Topbar onMenu={() => setNavOpen((o) => !o)} />
@@ -479,8 +481,8 @@ function Forbidden() {
   return (
     <div className="card" style={{ textAlign: "center", padding: 48 }}>
       <Icon name="lock" size={40} />
-      <h2 style={{ marginTop: 16 }}>{t("forbidden_title") || "غير مصرَّح بالوصول"}</h2>
-      <p className="muted">{t("forbidden_body") || "لا تملك الصلاحية اللازمة لعرض هذه الصفحة."}</p>
+      <h2 style={{ marginTop: 16 }}>{t("forbidden_title")}</h2>
+      <p className="muted">{t("forbidden_body")}</p>
     </div>
   );
 }
