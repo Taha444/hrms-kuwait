@@ -655,9 +655,9 @@ def decide(req_id: int, data: schemas.ApprovalDecisionIn, request: Request,
                        "بنفس الحساب")
     # V2.2 §5 — منع الاعتماد الذاتي فقط للطلبات التي تخصّ الموظف نفسه (ملفه الشخصي).
     # HR/الإدارة الذين يبدأون طلبات نيابة عن موظف آخر يبقون قادرين على اعتماد مرحلتهم
-    # في السلسلة (لأنها ليست عن ملفهم). super_admin يمرّ للطوارئ.
+    # في السلسلة (لأنها ليست عن ملفهم). ولا استثناء لـsuper_admin (قرار المالك 2026-09-17).
     if data.decision == "approved" and stage.get("kind") not in ("employee_ack", "acknowledgment"):
-        if user.role != "super_admin" and user.employee_id and req.employee_id == user.employee_id:
+        if user.employee_id and req.employee_id == user.employee_id:
             raise HTTPException(status_code=403,
                                 detail="لا يمكنك اعتماد طلب يخص ملفك الشخصي")
     if data.decision not in ("approved", "rejected", "returned"):
@@ -1116,10 +1116,12 @@ def _leave_days_warning(db: Session, req: models.Request) -> str | None:
     emp = db.get(models.Employee, req.employee_id)
     shift = db.get(models.Shift, emp.shift_id) if emp and emp.shift_id else None
     workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
+    from ..holidays import holiday_dates
+    holidays = holiday_dates(db, req.company_id, start, end)
     work = 0
     d = start
     while d <= end:
-        if str((d.weekday() + 1) % 7) in workset:
+        if str((d.weekday() + 1) % 7) in workset and d not in holidays:
             work += 1
         d += _td(days=1)
     if declared >= work:

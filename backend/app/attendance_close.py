@@ -66,15 +66,28 @@ def unrecorded_day_count(db: Session, company_id: int, period: str) -> int:
         if r.check_in_at
     }
 
+    # وبقاعدة المسيّر نفسها (قرار المالك 2026-09-17 بتقويم العطل): أيامُ الوردية
+    # وحدها، لا الإجازةُ المعتمدة ولا العطلةُ الرسمية. وكان يعدّ **كلَّ يومٍ في
+    # التقويم** — عطلةَ الأسبوع معه — فيُقَرّ الإقفالُ على رقمٍ لا يطابق المسيّر.
+    from .holidays import holiday_dates
+    holidays = holiday_dates(db, company_id, first, last)
     total = 0
     for emp in employees:
-        if getattr(emp, "attendance_exempt", False):
+        if getattr(emp, "attendance_exempt", False) or emp.attendance_mode == "none":
             continue
+        shift = db.get(models.Shift, emp.shift_id) if emp.shift_id else None
+        workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
+        leaves = db.scalars(select(models.Leave).where(
+            models.Leave.employee_id == emp.id, models.Leave.status == "approved",
+            models.Leave.start_date <= last, models.Leave.end_date >= first)).all()
         start = max(first, emp.hire_date or first)
         end = min(last, emp.termination_date or last)
         d = start
         while d <= end:
-            if (emp.id, d) not in recorded:
+            if (str((d.weekday() + 1) % 7) in workset
+                    and d not in holidays
+                    and (emp.id, d) not in recorded
+                    and not any(lv.start_date <= d <= lv.end_date for lv in leaves)):
                 total += 1
             d = date.fromordinal(d.toordinal() + 1)
     return total

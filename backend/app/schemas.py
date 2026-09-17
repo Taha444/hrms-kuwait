@@ -396,7 +396,7 @@ class BranchIn(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     geofence_radius_m: int = 100
-    auto_checkout_minutes: int = 15
+    auto_checkout_minutes: int = Field(default=15, ge=0, le=720)
     address: str | None = None
 
 
@@ -414,7 +414,7 @@ class BranchUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     geofence_radius_m: int | None = None
-    auto_checkout_minutes: int | None = None
+    auto_checkout_minutes: int | None = Field(default=None, ge=0, le=720)
     address: str | None = None
 
 

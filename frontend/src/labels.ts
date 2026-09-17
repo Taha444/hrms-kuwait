@@ -64,6 +64,7 @@ export const attAr = M({
   // QA-03 — "غير مسجَّل" حالة ثالثة مستقلة عن الغياب: لا سجل ≠ غياب
   unrecorded: { ar: "غير مسجَّل", en: "Unrecorded" },
   not_employed: { ar: "خارج مدة التوظيف", en: "Not employed" },
+  holiday: { ar: "عطلة رسمية", en: "Public holiday" },
 });
 
 // QA-22 — أنماط الحضور (qr/gps/both/none) كانت تظهر خامًا: attAr أعلاه يغطي

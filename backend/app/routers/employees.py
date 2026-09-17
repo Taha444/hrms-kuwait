@@ -653,6 +653,8 @@ def add_permit(emp_id: int, kind: str, number: str | None = None,
 
 
 EMP_STATUSES = {"active", "vacation", "suspended", "resigned", "terminated", "retired", "archived"}
+#: حالاتٌ لا يكتبها إلا مسارُ إنهاء الخدمة.
+PATH_ONLY_STATUSES = ("terminated", "resigned", "retired")
 EVENT_KINDS = {"warning", "penalty", "bonus", "promotion", "note"}
 
 
@@ -672,10 +674,15 @@ def set_status(emp_id: int, status: str, request: Request = None,
     # التسوية وسحبُ الوصول). وهذه النقطةُ بـ``edit_employee`` وحده كانت
     # تكتب ``terminated`` فورًا — شخصٌ واحد يُنهي خدمةً بلا عينٍ ثانية ولا
     # تسوية، وهو عينُ «ممنوع Self Approval لكل الأدوار».
-    if status == "terminated" and old != "terminated":
+    #
+    # **والاستقالةُ والتقاعدُ كذلك** (قرار المالك 2026-09-17): كانت القائمةُ
+    # تكتبهما فورًا بلا اعتمادٍ ولا تسويةٍ ولا تاريخ إنهاء — فيسقط الموظف من
+    # المسيّر كلّه ويبقى حسابُه مفتوحًا.
+    if status in PATH_ONLY_STATUSES and old != status:
         raise HTTPException(status_code=409, detail=(
-            "إنهاء الخدمة لا يُضبط من الحالة — يمرّ بمسار «إنهاء الخدمة» في "
-            "ملف الموظف (تحضير ثم اعتماد من شخص آخر ثم إخلاء طرف وإقرار)."))
+            "إنهاء الخدمة (فصلًا أو استقالةً أو تقاعدًا) لا يُضبط من الحالة — يمرّ "
+            "بمسار «إنهاء الخدمة» في ملف الموظف (تحضير ثم اعتماد من شخص آخر ثم "
+            "إخلاء طرف وإقرار)."))
     # والأرشفةُ لمن انتهت خدمته: أرشفةُ موظفٍ على رأس عمله إنهاءٌ بلا مسار.
     if status == "archived" and (old or "") not in ("terminated", "resigned", "retired", "archived"):
         raise HTTPException(status_code=409, detail=(
@@ -828,6 +835,11 @@ def employee_timeline(emp_id: int, user: models.User = Depends(require_perm("vie
 # - الموظف مؤرشف/منتهي/عليه مسودة معلقة سابقة (لا يُسمح بتحضيرين متوازيين)
 # - المُعتمِد لا يجوز أن يكون هو نفسه المُحضِّر (فصل السلطات)
 
+def _exit_status(reason: str | None) -> str:
+    from ..exit_case import final_status
+    return final_status(reason)
+
+
 def _validate_termination_inputs(emp: models.Employee, end_date: date, reason: str) -> None:
     if not emp.hire_date:
         raise HTTPException(status_code=400,
@@ -856,7 +868,7 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
     """
     import json
     emp = _get_emp(db, user, emp_id)
-    if emp.status == "terminated":
+    if emp.status in PATH_ONLY_STATUSES:
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
     if emp.status == "archived":
         raise HTTPException(status_code=409, detail="الموظف مؤرشف — لا يمكن إنهاء خدمته")
@@ -907,7 +919,7 @@ def approve_termination(emp_id: int, request: Request = None,
     emp = _get_emp(db, user, emp_id)
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة معلقة")
-    if emp.pending_termination_prepared_by == user.id and user.role != "super_admin":
+    if emp.pending_termination_prepared_by == user.id:
         raise HTTPException(status_code=403, detail=SELF_APPROVAL_BLOCK)
     emp.pending_termination_approved_by = user.id
     emp.pending_termination_approved_at = datetime.utcnow()
@@ -971,7 +983,7 @@ def execute_termination(emp_id: int, request: Request = None,
     V2.2 §13: كل الـstages التمهيدية إجبارية قبل التنفيذ."""
     import json
     emp = _get_emp(db, user, emp_id)
-    if emp.status == "terminated":
+    if emp.status in PATH_ONLY_STATUSES:
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
@@ -986,7 +998,7 @@ def execute_termination(emp_id: int, request: Request = None,
     settlement = json.loads(emp.pending_termination_json)
     end_date = settlement.pop("_end_date", None)
     reason = settlement.pop("_reason", "termination")
-    emp.status = "terminated"
+    emp.status = _exit_status(reason)
     # **والإنهاءُ يسحب الوصول** — انظر ``deps.revoke_employee_access``.
     from ..deps import revoke_employee_access
     _revoked = revoke_employee_access(db, emp)
@@ -1125,7 +1137,7 @@ def get_termination_draft(emp_id: int,
                           and not emp.pending_termination_cleared_at),
         "can_acknowledge": bool(may_ack and emp.pending_termination_cleared_at
                                 and not emp.pending_termination_acknowledged_at),
-        "can_execute": bool(may_terminate and emp.status != "terminated"
+        "can_execute": bool(may_terminate and emp.status not in PATH_ONLY_STATUSES
                             and emp.pending_termination_approved_at
                             and (is_super or (emp.pending_termination_cleared_at
                                               and emp.pending_termination_acknowledged_at))),
@@ -1405,7 +1417,7 @@ def decide_salary_change(req_id: int, decision: str, request: Request = None,
         raise HTTPException(status_code=403,
                           detail="اعتماد تغييرات الرواتب لمدير الشركة/الإدارة العليا فقط")
     # فصل الواجبات: المُقترِح ≠ المُعتمِد
-    if req.proposed_by == user.id and user.role != "super_admin":
+    if req.proposed_by == user.id:
         raise HTTPException(status_code=403,
                           detail="لا يمكنك اعتماد اقتراح قدّمته بنفسك (فصل الواجبات)")
     # scope check

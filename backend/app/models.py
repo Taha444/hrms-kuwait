@@ -944,6 +944,21 @@ class AttendanceRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class Holiday(Base):
+    """عطلةٌ رسمية لشركة — قرار المالك (2026-09-17). انظر ``app/holidays.py``."""
+    __tablename__ = "holidays"
+    __table_args__ = (
+        UniqueConstraint("company_id", "date", name="uq_holiday_company_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    name: Mapped[str] = mapped_column(String(120))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=_now)
+
+
 class Leave(Base):
     __tablename__ = "leaves"
 

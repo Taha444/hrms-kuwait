@@ -57,7 +57,8 @@ SELF_APPROVAL_BLOCK = "لا يمكنك اعتماد مسيّر جهّزته بن
 
 def _self_approval_blocked(user: models.User, pr: models.PayrollRun) -> bool:
     """هل يمنعه فصل السلطات من اعتماد هذا المسيّر؟"""
-    return pr.prepared_by_user_id == user.id and user.role != "super_admin"
+    # قرار المالك (2026-09-17): لا استثناء لأي دور — ولا super_admin.
+    return pr.prepared_by_user_id == user.id
 
 
 def _notify_payroll_ready(db: Session, pr: models.PayrollRun) -> None:

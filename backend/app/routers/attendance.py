@@ -23,6 +23,7 @@ from ..safe_files import read_limited
 from .. import qr_token
 from ..clock import KUWAIT_TZ, today as kuwait_today
 from ..storage import save_at_key
+from ..holidays import holiday_dates
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -177,6 +178,12 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
         open_rec = db.scalar(select(models.AttendanceRecord).where(
             models.AttendanceRecord.employee_id == emp.id,
             models.AttendanceRecord.check_out_at.is_(None)))
+        # سجلُّ أمسِ المنسيّ لا يحجب حضورَ اليوم — يُغلق بقاعدته أولًا.
+        if open_rec and close_forgotten(db, open_rec, now):
+            audit(db, user, "attendance_auto_closed", "attendance", open_rec.id,
+                  detail=str(open_rec.check_out_at), request=request)
+            db.flush()
+            open_rec = None
         if open_rec:
             raise HTTPException(status_code=409, detail="لديك تسجيل حضور مفتوح بالفعل")
         status = _compute_in_status(db, emp, now)
@@ -215,6 +222,13 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
     ).order_by(models.AttendanceRecord.check_in_at.desc()))
     if not rec:
         raise HTTPException(status_code=404, detail="لا يوجد تسجيل حضور مفتوح")
+    if close_forgotten(db, rec, now):
+        audit(db, user, "attendance_auto_closed", "attendance", rec.id,
+              detail=str(rec.check_out_at), request=request)
+        db.commit()
+        raise HTTPException(status_code=409, detail=(
+            "كان حضورُك السابق مفتوحًا منذ يومٍ مضى فأُغلق عند نهاية ورديته — "
+            "سجّل حضور اليوم أولًا، وإن كان الإغلاقُ خطأً فاطلب تصحيح الحضور."))
     rec.check_out_at = now
     rec.selfie_out_path = fpath
     # وموضُع الانصراف كموضع الحضور: من التذكرة الموقَّعة لا من العميل.
@@ -276,6 +290,63 @@ def _finalize_out(db: Session, emp: models.Employee, rec: models.AttendanceRecor
                 rec.status = "early_leave"
             if rec.worked_minutes > shift_minutes:
                 rec.overtime_minutes = rec.worked_minutes - shift_minutes
+
+
+AUTO_CLOSE_NOTE = "أُغلق تلقائيًا: انصرافٌ منسيّ (نهاية الوردية + مهلة الفرع)"
+
+
+def forgotten_close_at(db: Session, rec: models.AttendanceRecord,
+                       now: datetime) -> datetime | None:
+    """لحظةُ إغلاق سجلٍّ منسيّ — أو ``None`` إن لم يكن منسيًّا.
+
+    قرار المالك (2026-09-17): الانصرافُ المنسيّ يُغلق عند نهاية الوردية +
+    ``Branch.auto_checkout_minutes``. و«المنسيّ» ما بقي مفتوحًا بعد يوم
+    حضوره (بتوقيت الكويت) وتجاوز تلك اللحظة — فمن ينصرف متأخرًا في يومه
+    يُسجَّل بساعته الفعلية، وإضافيُّه معلَّقٌ على الاعتماد لا مقصوص.
+
+    ولا يُغلق ما لا وردية له، ولا الوردية الليلية (نهايتها قبل بدايتها) —
+    فلا يُعرف لها «نهاية يوم» بلا قاعدةٍ أخرى.
+    """
+    if rec.check_out_at is not None or rec.check_in_at is None:
+        return None
+    emp = db.get(models.Employee, rec.employee_id)
+    shift = db.get(models.Shift, emp.shift_id) if emp and emp.shift_id else None
+    if not shift or shift.end_time <= shift.start_time:
+        return None
+    check_in = _local(rec.check_in_at)
+    local_now = _local(now)
+    if local_now.date() <= check_in.date():
+        return None
+    branch = db.get(models.Branch, rec.branch_id) if rec.branch_id else None
+    grace = int(branch.auto_checkout_minutes or 0) if branch else 0
+    cap = (datetime.combine(check_in.date(), shift.end_time).replace(tzinfo=KUWAIT_TZ)
+           + timedelta(minutes=grace))
+    if cap < check_in:
+        cap = check_in
+    return cap if local_now > cap else None
+
+
+def close_forgotten(db: Session, rec: models.AttendanceRecord, now: datetime) -> bool:
+    cap = forgotten_close_at(db, rec, now)
+    if cap is None:
+        return False
+    emp = db.get(models.Employee, rec.employee_id)
+    rec.check_out_at = cap.astimezone(timezone.utc)
+    rec.notes = ((rec.notes + " | ") if rec.notes else "") + AUTO_CLOSE_NOTE
+    rec.overtime_minutes = 0
+    _finalize_out(db, emp, rec, rec.check_out_at)
+    return True
+
+
+def close_all_forgotten(db: Session, now: datetime | None = None) -> int:
+    """للمسح اليومي: كلُّ سجلٍّ منسيّ يُغلق — فلا يحجب حضورَ الغد."""
+    now = now or datetime.now(timezone.utc)
+    n = 0
+    for rec in db.scalars(select(models.AttendanceRecord).where(
+            models.AttendanceRecord.check_out_at.is_(None))).all():
+        if close_forgotten(db, rec, now):
+            n += 1
+    return n
 
 
 @router.get("/my")
@@ -394,6 +465,7 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
     employees = db.scalars(emp_q.order_by(models.Employee.name)).all()
 
     out_emps = []
+    hol_cache: dict = {}
     for e in employees:
         # R6-C — موظف مُعفى من الحضور (attendance_mode=none أو attendance_exempt=True):
         #   يظهر بصف واحد مع reason، بلا خلايا يومية — رؤية كاملة للـ13/13
@@ -422,13 +494,17 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
             models.Leave.start_date <= last, models.Leave.end_date >= first)).all()
         shift = db.get(models.Shift, e.shift_id) if e.shift_id else None
         workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
+        if e.company_id not in hol_cache:
+            hol_cache[e.company_id] = holiday_dates(db, e.company_id, first, last)
+        holidays = hol_cache[e.company_id]
 
         # QA-03/QA-04 — نفس قاعدة الرواتب بالضبط، وكانت هذه الشاشة تحمل نسختها
         # الخاصة من الحساب فبقيت على العطل بعد إصلاح compute_payroll:
         #  - يوم بلا سجل ليس غياًبا بل "غير مسجَّل" (unrecorded)
         #  - ولا يُحسب شيء خارج مدة التوظيف
         cells, summary = {}, {"present": 0, "late": 0, "absent": 0, "leave": 0,
-                              "off": 0, "unrecorded": 0, "not_employed": 0}
+                              "off": 0, "unrecorded": 0, "not_employed": 0,
+                              "holiday": 0}
         for d in days:
             ds = d.isoformat()
             our_idx = str((d.weekday() + 1) % 7)  # 0=الأحد
@@ -444,6 +520,8 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
                       else "late" if r.status == "late" else "present")
                 cells[ds] = st
                 summary[st] += 1
+            elif d in holidays:
+                cells[ds] = "holiday"; summary["holiday"] += 1
             elif any(lv.start_date <= d <= lv.end_date for lv in leaves):
                 cells[ds] = "leave"; summary["leave"] += 1
             elif is_workday and d <= today:
@@ -464,7 +542,87 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
         "days": [d.isoformat() for d in days],
         "employees": out_emps,
         "total_employees": len(out_emps),
+        "holidays": ({d.isoformat(): n for d, n in
+                      holiday_dates(db, cid, first, last).items()} if cid else {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# تقويم العطل الرسمية — قرار المالك (2026-09-17)
+# ---------------------------------------------------------------------------
+
+def _holiday_company(user: models.User, company_id: int | None) -> int:
+    cid = scope_company_id(user, company_id)
+    if cid is None:
+        raise HTTPException(status_code=400, detail="حدد الشركة")
+    return cid
+
+
+def _assert_period_open(db: Session, cid: int, d: date) -> None:
+    # العطلةُ تغيّر ما يُعدّ غيابًا وما يُدفع إضافيًّا — فلا تُمسّ في شهرٍ مُقفل.
+    if attendance_close.is_closed(db, cid, d.strftime("%Y-%m")):
+        raise HTTPException(status_code=409, detail=(
+            f"شهر {d:%Y-%m} مُقفل — أعد فتحه من «مراجعة الحضور» قبل تعديل عطله"))
+
+
+@router.get("/holidays")
+def list_holidays(year: int | None = None, company_id: int | None = None,
+                  user: models.User = Depends(require_perm("view_attendance")),
+                  db: Session = Depends(get_db)):
+    cid = _holiday_company(user, company_id)
+    y = year or kuwait_today().year
+    rows = db.scalars(select(models.Holiday).where(
+        models.Holiday.company_id == cid,
+        models.Holiday.date >= date(y, 1, 1),
+        models.Holiday.date <= date(y, 12, 31)).order_by(models.Holiday.date)).all()
+    return [{"id": h.id, "date": h.date.isoformat(), "name": h.name} for h in rows]
+
+
+@router.post("/holidays", status_code=201)
+def add_holiday(request: Request, on: date, name: str, days: int = 1,
+                company_id: int | None = None,
+                user: models.User = Depends(require_perm("manage_attendance")),
+                db: Session = Depends(get_db)):
+    """عطلةٌ من يومٍ أو أيامٍ متتالية (العيد مثلًا)."""
+    cid = _holiday_company(user, company_id)
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="اسم العطلة إلزامي")
+    if not 1 <= days <= 14:
+        raise HTTPException(status_code=400, detail="عدد الأيام بين 1 و14")
+    dates = [on + timedelta(days=i) for i in range(days)]
+    for d in dates:
+        _assert_period_open(db, cid, d)
+    existing = set(db.scalars(select(models.Holiday.date).where(
+        models.Holiday.company_id == cid, models.Holiday.date.in_(dates))).all())
+    if existing:
+        raise HTTPException(status_code=409, detail=(
+            "يوجد عطلة مسجّلة في: " + "، ".join(sorted(str(d) for d in existing))))
+    rows = [models.Holiday(company_id=cid, date=d, name=name[:120], created_by=user.id)
+            for d in dates]
+    db.add_all(rows)
+    db.flush()
+    audit(db, user, "holiday_added", "holiday", rows[0].id,
+          detail=f"{name} {dates[0]}..{dates[-1]}", request=request, company_id=cid)
+    db.commit()
+    return [{"id": h.id, "date": h.date.isoformat(), "name": h.name} for h in rows]
+
+
+@router.delete("/holidays/{holiday_id}")
+def remove_holiday(holiday_id: int, request: Request,
+                   user: models.User = Depends(require_perm("manage_attendance")),
+                   db: Session = Depends(get_db)):
+    h = db.get(models.Holiday, holiday_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="العطلة غير موجودة")
+    assert_same_company(user, h.company_id, db=db, request=request)
+    _assert_period_open(db, h.company_id, h.date)
+    audit(db, user, "holiday_removed", "holiday", h.id,
+          detail=f"{h.name} {h.date}", request=request, company_id=h.company_id,
+          before={"date": h.date.isoformat(), "name": h.name})
+    db.delete(h)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/close-month")

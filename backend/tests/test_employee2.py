@@ -20,7 +20,15 @@ def test_extended_employee_fields(client):
     prof = client.get(f"/api/employees/{new_id}", headers=h).json()
     assert prof["gender"] == "male" and prof["passport_number"] == "A1234567"
     # تنظيف: لا نترك موظفًا نشطًا إضافيًا يؤثّر على عدّادات اختبارات أخرى
-    client.post(f"/api/employees/{new_id}/status", headers=h, params={"status": "resigned"})
+    # (والقائمةُ لا تكتب «مستقيل» — قرار المالك 2026-09-17 — فيُكتب مباشرة.)
+    from app import models
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        db.get(models.Employee, new_id).status = "resigned"
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_employee_status_lifecycle(client):

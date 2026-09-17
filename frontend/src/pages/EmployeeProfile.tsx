@@ -55,6 +55,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [actualEdit, setActualEdit] = useState(false);
   const [actualVal, setActualVal] = useState("");
 
+  // حالاتٌ لا يكتبها إلا مسارُ إنهاء الخدمة (قرار المالك 2026-09-17).
+  const ENDED = ["terminated", "resigned", "retired"];
   const EMP_STATUS: Record<string, string> = {
     active: t("empst_active"), vacation: t("empst_vacation"), suspended: t("empst_suspended"),
     resigned: t("empst_resigned"), terminated: t("empst_terminated"), retired: t("empst_retired"),
@@ -466,8 +468,8 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                         فلا يُعرض ما يرفضه الخادم، إلا الحالةَ القائمة نفسها. */}
                     {Object.entries(EMP_STATUS)
                       .filter(([k]) => k === e.status
-                        || (k !== "terminated"
-                            && (k !== "archived" || ["terminated", "resigned", "retired"].includes(e.status))))
+                        || (!ENDED.includes(k)
+                            && (k !== "archived" || ENDED.includes(e.status))))
                       .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
@@ -837,7 +839,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               )}
             </div>
           )}
-          {can("terminate_employee") && e.status !== "terminated" && !exit_?.exists && (
+          {can("terminate_employee") && !ENDED.includes(e.status) && !exit_?.exists && (
             <div className="card" style={{ borderTop: "3px solid var(--danger)" }}>
               <h3>{t("emp_terminate")}</h3>
               <p className="muted">{t("epf_leave_hint")}</p>
@@ -869,7 +871,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
           )}
           {(() => {
             const s = settlement || p.saved_eos;
-            if (!s) return e.status === "terminated" ? <div className="card muted">{t("empst_terminated")}</div> : null;
+            if (!s) return ENDED.includes(e.status) ? <div className="card muted">{EMP_STATUS[e.status] || t("empst_terminated")}</div> : null;
             return (
               <div className="card">
                 <div className="row" style={{ justifyContent: "space-between" }}>

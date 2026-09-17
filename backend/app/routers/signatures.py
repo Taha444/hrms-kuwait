@@ -539,7 +539,7 @@ def approve_replacement(target_user_id: int, request: Request,
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if user.role != "super_admin" and target.company_id != user.company_id:
         raise HTTPException(status_code=403, detail="خارج نطاق الشركة")
-    if target.id == user.id and user.role != "super_admin":
+    if target.id == user.id:
         raise HTTPException(status_code=403, detail=(
             "لا يمكنك اعتماد استبدال توقيعك بنفسك — فصل السلطات إلزامي"))
     if not target.pending_signature_path:

@@ -16,10 +16,42 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from . import models
+from .holidays import holiday_dates, holiday_rate
 from .clock import today as kuwait_today
 
 PAYROLL_DAY_DIVISOR = 30
 OVERTIME_RATE = 1.25
+
+
+#: رموزُ طلب العمل الإضافي (الحالي والقديم).
+OVERTIME_REQUEST_CODES = ("REQOT", "overtime")
+
+
+def _kuwait_date(moment):
+    from datetime import timezone as _tz
+
+    from .clock import KUWAIT_TZ
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=_tz.utc)
+    return moment.astimezone(KUWAIT_TZ).date()
+
+
+def approved_overtime_minutes(db, employee_id: int, start, end) -> dict:
+    """دقائقُ الإضافي المعتمَدة لكل يوم في ``[start, end)`` — من طلباتٍ مكتملة."""
+    out: dict = {}
+    for req in db.scalars(select(models.Request).where(
+            models.Request.employee_id == employee_id,
+            models.Request.request_type_code.in_(OVERTIME_REQUEST_CODES),
+            models.Request.status == "completed")).all():
+        p = req.payload_json or {}
+        try:
+            d = date.fromisoformat(str(p.get("overtime_date"))[:10])
+            minutes = int(round(float(p.get("hours") or 0) * 60))
+        except (TypeError, ValueError):
+            continue
+        if start <= d < end and minutes > 0:
+            out[d] = out.get(d, 0) + minutes
+    return out
 
 
 def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict:
@@ -77,7 +109,27 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             models.AttendanceRecord.check_in_at >= first,
             models.AttendanceRecord.check_in_at < nxt)).all()
         present_days = len(recs)
-        overtime_minutes = sum(r.overtime_minutes or 0 for r in recs)
+        # قرار المالك (2026-09-17) — الإضافيُّ لا يُدفع إلا معتمَدًا: طلبُ
+        # «عمل إضافي» (REQOT) مكتملٌ لذلك اليوم، وبالأقلّ من المسجَّل والمعتمَد
+        # (قالبُ الطلب نفسه: «لا تحتسب الساعات إلا بعد التحقق من الحضور»).
+        # والعطلةُ الرسمية (قرار المالك نفسه): العملُ فيها كلُّه إضافيٌّ بنسبة
+        # ``overtime.holiday_rate`` — ومعلَّقٌ على الاعتماد كغيره.
+        holidays = holiday_dates(db, company_id, date(year, month, 1),
+                                 date(year, month, days_in_month))
+        recorded_by_day: dict = {}
+        for r in recs:
+            if not r.check_in_at or (r.status or "").lower() == "absent":
+                continue
+            d = _kuwait_date(r.check_in_at)
+            m = int(r.worked_minutes or 0) if d in holidays else int(r.overtime_minutes or 0)
+            if m:
+                recorded_by_day[d] = recorded_by_day.get(d, 0) + m
+        approved_by_day = approved_overtime_minutes(db, e.id, first.date(), nxt.date())
+        overtime_recorded_minutes = sum(recorded_by_day.values())
+        paid_by_day = {d: min(m, approved_by_day.get(d, 0))
+                       for d, m in recorded_by_day.items()}
+        overtime_minutes = sum(paid_by_day.values())
+        holiday_minutes = sum(m for d, m in paid_by_day.items() if d in holidays)
 
         # QA-03/QA-04 — أيام العمل بلا سجل حضور.
         #
@@ -119,6 +171,7 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             day = period_start
             while day <= period_end:
                 if str((day.weekday() + 1) % 7) in workset \
+                        and day not in holidays \
                         and day not in present_dates \
                         and not any(lv.start_date <= day <= lv.end_date for lv in leaves):
                     if day in absent_dates:
@@ -133,7 +186,10 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             models.Deduction.date < nxt.date())).all()
         other_deductions = sum(float(x.amount or 0) for x in deductions)
 
-        overtime_pay = round(hourly * OVERTIME_RATE * (overtime_minutes / 60), 3)
+        overtime_pay = round(
+            hourly * OVERTIME_RATE * ((overtime_minutes - holiday_minutes) / 60)
+            + hourly * (holiday_rate(db, company_id) if holiday_minutes else 0)
+            * (holiday_minutes / 60), 3)
         absence_deduction = round(daily * absent_days, 3)
 
         # **والشهر الجزئي يُحسب بالتناسب**: من عُيّن يوم 28 لا يستحق راتب
@@ -190,6 +246,9 @@ def compute_payroll(db: Session, company_id: int, year: int, month: int) -> dict
             "partial_month": partial,
             "present_days": present_days,
             "absent_days": absent_days, "overtime_minutes": overtime_minutes,
+            "overtime_recorded_minutes": overtime_recorded_minutes,
+            "overtime_unapproved_minutes": overtime_recorded_minutes - overtime_minutes,
+            "holiday_overtime_minutes": holiday_minutes,
             # QA-03 — أيام عمل بلا سجل حضور: تُعرَض لـHR ولا تُخصم. وجودها بعدد
             # كبير يعني خلًلا في التسجيل يستحق مراجعة، لا خصًما من الراتب.
             "unrecorded_days": unrecorded_days,

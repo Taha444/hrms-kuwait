@@ -66,6 +66,7 @@ export default function Branches() {
   const EMPTY = {
     name: "", name_en: "", code: "", governorate: "", governorate_en: "",
     address: "", latitude: "", longitude: "", geofence_radius_m: "100",
+    auto_checkout_minutes: "15",
   };
   const [form, setForm] = useState<any>(null);   // null = مغلق
   const [editing, setEditing] = useState<number | null>(null);
@@ -80,6 +81,7 @@ export default function Branches() {
       address: b.address || "",
       latitude: b.latitude ?? "", longitude: b.longitude ?? "",
       geofence_radius_m: String(b.geofence_radius_m ?? 100),
+      auto_checkout_minutes: String(b.auto_checkout_minutes ?? 15),
     });
   };
 
@@ -103,6 +105,9 @@ export default function Branches() {
     if (form.geofence_radius_m !== "") {
       body.geofence_radius_m = Number(form.geofence_radius_m);
     }
+    if (form.auto_checkout_minutes !== "") {
+      body.auto_checkout_minutes = Number(form.auto_checkout_minutes);
+    }
     try {
       if (editing) await api.put(`/branches/${editing}`, body);
       else await api.post("/branches", body);
@@ -118,6 +123,7 @@ export default function Branches() {
     ["address", t("br_f_address")],
     ["latitude", t("br_f_lat"), t("br_f_geo_hint")], ["longitude", t("br_f_lng")],
     ["geofence_radius_m", t("geofence")],
+    ["auto_checkout_minutes", t("br_f_auto_checkout"), t("br_f_auto_checkout_hint")],
   ];
 
   return (
@@ -142,7 +148,8 @@ export default function Branches() {
                 <label htmlFor={`br-${key}`}>{label}</label>
                 <input id={`br-${key}`} value={form[key]}
                        inputMode={key === "latitude" || key === "longitude"
-                                  || key === "geofence_radius_m" ? "decimal" : undefined}
+                                  || key === "geofence_radius_m"
+                                  || key === "auto_checkout_minutes" ? "decimal" : undefined}
                        onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
                 {hint && <div className="muted" style={{ fontSize: 11 }}>{hint}</div>}
               </div>

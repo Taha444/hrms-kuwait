@@ -142,7 +142,8 @@ def test_settling_closes_the_file_and_says_so(client):
     finally:
         db.close()
 
-    assert emp.status == "terminated", f"لم تُغلق الخدمة: {emp.status}"
+    # سببُها استقالة — فيُكتب «مستقيل» (قرار المالك 2026-09-17).
+    assert emp.status == "resigned", f"لم تُغلق الخدمة: {emp.status}"
     assert rows, (
         "أُغلق ملف الموظف بلا حدث تدقيق عليه — الأثر كله تحت رقم الحالة"
     )

@@ -133,6 +133,7 @@ def org_structure(company_id: int | None = None,
     out = [{
         "id": b.id, "name": b.name, "address": b.address,
         "geofence_radius_m": b.geofence_radius_m,
+        "auto_checkout_minutes": b.auto_checkout_minutes,
         "employee_count": emp_count(models.Employee.branch_id == b.id),
         "supervisors": sup_by_branch.get(b.id, []),
     } for b in branches]

@@ -7,7 +7,7 @@ import { attAr } from "../labels";
 // مراجعة الحضور الشهري (للسوبر أدمن/المالك/مدير الشركة): مصفوفة موظف × يوم.
 const WD_AR = ["ح", "ن", "ث", "ر", "خ", "ج", "س"]; // الأحد..السبت
 const WD_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const MARK: Record<string, string> = { present: "✓", late: "!", absent: "✗", leave: "L", off: "", future: "" };
+const MARK: Record<string, string> = { present: "✓", late: "!", absent: "✗", leave: "L", off: "", future: "", holiday: "H" };
 
 function thisMonth() {
   const d = new Date();
@@ -38,6 +38,26 @@ export default function AttendanceReview() {
   const [gaps, setGaps] = useState<any[]>([]);
   const loadGaps = () => api.get("/employees/attendance-policy/pending")
     .then((r) => setGaps(r.data)).catch(() => setGaps([]));
+
+  // قرار المالك (2026-09-17) — تقويم العطل الرسمية، لسنة الشهر المعروض.
+  const year = month.slice(0, 4);
+  const [hols, setHols] = useState<any[]>([]);
+  const [hol, setHol] = useState({ on: "", name: "", days: "1" });
+  const loadHols = () => api.get("/attendance/holidays", { params: { year } })
+    .then((r) => setHols(r.data)).catch(() => setHols([]));
+  useEffect(() => { loadHols(); }, [year]);
+  const addHoliday = () => {
+    if (!hol.on || !hol.name.trim()) return;
+    act(() => api.post("/attendance/holidays", null, {
+      params: { on: hol.on, name: hol.name.trim(), days: Number(hol.days) || 1 },
+    }).then(() => { setHol({ on: "", name: "", days: "1" }); loadHols(); load(); }),
+    t("hol_added"));
+  };
+  const removeHoliday = (id: number) => {
+    if (!window.confirm(t("hol_remove_confirm"))) return;
+    act(() => api.delete(`/attendance/holidays/${id}`).then(() => { loadHols(); load(); }),
+        t("hol_removed"));
+  };
 
   const load = () => {
     setLoading(true);
@@ -193,12 +213,55 @@ export default function AttendanceReview() {
         </div>
       )}
 
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h3 style={{ marginTop: 0 }}>{t("hol_title")} — {year}</h3>
+        <div className="sub" style={{ marginBottom: 8 }}>{t("hol_hint")}</div>
+        {hols.length === 0
+          ? <div className="muted">{t("hol_none")}</div>
+          : (
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {hols.map((h) => (
+                <span key={h.id} className="pill neutral">
+                  {h.date} · {h.name}
+                  {can("manage_attendance") && (
+                    <button className="ghost sm" aria-label={t("hol_remove_confirm")}
+                            disabled={busy} onClick={() => removeHoliday(h.id)}>×</button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+        {can("manage_attendance") && (
+          <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div className="field">
+              <label htmlFor="hol-on">{t("hol_from")}</label>
+              <input id="hol-on" type="date" value={hol.on}
+                     onChange={(e) => setHol({ ...hol, on: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="hol-name">{t("hol_name")}</label>
+              <input id="hol-name" value={hol.name}
+                     onChange={(e) => setHol({ ...hol, name: e.target.value })} />
+            </div>
+            <div className="field" style={{ width: 90 }}>
+              <label htmlFor="hol-days">{t("hol_days")}</label>
+              <input id="hol-days" type="number" min={1} max={14} value={hol.days}
+                     onChange={(e) => setHol({ ...hol, days: e.target.value })} />
+            </div>
+            <button disabled={busy || !hol.on || !hol.name.trim()} onClick={addHoliday}>
+              {t("hol_add")}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="att-legend">
         <span className="lg"><span className="sw" style={{ background: "var(--success-bg)" }} /> {t("att_legend_present")}</span>
         <span className="lg"><span className="sw" style={{ background: "var(--warning-bg)" }} /> {t("att_legend_late")}</span>
         <span className="lg"><span className="sw" style={{ background: "var(--danger-bg)" }} /> {t("att_legend_absent")}</span>
         <span className="lg"><span className="sw" style={{ background: "var(--info-bg)" }} /> {t("att_legend_leave")}</span>
         <span className="lg"><span className="sw" style={{ background: "#f1f4f3" }} /> {t("att_legend_off")}</span>
+        <span className="lg"><span className="sw" style={{ background: "#efe7fb" }} /> {t("att_legend_holiday")}</span>
       </div>
 
       {loading ? <div className="empty">{t("loading")}</div>

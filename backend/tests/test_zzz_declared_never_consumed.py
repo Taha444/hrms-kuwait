@@ -45,8 +45,6 @@ FE = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src"
 
 #: حقٌل معلٌَن ال يقرؤه شيء — ولكلٍّ **سببُه وأثرُه** مكتوًبا.
 _DECLARED_NEVER_CONSUMED = {
-    "auto_checkout_minutes":
-        "العلاُج المعلَن لانصراٍف مَنسيّ — لم يُبنَ، والإضافّي بلا سقف",
     "actual_license_id":
         "ترخيُص الدوام الفعلي — لم يُملأ قطّ، والسعُة تُعَدّ بـlicense_id",
 }
@@ -87,22 +85,8 @@ def test_the_fields_are_still_declared_at_all():
     assert not missing, f"حقوٌل لم تعد معلَنًة: {missing}"
 
 
-def test_the_overtime_minutes_have_no_ceiling_today():
-    """**ويُثبَّت الأثُر ال الرأي**: ال سقَف اليوَم على دقائق الإضافي.
-
-    فمن يضع سقًفا يُسقِط هذا الحارَس، فيُعلَم أن رقًما يُدفَع قد تغيّر —
-    وهو ما يجب أن يُعلَم بقصد ال بمصادفة.
-    """
-    import inspect
-
-    from app.routers import attendance as A
-
-    src = inspect.getsource(A._finalize_out)
-    assert "rec.worked_minutes = max(int((local - check_in).total_seconds() // 60), 0)" in src, \
-        "تغيَّر حساُب الدقائق — يُراجَع الأثُر على الإضافي"
-    body = src.split("overtime_minutes")[-1]
-    assert "min(" not in body, ("صار للإضافي سقٌف — وهذا تغيٌُّر في المال: "
-                                "يُرفَع هذا الحارُس ويُكتَب بدله ما يقيس السقف")
+# ``auto_checkout_minutes`` وسقفُ الإضافي بُنيا بقرار المالك (2026-09-17) —
+# وحارساهما السلوكيّان في ``test_zzz_overtime_approval``.
 
 
 def test_the_manual_remedy_still_has_no_screen():

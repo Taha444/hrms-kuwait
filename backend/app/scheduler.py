@@ -61,6 +61,13 @@ def _run_daily_scan():
                 return
             result = daily_scan(db)
             logger.info("daily_scan: %s", result)
+            # قرار المالك (2026-09-17) — الانصرافُ المنسيّ يُغلق بقاعدته.
+            from .routers.attendance import close_all_forgotten
+
+            closed = close_all_forgotten(db)
+            if closed:
+                db.commit()
+                logger.info("attendance auto-closed: %s", closed)
             # **والأثر المؤجَّل يجد يومه.** ترقيٌة بنفاٍذ مستقبلي لا تُطبَّق
             # يوم اعتمادها، فلولا هذا المسح لبقيت «مؤجَّلة» إلى الأبد —
             # وتأجيٌل بلا يوٍم يحلّ فيه تسويٌف لا تأجيل.

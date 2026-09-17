@@ -29,6 +29,10 @@ DEFAULTS: dict[str, dict] = {
     "leave.annual_entitlement_days": {"days": 30},
     "eos.notice_days": {"days": 90},
     "eos.day_divisor": {"divisor": 26},
+    # قرار المالك (2026-09-17) — العملُ في العطلة الرسمية إضافيٌّ كلُّه بهذه
+    # النسبة من أجر الساعة فوق الراتب الشهري (قراءةُ المادة 67: «مثلُه مضافًا
+    # إليه 50%»). قيمةٌ من السياسة لا من الكود: يعدّلها المختصّ القانوني.
+    "overtime.holiday_rate": {"rate": 1.5},
 
     # نوافذ التنبيه على انتهاء الوثائق — كانت مكرّرة في dashboard/operations/org/renewals
     "expiry.warning_days": {"days": 90},

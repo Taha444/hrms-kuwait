@@ -10,7 +10,8 @@
 وكذلك «مؤرشف» لموظفٍ على رأس عمله: إنهاءٌ بلا مسار (والأرشفةُ في القائمة
 الموحَّدة لمن انتهت خدمته — فتُسحب معها الرواتبُ والوصول).
 
-**وما لم يُمَسّ**: «مستقيل» و«متقاعد» — لا مسارَ لهما في النظام، وبناؤه قرار.
+**و«مستقيل» و«متقاعد» كذلك** — قرار المالك (2026-09-17): تمرّان بمسار
+الإنهاء، والمسارُ يكتب «مستقيل» لسبب الاستقالة.
 """
 from __future__ import annotations
 
@@ -47,9 +48,13 @@ def _post(client, eid, status):
                        headers=auth_headers(login(client, *HR)))
 
 
-def test_a_dropdown_cannot_end_a_service(client):
+import pytest
+
+
+@pytest.mark.parametrize("ended", ["terminated", "resigned", "retired"])
+def test_a_dropdown_cannot_end_a_service(client, ended):
     eid = _emp_id()
-    r = _post(client, eid, "terminated")
+    r = _post(client, eid, ended)
     assert r.status_code == 409, (r.status_code, r.text[:200])
     assert "إنهاء الخدمة" in r.text
     assert _status(eid) == "active"
@@ -66,7 +71,12 @@ def test_an_ended_service_can_still_be_archived(client):
     """والأرشفةُ لمن انتهت خدمته تعمل كما كانت."""
     eid = _emp_id()
     try:
-        assert _post(client, eid, "resigned").status_code == 200
+        db = SessionLocal()
+        try:
+            db.get(models.Employee, eid).status = "resigned"   # كما يكتبه المسار
+            db.commit()
+        finally:
+            db.close()
         assert _post(client, eid, "archived").status_code == 200
         assert _status(eid) == "archived"
     finally:
@@ -98,4 +108,24 @@ def test_the_screen_does_not_offer_what_the_server_refuses():
 
     src = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
            / "EmployeeProfile.tsx").read_text(encoding="utf-8")
-    assert 'k !== "terminated"' in src, "القائمةُ تعرض «منتهية خدمته»"
+    import re
+
+    from app.routers.employees import PATH_ONLY_STATUSES
+    m = re.search(r"const ENDED = \[([^\]]*)\]", src)
+    assert m, "القائمةُ لا تُصفّى بقائمة الحالات المنتهية"
+    ended = set(re.findall(r'"(\w+)"', m.group(1)))
+    assert ended == set(PATH_ONLY_STATUSES), (ended, PATH_ONLY_STATUSES)
+    assert "!ENDED.includes(k)" in src, "القائمةُ تعرض حالاتٍ يرفضها الخادم"
+
+
+def test_the_path_writes_resigned_for_a_resignation(client):
+    """والمسارُ يكتب «مستقيل» لسببها — وإلا ضاع التمييزُ الذي كانت القائمةُ تحمله."""
+    from app import exit_case
+    assert exit_case.final_status("resignation") == "resigned"
+    assert exit_case.final_status("termination") == "terminated"
+    assert exit_case.final_status("misconduct") == "terminated"
+    import inspect
+
+    from app.routers import employees as RE, eos as RO
+    assert "_exit_status(reason)" in inspect.getsource(RE.execute_termination)
+    assert "final_status(case.termination_reason)" in inspect.getsource(RO.settle_case)

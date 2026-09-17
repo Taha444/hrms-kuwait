@@ -1909,7 +1909,7 @@ def test_eos_full_lifecycle_nine_stages(client):
     db = SessionLocal()
     try:
         emp = db.get(models.Employee, emp_id)
-        assert emp.status == "terminated"
+        assert emp.status == "resigned"   # سببُها استقالة (قرار المالك 2026-09-17)
         assert emp.eos_settlement_json is not None
     finally:
         db.close()

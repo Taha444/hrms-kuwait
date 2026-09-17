@@ -114,7 +114,13 @@ export default function Payroll() {
                     <td className="num">{p.basic_salary}</td>
                     <td className="num">{p.present_days}</td>
                     <td className="num">{p.absent_days}</td>
-                    <td className="num">{p.overtime_pay}</td>
+                    <td className="num">{p.overtime_pay}
+                      {/* قرار المالك (2026-09-17): الإضافيُّ غير المعتمد يُعرض ولا يُدفع. */}
+                      {p.overtime_unapproved_minutes > 0 && (
+                        <div className="muted" style={{ fontSize: 11 }}>
+                          {t("payroll_ot_unapproved", { min: p.overtime_unapproved_minutes })}
+                        </div>
+                      )}</td>
                     <td className="num">{p.total_deductions}</td>
                     <td className="num"><b style={{ color: "var(--petrol-700)" }}>{p.net}</b></td>
                   </tr>

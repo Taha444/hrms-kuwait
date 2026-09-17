@@ -252,18 +252,44 @@ def test_the_rule_is_applied_at_every_approval_it_names():
     assert "user.employee_id == case.employee_id" in inspect.getsource(eos.approve_case)
 
 
-def test_the_exemption_is_only_the_technical_root():
-    """**واالستثناُء واحٌد معلوم**: ``super_admin`` — ال دوٌر آخر.
+def test_no_role_is_exempt_not_even_super_admin():
+    """**قرار المالك (2026-09-17)**: لا استثناء لأي دور — ولا ``super_admin``.
 
-    وهو متَّسٌق مع «ال تمنح أي مستخدم Super Admin»: مخرٌج للجذر التقني ال
-    لشخص. ولو تسّرب االستثناُء إلى دوٍر ثاٍن سقط هذا الحارس.
+    كانت ستُّ نقاطٍ تكتب ``and user.role != "super_admin"`` بجانب فحص
+    الاعتماد الذاتي. فأُزيلت كلُّها، ويُحرَس غيابُها.
     """
     import inspect
 
-    from app.routers import eos, payroll, signatures
+    from app.routers import employees, eos, payroll, requests, signatures
 
     for fn in (payroll._self_approval_blocked, eos.approve_case,
-               signatures.approve_replacement):
+               signatures.approve_replacement, employees.approve_termination,
+               employees.decide_salary_change,
+               requests.decide):
+        if fn is None:
+            continue
         for ln in inspect.getsource(fn).splitlines():
-            if "user.role !=" in ln:
-                assert '"super_admin"' in ln, (fn.__name__, ln.strip())
+            if "user.id" in ln or "user.employee_id" in ln:
+                assert "super_admin" not in ln, (fn.__name__, ln.strip())
+
+
+def test_super_admin_cannot_approve_a_draft_it_prepared(client):
+    admin = auth_headers(login(client, *ADMIN))
+    db = SessionLocal()
+    try:
+        eid = db.scalar(select(models.Employee.id).where(
+            models.Employee.company_id == 1, models.Employee.status == "active",
+            models.Employee.pending_termination_json.is_(None),
+            models.Employee.basic_salary.isnot(None),
+            models.Employee.non_payroll.is_(False)).order_by(models.Employee.id.desc()))
+    finally:
+        db.close()
+    url = f"/api/employees/{eid}/terminate"
+    try:
+        prep = client.post(url, headers=admin, params={
+            "end_date": "2027-06-01", "reason": "resignation"})
+        assert prep.status_code == 200, prep.text[:200]
+        r = client.post(f"{url}/approve", headers=admin)
+        assert r.status_code == 403, (r.status_code, r.text[:200])
+    finally:
+        client.post(f"{url}/cancel", headers=admin)

@@ -324,7 +324,7 @@ def approve_case(case_id: int, request: Request, note: str | None = None,
     """QA §6 — المرحلة 3: اعتماد التسوية. فصل سلطات: لا يعتمدها من حسبها."""
     case = _get_case(db, user, case_id)
     _require_stage(case, "calculated")
-    if case.calculated_by == user.id and user.role != "super_admin":
+    if case.calculated_by == user.id:
         raise HTTPException(status_code=403, detail=(
             "لا يمكنك اعتماد تسوية حسبتها بنفسك — فصل السلطات إلزامي"
         ))
@@ -403,7 +403,7 @@ def settle_case(case_id: int, request: Request, payment_reference: str,
     if emp:
         _before = {"status": emp.status,
                    "termination_date": str(emp.termination_date or "")}
-        emp.status = "terminated"
+        emp.status = exit_case.final_status(case.termination_reason)
         # **والإنهاءُ يسحب الوصول** — انظر ``deps.revoke_employee_access``.
         from ..deps import revoke_employee_access
         _revoked = revoke_employee_access(db, emp)

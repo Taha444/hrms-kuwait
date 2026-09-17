@@ -29,6 +29,16 @@ from . import eos as eos_engine, models
 NOT_CLOSED = "filed"
 
 
+#: الحالةُ التي يكتبها المسارُ عند بلوغ نهايته — بسبب الإنهاء.
+#: قرار المالك (2026-09-17): الاستقالةُ تمرّ بمسار الإنهاء لا بقائمة الحالة،
+#: فيكتب المسارُ «مستقيل» لسببها بدل «منتهية خدمته» للجميع.
+FINAL_STATUS_BY_REASON = {"resignation": "resigned", "marriage": "resigned"}
+
+
+def final_status(reason: str | None) -> str:
+    return FINAL_STATUS_BY_REASON.get(reason or "", "terminated")
+
+
 def notice_terms(db, company_id: int, reason: str, served: bool | None,
                  served_date: date | None, termination_date: date) -> tuple[float, dict]:
     """أيامُ بدل الإنذار ووصفُها — مصدرٌ واحد لمسار الحالة ومسودة الإنهاء.
