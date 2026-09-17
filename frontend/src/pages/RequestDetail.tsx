@@ -93,6 +93,9 @@ export default function RequestDetail() {
             )}
             {/* QA-07 — تفاصيل مقروءة من الـschema بدل JSON خام */}
             <PayloadView typeCode={req.type} payload={req.payload} />
+            {req.leave_days_warning && (
+              <div className="err" role="alert" style={{ marginTop: 8 }}>{req.leave_days_warning}</div>
+            )}
           </div>
           {/* **لا وعد بورقة مفقودة**: الملف قد يضيع والسجلّ يبقى، فتقول
               الشاشة «جاهز» ويرجع التنزيل 410 — ويقف الموظف أمام من لا

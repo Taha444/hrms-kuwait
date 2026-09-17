@@ -1085,6 +1085,51 @@ def _mask_leave_dates_for_employee(payload: dict, request_type_code: str,
     return {k: v for k, v in (payload or {}).items() if k not in HIDDEN}
 
 
+def _leave_days_warning(db: Session, req: models.Request) -> str | None:
+    """تنبيهٌ للمعتمِد: عددُ الأيام المُعلَن أقلُّ من أيام العمل في مدى الإجازة.
+
+    **الأثرُ المقيس**: ``_apply_leave`` يخصم من الرصيد ``days`` كما أُرسل،
+    والمسيّرُ يُعفي من الغياب **كلَّ يوم عملٍ بين التاريخين** أيًّا كان
+    ``days``. فإجازةٌ من 2 إلى 21 أغسطس بـ``days=1`` نقصت الرصيدَ يومًا
+    وأعفت خمسةَ عشر يومَ عمل.
+
+    **ولا يُفرض الحسابُ من التاريخين**: العطلُ الرسمية لا تُحتسب من الإجازة
+    السنوية، والنظامُ بلا تقويمِ عطل — ففرضُ «أيام الوردية» يظلم من تخلّل
+    إجازتَه عيد. فيُحسب بقاعدة المسيّر نفسها (``shift.work_days``) ويُعرض
+    للمعتمِد، وهو الضابطُ القائم، فيرى الفرقَ بلا حسابٍ ذهني.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    if req.request_type_code not in _LEAVE_CODES:
+        return None
+    p = req.payload_json or {}
+    if (p.get("leave_type") or "annual") not in workflow.LEAVE_TYPES_DEDUCTING_BALANCE:
+        return None
+    try:
+        start = _date.fromisoformat(str(p.get("start_date"))[:10])
+        end = _date.fromisoformat(str(p.get("end_date"))[:10])
+        declared = float(p.get("days") or 0)
+    except (TypeError, ValueError):
+        return None
+    if end < start or (end - start).days > 366:
+        return None
+    emp = db.get(models.Employee, req.employee_id)
+    shift = db.get(models.Shift, emp.shift_id) if emp and emp.shift_id else None
+    workset = set((shift.work_days if shift else "0,1,2,3,4").split(","))
+    work = 0
+    d = start
+    while d <= end:
+        if str((d.weekday() + 1) % 7) in workset:
+            work += 1
+        d += _td(days=1)
+    if declared >= work:
+        return None
+    return (f"عدد الأيام المُعلَن {declared:g} أقلُّ من أيام العمل في المدى "
+            f"({work} يومًا بين {start} و{end}) — يُخصم من الرصيد {declared:g}، "
+            f"ويُعفي المسيّرُ من الغياب {work}. تحقّق قبل الاعتماد "
+            "(العطلُ الرسمية لا تُحتسب من الإجازة السنوية).")
+
+
 def _serialize(db: Session, req: models.Request, full: bool = False,
                viewer: "models.User | None" = None) -> dict:
     emp = db.get(models.Employee, req.employee_id)
@@ -1140,6 +1185,8 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
         # ولمن لا أفعال له: السبب بدل الصمت — من ينتظر دوره يحتاج أن يعرف
         # أنه ينتظر لا أن يظنّ الشاشة معطَّلة.
         "no_actions_reason": request_actions.why_not(db, req, viewer),
+        # **عددُ الأيام المُعلَن يُقارَن بما يُعفيه المسيّر** — لا يُفرض.
+        "leave_days_warning": (None if is_own else _leave_days_warning(db, req)),
         # P11-34 — ومن يُقال له «أعد التطبيق» يحتاج زًرا يفعله.
         #
         # ``retry-apply`` بُنيت لتفتح مخرج ``apply_failed``، ثم بقيت بلا
