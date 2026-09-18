@@ -59,11 +59,15 @@ def test_rbac_owner_can_open_employees_page(client):
 
 
 def test_rbac_gov_portals_delegate_only(client):
-    """QA-29 — بوابات الجهات للمندوب وحده، على الخادم لا الواجهة."""
+    """QA-29 — بوابات الجهات للمندوب وحده، على الخادم لا الواجهة.
+
+    وصاحب الشركات يديرها لأنها مشتركٌة بين الشركات (قرار المالك 2026-09-18)
+    — ``test_zzz_gov_portals_owner``. وما عداهما ممنوعٌ كما كان.
+    """
     allowed = client.get("/api/gov-portals", headers=_headers(client, "100000000003", "deleg123"))
     assert allowed.status_code == 200, allowed.text
     for role, cid, pw in ACCOUNTS:
-        if role == "delegate":
+        if role in ("delegate", "company_owner"):
             continue
         r = client.get("/api/gov-portals", headers=_headers(client, cid, pw))
         assert r.status_code in (403, 404), f"{role} وصل لبوابات الجهات: {r.status_code}"

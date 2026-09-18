@@ -83,6 +83,7 @@ export const taskAr = M({
   capacity_exceeded: { ar: "تجاوز سعة الترخيص", en: "Capacity Exceeded" }, request_stage: { ar: "مرحلة طلب", en: "Request Stage" },
   request_update: { ar: "تحديث طلب", en: "Request Update" }, exit_permit: { ar: "إذن مغادرة", en: "Exit Permit" },
   pickup_ready: { ar: "جاهز للاستلام", en: "Ready for Pickup" }, appointment: { ar: "موعد", en: "Appointment" },
+  warning_no_reply: { ar: "إنذار بلا رد", en: "Warning — No Reply" },
 });
 
 export const severityAr = M({

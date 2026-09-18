@@ -173,7 +173,8 @@ function Sidebar({ open }: { open: boolean }) {
             QA-29 — للمندوب (PRO) وحده: المعاملات الحكومية اختصاصه، وغيره
             يتابعها من الطلبات لا من بوابات الجهات مباشرة. أُزيلت تدريجًيا من
             HR ثم المدير، وهذه الخطوة تحصرها فيه فعلًا كما يشترط معيار القبول. */}
-        {user?.role === "delegate" && (
+        {/* وصاحب الشركات يديرها (قرار المالك 2026-09-18) — روابط مشتركة. */}
+        {(user?.role === "delegate" || user?.role === "company_owner") && (
           <Item to="/gov-portals" icon="globe" label={t("gov_portals_nav")} />
         )}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
@@ -582,7 +583,8 @@ export default function App() {
         || a.user?.role === "company_owner"}><Users /></Guarded>} />
       <Route path="/system-health" element={<Guarded need={(a) => a.user?.role === "super_admin"}><SystemHealth /></Guarded>} />
       {/* hr مُزال من القائمة: إخفاء الرابط وحده لا يمنع فتح المسار مباشرة */}
-      <Route path="/gov-portals" element={<Guarded need={(a) => a.user?.role === "delegate"}><GovernmentPortals /></Guarded>} />
+      <Route path="/gov-portals" element={<Guarded need={(a) => a.user?.role === "delegate"
+        || a.user?.role === "company_owner"}><GovernmentPortals /></Guarded>} />
       {/* R7-B — 404 صريحة بدل إعادة توجيه صامت (كان يحجب أخطاء التوجيه) */}
       <Route path="*" element={<Protected><NotFound /></Protected>} />
     </Routes>

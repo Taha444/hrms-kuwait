@@ -52,7 +52,7 @@ def test_the_deadline_is_required_on_issuing_a_warning():
     assert field.get("required") is True, field
 
 
-def test_nothing_reads_the_deadline_yet():
+def test_only_the_daily_scan_reads_the_deadline():
     """**وجوهُر القياس**: ال يقرؤه شيٌء خارج موضع إعالنه.
 
     فلو صار يُقرأ — تذكيًرا أو انقضاًء — سقط هذا الحارُس معلًنا أن القراَر
@@ -70,9 +70,10 @@ def test_nothing_reads_the_deadline_yet():
                 continue
             if "response_deadline" in s:
                 readers.append(f"{p.name}:{i}")
-    assert not readers, (
-        "صار يُقرأ — يُحدَّث شرُح هذا الملف ويُرفَع البنُد من القرارات "
-        f"المعلَّقة: {readers}")
+    # حُسم (قرار المالك 2026-09-18): المسح اليومي وحده يقرؤها ليُخطر HR
+    # بانقضائها بلا رد — ``test_zzz_warning_no_reply``. وقارٌئ ثاٍن يُسقط
+    # هذا الحارس: سلوٌك جديٌد على حٍقّ إجرائي يحتاج قراًرا.
+    assert {r.split(":")[0] for r in readers} == {"notifications.py"}, readers
 
 
 def test_the_employee_can_actually_reply():
@@ -99,5 +100,5 @@ def test_the_open_decision_is_recorded_where_the_field_lives():
            / "app" / "form_schemas.py").read_text(encoding="utf-8")
     i = src.index("response_deadline")
     around = src[max(0, i - 1200):i + 400]
-    assert re.search(r"ال يقرؤه|لا يقرؤه|قراٌر معلَّق|قرار معلَّق", around), \
-        "الحقُل بال ملاحظٍة تقول إنه ال يُقرأ بعد"
+    assert "2026-09-18" in around and "HR" in around, \
+        "الحقُل بال ملاحظٍة تقول ما حُسم فيه"

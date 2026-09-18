@@ -29,6 +29,18 @@ def dashboard(company_id: int | None = None,
             q = q.where(c)
         return db.scalar(q) or 0
 
+    # **عدد الموظفين = من لم تنتهِ خدمته** (قرار المالك 2026-09-18): نشط + في
+    # إجازة + موقوف — المجموعة نفسها التي يدفع لها المسيّر. كان «النشط» وحده،
+    # فمن خرج في إجازته السنوية يختفي من عدد الشركة. و«منهم في إجازة» يُعرض
+    # تحته فلا يُقرأ الإجمالي على أنه الحاضرون.
+    from ..deps import PAYABLE_STATUSES
+
+    def headcount():
+        return count(models.Employee, models.Employee.status.in_(PAYABLE_STATUSES))
+
+    def on_vacation():
+        return count(models.Employee, models.Employee.status == "vacation")
+
     from ..gov_tasks import count_open_gov_tasks
 
     # TSK-07 — العدّاد يُشتقّ من الاستعلام الذي يغذّي القائمة التي يفتحها.
@@ -67,7 +79,7 @@ def dashboard(company_id: int | None = None,
 
     # ----- المالك: لوحة رقابية للاطلاع فقط (موظفون/فروع/إقامات/تراخيص/أداء/إشعارات) -----
     if role == "company_owner":
-        active_emps = count(models.Employee, models.Employee.status == "active")
+        active_emps = headcount()
         day_start = datetime(today.year, today.month, today.day)
         pq = select(func.count(func.distinct(models.AttendanceRecord.employee_id))).where(
             models.AttendanceRecord.check_in_at >= day_start)
@@ -86,7 +98,7 @@ def dashboard(company_id: int | None = None,
         pct = lambda n, d: round(n / d * 100) if d else 0  # noqa: E731
 
         data.update({
-            "employees": active_emps,
+            "employees": active_emps, "employees_on_vacation": on_vacation(),
             "branches": count(models.Branch),
             "residencies": count(models.Permit, models.Permit.kind == "residency",
                                  models.Permit.status == "active"),
@@ -161,11 +173,13 @@ def dashboard(company_id: int | None = None,
         if cid is not None:
             emp_ids = emp_ids.where(models.Employee.company_id == cid)
         branch_emps = db.scalar(select(func.count()).select_from(models.Employee).where(
-            models.Employee.status == "active", models.Employee.branch_id.in_(bids))) or 0
+            models.Employee.status.in_(PAYABLE_STATUSES), models.Employee.branch_id.in_(bids))) or 0
+        branch_vac = db.scalar(select(func.count()).select_from(models.Employee).where(
+            models.Employee.status == "vacation", models.Employee.branch_id.in_(bids))) or 0
         pending = db.scalar(select(func.count()).select_from(models.Request).where(
             models.Request.status == "pending", models.Request.employee_id.in_(emp_ids))) or 0
         data.update({
-            "branch_employees": branch_emps,
+            "branch_employees": branch_emps, "branch_employees_on_vacation": branch_vac,
             "open_tasks": my_open_tasks,
             "pending_requests": pending,
             "notifications": crit_tasks,
@@ -175,7 +189,7 @@ def dashboard(company_id: int | None = None,
     # ----- HR: الموظفون/الإجازات/العقود/الإنذارات/طلبات الموظفين (لا حكومة) -----
     if role == "hr":
         data.update({
-            "employees": count(models.Employee, models.Employee.status == "active"),
+            "employees": headcount(), "employees_on_vacation": on_vacation(),
             "on_leave": count(models.Leave, models.Leave.status == "approved",
                               models.Leave.start_date <= today, models.Leave.end_date >= today),
             "contracts": count(models.Employee, models.Employee.status == "active"),
@@ -187,7 +201,7 @@ def dashboard(company_id: int | None = None,
     # ----- مدير الشركة: تشغيل يومي (موظفون/فروع/طلبات/إجازات/تنبيهات/عقود) -----
     if role == "company_manager":
         data.update({
-            "employees": count(models.Employee, models.Employee.status == "active"),
+            "employees": headcount(), "employees_on_vacation": on_vacation(),
             "branches": count(models.Branch),
             "pending_requests": count(models.Request, models.Request.status == "pending"),
             "on_leave": count(models.Leave, models.Leave.status == "approved",
@@ -200,7 +214,7 @@ def dashboard(company_id: int | None = None,
     # ----- المحاسب: الرواتب فقط (موظفون + تنبيهاته) — بلا مؤشرات حكومية -----
     if role == "accountant":
         data.update({
-            "employees": count(models.Employee, models.Employee.status == "active"),
+            "employees": headcount(), "employees_on_vacation": on_vacation(),
             "notifications": my_notifications,
         })
         return data
@@ -208,14 +222,14 @@ def dashboard(company_id: int | None = None,
     # ----- أدوار أخرى (إداري مرن…): لوحة بسيطة بلا مؤشرات حكومية -----
     if role != "super_admin":
         data.update({
-            "employees": count(models.Employee, models.Employee.status == "active"),
+            "employees": headcount(), "employees_on_vacation": on_vacation(),
             "open_tasks": my_open_tasks,
         })
         return data
 
     # ----- الإدارة العليا: نظرة كاملة -----
     data.update({
-        "employees": count(models.Employee, models.Employee.status == "active"),
+        "employees": headcount(), "employees_on_vacation": on_vacation(),
         "branches": count(models.Branch),
         "expiring_permits": expiring_permits,
         "pending_requests": count(models.Request, models.Request.status == "pending"),

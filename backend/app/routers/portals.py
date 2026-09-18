@@ -51,13 +51,17 @@ def _can_view_portals(user: models.User) -> bool:
 
     المعاملات الحكومية اختصاص المندوب، وغيره يتابعها من الطلبات لا من بوابات
     الجهات مباشرة — وهو نص معيار القبول.
+
+    وصاحب الشركات يراها لأنه يديرها (قرار المالك 2026-09-18).
     """
-    return user.role in ("super_admin", "delegate")
+    return user.role in ("super_admin", "delegate", "company_owner")
 
 
 def _can_manage_portals(user: models.User) -> bool:
-    """إدارة الروابط لـsuper_admin + company_manager فقط."""
-    return user.role in ("super_admin", "company_manager")
+    """الروابط مشتركٌة بين الشركات كلّها — فيديرها صاحب الشركات (قرار المالك
+    2026-09-18). كان يديرها **مدير أيّ شركة**: فمديُر شركٍة واحدة يغيّر
+    رابًطا يفتحه مندوبو الشركات كلّها."""
+    return user.role in ("super_admin", "company_owner")
 
 
 @router.get("")
@@ -100,7 +104,7 @@ def list_portals(user: models.User = Depends(get_current_user), db: Session = De
 def create_portal(data: PortalIn, request: Request,
                   user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not _can_manage_portals(user):
-        raise HTTPException(status_code=403, detail="إضافة الروابط لـsuper_admin/company_manager فقط")
+        raise HTTPException(status_code=403, detail="إدارة الروابط الحكومية لصاحب الشركات")
     if data.category not in CATEGORY_LABELS:
         raise HTTPException(status_code=400,
                           detail=f"فئة غير معروفة — استخدم: {list(CATEGORY_LABELS.keys())}")
@@ -117,7 +121,7 @@ def create_portal(data: PortalIn, request: Request,
 def update_portal(portal_id: int, data: PortalIn, request: Request,
                   user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not _can_manage_portals(user):
-        raise HTTPException(status_code=403, detail="تعديل الروابط لـsuper_admin/company_manager فقط")
+        raise HTTPException(status_code=403, detail="إدارة الروابط الحكومية لصاحب الشركات")
     p = db.get(models.GovernmentPortal, portal_id)
     if not p:
         raise HTTPException(status_code=404, detail="الرابط غير موجود")
@@ -133,8 +137,10 @@ def update_portal(portal_id: int, data: PortalIn, request: Request,
 
 @router.delete("/{portal_id}")
 def delete_portal(portal_id: int, request: Request,
-                  user: models.User = Depends(require_super_admin), db: Session = Depends(get_db)):
-    """حذف نهائي — لـsuper_admin فقط. للإخفاء المؤقت استخدم is_active=false عبر PUT."""
+                  user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """حذف نهائي — لمن يدير الروابط. للإخفاء المؤقت استخدم is_active=false عبر PUT."""
+    if not _can_manage_portals(user):
+        raise HTTPException(status_code=403, detail="إدارة الروابط الحكومية لصاحب الشركات")
     p = db.get(models.GovernmentPortal, portal_id)
     if not p:
         raise HTTPException(status_code=404, detail="الرابط غير موجود")

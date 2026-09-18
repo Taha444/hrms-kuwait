@@ -70,8 +70,18 @@ def my_avatar_image(user: models.User = Depends(get_current_user)):
 def user_avatar_image(user_id: int,
                      user: models.User = Depends(get_current_user),
                      db: Session = Depends(get_db)):
-    """يرد صورة مستخدم آخر — أي مسجّل دخول يقدر يشوفها (لعرضها في قوائم/سلاسل اعتماد)."""
+    """يرد صورة مستخدم آخر — لعرضها في القوائم وسلاسل الاعتماد.
+
+    **لشركته لا لكل مسجَّل** (قرار المالك 2026-09-18): كانت تُعطى لأي مستخدم
+    ومن أي شركة، فمعرِّفاٌت متتالية تُعدِّد وجوَه موظفي الشركات الأخرى.
+    وصاحب الشركات وsuper_admin يظهران في سلاسل كل الشركات فتُرى صورتهما،
+    ويريان الجميع. والرفض 404 كالغياب — لا يُكشَف أن للحساب صورة.
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
     target = db.get(models.User, user_id)
+    if target and target.id != user.id and user.role not in CROSS_COMPANY_ROLES             and target.role not in CROSS_COMPANY_ROLES             and target.company_id != user.company_id:
+        target = None
     if not target or not target.avatar_path or not key_exists(target.avatar_path):
         raise HTTPException(status_code=404, detail="لا توجد صورة بروفايل")
     ext = os.path.splitext(target.avatar_path)[1].lower()

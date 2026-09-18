@@ -27,7 +27,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 _CATEGORY = {
     **{tp: "government" for tp in GOV_TASK_TYPES},
     "request_stage": "approvals", "request_update": "approvals",
-    "pickup_ready": "hr", "appointment": "hr",
+    "pickup_ready": "hr", "appointment": "hr", "warning_no_reply": "hr",
 }
 
 

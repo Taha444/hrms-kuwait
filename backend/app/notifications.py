@@ -508,10 +508,55 @@ def daily_scan(db: Session) -> dict:
                     f"يعمل عليه. ومن نمطُه GPS أو «كليهما» يُردّ عند البصم "
                     f"بـ«إحداثيات GPS مطلوبة»"
                     + (f" — وعليه الآن {_at_risk} موظًفا نشًطا."
-                       if _at_risk else " — ولا موظَف عليه بعد.")),
+                       if _at_risk else " — ولا موظَف عليه بعد.")
+                    # قرار المالك (2026-09-18): الرمز الثابت يُلزم بالموقع
+                    # حيث للفرع إحداثيات — فهنا يُقبل من أي مكان.
+                    + " ورمُز الحضور في هذا الفرع يُقبَل بلا موقع — من أي مكان "
+                      "— حتى تُدخَل إحداثياته."),
             severity="critical" if _at_risk else "warning",
             related_entity_type="branch", related_entity_id=_b.id,
             dedup_key=f"branch_no_coords:{_b.id}",
+        )
+
+    # مهلُة الرد على الإنذار — قرار المالك (2026-09-18): بانقضائها بلا ردٍّ
+    # من الموظف تُنشأ مهمٌة لـHR، **ولا قراَر آليّ** (الإنذاُر لا يُغلَق ولا
+    # يُبنى عليه شيء). والردُّ ``REQWARN`` يشير إلى الإنذار بنّصٍ حّر لا
+    # بمعرِّف، فيُعَدّ ردًّا كلُّ ردٍّ من الموظف نفسه بعد صدور الإنذار — فلا
+    # يُقال «بلا رد» عمّن ردّ. ومرًّة واحدة لكل إنذار: ``create_task`` يمنع
+    # التكرار على المفتوحة وحدها، فمهمٌة أغلقها HR كانت تعود كلَّ صباح.
+    from .deps import INACTIVE_EMPLOYMENT as _ENDED
+    for _w in db.scalars(select(models.Request).where(
+            models.Request.request_type_code == "ADMWARN",
+            models.Request.status == "completed")).all():
+        _raw = str((_w.payload_json or {}).get("response_deadline") or "")[:10]
+        try:
+            _deadline = date.fromisoformat(_raw)
+        except ValueError:
+            continue
+        if _deadline >= today:
+            continue
+        _dk = f"warning_no_reply:{_w.id}"
+        if db.scalar(select(models.Task.id).where(
+                models.Task.dedup_key.like(f"{_dk}:%")).limit(1)):
+            continue
+        _emp = db.get(models.Employee, _w.employee_id)
+        if not _emp or (_emp.status or "").strip().lower() in _ENDED:
+            continue
+        if db.scalar(select(models.Request.id).where(
+                models.Request.request_type_code == "REQWARN",
+                models.Request.employee_id == _w.employee_id,
+                models.Request.status != "cancelled",
+                models.Request.created_at >= _w.created_at).limit(1)):
+            continue
+        notify_roles(
+            db, _w.company_id, ["hr"],
+            type="warning_no_reply",
+            title=f"انقضت مهلة الرد على الإنذار بلا رد: {_emp.name}",
+            detail=(f"مهلة الرد انتهت في {_deadline.isoformat()} ولم يقدّم الموظف "
+                    f"ردًّا ولا إقرارًا. لا إجراء آليًّا — القرار لكم."),
+            severity="warning",
+            related_entity_type="request", related_entity_id=_w.id,
+            dedup_key=_dk,
         )
 
     # BKL-03 — العدد يُقاس من القاعدة لا يُجمع بالنيّة.

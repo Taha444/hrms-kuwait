@@ -103,7 +103,10 @@ export default function Dashboard() {
         <div className="grid stats">
           <Link to="/employees" className="stat" style={{ textDecoration: "none" }}>
             <div className="stat-ico"><Icon name="employees" size={20} /></div>
-            <div className="num">{data.employees}</div><div className="lbl">{t("kpi_employees")}</div></Link>
+            <div className="num">{data.employees}</div><div className="lbl">{t("kpi_employees")}</div>
+            {data.employees_on_vacation > 0 && (
+              <div className="sub" style={{ fontSize: 12 }}>{t("kpi_of_whom_vacation", { n: data.employees_on_vacation })}</div>
+            )}</Link>
           <Link to="/branches" className="stat" style={{ textDecoration: "none" }}>
             <div className="stat-ico"><Icon name="branches" size={20} /></div>
             <div className="num">{data.branches}</div><div className="lbl">{t("kpi_branches")}</div></Link>
@@ -149,6 +152,10 @@ export default function Dashboard() {
             <div className="stat-ico"><Icon name={META[k].icon} size={20} /></div>
             <div className="num">{data[k]}</div>
             <div className="lbl">{t(META[k].key)}</div>
+            {/* الإجمالي يشمل من في إجازة (قرار المالك 2026-09-18) — فيُقال كم منهم. */}
+            {data[`${k}_on_vacation`] > 0 && (
+              <div className="sub" style={{ fontSize: 12 }}>{t("kpi_of_whom_vacation", { n: data[`${k}_on_vacation`] })}</div>
+            )}
           </>;
           return to ? (
             <Link to={to} className={`stat ${META[k].accent ? "accent" : ""}`} key={k}
