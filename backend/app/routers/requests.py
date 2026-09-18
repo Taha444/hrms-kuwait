@@ -448,6 +448,15 @@ def submit_request(data: schemas.RequestIn, request: Request,
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
+    # **والنوع الأجوف لا يُنشأ** (قرار المالك 2026-09-18): «تعديل الراتب
+    # الفعلي أو مكان العمل الفعلي» لا نموذج له ولا أثر — يُعتمد فلا يتغيّر
+    # شيء. فيُرَدّ إلى المسار الذي يغيّر فعلًا.
+    if data.request_type_code == "ADMACTUAL":
+        raise HTTPException(status_code=409, detail=(
+            "هذا الطلب لا يغيّر شيئًا — الراتب الفعلي يُعدَّل من «اقتراح تعديل» "
+            "في ملف الموظف (يعتمده غيرك ويصدر به قرار)، ومكان العمل الفعلي من "
+            "تعديل بيانات الموظف."))
+
     # **وإلغاُء الإقامة يقدّمه HR أو المدير لا غيرهما** (قرار المالك
     # 2026-09-18). ولا يُقاس بـ``visible_to_employee``: تلك علامُة عرٍض في
     # الكتالوج تشمل أنواًعا يقدّمها الموظف فعًلا من مواضع أخرى (الإضافي،

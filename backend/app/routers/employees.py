@@ -1534,8 +1534,48 @@ def decide_salary_change(req_id: int, decision: str, request: Request = None,
     audit(db, user, "apply_salary_change", "employee", emp.id,
           detail=f"{req.field_name}: {req.old_value} → {req.new_value} (approved)",
           request=request)
+    doc_id = _issue_salary_decision(db, req, emp, user)
     db.commit()
-    return {"ok": True, "status": "applied", "change_id": change.id}
+    return {"ok": True, "status": "applied", "change_id": change.id,
+            "document_id": doc_id}
+
+
+_SALARY_FIELD_AR = {"basic_salary": "الراتب الأساسي", "actual_salary": "الراتب الفعلي"}
+
+
+def _issue_salary_decision(db: Session, req: models.SalaryChangeRequest,
+                           emp: models.Employee, user: models.User) -> int | None:
+    """قرار المالك (2026-09-18): تعديُل الراتب المعتمد يصدر بـ«قرار تعديل راتب».
+
+    كان المساُر الحقيقي لتغيير الراتب (اقتراح ← اعتماد غيره) بلا ورقة: مٌال
+    يتغيّر بلا قرار. والقالب ``HRMS-PR-019`` بالقديم والجديد. **ولا يُعطَّل
+    التعديُل المعتمد لغياب الصيغة** — يُسجَّل غيابها في التدقيق فيُعرف.
+    """
+    if req.field_name not in _SALARY_FIELD_AR:
+        return None
+    from .templates import issue_employee_document
+
+    t = db.scalar(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.code == "HRMS-PR-019",
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+        models.DocumentTemplate.company_id.in_((emp.company_id,)),
+    )) or db.scalar(select(models.DocumentTemplate).where(
+        models.DocumentTemplate.code == "HRMS-PR-019",
+        models.DocumentTemplate.is_active == True,  # noqa: E712
+        models.DocumentTemplate.company_id.is_(None)))
+    if t is None:
+        audit(db, user, "salary_decision_missing_template", "employee", emp.id,
+              detail="HRMS-PR-019 غير موجودة — طُبّق التعديل بلا قرار مكتوب")
+        return None
+    doc, _html = issue_employee_document(db, t, emp, {
+        "old_salary": req.old_value or "—",
+        "new_salary": req.new_value,
+        "effective_date": req.effective_date.isoformat() if req.effective_date else "",
+        "reason": f"({_SALARY_FIELD_AR[req.field_name]}) {req.reason}",
+    }, user)
+    audit(db, user, "issue_salary_decision", "employee", emp.id,
+          detail=f"{t.name} → {doc.reference_no}")
+    return doc.id
 
 
 # ----------------------------- النقل بين الشركات -----------------------------

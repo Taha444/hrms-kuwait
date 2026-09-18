@@ -298,7 +298,12 @@ LEGACY_REQUEST_ALIASES: dict[str, dict] = {
     "REQTRF": {"canonical": "WF-018", "subtype": "INTERNAL_TRANSFER"},
     "REQTRFLIC": {"canonical": "WF-018", "subtype": "LICENSE_TRANSFER"},
     "REQCON": {"canonical": "WF-018", "subtype": "CONTRACT_RENEWAL"},
-    "ADMACTUAL": {"canonical": "WF-018", "subtype": "ACTUAL_SALARY_OR_SITE"},
+    # قرار المالك 2026-09-18 — نوٌع أجوف (لا نموذج ولا أثر): اعتماده لا يغيّر
+    # شيئًا. الراتب الفعلي يُعدَّل من «اقتراح تعديل» في ملف الموظف، ومكان
+    # العمل الفعلي من بياناته. يبقى في الكتالوج الكامل لتُقرأ طلباته القديمة.
+    "ADMACTUAL": {"canonical": "WF-018", "subtype": "ACTUAL_SALARY_OR_SITE",
+                  "internal_action": True,
+                  "reason": "تعديل الراتب/المكان الفعلي — من ملف الموظف (اقتراح تعديل) لا طلب"},
 
     # ── الوثائق الحكومية ──────────────────────────────────────────────
     "REQRESN": {"canonical": "WF-019"},

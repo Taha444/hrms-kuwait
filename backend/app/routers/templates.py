@@ -644,7 +644,41 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
     if t.company_id is not None:
         assert_same_company(user, t.company_id, db=db)
 
-    ctx = _resolve_authoritative_data(db, emp, data.extra or {})
+    doc, rendered = issue_employee_document(db, t, emp, data.extra or {}, user)
+    reference_no, checksum = doc.reference_no, doc.checksum_sha256
+    safe_ref, sig_version = reference_no.replace("/", "_"), doc.signature_version
+
+    audit(db, user, "generate_template", "employee", emp.id,
+          detail=f"{t.name} → {reference_no}", request=request,
+          after={"reference_no": reference_no, "checksum_sha256": checksum,
+                "template_version": t.version or 1})
+    db.commit()
+
+    return {
+        "html": rendered,
+        "is_preview": False,
+        "is_issued": True,
+        "document_id": doc.id,
+        "reference_no": reference_no,
+        "template_version": t.version or 1,
+        "checksum_sha256": checksum,
+        "generated_at": doc.generated_at.isoformat() + "Z",
+        "signature_version": sig_version,
+        "filename": f"{safe_ref}.html",
+    }
+
+
+def issue_employee_document(db: Session, t: models.DocumentTemplate, emp: models.Employee,
+                            extras: dict, user: models.User) -> tuple[models.Document, str]:
+    """يُصدر مستنًدا رسميًا من صيغة لموظف — ``(document, html)``، بلا commit.
+
+    **مساُر إصداٍر واحد**: شاشُة الصيغ تستدعيه، واعتماُد تعديل الراتب يستدعيه
+    (قرار المالك 2026-09-18) — فالرقُم المرجعي والبصمُة ونسخُة التوقيع
+    والأرشفُة قاعدٌة واحدة لا اثنتان تنحرفان.
+    """
+    import hashlib
+
+    ctx = _resolve_authoritative_data(db, emp, extras or {})
     reference_no = _generate_reference_no(db, t.code, emp.company_id, t.version or 1)
     ctx["ref_no"] = reference_no  # يظهر في الترويسة
 
@@ -682,25 +716,7 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
     )
     db.add(doc)
     db.flush()
-
-    audit(db, user, "generate_template", "employee", emp.id,
-          detail=f"{t.name} → {reference_no}", request=request,
-          after={"reference_no": reference_no, "checksum_sha256": checksum,
-                "template_version": t.version or 1})
-    db.commit()
-
-    return {
-        "html": rendered,
-        "is_preview": False,
-        "is_issued": True,
-        "document_id": doc.id,
-        "reference_no": reference_no,
-        "template_version": t.version or 1,
-        "checksum_sha256": checksum,
-        "generated_at": doc.generated_at.isoformat() + "Z",
-        "signature_version": sig_version,
-        "filename": f"{safe_ref}.html",
-    }
+    return doc, rendered
 
 
 @router.post("/{tpl_id}/company-preview")
