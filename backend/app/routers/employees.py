@@ -1299,6 +1299,10 @@ def list_employees_without_policy(company_id: int | None = None,
     )
     if cid is not None:
         q = q.where(models.Employee.company_id == cid)
+    # مسؤوُل الفرع يملك view_attendance — فلا يرى إلا موظفي فروعه، كقائمة الموظفين.
+    allowed = resolve_scope(user, db).branch_ids
+    if allowed is not None:
+        q = q.where(models.Employee.branch_id.in_(allowed or {-1}))
     rows = db.scalars(q.order_by(models.Employee.name)).all()
     return [{"id": e.id, "name": e.name, "employee_no": e.employee_no,
              "company_id": e.company_id, "branch_id": e.branch_id,

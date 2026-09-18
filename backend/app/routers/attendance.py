@@ -737,6 +737,15 @@ def branch_attendance(branch_id: int,
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
     assert_same_company(user, branch.company_id, db=db)
+    # ونطاقُ الفرع كما في شاشة المراجعة (``/review``): مسؤوُل فرٍع لا يقرأ
+    # حضوَر فرٍع آخر — كان التحقّق شركًة وحدها.
+    from ..deps import resolve_scope
+    allowed = resolve_scope(user, db).branch_ids
+    if allowed is not None and branch_id not in allowed:
+        audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "branch", branch_id,
+              detail="attendance_branch_out_of_scope")
+        db.commit()
+        raise HTTPException(status_code=403, detail="لا تملك صلاحية حضور هذا الفرع")
     rows = db.scalars(
         select(models.AttendanceRecord)
         .where(models.AttendanceRecord.branch_id == branch_id)
