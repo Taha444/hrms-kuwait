@@ -178,7 +178,7 @@ function Sidebar({ open }: { open: boolean }) {
           <Item to="/gov-portals" icon="globe" label={t("gov_portals_nav")} />
         )}
         {can("manage_branches") && <Item to="/branches" icon="branches" label={t("branch_qr")} tour="nav-branches" />}
-        {can("manage_templates") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
+        {(can("manage_templates") || user?.role === "company_owner") && <Item to="/templates" icon="doc" label={t("templates_nav")} tour="nav-templates" />}
         {/* SEC2-15 — سجل المخوّلين بالتوقيع: يُقرأ عند توليد كل مستند
             رسمي، وكان بلا شاشة تكتب فيه.
             SIG-REPL — والرابط بشرط المسار نفسه لا بشرط أضيق: كان
@@ -572,7 +572,8 @@ export default function App() {
           صلاحية القائمة على الخادم نفسها (view_employee) — لا أشدّ ولا
           أرخى، فشاشة تُعرض ويرفضها الخادم عيبٌ، والعكس عيبٌ آخر. */}
       <Route path="/eos/cases" element={<Guarded need={(a) => a.can("view_employee")}><EosCases /></Guarded>} />
-      <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")}><Templates /></Guarded>} />
+      <Route path="/templates" element={<Guarded need={(a) => a.can("manage_templates")
+        || a.user?.role === "company_owner"}><Templates /></Guarded>} />
       <Route path="/signatories" element={<Guarded need={(a) => a.can("view_documents")}><Signatories /></Guarded>} />
       <Route path="/delegations" element={<Delegations />} />
       <Route path="/payroll" element={<Guarded need={(a) => a.can("view_payroll")}><Payroll /></Guarded>} />

@@ -21,6 +21,7 @@ from ..deps import (
     assert_same_company,
     audit,
     get_current_user,
+    require_owner_or_admin,
     require_perm,
     require_super_admin,
     scope_company_id,
@@ -126,22 +127,82 @@ def placeholders(user: models.User = Depends(require_perm("manage_templates"))):
 
 @router.get("")
 def list_templates(company_id: int | None = None,
-                   user: models.User = Depends(require_perm("manage_templates")),
+                   user: models.User = Depends(get_current_user),
                    db: Session = Depends(get_db)):
-    """صيغ الشركة المختارة + الصيغ العامة (company_id = null)."""
+    """صيغ الشركة المختارة + الصيغ العامة (company_id = null).
+
+    يقرؤها من يُصدر منها (``manage_templates``) ومن يحرّرها (قرار المالك
+    2026-09-18) — فمن يحرّر لا يُحرَم رؤيَة ما يحرّره.
+    """
+    from ..permissions import has_permission
+    from ..deps import get_user_perms
+
+    if user.role not in TEMPLATE_EDITORS and not has_permission(
+            user.role, get_user_perms(user, db), "manage_templates"):
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية: إدارة الصيغ")
     cid = scope_company_id(user, company_id)
     q = select(models.DocumentTemplate).where(models.DocumentTemplate.is_active == True)  # noqa: E712
     rows = db.scalars(q.order_by(models.DocumentTemplate.category, models.DocumentTemplate.name)).all()
+    # نسخُة الشركة من صيغٍة مشتركة تحلّ محلّها عندها (قرار المالك 2026-09-18).
+    own_codes = {t.code for t in rows if t.code and cid is not None and t.company_id == cid}
+    seed = _seed_bodies()
     out = []
     for t in rows:
         if t.company_id not in (None, cid) and user.role not in CROSS_COMPANY_ROLES:
             continue
         if cid is not None and t.company_id not in (None, cid):
             continue
+        if t.company_id is None and t.code in own_codes:
+            continue
         out.append({"id": t.id, "code": t.code, "name": t.name, "name_en": t.name_en,
                     "category": t.category, "is_global": t.company_id is None,
+                    # صيغٌة مشتركة يخالف نصُّها نسخَة النظام — يطبّقها المالك بزّر.
+                    "drifted": bool(t.company_id is None and t.code in seed
+                                    and (t.body_html or "") != (seed[t.code] or "")),
                     "placeholders": sorted(set(_TOKEN_RE.findall(t.body_html)))})
     return out
+
+
+#: من يحرّر الصيغ — قرار المالك (2026-09-18). كانت لـsuper_admin وحده،
+#: وقاعدُة المالك تمنع منحه لأحد: فلا أحَد عند العميل يغيّر نصَّ شهادة.
+TEMPLATE_EDITORS = ("super_admin", "company_owner", "hr")
+
+
+def require_template_editor(user: models.User = Depends(get_current_user)) -> models.User:
+    if user.role not in TEMPLATE_EDITORS:
+        raise HTTPException(status_code=403,
+                            detail="تحرير الصيغ لصاحب الشركات وشؤون الموظفين")
+    return user
+
+
+def _seed_bodies() -> dict[str, str]:
+    from ..seed import DEFAULT_TEMPLATES
+
+    return {e[0]: e[4] for e in DEFAULT_TEMPLATES}
+
+
+def _save_version(db: Session, t: models.DocumentTemplate, user: models.User, note: str) -> int:
+    """يحفظ النّص الحالي نسخًة تاريخية قبل الكتابة فوقه — ويعيد رقمها."""
+    last_version = db.scalar(select(models.DocumentTemplateVersion).where(
+        models.DocumentTemplateVersion.template_id == t.id,
+    ).order_by(models.DocumentTemplateVersion.version.desc()))
+    next_version = (last_version.version + 1) if last_version else 1
+    db.add(models.DocumentTemplateVersion(
+        template_id=t.id, version=next_version,
+        body_html=t.body_html, name=t.name, category=t.category,
+        edited_by=user.id, change_note=note,
+    ))
+    return next_version
+
+
+def _editable_template(db: Session, user: models.User, tpl_id: int) -> models.DocumentTemplate:
+    """الصيغة إن كان لهذا المحرّر أن يمسّها: صيغُة شركته، أو المشتركة."""
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    if t.company_id is not None:
+        assert_same_company(user, t.company_id, db=db)
+    return t
 
 
 @router.get("/exists")
@@ -187,11 +248,20 @@ def templates_exist(codes: str,
 
 
 @router.get("/{tpl_id}")
-def get_template(tpl_id: int, user: models.User = Depends(require_perm("manage_templates")),
+def get_template(tpl_id: int, user: models.User = Depends(get_current_user),
                  db: Session = Depends(get_db)):
+    # يقرؤها من يُصدر منها ومن يحرّرها (قرار المالك 2026-09-18).
+    from ..permissions import has_permission
+    from ..deps import get_user_perms
+
+    if user.role not in TEMPLATE_EDITORS and not has_permission(
+            user.role, get_user_perms(user, db), "manage_templates"):
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية: إدارة الصيغ")
     t = db.get(models.DocumentTemplate, tpl_id)
     if not t:
         raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    if t.company_id is not None:
+        assert_same_company(user, t.company_id, db=db)
     if t.company_id is not None:
         assert_same_company(user, t.company_id, db=db)
     return {"id": t.id, "name": t.name, "name_en": t.name_en, "category": t.category, "body_html": t.body_html,
@@ -200,10 +270,11 @@ def get_template(tpl_id: int, user: models.User = Depends(require_perm("manage_t
 
 @router.post("", status_code=201)
 def create_template(data: schemas.DocumentTemplateIn, request: Request,
-                    user: models.User = Depends(require_super_admin),
+                    user: models.User = Depends(require_template_editor),
                     db: Session = Depends(get_db)):
-    # إنشاء النماذج حصري للإدارة العليا؛ باقي المستخدمين يختارون من الموجود
-    t = models.DocumentTemplate(company_id=None, name=data.name, name_en=data.name_en, category=data.category,
+    # صاحب الشركات يُنشئ صيغًة مشتركة، وHR صيغًة لشركته (قرار المالك 2026-09-18).
+    owner_scope = user.role in CROSS_COMPANY_ROLES
+    t = models.DocumentTemplate(company_id=None if owner_scope else user.company_id, name=data.name, name_en=data.name_en, category=data.category,
                                 body_html=_sanitize_body_html(data.body_html), code=data.code, created_by=user.id)
     db.add(t)
     db.flush()
@@ -218,22 +289,33 @@ def create_template(data: schemas.DocumentTemplateIn, request: Request,
 
 @router.put("/{tpl_id}")
 def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Request,
-                    user: models.User = Depends(require_super_admin),
+                    user: models.User = Depends(require_template_editor),
                     db: Session = Depends(get_db)):
-    """V2.2 §14 — كل تعديل يُنشئ نسخة تاريخية للحفاظ على المستندات القديمة المرتبطة بها."""
-    t = db.get(models.DocumentTemplate, tpl_id)
-    if not t:
-        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
-    # نحفظ النسخة الحالية قبل الكتابة فوقها
-    last_version = db.scalar(select(models.DocumentTemplateVersion).where(
-        models.DocumentTemplateVersion.template_id == t.id,
-    ).order_by(models.DocumentTemplateVersion.version.desc()))
-    next_version = (last_version.version + 1) if last_version else 1
-    db.add(models.DocumentTemplateVersion(
-        template_id=t.id, version=next_version,
-        body_html=t.body_html, name=t.name, category=t.category,
-        edited_by=user.id, change_note=f"تحديث بواسطة {user.civil_id}",
-    ))
+    """V2.2 §14 — كل تعديل يُنشئ نسخة تاريخية للحفاظ على المستندات القديمة المرتبطة بها.
+
+    **وHR لا يكتب فوق صيغٍة مشتركة** (قرار المالك 2026-09-18): تحريُره
+    يُنشئ نسخًة لشركته تحلّ محلّها عندها — فلا يغيّر HR شركٍة نصَّ غيرها.
+    """
+    t = _editable_template(db, user, tpl_id)
+    if t.company_id is None and user.role not in CROSS_COMPANY_ROLES:
+        copy = db.scalar(select(models.DocumentTemplate).where(
+            models.DocumentTemplate.code == t.code,
+            models.DocumentTemplate.company_id == user.company_id,
+            models.DocumentTemplate.is_active == True)) if t.code else None  # noqa: E712
+        if copy is None:
+            copy = models.DocumentTemplate(
+                company_id=user.company_id, code=t.code, name=data.name,
+                name_en=data.name_en, category=data.category,
+                body_html=_sanitize_body_html(data.body_html), created_by=user.id)
+            db.add(copy)
+            db.flush()
+            audit(db, user, "fork_template", "template", copy.id, request=request,
+                  detail=f"نسخة لشركة {user.company_id} من الصيغة المشتركة #{t.id}")
+            db.commit()
+            return {"ok": True, "id": copy.id, "forked_from": t.id,
+                    "version": 0, "template_version": copy.version}
+        t = copy
+    next_version = _save_version(db, t, user, f"تحديث بواسطة {user.civil_id}")
     t.name, t.name_en, t.category = data.name, data.name_en, data.category
     t.body_html = _sanitize_body_html(data.body_html)
     # R1-A §8 — تحديث القالب يزيد عدّاد الإصدار (يُختم على أي مستند مُولّد لاحقًا)
@@ -259,18 +341,42 @@ def update_template(tpl_id: int, data: schemas.DocumentTemplateIn, request: Requ
 
 @router.get("/{tpl_id}/versions")
 def list_template_versions(tpl_id: int,
-                           user: models.User = Depends(require_super_admin),
+                           user: models.User = Depends(require_template_editor),
                            db: Session = Depends(get_db)):
     """V2.2 §14 — قائمة النسخ التاريخية للقالب."""
-    t = db.get(models.DocumentTemplate, tpl_id)
-    if not t:
-        raise HTTPException(status_code=404, detail="الصيغة غير موجودة")
+    _editable_template(db, user, tpl_id)
     rows = db.scalars(select(models.DocumentTemplateVersion).where(
         models.DocumentTemplateVersion.template_id == tpl_id,
     ).order_by(models.DocumentTemplateVersion.version.desc())).all()
     return [{"id": v.id, "version": v.version, "name": v.name,
              "edited_by": v.edited_by, "edited_at": v.edited_at.isoformat(),
              "change_note": v.change_note} for v in rows]
+
+
+@router.post("/{tpl_id}/apply-system-version")
+def apply_system_version(tpl_id: int, request: Request,
+                         user: models.User = Depends(require_owner_or_admin),
+                         db: Session = Depends(get_db)):
+    """صيغٌة مشتركة يخالف نصُّها نسخَة النظام — يطبّقها صاحب الشركات.
+
+    كان الإقلاع يقول «تُطبَّق من شاشة الصيغ» ولا يملك أحٌد عند العميل
+    تحريرها، ولا يملك المالك نصَّ الشيفرة ليلصقه. فهذا الزّر هو «الاعتماد»:
+    النّص الحالي يُحفظ نسخًة تاريخية، ونسخُة النظام تحلّ محلّه.
+    """
+    t = db.get(models.DocumentTemplate, tpl_id)
+    if not t or t.company_id is not None:
+        raise HTTPException(status_code=404, detail="ليست صيغة مشتركة")
+    want = _seed_bodies().get(t.code or "")
+    if want is None:
+        raise HTTPException(status_code=404, detail="لا نسخة نظام لهذه الصيغة")
+    if (t.body_html or "") == want:
+        return {"ok": True, "changed": False}
+    next_version = _save_version(db, t, user, "تطبيق نسخة النظام")
+    t.body_html = want
+    t.version = (t.version or 1) + 1
+    audit(db, user, "apply_template_system_version", "template", t.id, request=request)
+    db.commit()
+    return {"ok": True, "changed": True, "version": next_version}
 
 
 @router.delete("/{tpl_id}")

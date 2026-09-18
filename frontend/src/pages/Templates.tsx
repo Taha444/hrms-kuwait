@@ -20,6 +20,17 @@ export default function Templates() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const isAdmin = user?.role === "super_admin";
+  // قرار المالك (2026-09-18): يحرّر الصيغ صاحب الشركات وHR — وHR على نسخة
+  // لشركته. ويطبّق المالك نسخة النظام على صيغة مشتركة خالفتها.
+  const isEditor = ["super_admin", "company_owner", "hr"].includes(user?.role || "");
+  const isOwner = ["super_admin", "company_owner"].includes(user?.role || "");
+  const { can } = useAuth();
+  const mayIssue = can("manage_templates");
+  const applySystem = async (id: number) => {
+    if (!window.confirm(t("tpl_apply_system_confirm"))) return;
+    await api.post(`/templates/${id}/apply-system-version`);
+    setMsg(t("tpl_applied_system")); load();
+  };
   const [templates, setTemplates] = useState<any[]>([]);
   const [placeholders, setPlaceholders] = useState<Record<string, string>>({});
   const [employees, setEmployees] = useState<any[]>([]);
@@ -129,7 +140,7 @@ export default function Templates() {
           <h2 style={{ margin: "2px 0 0" }}>{t("templates_title")}</h2>
           <div className="sub">{t("templates_sub")}{isAdmin ? t("templates_sub_admin") : ""}</div>
         </div>
-        {isAdmin && (
+        {isEditor && (
           <button onClick={() => setEditing({ name: "", category: t("tpl_default_category"), body_html: NEW_TEMPLATE })}>
             {t("tpl_new")}
           </button>
@@ -262,10 +273,13 @@ export default function Templates() {
                 <td><b>{tpl.name}</b></td>
                 <td><span className="pill neutral">{tpl.category}</span></td>
                 <td className="muted">{t("tpl_vars_count", { n: tpl.placeholders?.length || 0 })}</td>
-                <td>{tpl.is_global ? <span className="pill gold">{t("tpl_global")}</span> : <span className="pill info">{t("tpl_company")}</span>}</td>
+                <td>{tpl.is_global ? <span className="pill gold">{t("tpl_global")}</span> : <span className="pill info">{t("tpl_company")}</span>}
+                  {tpl.drifted && isOwner && <> <span className="pill warn">{t("tpl_drifted")}</span></>}</td>
                 <td className="row">
-                  <button className="sm" onClick={() => openFill(tpl)}>{t("tpl_fill_print")}</button>
-                  {isAdmin && <button className="ghost sm" onClick={() => api.get(`/templates/${tpl.id}`).then((r) => setEditing(r.data))}>{t("edit")}</button>}
+                  {mayIssue && <button className="sm" onClick={() => openFill(tpl)}>{t("tpl_fill_print")}</button>}
+                  {isEditor && <button className="ghost sm" title={tpl.is_global && !isOwner ? t("tpl_hr_copy_note") : undefined}
+                    onClick={() => api.get(`/templates/${tpl.id}`).then((r) => setEditing(r.data))}>{t("edit")}</button>}
+                  {tpl.drifted && isOwner && <button className="ghost sm" onClick={() => applySystem(tpl.id)}>{t("tpl_apply_system")}</button>}
                   {isAdmin && <button className="ghost sm" onClick={() => remove(tpl.id)}>{t("delete")}</button>}
                 </td>
               </tr>

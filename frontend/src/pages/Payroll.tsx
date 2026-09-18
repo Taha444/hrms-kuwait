@@ -167,6 +167,11 @@ export default function Payroll() {
                   </div>
                   {/* وصفٌّ بلا زرّ يقول لماذا — لا يُترَك المستخدم يخمّن. */}
                   {r.blocked_reason && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{r.blocked_reason}</div>}
+                  {/* قرار المالك (2026-09-18): التصحيح بالتسوية لا بإعادة الفتح —
+                      إعادة الفتح تمحو من اعتمد ومن أنهى، والتسوية تحفظ الخطأ وتصحيحه. */}
+                  {!r.can_reopen && ["approved", "finalized"].includes(r.status) && (
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{t("payroll_fix_hint")}</div>
+                  )}
                 </td>
               </tr>
             ))}

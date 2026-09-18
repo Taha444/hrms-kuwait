@@ -370,4 +370,10 @@ export const screens: Record<string, { ar: string; en: string }> = {
   kpi_of_whom_vacation: { ar: "منهم {n} في إجازة", en: "of whom {n} on leave" },
   eosc_cancel_residency: { ar: "اطلب إلغاء الإقامة", en: "Request residency cancellation" },
   eosc_cancel_residency_hint: { ar: "يعتمده المدير، ثم ينفّذه المندوب ويرفع الإثبات الحكومي فتصير الإقامة «ملغاة» وتتوقف تنبيهات تجديدها.", en: "Approved by the manager, then the delegate carries it out and uploads the government proof; the residency becomes 'cancelled' and its renewal alerts stop." },
+  tpl_drifted: { ar: "يخالف نسخة النظام", en: "Differs from system version" },
+  tpl_apply_system: { ar: "طبّق نسخة النظام", en: "Apply system version" },
+  tpl_apply_system_confirm: { ar: "سيُحفظ النص الحالي نسخةً سابقة ويحلّ محلّه نص النظام. متابعة؟", en: "The current text will be kept as a previous version and replaced by the system text. Continue?" },
+  tpl_applied_system: { ar: "طُبّقت نسخة النظام", en: "System version applied" },
+  tpl_hr_copy_note: { ar: "تعديلك على صيغة مشتركة يُنشئ نسخة لشركتك وحدها — لا يتغيّر نصّ الشركات الأخرى.", en: "Editing a shared template creates a copy for your company only — other companies' text is unchanged." },
+  payroll_fix_hint: { ar: "لتصحيح خطأ بعد الاعتماد: أكمِل المسيّر حتى القفل، ثم «مسيّر تسوية» — يُسجَّل التصحيح بجانب الأصل ولا يُمحى من اعتمد.", en: "To fix an error after approval: take the run through to lock, then create an adjustment run — the correction is recorded next to the original and the approvers are not erased." },
 };

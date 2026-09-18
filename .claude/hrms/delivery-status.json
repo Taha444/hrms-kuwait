@@ -225,9 +225,9 @@
     "updated": ""
   },
   "DLV-46": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/PERMISSIONS_MATRIX.md مولّدة من الشيفرة (scripts/permissions_matrix.py) ويحرسها test_zzz_permissions_matrix_doc",
+    "updated": "2026-09-18"
   },
   "DLV-47": {
     "status": "pending",
