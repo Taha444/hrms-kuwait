@@ -24,18 +24,25 @@ def _alert_job_failure(job: str, exc: Exception) -> None:
     """
     from datetime import date
 
-    from .notifications import create_task, users_by_role
+    from .notifications import create_task
 
     db = SessionLocal()
     try:
-        for user in users_by_role(db, None, ["super_admin"]):
+        # **وصاحُب الشركات يتلقّاه** — لا super_admin عند العميل (قاعدة
+        # المالك)، فتنبيٌه لا يصل إلا إليه لا يصل أحًدا هناك. وأخطرُه فشُل
+        # النسخ الاحتياطي: يتوقّف بصمت حتى يُحتاج إليه.
+        from .notifications import oversight_users
+
+        for user in oversight_users(db, None):
             create_task(
                 db, company_id=user.company_id, assignee_user_id=user.id,
                 type="job_failure", severity="critical",
                 title=f"فشل مهمة مجدولة: {job}",
                 detail=(f"{type(exc).__name__}: {exc}"[:400] +
                         " — النظام لا يولّد تنبيهاته حتى تُعالَج."),
-                dedup_key=f"job_fail:{job}:{kuwait_today().isoformat()}",
+                # المفتاح لكل مستلِم: مفتاٌح واحٌد للجميع يُسلِّم المهمَة لأوّلهم
+                # ويُسقطها عن البقية على أنها «مكرَّرة».
+                dedup_key=f"job_fail:{job}:{kuwait_today().isoformat()}:u{user.id}",
             )
         db.commit()
     except Exception:  # noqa: BLE001 — التنبيه لا يُسقط المجدوِل
@@ -120,6 +127,28 @@ def _run_digest():
         db.close()
 
 
+def _run_backup():
+    """النسخة الليلية خارج الخادم — قرار المالك (2026-09-19). لا تُجدوَل بلا إعداد."""
+    from .backup import BackupConfig, run_backup
+    from .job_lock import daily_key, run_once
+
+    cfg = BackupConfig.from_env()
+    if cfg is None:
+        return
+    db = SessionLocal()
+    try:
+        with run_once(db, "backup", daily_key("backup")) as granted:
+            if not granted:
+                return
+            result = run_backup(cfg)
+            logger.info("backup: %s", result)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("فشل النسخ الاحتياطي")
+        _alert_job_failure("backup", exc)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler:
@@ -134,6 +163,14 @@ def start_scheduler() -> BackgroundScheduler:
     # يوميًا 8 صباحًا: digest إحصائيات المهام لكل مستخدم (V2.2 §20)
     _scheduler.add_job(_run_digest, CronTrigger(hour=8, minute=0), id="digest_scan",
                        replace_existing=True)
+    # يوميًا 2:30 فجرًا: النسخة المشفّرة خارج الخادم — إن ضُبطت (قرار المالك 2026-09-19)
+    from .backup import BackupConfig
+    if BackupConfig.from_env() is not None:
+        _scheduler.add_job(_run_backup, CronTrigger(hour=2, minute=30), id="backup",
+                           replace_existing=True)
+    else:
+        logger.warning("النسخ الاحتياطي خارج الخادم غير مضبوط (BACKUP_S3_BUCKET / "
+                       "BACKUP_ENCRYPTION_KEY) — لا نسخة ليلية")
     _scheduler.start()
     logger.info("تم تشغيل المجدول (اليومي 6ص + SLA كل ساعة + Digest 8ص)")
     return _scheduler

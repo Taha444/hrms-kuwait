@@ -75,14 +75,14 @@
     "updated": ""
   },
   "DLV-16": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "partial",
+    "note": "الشيفرة جاهزة (app/backup.py + جدولة 2:30) — تنتظر الحاوية والمتغيّرات",
+    "updated": "2026-09-19"
   },
   "DLV-17": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "partial",
+    "note": "ذهاب وإياب في test_zzz_backup_roundtrip؛ استرجاع Postgres الإنتاج لم يُجرَ",
+    "updated": "2026-09-19"
   },
   "DLV-18": {
     "status": "pending",
@@ -90,9 +90,9 @@
     "updated": ""
   },
   "DLV-19": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "partial",
+    "note": "S3/R2 مشفّرة — تنتظر الحاوية",
+    "updated": "2026-09-19"
   },
   "DLV-20": {
     "status": "pending",
@@ -100,9 +100,9 @@
     "updated": ""
   },
   "DLV-21": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/BACKUP_RESTORE.md — خطوة بخطوة؛ restore_backup.py يتحقق ويطبع النتيجة",
+    "updated": "2026-09-19"
   },
   "DLV-22": {
     "status": "pending",
@@ -110,9 +110,9 @@
     "updated": ""
   },
   "DLV-23": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "_alert_job_failure يصل oversight_users (صاحب الشركات + الإدارة التقنية)، ومفتاح لكل مستلِم؛ فشل النسخ مشمول",
+    "updated": "2026-09-19"
   },
   "DLV-24": {
     "status": "pending",
