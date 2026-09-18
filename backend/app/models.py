@@ -34,6 +34,7 @@ def _now() -> datetime:
 
 
 class Company(Base):
+    """الشركة (صاحب العمل): بياناتها القانونية وسجلّها التجاري وممثّلها، وإعدادات نهاية الخدمة والإجازة."""
     __tablename__ = "companies"
 
     # **والسجلُّ التجاريُّ ال يتكرّر** — قيٌد كان في الترحيل وحده
@@ -71,6 +72,7 @@ class Company(Base):
 
 
 class User(Base):
+    """حساُب دخول لشخٍص واحد: دوره وشركته وربطه بملف موظف وحالة التحقق الثنائي."""
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -274,6 +276,7 @@ class UserCompanyLink(Base):
 
 
 class UserPermission(Base):
+    """صلاحيٌة إضافية أُسندت لمستخدمٍ بعينه فوق صلاحيات دوره."""
     __tablename__ = "user_permissions"
     __table_args__ = (UniqueConstraint("user_id", "perm_code", name="uq_user_perm"),)
 
@@ -286,6 +289,7 @@ class UserPermission(Base):
 
 
 class Branch(Base):
+    """فرُع الشركة: عنوانه ومحافظته وإحداثياته ونطاق السياج ومفتاح شاشة الحضور."""
     __tablename__ = "branches"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -375,6 +379,7 @@ class Department(Base):
 
 
 class Shift(Base):
+    """ورديُة عمل: بدايتها ونهايتها وأيام العمل ومهلة السماح."""
     __tablename__ = "shifts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -387,6 +392,7 @@ class Shift(Base):
 
 
 class Employee(Base):
+    """ملفُّ الموظف: بياناته الشخصية وعقده وراتبه وفرعه وترخيصه وحالته الوظيفية."""
     __tablename__ = "employees"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -469,6 +475,7 @@ class Employee(Base):
 
 
 class License(Base):
+    """ترخيٌص تجاري للشركة: رقمه وجهته وانتهاؤه وعدد العمالة المسموح."""
     __tablename__ = "licenses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -499,6 +506,7 @@ class Permit(Base):
 
 
 class DocumentType(Base):
+    """نوُع مستنٍد يُتتبَّع انتهاؤه (إقامة، جواز، ترخيص…) ومهل التنبيه قبله."""
     __tablename__ = "document_types"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -688,6 +696,7 @@ class ApprovalDelegation(Base):
 
 
 class RequestType(Base):
+    """نوُع طلب: سلسلة اعتماده ومخرجه وقالبه وظهوره للموظف — يُصالَح من الشيفرة عند كل إقلاع."""
     __tablename__ = "request_types"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -719,6 +728,7 @@ class RequestType(Base):
 
 
 class Request(Base):
+    """طلٌب مقدَّم لموظف: نوعه وحمولته وحالته ومرحلته الحالية في سلسلة الاعتماد."""
     __tablename__ = "requests"
 
     # **القيد يُعلَن هنا لا في الترحيل وحده.**
@@ -799,6 +809,7 @@ class Request(Base):
 
 
 class RequestApproval(Base):
+    """قراٌر على مرحلٍة من طلب: من قرّر وبأي دور، والقرار وملاحظته — تاريخ الطلب."""
     __tablename__ = "request_approvals"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -827,6 +838,7 @@ class RequestApproval(Base):
 
 
 class RequestDocument(Base):
+    """ملفٌّ على طلب: المستند المولَّد، والنسخة الموقّعة، ومرفقات صاحب الطلب والمندوب."""
     __tablename__ = "request_documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -866,6 +878,7 @@ class RequestDocument(Base):
 
 
 class Appointment(Base):
+    """موعٌد لموظف مرتبط بطلب: وقته ومكانه وحالته."""
     __tablename__ = "appointments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -900,6 +913,7 @@ class AttendanceMonthClose(Base):
 
 
 class AttendanceRecord(Base):
+    """سجلُّ حضوٍر ليوم عمل: دخول وخروج بموقعيهما وسيلفي كلٍّ منهما، والمدة والإضافي — سجلٌّ مفتوح واحد لكل موظف."""
     __tablename__ = "attendance_records"
 
     #: **سجٌّل مفتوٌح واحٌد لكل موظف** — والقيُد في القاعدة لا في الفحص.
@@ -960,6 +974,7 @@ class Holiday(Base):
 
 
 class Leave(Base):
+    """إجازٌة معتمَدة أو مطلوبة بنوعها وتاريخيها — منها يُحسب الرصيد ويُعفى المسيّر."""
     __tablename__ = "leaves"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -990,6 +1005,7 @@ class EmployeeEvent(Base):
 
 
 class Deduction(Base):
+    """خصٌم من أجر الموظف بقرار (أو قسط قرض) — يُحتسب في مسيّر شهره."""
     __tablename__ = "deductions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1035,6 +1051,7 @@ class Allowance(Base):
 
 
 class PayrollRun(Base):
+    """مسيُّر رواتب شهٍر لشركة: يُجهَّز ثم يُعتمد (من غير مُجهِّزه) ثم يُنهى ثم يُقفَل؛ والتصحيح بمسيّر تسوية."""
     __tablename__ = "payroll_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1431,6 +1448,7 @@ class SessionActivity(Base):
 
 
 class AuditLog(Base):
+    """سجلُّ التدقيق: من فعل ماذا ومتى وعلى أي كيان، وما قبله وما بعده — لا يُعدَّل ولا يُحذف."""
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)

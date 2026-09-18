@@ -215,9 +215,9 @@
     "updated": ""
   },
   "DLV-44": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/DATABASE_SCHEMA.md مولّد من النماذج (52 جدولًا بأعمدتها وعلاقاتها ووصفها) — backend/scripts/db_schema_doc.py، ويحرسه test_zzz_db_schema_doc",
+    "updated": "2026-09-18"
   },
   "DLV-45": {
     "status": "pending",
