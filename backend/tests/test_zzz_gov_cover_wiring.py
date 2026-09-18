@@ -505,12 +505,18 @@ def test_every_mapped_category_exists_in_the_portals_vocabulary():
     assert not stray, f"فئاٌت ال يعرفها معجُم البوابات: {stray}"
 
 
-def test_an_unmapped_type_says_nothing_instead_of_guessing():
-    """**وما ال أقطع به ال يُسمّى** — ``leave`` و``REQPASS`` بال سطر جهة.
+def test_passport_and_exit_permit_name_the_owner_approved_authority():
+    """**جهتا الجواز وإذن المغادرة بقرار المالك (2026-09-18)** — لا بالظنّ.
 
-    جواُز الوافد يصدر من سفارة بلده، وإذُن المغادرة بين الداخلية والقوى
-    العاملة. وورقٌة تُقدَّم وعليها اسُم جهٍة خاطئة تُردّ وتُقرأ استخفاًفا.
+    كانتا بلا سطر جهة لأن التسمية لم تكن مقطوعًا بها: جواُز الوافد يصدر من
+    سفارة بلده والمعاملة عندنا تحديُث بياناته على الإقامة، وإذُن المغادرة
+    بين الداخلية والقوى العاملة. فأكّد المالك: الجواز ← «الإقامات
+    والداخلية»، وإذن المغادرة ← «العمل والعمالة» (القوى العاملة عبر سهل).
     """
+    from app.routers.portals import CATEGORY_LABELS
+
+    assert R.GOV_COVER_CATEGORY.get("REQPASS") == "residency"
+    assert R.GOV_COVER_CATEGORY.get("leave") == "manpower"
     db = SessionLocal()
     rid = None
     try:
@@ -521,14 +527,12 @@ def test_an_unmapped_type_says_nothing_instead_of_guessing():
         rid = req.id
         emp = db.get(models.Employee, req.employee_id)
 
-        for code in ("leave", "REQPASS"):
-            assert code not in R.GOV_COVER_CATEGORY, \
-                f"{code} صار مخّططًا — فيُنقَل إلى الحارس الذي يؤكّد التسمية"
+        for code, cat in (("leave", "manpower"), ("REQPASS", "residency")):
             rt = rt_leave if code == "leave" else W.get_request_type(db, 1, code)
             if rt is None:
                 continue
             lines = W._gov_cover_lines(db, rt, req, emp)
-            assert not any("الجهة الحكومية" in ln for ln in lines), (code, lines)
+            assert any(f"الجهة الحكومية: {CATEGORY_LABELS[cat]}" in ln for ln in lines), (code, lines)
             # **والغالُف يبقى يقول من أين يأتي األصل.**
             assert any("متابع" in ln and "داخلي" in ln for ln in lines), lines
             assert any("المختص" in ln for ln in lines), lines

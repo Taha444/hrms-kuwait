@@ -109,14 +109,17 @@ def test_no_notice_when_there_is_no_debt():
             db.close()
 
 
-def test_the_declared_document_is_not_claimed_to_be_done():
-    """**وإخطاٌر ال يُعَدّ وثيقة**: ``OD-012`` ما زالت فجوًة معلنة.
+def test_the_travel_path_no_longer_declares_a_financial_clearance():
+    """**قرار المالك (2026-09-18): التنبيه يكفي، ولا وثيقة.**
 
-    فلو حُذفت من ``OUTPUT_GAPS`` بحجّة أن التنبيه يكفي، صار السجلُّ يقول
-    إن المستنَد يُنتَج وهو ال يُنتَج.
+    كانت ``OD-012`` «إفادة مالية للسفر» فجوًة معلنة — وحارٌس هنا يمنع رفعها
+    **بحجّة** أن التنبيه يكفي، لئلا يقول السجلُّ إن المستند يُنتَج وهو لا
+    يُنتَج. والحجُّة صارت قراًرا: فتُرفع من **مخرجات المسار المعلنة** لا من
+    الفجوات وحدها — فلا يُدَّعى إنتاجها ولا تُعَدّ ناقصًة. وتبقى في كتالوج
+    المستندات إن احتيج إليها يوًما.
     """
     from app import v15_registry as R
 
-    assert "WF-002/OD-012" in R.OUTPUT_GAPS, \
-        "رُفعت الفجوُة واإلخطاُر ليس وثيقة"
-    assert "WF-002/OD-012" in set(R.output_gaps())
+    assert "OD-012" not in R.CANONICAL_WORKFLOWS["WF-002"]["od"]
+    assert "WF-002/OD-012" not in R.OUTPUT_GAPS
+    assert "WF-002/OD-012" not in set(R.output_gaps())

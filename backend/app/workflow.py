@@ -463,8 +463,12 @@ _simple("REQDATA", "طلب تعديل البيانات الشخصية", CAT_EMP_
     #
     # والحجب كان في الكتالوج وحده: الموظف يحمل ``submit_request``، فالمسار
     # يقبله لنفسه. أي أن الحقّ كان قائًما ولا طريق إليه.
+    # قرار المالك (2026-09-18): ما يغيّر المال يصدر به قرار. كان البدُل
+    # يُعتمد ويُصرف (``_apply_allowance``) بلا ورقة — مٌال يتغيّر بلا قرار.
     _simple("REQALLOW", "طلب بدل أو ميزة", CAT_FINANCIAL,
-           ["branch_supervisor", "company_manager"], requires_physical_signature=False, visible_to_employee=True),
+           ["branch_supervisor", "company_manager"], requires_physical_signature=False,
+           produces_document=True, default_template_code="HRMS-PR-020",
+           visible_to_employee=True),
     _simple("REQPAY", "اعتراض على الراتب", CAT_FINANCIAL,
            ["accountant", "company_manager"], requires_physical_signature=False, produces_document=True, visible_to_employee=True),
     # AC-03 — خطوة HR هنا تحقّق تعاقدي لا قرار مالي: القرار للمحاسب والمدير
@@ -2151,10 +2155,9 @@ def _warn_debt_before_travel(db: Session, req: models.Request, name: str) -> Non
     لا يعود، والدُين يصير غيَر قابٍل للتحصيل. ولم يكن شيٌء يفحصه هنا.
 
     **ولا يُقرَّر شيء**: الإجازُة لا تُوقَف، ولا يُقتطَع فلٌس. يُسمّى المبلُغ
-    لمن يسوّي الحساب في اللحظة التي يمكن فيها التسوية. وسجلُّ المخرجات
-    يعلن لهذا المسار ``OD-012`` «إفادة مالية للسفر» — **وهي وثيقٌة
-    تنتظر قراَر صاحبها**، وهذا الإخطاُر ليس بديًلا عنها بل تنبيٌه إلى أن
-    موضَعها له معنى.
+    لمن يسوّي الحساب في اللحظة التي يمكن فيها التسوية. وكان سجلُّ
+    المخرجات يعلن لهذا المسار ``OD-012`` «إفادة مالية للسفر» — **وحسم
+    المالك (2026-09-18) أن هذا الإخطاَر يكفي**، فرُفعت من مخرجات المسار.
     """
     owed = outstanding_loan(db, req.employee_id)
     if owed <= 0:
@@ -2650,6 +2653,25 @@ def _body_lines(rt, req, emp) -> list[str]:
             f"من تاريخ: {p.get('start_date','')} إلى تاريخ: {p.get('end_date','')} "
             f"(عدد الأيام: {p.get('days','')})",
             f"السبب: {p.get('reason','')}",
+        ]
+    elif rt.code == "REQALLOW":
+        # قرار البدل بكلماٍت تُقرأ — لا ``transport`` ولا ``True``.
+        from .form_schemas import get_schema
+
+        opts = {o["value"]: o["label"] for f in (get_schema("REQALLOW") or {}).get("fields", [])
+                if f.get("code") == "allowance_type" for o in f.get("options") or []}
+        try:
+            amount = f"{float(p.get('amount') or 0):.3f}"
+        except (TypeError, ValueError):
+            amount = str(p.get("amount") or "")
+        lines += [
+            f"تقرر منح الموظف/ة {getattr(emp, 'name', '')} "
+            f"{opts.get(p.get('allowance_type'), p.get('allowance_type') or 'بدل')} "
+            f"بقيمة {amount} د.ك.",
+            f"اعتبارًا من: {p.get('effective_from', '')}"
+            + (f" إلى: {p['effective_to']}" if p.get("effective_to") else ""),
+            "طريقة الصرف: " + ("شهريًا مع الراتب" if p.get("is_recurring") else "مرة واحدة مع الراتب"),
+            f"السبب: {p.get('reason', '')}",
         ]
     elif rt.code in ("salary_certificate", "REQCERTSAL"):
         lines += [
