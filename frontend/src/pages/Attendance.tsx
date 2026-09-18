@@ -69,9 +69,22 @@ export default function Attendance() {
     requestAnimationFrame(scanLoop);
   };
 
+  // الموقع يُطلب عند فتح الشاشة، وقد يتأخر أو يُرفض بصمت — والخادم يُلزم
+  // به للرمز الثابت حيث للفرع إحداثيات. فيُعاد طلبه عند المسح قبل الإرسال.
+  const ensureCoords = () => new Promise<void>((resolve) => {
+    if (coords.current.lat != null || !navigator.geolocation) return resolve();
+    setMsg(t("att_locating"));
+    navigator.geolocation.getCurrentPosition(
+      (p) => { coords.current = { lat: p.coords.latitude, lng: p.coords.longitude }; resolve(); },
+      () => resolve(),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+
   const validateQr = async (qrToken: string) => {
     scanningRef.current = false;
     setScanningUI(false);
+    await ensureCoords();
     try {
       const r = await api.post("/attendance/validate-qr", {
         qr_token: qrToken, lat: coords.current.lat, lng: coords.current.lng,

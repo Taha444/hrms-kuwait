@@ -115,6 +115,16 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
     if emp.branch_id not in (None, branch.id):
         raise HTTPException(status_code=403, detail="أنت غير مُسجَّل على هذا الفرع")
 
+    # **والرمز الثابت يُلزِم بالموقع حيث للفرع إحداثيات** — قرار المالك
+    # (2026-09-18). لا رمَز متغيًّرا في النظام: كلُّ QR ثابت، فمن صوّره
+    # مرًّة كان يبصم من بيته ما دام لا يرسل إحداثيات. والفرُع بلا إحداثيات
+    # يبقى كما كان — إلزاُمه يوقف حضوره كلَّه — ويُعلَّم «يلزم إعداد».
+    if payload.get("static") and branch.latitude is not None \
+            and (data.lat is None or data.lng is None):
+        raise HTTPException(
+            status_code=400,
+            detail="الموقع مطلوب للحضور بالرمز — فعّل خدمة الموقع واسمح للمتصفح بها ثم أعد المسح")
+
     _check_geofence(emp, branch, data.lat, data.lng)
 
     # منع إعادة الاستخدام للرموز المتغيّرة فقط؛ الرمز الثابت يُقبل دومًا (يحميه الـ geofence)

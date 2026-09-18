@@ -366,4 +366,5 @@ export const screens: Record<string, { ar: string; en: string }> = {
   ops_gc_company: { ar: "ينقص الشركة ({name}) — يوقف عقود الجميع:", en: "Missing at company level ({name}) — blocks every contract:" },
   ops_gc_missing: { ar: "الناقص", en: "Missing" },
   ops_gc_all_ready: { ar: "كل الموظفين جاهزون لإصدار العقد الحكومي", en: "Every employee is ready for a government contract" },
+  att_locating: { ar: "جارٍ تحديد موقعك…", en: "Getting your location…" },
 };
