@@ -145,11 +145,36 @@ def _open_case_for_permit(db, permit_id: int):
         models.ResidencyRenewal.status.notin_([R.REJECTED, R.COMPLETED])))
 
 
+def _renewal_branch_allowed(db, user, employee_id: int) -> bool:
+    """نطاقُ الفرع على المعاملة كما هو على ملف الموظف (``_get_emp``).
+
+    كان التحقّق شركًة واحدة لا فرًعا، والقراءُة مفتوحٌة لكل من يملك صلاحيَة
+    اعتماد — ومسؤوُل الفرع منهم. فكان يسرد معاملاِت فرٍع آخر ويُنزّل البطاقَة
+    المدنيَة لموظّفيه، والملفُّ الذي يحملها مغلٌق أمامه بنطاق فرعه.
+    """
+    from ..deps import resolve_scope
+    sc = resolve_scope(user, db)
+    if sc.self_employee_id is not None and employee_id != sc.self_employee_id:
+        return False
+    if sc.branch_ids is not None:
+        emp = db.get(models.Employee, employee_id)
+        if emp is None or emp.branch_id not in sc.branch_ids:
+            return False
+    return True
+
+
 def _get_renewal(db, user, rid) -> models.ResidencyRenewal:
     rn = db.get(models.ResidencyRenewal, rid)
     if not rn:
         raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
     assert_same_company(user, rn.company_id, db=db)
+    # والموظفُ صاحبُ المعاملة يراها دائمًا — هي معاملته.
+    if user.employee_id != rn.employee_id and not _renewal_branch_allowed(
+            db, user, rn.employee_id):
+        audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "renewal", rn.id,
+              detail="branch_out_of_scope")
+        db.commit()
+        raise HTTPException(status_code=404, detail="المعاملة غير موجودة")
     return rn
 
 
@@ -481,7 +506,11 @@ def list_renewals(user: models.User = Depends(get_current_user), db: Session = D
     if not _is_pro(user, perms) and not any(has_permission(user.role, perms, x) for x in permissions.APPROVAL_PERMS) \
             and user.role not in ("super_admin", "company_owner"):
         q = q.where(models.ResidencyRenewal.employee_id == (user.employee_id or -1))
-    return [_serialize(db, rn) for rn in db.scalars(q).all()]
+    rows = db.scalars(q).all()
+    # ونطاقُ الفرع في القائمة كما في فتح المعاملة الواحدة.
+    rows = [rn for rn in rows if rn.employee_id == user.employee_id
+            or _renewal_branch_allowed(db, user, rn.employee_id)]
+    return [_serialize(db, rn) for rn in rows]
 
 
 @router.get("/{rid}")
@@ -1316,6 +1345,11 @@ def permits_due_without_case(user: models.User = Depends(get_current_user),
     out = []
     for p in db.scalars(q.order_by(models.Permit.expiry_date)).all():
         if _open_case_for_permit(db, p.id):
+            continue
+        # ونطاقُ الفرع هنا كما في المعاملات نفسها: رقُم الإقامة وتاريُخها لا
+        # يُعرضان لمسؤول فرٍع آخر.
+        if p.employee_id != user.employee_id and not _renewal_branch_allowed(
+                db, user, p.employee_id):
             continue
         emp = db.get(models.Employee, p.employee_id)
         # RNW-01 — المواصفة تطلب اسم الموظف والشركة والفرع. الفرع كان ناقًصا،
