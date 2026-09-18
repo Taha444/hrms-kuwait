@@ -82,11 +82,23 @@ async def lifespan(app: FastAPI):
         shutdown_scheduler()
 
 
+def api_docs_kwargs(production: bool, flag: str) -> dict:
+    """توثيُق الـAPI (Swagger ومخطط OpenAPI) لا يُخدَم علنًا في الإنتاج.
+
+    قيس: كان ``/docs`` و``/openapi.json`` يردّان 200 بلا دخول — خريطُة كل
+    نقطٍة وحقولها لأيّ زائر. ويُعاد عند الحاجة بـ``ENABLE_API_DOCS=1``.
+    """
+    if production and flag.strip().lower() not in ("1", "true", "yes"):
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
 app = FastAPI(
     title="نظام إدارة الموارد البشرية متعدد الشركات — الكويت",
     description="نظام ERP لإدارة الموارد البشرية مع عزل تام بين الشركات (Multi-Tenancy).",
     version="1.0.0",
     lifespan=lifespan,
+    **api_docs_kwargs(settings.is_production, os.environ.get("ENABLE_API_DOCS", "")),
 )
 
 app.add_middleware(

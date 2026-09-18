@@ -20,9 +20,9 @@
     "updated": ""
   },
   "DLV-05": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "smoke_prod.py --expect يطابق الالتزام الجاري",
+    "updated": "2026-09-18"
   },
   "DLV-06": {
     "status": "pending",
@@ -30,9 +30,9 @@
     "updated": ""
   },
   "DLV-07": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "/api/version → environment=production",
+    "updated": "2026-09-18"
   },
   "DLV-08": {
     "status": "pending",
@@ -40,14 +40,14 @@
     "updated": ""
   },
   "DLV-09": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "frontend/src/components/PWAUpdater.tsx — registerSW autoUpdate",
+    "updated": "2026-09-18"
   },
   "DLV-10": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/RELEASE_NOTES.md",
+    "updated": "2026-09-18"
   },
   "DLV-11": {
     "status": "pending",
@@ -145,9 +145,9 @@
     "updated": ""
   },
   "DLV-30": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "User.must_change_password يُعاد في الدخول ويُجبر التغيير",
+    "updated": "2026-09-18"
   },
   "DLV-31": {
     "status": "pending",
@@ -220,9 +220,9 @@
     "updated": "2026-09-18"
   },
   "DLV-45": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "OpenAPI يُولَّد تلقائيًا؛ مطفأ علنًا في الإنتاج ويُتاح بـENABLE_API_DOCS=1",
+    "updated": "2026-09-18"
   },
   "DLV-46": {
     "status": "fixed",
@@ -240,9 +240,9 @@
     "updated": "2026-09-18"
   },
   "DLV-49": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "components/RoleTour.tsx + حدث hrms:replay-tour",
+    "updated": "2026-09-18"
   },
   "DLV-50": {
     "status": "pending",
@@ -255,9 +255,9 @@
     "updated": ""
   },
   "DLV-52": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "components/States.tsx — حالات فارغة وخطأ مع إعادة (DEMO-017)",
+    "updated": "2026-09-18"
   },
   "DLV-53": {
     "status": "pending",
@@ -325,8 +325,8 @@
     "updated": ""
   },
   "DLV-66": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/RELEASE_NOTES.md §3–§4",
+    "updated": "2026-09-18"
   }
 }

@@ -78,6 +78,12 @@ def run(base: str, expect: str | None) -> list[tuple[bool, str]]:
         leaked = code == 200 and any(m in body for m in marks)
         out.append((not leaked, f"{p} → {code}" + (" !! مكشوف" if leaked else "")))
 
+    # توثيق الـAPI مطفأ في الإنتاج — لا خريطَة نقاٍط لزائر.
+    code, body = _get(base + "/openapi.json")
+    out.append(('"openapi"' not in body, f"/openapi.json → {code} (يجب ألّا يُخدَم المخطط)"))
+    code, body = _get(base + "/docs")
+    out.append(("swagger-ui" not in body, f"/docs → {code} (يجب ألّا يُخدَم Swagger)"))
+
     code, body = _get(base + "/api/verify/NO-SUCH-CODE-000")
     out.append((code in (200, 404) and '"valid":true' not in body.replace(" ", ""),
                 f"/api/verify رمز مجهول → {code} {body[:40]} (يجب ألّا يُقال صالح)"))
