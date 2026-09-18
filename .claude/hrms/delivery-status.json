@@ -125,9 +125,9 @@
     "updated": ""
   },
   "DLV-26": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "partial",
+    "note": "docs/RUNBOOK.md §4 + test_zzz_migrations_reversible؛ الترتيب مقيس على التزام أقدم؛ تمرين Postgres لم يُجرَ",
+    "updated": "2026-09-19"
   },
   "DLV-27": {
     "status": "fixed",
@@ -210,9 +210,9 @@
     "updated": ""
   },
   "DLV-43": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/RUNBOOK.md",
+    "updated": "2026-09-19"
   },
   "DLV-44": {
     "status": "fixed",
