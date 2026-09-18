@@ -26,6 +26,11 @@ export default function Templates() {
   const [editing, setEditing] = useState<any>(null); // {id?, name, category, body_html}
   const [filling, setFilling] = useState<any>(null); // template being filled
   const [empId, setEmpId] = useState<number | "">("");
+  // مستنٌد موضوعه الشركة لا موظف (``company-preview``/``company-generate``) —
+  // كانت النقطتان مبنيّتين بلا باب: الشاشُة كلُّها تفترض موظًفا.
+  const [subject, setSubject] = useState<"employee" | "company">("employee");
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [companyId, setCompanyId] = useState<number | "">("");
   const [extra, setExtra] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -40,6 +45,12 @@ export default function Templates() {
     load();
     api.get("/templates/placeholders").then((r) => setPlaceholders(r.data));
     api.get("/employees").then((r) => { setEmployees(r.data); if (r.data[0]) setEmpId(r.data[0].id); });
+    api.get("/companies").then((r) => {
+      setCompanies(r.data);
+      const active = Number(localStorage.getItem("active_company_id")) || user?.company_id;
+      const pick = r.data.find((c: any) => c.id === active) || r.data[0];
+      if (pick) setCompanyId(pick.id);
+    }).catch(() => setCompanies([]));
   }, []);
 
   const insertToken = (key: string) => {
@@ -79,7 +90,9 @@ export default function Templates() {
   const previewOnly = async () => {
     setErr(""); setLastGenerated(null);
     try {
-      const r = await api.post(`/templates/${filling.id}/preview`, { employee_id: empId, extra });
+      const r = subject === "company"
+        ? await api.post(`/templates/${filling.id}/company-preview`, { company_id: companyId, extra })
+        : await api.post(`/templates/${filling.id}/preview`, { employee_id: empId, extra });
       const w = window.open("", "_blank");
       if (w) {
         const banner = `<div style="background:#fef3c7;border:2px solid #fbbf24;padding:12px;
@@ -97,7 +110,9 @@ export default function Templates() {
     if (!confirm(t("tpl_generate_confirm"))) return;
     setErr(""); setLastGenerated(null);
     try {
-      const r = await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
+      const r = subject === "company"
+        ? await api.post(`/templates/${filling.id}/company-generate`, { company_id: companyId, extra })
+        : await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
       setLastGenerated(r.data);
       if (!openAndPrint(r.data.html)) {
         setErr(t("tpl_popup_blocked"));
@@ -161,6 +176,15 @@ export default function Templates() {
         <div className="card" style={{ borderTop: "3px solid var(--gold)" }}>
           <h3>{t("tpl_fill_print")}: {filling.name}</h3>
           <div className="field" style={{ maxWidth: 360 }}>
+            <label htmlFor="tpl-subject">{t("tpl_subject")}</label>
+            <select id="tpl-subject" value={subject}
+                    onChange={(e) => setSubject(e.target.value as "employee" | "company")}>
+              <option value="employee">{t("tpl_subject_emp")}</option>
+              <option value="company">{t("tpl_subject_company")}</option>
+            </select>
+          </div>
+          {subject === "employee" ? (
+          <div className="field" style={{ maxWidth: 360 }}>
             <label htmlFor="tpl-emp">{t("tpl_select_emp")}</label>
             <select id="tpl-emp" value={empId} onChange={(e) => setEmpId(+e.target.value)}>
               {employees.map((e) => (
@@ -170,6 +194,15 @@ export default function Templates() {
               ))}
             </select>
           </div>
+          ) : (
+          <div className="field" style={{ maxWidth: 360 }}>
+            <label htmlFor="tpl-company">{t("tpl_select_company")}</label>
+            <select id="tpl-company" value={companyId} onChange={(e) => setCompanyId(+e.target.value)}>
+              {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <div className="sub">{t("tpl_company_hint")}</div>
+          </div>
+          )}
           {filling.customKeys?.length > 0 && (
             <>
               <label>{t("tpl_extra")}</label>

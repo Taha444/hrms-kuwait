@@ -1300,7 +1300,9 @@ def _serialize(db: Session, req: models.Request, full: bool = False,
              "decision": a.decision, "note": a.note, "at": a.decided_at} for a in approvals
         ]
         data["documents"] = [
-            {"kind": d.kind, "version": d.version, "created_at": d.created_at,
+            {"id": d.id, "kind": d.kind, "version": d.version, "created_at": d.created_at,
+             # DOC-10 — الإلغاءُ يُقرأ في الشاشة كما يُقرأ في صفحة التحقّق.
+             "revoked_at": d.revoked_at, "revocation_reason": d.revocation_reason,
              "print_status": d.print_status, "printed_at": d.printed_at, "filed_at": d.filed_at,
              # V1.5 Phase 4: canonical OD code + lifecycle status (منفصل عن print_status)
              "od_code": d.od_code,

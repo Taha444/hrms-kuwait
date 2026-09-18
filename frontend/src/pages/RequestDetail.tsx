@@ -72,6 +72,17 @@ export default function RequestDetail() {
     .some((a: any) => a.action === "upload_signed_scan");
   const isManager = user?.role && ["company_manager", "company_owner", "super_admin"].includes(user.role);
   const genDoc = req.documents?.find((d: any) => d.kind === "generated_pdf");
+  // DOC-10 — مستندٌ صدر خطأً يُلغى ولا يُحذف: الملف يبقى، والحالة «ملغى»،
+  // ورمزُ التحقّق يُعلن ذلك. وكانت النقطةُ مبنيًّة بلا زرّ — فالورقُة
+  // الخاطئة تبقى «سارية» لمن يمسح رمزها.
+  const revoked = genDoc?.lifecycle_status === "REVOKED" || !!genDoc?.revoked_at;
+  const revokeDoc = async () => {
+    if (!genDoc?.id) return;
+    const reason = window.prompt(t("rd_revoke_reason"));
+    if (!reason || !reason.trim()) return;
+    await act(() => api.post(`/documents/requests/${genDoc.id}/revoke`, null,
+                             { params: { reason: reason.trim() } }), t("rd_revoked"));
+  };
   const printStatusLabel: Record<string, string> = {
     ready_to_print: t("rd_print_ready"), printed: t("rd_print_printed"), filed: t("rd_print_filed"),
   };
@@ -109,13 +120,23 @@ export default function RequestDetail() {
           {genDoc?.file_missing && (
             <div className="err" style={{ marginTop: 8 }}>{t("rd_doc_missing")}</div>
           )}
+          {revoked && (
+            <div className="err" style={{ marginTop: 8 }}>
+              <span className="pill rejected">{t("rd_revoked_badge")}</span>{" "}
+              {t("rd_revoked_note", { reason: genDoc.revocation_reason || "—" })}
+            </div>
+          )}
           {genDoc && !genDoc.file_missing && (
             <div className="row" style={{ flexWrap: "wrap" }}>
               <button onClick={() => downloadDoc("generated_pdf")}>{t("rd_print_doc")}</button>
-              {isManager && genDoc.print_status === "ready_to_print" && (
+              {!revoked && can("manage_templates") && (
+                <button className="ghost" style={{ color: "var(--danger)" }}
+                        onClick={revokeDoc}>{t("rd_revoke")}</button>
+              )}
+              {!revoked && isManager && genDoc.print_status === "ready_to_print" && (
                 <button className="ghost" onClick={() => markPrinted("generated_pdf")}>{t("rd_mark_printed")}</button>
               )}
-              {can("upload_documents") && genDoc.print_status === "printed" && (
+              {!revoked && can("upload_documents") && genDoc.print_status === "printed" && (
                 <button className="ghost" onClick={() => markFiled("generated_pdf")}>{t("rd_mark_filed")}</button>
               )}
             </div>

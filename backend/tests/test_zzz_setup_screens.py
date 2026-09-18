@@ -124,3 +124,33 @@ def test_no_screen_offers_what_its_user_cannot_do():
     for rel, perm in pairs:
         page = (SRC / rel).read_text(encoding="utf-8")
         assert re.search(rf'can\("{perm}"\)', page), (rel, perm)
+
+
+# ---------------------------------------------------------------------------
+# مستنداتٌ بُنيت على الخادم ولا يصلها أحد
+# ---------------------------------------------------------------------------
+
+def test_an_issued_document_can_be_revoked_from_the_screen():
+    """DOC-10 — الإلغاءُ بلا حذف مبنيٌّ منذ زمن، ولا زرّ له: فالورقُة الخاطئة
+    تبقى «سارية» لمن يمسح رمزها."""
+    page = (SRC / "pages" / "RequestDetail.tsx").read_text(encoding="utf-8")
+    assert "/revoke" in page, "لا زرّ لإلغاء مستندٍ صادر"
+    assert 'can("manage_templates")' in page, "الزرُّ بلا بوّابة الصلاحية"
+    # والملغى لا يُعرض قابًلا للطباعة والأرشفة كأنه سارٍ.
+    assert "!revoked &&" in page
+
+
+def test_the_request_payload_carries_what_the_revoke_needs(client):
+    """الزرُّ يحتاج معرّفَ المستند وحالَة إلغائه — فيحملهما جواب الطلب."""
+    import inspect
+
+    from app.routers import requests as RQ
+    src = inspect.getsource(RQ)
+    block = src[src.index('data["documents"] = ['):][:600]
+    assert '"id": d.id' in block and '"revoked_at"' in block
+
+
+def test_a_company_document_can_be_issued_from_the_templates_screen():
+    """مستنٌد موضوعه الشركة (تجديد ترخيص مثًلا) — مبنيٌّ بلا باب."""
+    page = (SRC / "pages" / "Templates.tsx").read_text(encoding="utf-8")
+    assert "company-generate" in page and "company-preview" in page
