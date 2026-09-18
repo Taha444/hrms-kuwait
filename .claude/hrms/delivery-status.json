@@ -130,9 +130,9 @@
     "updated": ""
   },
   "DLV-27": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "backend/scripts/smoke_prod.py — بلا كلمة مرور: الحياة، النسخة المتوقعة، البيئة، 401 على المحروس، لا تسريب، صفحة التحقق. 18/18 على c561e59. فحص الأدوار بكلماتها في .claude/hrms/scripts/smoke.sh يشغّله المالك",
+    "updated": "2026-09-18"
   },
   "DLV-28": {
     "status": "pending",
