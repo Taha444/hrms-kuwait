@@ -9,7 +9,8 @@ export default function Companies() {
   // إنشاءُ الشركات وتعطيلُها للإدارة العليا، وتعديلُ بياناتها بـmanage_company
   // (قرار المالك 2026-09-11) — والشاشةُ كانت كلُّها للإدارة العليا وحدها.
   const { user, can } = useAuth();
-  const isAdmin = user?.role === "super_admin";
+  // قرار المالك (2026-09-18): صاحبُ الشركات يُنشئ ويعطّل كالإدارة العليا.
+  const isAdmin = user?.role === "super_admin" || user?.role === "company_owner";
   const mayEdit = isAdmin || can("manage_company");
   const [list, setList] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);

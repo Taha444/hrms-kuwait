@@ -8,7 +8,8 @@ from .. import models, schemas
 from ..config import settings
 from ..database import get_db
 from ..deps import (
-    audit, get_current_user, get_user_perms, require_owner_or_admin, require_perm,
+    audit, get_current_user, get_user_perms, require_any_perm_or_owner,
+    require_owner_or_admin, require_perm,
     require_super_admin, scope_company_id,
 )
 from ..permissions import (
@@ -262,7 +263,7 @@ def auto_link_all_orphans(request: Request,
 
 @router.post("/{user_id}/enable-cross-company")
 def enable_cross_company(user_id: int, request: Request,
-                        user: models.User = Depends(require_super_admin),
+                        user: models.User = Depends(require_owner_or_admin),
                         db: Session = Depends(get_db)):
     """R9 §16 — يفعّل flag is_cross_company على user موجود.
     - يمسح company_id (كان يشير لشركة واحدة → الآن NULL)
@@ -293,7 +294,7 @@ def add_company_link(user_id: int, request: Request,
                     company_id: int, employee_id: int,
                     role: str = "delegate",
                     non_payroll: bool | None = None,
-                    user: models.User = Depends(require_super_admin),
+                    user: models.User = Depends(require_owner_or_admin),
                     db: Session = Depends(get_db)):
     """R9 §16 — يضيف عضوية شركة لمستخدم متعدد الشركات.
     - يتحقق: employee.company_id == company_id (لا خلط شركات)
@@ -310,13 +311,13 @@ def add_company_link(user_id: int, request: Request,
         # أصًال (ال موضَع يناديه في ``frontend/src``). فمن يقرؤها ال
         # يستطيع االستجابَة لها، ويظنُّ الخلَل في نفسه.
         #
-        # فتقول الحقيقَة: من يفعله، وأنه فعٌل إداريٌّ بال شاشٍة بعد. وأما
-        # بناُء الشاشة فهو منُح وصوٍل عابٍر للشركات — قراُر مالك.
+        # وصارت له شاشٌة بقرار المالك (2026-09-18): «عضويات الشركات» في
+        # شاشة المستخدمين، يفعلها صاحبُ الشركات. فالرسالُة تسمّيها.
         raise HTTPException(
             status_code=400,
-            detail=("هذا الحساب غير مُهيَّأ لخدمة أكثر من شركة. يُهيّئه "
-                    "super_admin على الحساب أولاً (إجراٌء إداريٌّ بلا شاشة "
-                    "حتى الآن)، ثم يُعاد الربط"))
+            detail=("هذا الحساب غير مُهيَّأ لخدمة أكثر من شركة. فعّل «متعدد "
+                    "الشركات» من شاشة المستخدمين ← «عضويات الشركات» أولاً، "
+                    "ثم أضف العضوية"))
 
     company = db.get(models.Company, company_id)
     if not company:
@@ -388,7 +389,7 @@ def add_company_link(user_id: int, request: Request,
 
 @router.get("/{user_id}/company-links")
 def list_company_links(user_id: int,
-                      user: models.User = Depends(require_perm("manage_users")),
+                      user: models.User = Depends(require_any_perm_or_owner),
                       db: Session = Depends(get_db)):
     """R9 §16 — يعرض عضويات user متعدد الشركات.
 
@@ -423,7 +424,7 @@ def list_company_links(user_id: int,
 
 @router.delete("/{user_id}/company-links/{link_id}")
 def remove_company_link(user_id: int, link_id: int, request: Request,
-                       user: models.User = Depends(require_super_admin),
+                       user: models.User = Depends(require_owner_or_admin),
                        db: Session = Depends(get_db)):
     """R9 §16 — يمسح عضوية شركة (لو المستخدم ما عاد يخدمها)."""
     link = db.get(models.UserCompanyLink, link_id)

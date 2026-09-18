@@ -106,17 +106,23 @@ def test_the_screen_that_reopens_a_month_exists():
     assert "/attendance/reopen-month" in src, "الشاشُة ال تُعيد فتَح الشهر"
 
 
-def test_the_cross_company_toggle_still_has_no_screen():
-    """**وما قيل عنه «بال شاشة» يُحرَس أنه كذلك.**
+def test_the_cross_company_message_names_the_screen_that_now_exists():
+    """**بُنيت الشاشُة (قرار المالك 2026-09-18) فتسمّيها الرسالة.**
 
-    فإن بُنيت الشاشُة سقط هذا الحارس — فتُصحَّح الرسالُة لتسمّيها، وال يبقى
-    نٌصّ يقول «بال شاشة» وللشاشة وجود.
+    كان هذا الحارسُ يقول: «ما قيل عنه بلا شاشة يُحرَس أنه كذلك — فإن بُنيت
+    سقط، فتُصحَّح الرسالة». وقد بُنيت، فصُحّحت: لا يبقى نصٌّ يقول «بلا
+    شاشة» وللشاشة وجود، ولا نصٌّ يسمّي شاشًة لا وجود لها.
     """
+    import inspect
+
+    from app.routers import users as U
+
+    src = inspect.getsource(U.add_company_link)
+    assert "بلا شاشة" not in src
+    assert "عضويات الشركات" in src
     fe = ROOT / "frontend" / "src"
     if not fe.exists():
         import pytest
-        pytest.skip("ال واجهَة في هذا المسار")
-    callers = [str(p.relative_to(fe)) for p in fe.rglob("*.ts*")
-               if "enable-cross-company" in p.read_text(encoding="utf-8", errors="ignore")]
-    assert not callers, ("صارت للتهيئة شاشٌة — فتُسمَّ في الرسالة بدل "
-                         f"«بلا شاشة»: {callers}")
+        pytest.skip("لا واجهَة في هذا المسار")
+    page = (fe / "pages" / "Users.tsx").read_text(encoding="utf-8")
+    assert "enable-cross-company" in page and "user_multi" in page

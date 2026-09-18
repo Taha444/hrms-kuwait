@@ -31,6 +31,72 @@ export default function Users() {
   const [err, setErr] = useState("");
 
   const [branches, setBranches] = useState<any[]>([]);
+  // قرار المالك (2026-09-18): عضوياتُ الشركات لصاحب الشركات — وكانت
+  // ``enable-cross-company`` و``company-links`` مبنيًّة بلا باب، ومحصورًة في
+  // دورٍ لا يحمله أحد.
+  const [multi, setMulti] = useState<any>(null);          // المستخدم المفتوح
+  const [links, setLinks] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [linkEmps, setLinkEmps] = useState<any[]>([]);
+  const [link, setLink] = useState({ company_id: "", employee_id: "", role: "delegate" });
+  const mayMulti = ["super_admin", "company_owner"].includes(me?.role || "");
+  // صاحُب الشركات يدخل الشاشَة لبندَيه (فكُّ 2FA والعضويات) ولا يملك إدارَة
+  // الحسابات — فال يُعرَض له زٌّر يرفضه الخادم.
+  const mayManage = ["super_admin", "company_manager"].includes(me?.role || "")
+    || (me?.permissions || []).includes("manage_users");
+
+  const openMulti = async (u: any) => {
+    setErr(""); setMsg(""); setMulti(u); setLinks([]);
+    setLink({ company_id: "", employee_id: "", role: "delegate" });
+    api.get(`/users/${u.id}/company-links`)
+      .then((r) => { setLinks(r.data.links || []); setMulti({ ...u, is_cross_company: r.data.is_cross_company }); })
+      .catch(() => setLinks([]));
+    api.get("/companies").then((r) => setCompanies(r.data)).catch(() => setCompanies([]));
+  };
+
+  const enableMulti = async () => {
+    if (!multi) return;
+    setErr(""); setMsg("");
+    try {
+      await api.post(`/users/${multi.id}/enable-cross-company`);
+      setMsg(t("user_multi_enabled"));
+      setMulti({ ...multi, is_cross_company: true });
+      load();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  const pickCompany = (cid: string) => {
+    setLink({ ...link, company_id: cid, employee_id: "" });
+    if (!cid) { setLinkEmps([]); return; }
+    api.get("/employees", { params: { company_id: Number(cid) } })
+      .then((r) => setLinkEmps(r.data)).catch(() => setLinkEmps([]));
+  };
+
+  const addLink = async () => {
+    if (!multi || !link.company_id || !link.employee_id) return;
+    setErr(""); setMsg("");
+    try {
+      await api.post(`/users/${multi.id}/company-links`, null, { params: {
+        company_id: Number(link.company_id), employee_id: Number(link.employee_id),
+        role: link.role,
+      } });
+      setMsg(t("user_link_added"));
+      setLink({ company_id: "", employee_id: "", role: "delegate" });
+      const r = await api.get(`/users/${multi.id}/company-links`);
+      setLinks(r.data.links || []);
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
+  const removeLink = async (id: number) => {
+    if (!multi || !window.confirm(t("user_link_remove_confirm"))) return;
+    setErr(""); setMsg("");
+    try {
+      await api.delete(`/users/${multi.id}/company-links/${id}`);
+      setMsg(t("user_link_removed"));
+      const r = await api.get(`/users/${multi.id}/company-links`);
+      setLinks(r.data.links || []);
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
   const load = () => api.get("/users").then((r) => setUsers(r.data));
   useEffect(() => {
     load();
@@ -169,11 +235,11 @@ export default function Users() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2>{t("users_title")}</h2>
         <div className="row" style={{ gap: 8 }}>
-          <button onClick={runAutoLink} disabled={linkBusy} className="ghost"
+          {mayManage && <button onClick={runAutoLink} disabled={linkBusy} className="ghost"
                   title={t("usr_autolink_title")}>
             {t("usr_autolink")}
-          </button>
-          <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>
+          </button>}
+          {mayManage && <button onClick={() => setShowNew((s) => !s)}>{t("user_new")}</button>}
         </div>
       </div>
       {msg && <div className="ok">{msg}</div>}
@@ -255,6 +321,7 @@ export default function Users() {
         </div>
       )}
 
+      {!mayManage && <div className="card sub">{t("user_owner_only_note")}</div>}
       {showNew && (
         <div className="card">
           <div className="row">
@@ -280,19 +347,26 @@ export default function Users() {
             <tr key={u.id}><td className="num">{u.civil_id}</td><td>{u.full_name}</td>
               <td><span className="pill info">{roleAr(u.role)}</span></td>
               <td>
+                {mayManage ? (
                 <select aria-label={t("status")} value={u.status || "active"} onChange={async (e) => {
                   await api.post(`/users/${u.id}/status`, null, { params: { status: e.target.value } }); load();
                 }} style={{ width: 110, padding: "4px 8px" }}>
                   {Object.entries(USER_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
+                ) : <span className="pill neutral">{USER_STATUS[u.status || "active"]}</span>}
               </td>
               <td className="row">
+                {mayManage && (<>
                 <button className="ghost sm" onClick={() => openPerms(u)}>{t("user_perms")}</button>
                 <button className="ghost sm" onClick={() => reset(u.id, u.full_name)}>{t("user_password")}</button>
+                </>)}
                 {["super_admin", "company_owner"].includes(me?.role || "") && (
                   <button className="ghost sm" onClick={() => reset2fa(u.id, u.full_name)}>
                     {t("user_2fa_reset")}
                   </button>
+                )}
+                {mayMulti && u.role !== "super_admin" && (
+                  <button className="ghost sm" onClick={() => openMulti(u)}>{t("user_multi")}</button>
                 )}
                 {me?.role === "super_admin" && u.role !== "super_admin" && (
                   <button className="ghost sm" onClick={() => impersonate(u.id)}>{t("user_impersonate")}</button>
@@ -402,6 +476,68 @@ export default function Users() {
                 </label>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {multi && mayMulti && (
+        <div className="card" style={{ borderInlineStart: "4px solid var(--brand)", marginTop: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0 }}>{t("user_multi")} — {multi.full_name}</h3>
+            <button className="ghost sm" onClick={() => setMulti(null)}>{t("close")}</button>
+          </div>
+          <div className="sub" style={{ marginBottom: 8 }}>{t("user_multi_hint")}</div>
+          {!multi.is_cross_company && (
+            <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+              <button onClick={enableMulti}>{t("user_multi_enable")}</button>
+              <span className="sub">{t("user_multi_needed")}</span>
+            </div>
+          )}
+          {links.length === 0 ? (
+            <div className="muted">{t("user_link_none")}</div>
+          ) : (
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {links.map((l: any) => (
+                <span key={l.id} className="pill neutral">
+                  {l.company_name || l.company_id} · {roleAr(l.role)}
+                  <button className="ghost sm" onClick={() => removeLink(l.id)}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="field">
+              <label htmlFor="usr-link-co">{t("user_link_company")}</label>
+              <select id="usr-link-co" value={link.company_id}
+                      onChange={(e) => pickCompany(e.target.value)}>
+                <option value="">—</option>
+                {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="usr-link-emp">{t("user_link_employee")}</label>
+              <select id="usr-link-emp" value={link.employee_id}
+                      onChange={(e) => setLink({ ...link, employee_id: e.target.value })}>
+                <option value="">—</option>
+                {linkEmps.map((e: any) => (
+                  <option key={e.id} value={e.id}>
+                    {e.employee_no ? `[${e.employee_no}] ` : ""}{e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="usr-link-role">{t("user_link_role")}</label>
+              <select id="usr-link-role" value={link.role}
+                      onChange={(e) => setLink({ ...link, role: e.target.value })}>
+                {(catalog.assignable_roles || catalog.roles || []).map((r: string) => (
+                  <option key={r} value={r}>{roleAr(r)}</option>
+                ))}
+              </select>
+            </div>
+            <button disabled={!link.company_id || !link.employee_id} onClick={addLink}>
+              {t("user_link_add")}
+            </button>
           </div>
         </div>
       )}

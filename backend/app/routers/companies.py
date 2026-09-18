@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from .. import permissions
-from ..deps import audit, get_current_user, require_perm, require_super_admin
+from ..deps import (audit, get_current_user, require_owner_or_admin, require_perm,
+                    require_super_admin)
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -42,7 +43,8 @@ def _check_commercial_reg_unique(db: Session, cr: str | None, exclude_id: int | 
 
 @router.post("", response_model=schemas.CompanyOut, status_code=201)
 def create_company(data: schemas.CompanyIn, request: Request,
-                   user: models.User = Depends(require_super_admin), db: Session = Depends(get_db)):
+                   user: models.User = Depends(require_owner_or_admin),
+                   db: Session = Depends(get_db)):
     _check_commercial_reg_unique(db, data.commercial_reg)
     company = models.Company(**data.model_dump())
     db.add(company)
@@ -102,7 +104,8 @@ def update_company(company_id: int, data: schemas.CompanyUpdate, request: Reques
 
 @router.post("/{company_id}/status")
 def set_status(company_id: int, status: str, request: Request,
-               user: models.User = Depends(require_super_admin), db: Session = Depends(get_db)):
+               user: models.User = Depends(require_owner_or_admin),
+               db: Session = Depends(get_db)):
     if status not in ("active", "inactive", "archived"):
         raise HTTPException(status_code=400, detail="حالة غير صالحة")
     company = db.get(models.Company, company_id)

@@ -578,7 +578,8 @@ export default function App() {
       <Route path="/reports" element={<Guarded need={(a) => a.can("export_reports")}><Reports /></Guarded>} />
       <Route path="/audit" element={<Guarded need={(a) => a.can("view_audit")}><Audit /></Guarded>} />
       <Route path="/companies" element={<Guarded need={(a) => a.user?.role === "super_admin" || a.can("manage_company")}><Companies /></Guarded>} />
-      <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")}><Users /></Guarded>} />
+      <Route path="/users" element={<Guarded need={(a) => a.can("manage_users")
+        || a.user?.role === "company_owner"}><Users /></Guarded>} />
       <Route path="/system-health" element={<Guarded need={(a) => a.user?.role === "super_admin"}><SystemHealth /></Guarded>} />
       {/* hr مُزال من القائمة: إخفاء الرابط وحده لا يمنع فتح المسار مباشرة */}
       <Route path="/gov-portals" element={<Guarded need={(a) => a.user?.role === "delegate"}><GovernmentPortals /></Guarded>} />

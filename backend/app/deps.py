@@ -329,6 +329,23 @@ def require_owner_or_admin(user: models.User = Depends(get_current_user)) -> mod
     return user
 
 
+def require_any_perm_or_owner(user: models.User = Depends(get_current_user),
+                              db: Session = Depends(get_db)) -> models.User:
+    """صاحبُ الشركات، أو من يملك إدارة المستخدمين.
+
+    **ولا تكون القراءُة أضعف من الكتابة على البيان نفسه**: صاحبُ الشركات
+    يضيف عضوياتِ الشركات ويحذفها (قرار المالك 2026-09-18) — فلو بقيت
+    قراءتُها بـ``manage_users`` وحدها لكتب ما لا يرى.
+    """
+    from .permissions import has_permission
+
+    if user.role in ("super_admin", "company_owner"):
+        return user
+    if has_permission(user.role, get_user_perms(user, db), "manage_users"):
+        return user
+    raise HTTPException(status_code=403, detail="ليس لديك صلاحية: إدارة المستخدمين")
+
+
 def assert_role_allowed(user: "models.User", blocked_roles: set[str],
                         emp_id: int | None = None, reason: str = "") -> None:
     """R2 §2 — يرفض الأدوار المحجوبة من الـendpoint. تُستدعى داخل الدالة (ليست dependency).

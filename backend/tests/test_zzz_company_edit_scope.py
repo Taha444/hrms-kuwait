@@ -44,11 +44,9 @@ def test_the_permission_is_held_by_a_real_role():
     assert "company_manager" in holders, holders
 
 
-def test_creating_and_suspending_stay_with_top_management():
-    """**وقرار المالك محدود بما قاله**: التعديل وحده انتقل.
-
-    الإنشاء والتعطيل يبقيان ``require_super_admin`` — وتوسيعهما مع
-    التعديل لأنهما في الملف نفسه يكون منًحا لم يُطلَب.
+def test_creating_and_suspending_belong_to_the_owner_not_the_manager():
+    """**وكلُّ قراٍر محدوٌد بما قاله**: التعديل انتقل لـmanage_company (2026-09-11)،
+    والإنشاُء والتعطيُل لصاحب الشركات (2026-09-18) — لا لمدير الشركة.
     """
     import inspect
 
@@ -56,7 +54,8 @@ def test_creating_and_suspending_stay_with_top_management():
 
     for fn, name in ((C.create_company, "الإنشاء"), (C.set_status, "التعطيل")):
         src = inspect.getsource(fn)
-        assert "require_super_admin" in src, f"{name} لم يبق للإدارة العليا"
+        assert "require_owner_or_admin" in src, f"{name} ليس لصاحب الشركات"
+        assert "manage_company" not in src, f"{name} اتّسع لمدير الشركة"
 
 
 # ---------------------------------------------------------------------------
