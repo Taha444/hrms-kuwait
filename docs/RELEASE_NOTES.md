@@ -53,9 +53,9 @@
 | DLV-03 الفحص الأمني بلا بند فاشل | 🟡 | مراجعات داخلية متتالية ومصفوفة صلاحيات مولّدة؛ **لم يُجرَ فحصٌ خارجي مستقل** |
 | DLV-04 فحوص سلامة البيانات | ⬜ | تشغيل `scripts/ended_service_leftovers.py` على الإنتاج (قراءة فقط) |
 | DLV-05 المُختبَر هو المُسلَّم | ✅ | `smoke_prod.py --expect` يطابق الالتزام الجاري |
-| DLV-06 Version/Commit/Built/Env/Migration ظاهرة | 🟡 | الإصدار والالتزام ووقت البناء والبيئة في `/api/version`؛ **وقت النشر ورقم الترحيل غير معروضين** |
+| DLV-06 Version/Commit/Built/Env/Migration ظاهرة | ✅ | `/api/manifest`: الإصدار والالتزام ووقت البناء والنشر والبيئة ورقم الترحيل |
 | DLV-07 لا «Development» على رابط التسليم | ✅ | `/api/version` → `production` |
-| DLV-08 System Health: Data و Migrations | 🟡 | الفحص العميق يحتاج دخول مدير — يُقرأ من شاشة صحة النظام |
+| DLV-08 System Health: Data و Migrations | 🟡 | الترحيل: `smoke_prod.py` يطابق ترحيل القاعدة بآخر ترحيل في الشيفرة ✅؛ فحص البيانات العميق يحتاج دخول مدير — من شاشة صحة النظام |
 | DLV-09 Service Worker يتحدّث | ✅ | `PWAUpdater` بتحديثٍ تلقائي |
 | DLV-10 ملاحظات الإصدار | ✅ | هذه الوثيقة |
 

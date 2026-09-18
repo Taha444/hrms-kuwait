@@ -25,9 +25,9 @@
     "updated": "2026-09-18"
   },
   "DLV-06": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "/api/manifest — version, commit, build_time, deploy_time, environment, migration_version",
+    "updated": "2026-09-19"
   },
   "DLV-07": {
     "status": "fixed",

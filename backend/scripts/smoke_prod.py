@@ -45,6 +45,23 @@ def _get(url: str, method: str = "GET") -> tuple[int, str]:
         return 0, str(e)
 
 
+def _alembic_head() -> str | None:
+    """آخر ترحيٍل في الشيفرة — ``None`` إن تعذّرت قراءته (فلا يُحكم بلا دليل)."""
+    try:
+        from pathlib import Path
+
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        root = Path(__file__).resolve().parents[1]
+        cfg = Config(str(root / "alembic.ini"))
+        cfg.set_main_option("script_location", str(root / "alembic"))
+        heads = ScriptDirectory.from_config(cfg).get_heads()
+        return heads[0] if len(heads) == 1 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def run(base: str, expect: str | None) -> list[tuple[bool, str]]:
     base = base.rstrip("/")
     out: list[tuple[bool, str]] = []
@@ -68,6 +85,18 @@ def run(base: str, expect: str | None) -> list[tuple[bool, str]]:
     if expect:
         out.append((commit.startswith(expect[:7]),
                     f"النسخة المنشورة {commit[:12]} ← المتوقَّعة {expect[:12]}"))
+
+    # والترحيل الفاعل في القاعدة هو آخر ترحيٍل في الشيفرة (DLV-06 · DLV-08).
+    code, body = _get(base + "/api/manifest")
+    try:
+        mf = json.loads(body)
+    except ValueError:
+        mf = {}
+    head = _alembic_head()
+    live = mf.get("migration_version")
+    out.append((bool(live) and (head is None or live == head),
+                f"الترحيل في القاعدة {live} ← آخر ترحيل في الشيفرة {head}"))
+    out.append((bool(mf.get("deploy_time")), f"وقت النشر {mf.get('deploy_time')}"))
 
     for p in PROTECTED:
         code, _ = _get(base + p)
