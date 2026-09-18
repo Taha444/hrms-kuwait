@@ -361,4 +361,9 @@ export const screens: Record<string, { ar: string; en: string }> = {
   tpl_subject_company: { ar: "الشركة نفسها", en: "The company itself" },
   tpl_select_company: { ar: "الشركة", en: "Company" },
   tpl_company_hint: { ar: "مستندٌ موضوعه المنشأة (تجديد ترخيص مثلًا) — يُحفظ في أرشيف الشركة برقم مرجعي وبصمة كمستند الموظف.", en: "A document about the company itself (e.g. a licence renewal) — archived for the company with a reference and fingerprint, like an employee document." },
+  ops_gc_title: { ar: "لا يصدر لهم عقد حكومي", en: "No government contract can be issued" },
+  ops_gc_hint: { ar: "العقد يُملأ على نموذج الهيئة، وحقلٌ ناقص يوقف إصداره — فهذه قائمة ما ينقص مقدّمًا.", en: "The contract is filled on the authority's form and a missing field stops it — so here is what is missing, in advance." },
+  ops_gc_company: { ar: "ينقص الشركة ({name}) — يوقف عقود الجميع:", en: "Missing at company level ({name}) — blocks every contract:" },
+  ops_gc_missing: { ar: "الناقص", en: "Missing" },
+  ops_gc_all_ready: { ar: "كل الموظفين جاهزون لإصدار العقد الحكومي", en: "Every employee is ready for a government contract" },
 };

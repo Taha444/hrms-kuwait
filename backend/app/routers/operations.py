@@ -119,7 +119,19 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
     from ..license_mismatch import mismatches
     license_mismatch = [m for m in mismatches(db, cid)
                         if not branch_id or m["branch_id"] == branch_id]
+    # من لن يصدر له عقدٌ حكومي — بقاعدة المولِّد نفسها (gov_contract_form).
+    from ..gov_contract_readiness import readiness
+    scope_ids = ([cid] if cid is not None else
+                 [c.id for c in db.scalars(select(models.Company)).all()])
+    contract_readiness = []
+    for company_id in scope_ids:
+        r = readiness(db, company_id)
+        if branch_id:
+            r["employees"] = [e for e in r["employees"] if e["branch_id"] == branch_id]
+        if r["company_missing"] or r["employees"]:
+            contract_readiness.append(r)
     return {
+        "gov_contract_readiness": contract_readiness,
         "license_mismatch": license_mismatch,
         "compliance": compliance,
         "permits": permits,

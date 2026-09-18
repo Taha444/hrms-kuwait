@@ -173,6 +173,39 @@ export default function Operations() {
         )}
       </div>
 
+      {/* من لن يصدر له عقدٌ حكومي — بقاعدة المولِّد نفسها، قبل أن يُضغط الزرّ. */}
+      <div className="card">
+        <h3>{t("ops_gc_title")}</h3>
+        <div className="sub" style={{ marginBottom: 8 }}>{t("ops_gc_hint")}</div>
+        {!(data.gov_contract_readiness || []).length && (
+          <div className="empty">{t("ops_gc_all_ready")}</div>
+        )}
+        {(data.gov_contract_readiness || []).map((c: any) => (
+          <div key={c.company_id} style={{ marginBottom: 10 }}>
+            {c.company_missing.length > 0 && (
+              <div className="err" style={{ marginBottom: 6 }}>
+                {t("ops_gc_company", { name: c.company_name || c.company_id })}{" "}
+                {c.company_missing.join(t("list_sep"))}
+              </div>
+            )}
+            {c.employees.length > 0 && (
+              <table>
+                <thead><tr><th>{t("col_employee")}</th><th>{t("ops_gc_missing")}</th></tr></thead>
+                <tbody>
+                  {c.employees.map((e: any) => (
+                    <tr key={e.employee_id}>
+                      <td><a href={`/employees/${e.employee_id}`}><b>{e.name}</b></a>
+                        {e.employee_no && <span className="muted"> · {e.employee_no}</span>}</td>
+                      <td className="muted">{e.missing.join(t("list_sep"))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+
       {/* قرار المالك (2026-09-17) — تنبيهٌ تفتيشي: العمل على غير ترخيص التسجيل. */}
       <div className="card">
         <h3>{t("ops_lic_mismatch_title")} ({(data.license_mismatch || []).length})</h3>

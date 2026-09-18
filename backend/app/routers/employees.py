@@ -204,6 +204,22 @@ def create_employee(data: schemas.EmployeeCreateIn, request: Request,
     return emp
 
 
+@router.get("/gov-contract-readiness")
+def gov_contract_readiness(company_id: int | None = None,
+                           user: models.User = Depends(require_perm("upload_documents")),
+                           db: Session = Depends(get_db)):
+    """من لن يصدر له عقدٌ حكومي ولماذا — لمن يُصدره (بقاعدة المولِّد نفسها).
+
+    مركزُ العمليات للمندوب والإدارة، وعقدُ التعيين يُصدره الموارد البشرية
+    من شاشة الموظفين — فتُعرض القائمة حيث يعمل من يحتاجها.
+    """
+    from ..gov_contract_readiness import readiness
+    cid = scope_company_id(user, company_id) or user.company_id
+    if cid is None:
+        raise HTTPException(status_code=400, detail="اختر شركة")
+    return readiness(db, cid)
+
+
 @router.get("/license-mismatch")
 def license_mismatch_list(company_id: int | None = None,
                           user: models.User = Depends(require_perm("view_employee")),

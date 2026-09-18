@@ -11,6 +11,14 @@ import EmployeeOnboarding from "./EmployeeOnboarding";
 export default function Employees() {
   const { t } = useI18n();
   const { can, user } = useAuth();
+  // من لن يصدر له عقٌد حكومي — مقدًَّما، لمن يُصدره.
+  const [gcReady, setGcReady] = useState<any>(null);
+  const [gcOpen, setGcOpen] = useState(false);
+  useEffect(() => {
+    if (!can("upload_documents")) return;
+    api.get("/employees/gov-contract-readiness").then((r) => setGcReady(r.data))
+      .catch(() => setGcReady(null));
+  }, []);
   const navigate = useNavigate();
   const routeParams = useParams();
   const selectedId = routeParams.id ? Number(routeParams.id) : null;
@@ -78,6 +86,38 @@ export default function Employees() {
         <h2 id="employees-title" style={{ margin: 0 }}>{t("employees")}</h2>
         {can("create_employee") && <button onClick={startNew}>{t("emp_new_btn")}</button>}
       </div>
+
+      {gcReady && (gcReady.company_missing.length > 0 || gcReady.employees.length > 0) && (
+        <div className="card" style={{ marginBottom: 12, borderInlineStart: "3px solid var(--danger)" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0 }}>{t("ops_gc_title")} ({gcReady.employees.length})</h3>
+            <button className="ghost sm" onClick={() => setGcOpen((o) => !o)}>
+              {gcOpen ? "−" : "+"}
+            </button>
+          </div>
+          {gcReady.company_missing.length > 0 && (
+            <div className="err" style={{ marginTop: 6 }}>
+              {t("ops_gc_company", { name: gcReady.company_name || "" })}{" "}
+              {gcReady.company_missing.join(t("list_sep"))}
+            </div>
+          )}
+          {gcOpen && (
+            <div className="table-wrap" style={{ marginTop: 8 }}>
+              <table>
+                <thead><tr><th>{t("col_employee")}</th><th>{t("ops_gc_missing")}</th></tr></thead>
+                <tbody>
+                  {gcReady.employees.map((e: any) => (
+                    <tr key={e.employee_id}>
+                      <td><a href={`/employees/${e.employee_id}`}><b>{e.name}</b></a></td>
+                      <td className="muted">{e.missing.join(t("list_sep"))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* SCR-Q — ما ينتظر قرارك، مجموًعا. وبلا هذه الشاشة كان البلاغ يصل
           والمعتمِد يفتح الملفات واحًدا واحًدا بحًثا عمّا يخصّه. */}
