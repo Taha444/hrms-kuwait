@@ -235,9 +235,9 @@
     "updated": ""
   },
   "DLV-48": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/OPEN_DECISIONS.md — 19 معتمدًا، 8 معلّقة، 5 إجراءات للمالك",
+    "updated": "2026-09-18"
   },
   "DLV-49": {
     "status": "pending",
