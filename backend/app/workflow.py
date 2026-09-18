@@ -92,6 +92,7 @@ REQUEST_OFFICIAL_TEXT: dict[str, str] = {
     "ADMWARN": "تقرر إصدار إنذار وظيفي للموظف بشأن الواقعة الموضحة، مع بيان مستوى الإنذار وتاريخ سريانه وحق الموظف في الرد أو الاعتراض خلال المدة المحددة. استلام الإنذار لا يعني الإقرار بصحته.",
     "ADMTASK": "يكلف المندوب أو الموظف المختص بتنفيذ المهمة الموضحة خلال المدة المحددة، ويقتصر دوره على التنفيذ ورفع الإثبات، دون صلاحية اعتماد أصل الطلب أو تغييره. دور تنفيذ فقط.",
     "ADMMISS": "نحيطكم علًما بوجود نقص في المستندات الموضحة، ويرجى استكمالها خلال المهلة المحددة حتى لا تتأثر المعاملة أو ملف الموظف. إخطار رسمي.",
+    "ADMRESCXL": "يرجى اعتماد إلغاء إقامة الموظف الموضح للسبب المبيّن، على أن يتولى المندوب إجراءات الإلغاء لدى الجهة المختصة ويرفع الإثبات الحكومي على الطلب. لا تُسجَّل الإقامة ملغاةً قبل رفع الإثبات.",
     "ADMLIC": "يرجى اتخاذ إجراءات تجديد مستند الشركة أو الترخيص الموضح قبل تاريخ الانتهاء، مع تحديد المستندات المطلوبة والجهة المنفذة والمسؤول عن المتابعة. قد يكلف للمندوب.",
     "ADMSIGN": "يستخدم هذا السجل لإثبات الاعتماد أو التوقيع الإلكتروني على المستند المحدد، مع بيان هوية الموّقع وتاريخ ووقت التوقيع ومعرف العملية. سجل تدقيق.",
 }
@@ -363,6 +364,13 @@ DEFAULT_REQUEST_TYPES = [
            ["hr", "company_manager", "delegate"], requires_physical_signature=False,
            produces_document=True,
            default_template_code="HRMS-PR-034"),
+    # **إلغاُء الإقامة — قرار المالك (2026-09-18).** لم يكن في النظام مساٌر
+    # له: إقامُة من غادر تبقى «نشطة»، فتصل تنبيهاُت تجديدها. طلٌب من HR ←
+    # اعتماد المدير ← المندوب ينفّذ ويرفع الإثبات الحكومي ← الإقامة «ملغاة».
+    # والمندوب لا يعتمد مرحلته بلا إثباٍت رفعه هو (``decide``).
+    _simple("ADMRESCXL", "إلغاء إقامة", CAT_RESIDENCY,
+           ["company_manager", "delegate"], requires_physical_signature=False,
+           visible_to_employee=False),
     _simple("REQGOV", "طلب معاملة حكومية", CAT_RESIDENCY,
            ["hr", "delegate"], requires_physical_signature=False, visible_to_employee=True),
     _simple("REQTRFLIC", "طلب نقل عامل بين فرع أو ترخيص", CAT_RESIDENCY,
@@ -1461,6 +1469,20 @@ def decide(db: Session, req: models.Request, user: models.User, decision: str,
             raise HTTPException(status_code=409, detail=(
                 "لا يُعتمد قبل رفع المرفق المطلوب: " + "، ".join(_missing)
                 + " — يرفعه صاحب الطلب من صفحة الطلب، أو أرجِع الطلب له."))
+    # **وإلغاُء الإقامة لا يُعتمد عند المندوب بلا إثباٍت رفعه هو.** فإلغاٌء
+    # يُسجَّل بلا ورقٍة حكومية ادّعاٌء لا إجراء — ومرفٌق رفعه غيُره (HR عند
+    # الإنشاء مثلًا) ليس إثباَت التنفيذ.
+    if (decision not in ("rejected", "returned") and rt.code == "ADMRESCXL"
+            and stage.get("role") == "delegate"):
+        _proof = db.scalar(select(models.RequestDocument.id).join(
+            models.User, models.User.id == models.RequestDocument.uploaded_by).where(
+            models.RequestDocument.request_id == req.id,
+            models.RequestDocument.kind == "attachment",
+            models.User.role == "delegate").limit(1))
+        if not _proof:
+            raise HTTPException(status_code=409, detail=(
+                "ارفع الإثبات الحكومي لإلغاء الإقامة على الطلب أولًا "
+                "(مرفق من صفحة الطلب) — ثم اعتمد."))
     approval = models.RequestApproval(
         request_id=req.id, stage_order=req.current_stage,
         stage_label=stage.get("label", ""), approver_role=user.role,
@@ -1661,6 +1683,47 @@ def _advance(db: Session, req: models.Request, rt: models.RequestType) -> None:
 # الإجازة السنوية وحدها تُخصم من الرصيد؛ المرضية والطارئة وبدون راتب لها
 # أحكامها الخاصة ولا تنقص الرصيد السنوي.
 LEAVE_TYPES_DEDUCTING_BALANCE = {"annual"}
+
+
+def residency_to_cancel(db: Session, employee_id: int):
+    """الإقامُة التي يُلغيها الطلب — ``(permit, None)`` أو ``(None, سبب)``.
+
+    المصدر الواحد للشرط: يقرؤه الإنشاء (فلا يُفتح طلٌب لا محلَّ له) والأثر
+    (فلا يُلغى غيُر ما قُصد). إقامٌة نشطة واحدة، ولا معاملَة تجديٍد مفتوحة
+    عليها — فتجديٌد وإلغاٌء لإقامٍة واحدة في وقٍت واحد أمران متناقضان.
+    """
+    from .routers.renewals import _open_case_for_permit
+
+    rows = db.scalars(select(models.Permit).where(
+        models.Permit.employee_id == employee_id,
+        models.Permit.kind == "residency",
+        models.Permit.status == "active")).all()
+    if not rows:
+        return None, "لا إقامة نشطة لهذا الموظف — لا شيء يُلغى"
+    if len(rows) > 1:
+        return None, ("للموظف أكثر من إقامة نشطة — صحّح سجلّ الإقامات أولًا "
+                      "ليُعرف أيّها يُلغى")
+    if _open_case_for_permit(db, rows[0].id):
+        return None, ("على هذه الإقامة معاملة تجديد مفتوحة — أغلقها أو ارفضها "
+                      "قبل طلب الإلغاء")
+    return rows[0], None
+
+
+def _apply_residency_cancellation(db: Session, req: models.Request) -> tuple[bool, str]:
+    """أثر إلغاء الإقامة: تصير «ملغاة»، وتُغلق تنبيهاُت تجديدها المفتوحة.
+
+    المسح اليومي يقرأ الإقامات النشطة وحدها، فلا يعود التنبيه.
+    """
+    permit, why = residency_to_cancel(db, req.employee_id)
+    if permit is None:
+        return False, why
+    permit.status = "cancelled"
+    for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "permit",
+            models.Task.related_entity_id == permit.id,
+            models.Task.status.in_(("open", "in_progress")))).all():
+        t.status = "done"
+    return True, f"أُلغيت الإقامة رقم {permit.number or permit.id}"
 
 
 def _as_date(v):
@@ -2362,7 +2425,9 @@ def _apply_effects(db: Session, req: models.Request,
                "REQADV": _apply_loan,
                # والبدل الوجه الموجب: كان يُعتمد ولا يُصرَف منه فلس،
                # والرواتب لا تعرف البدلات أصًلا.
-               "REQALLOW": _apply_allowance}.get(req.request_type_code)
+               "REQALLOW": _apply_allowance,
+               # إلغاء الإقامة — قرار المالك 2026-09-18.
+               "ADMRESCXL": _apply_residency_cancellation}.get(req.request_type_code)
     if _effect is None and req.request_type_code in FIELD_EFFECTS:
         _effect = apply_field_effect
     if _effect:

@@ -60,7 +60,7 @@ const ACTION_PATH: Record<string, string> = {
 
 export default function EosCases() {
   const { t, lang } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const stageLabel = (s: string) => (t(`eosc_st_${s}`) !== `eosc_st_${s}` ? t(`eosc_st_${s}`) : s);
   const actionLabel = (s: string) => (t(`eosc_act_${s}`) !== `eosc_act_${s}` ? t(`eosc_act_${s}`) : s);
   const reasonLabel = (r: string | null) =>
@@ -317,7 +317,16 @@ export default function EosCases() {
             <h3 style={{ margin: 0 }}>
               {sel.reference_no || `#${sel.id}`} — {sel.employee_name}
             </h3>
-            <button className="ghost" onClick={() => setSel(null)}>{t("eosc_close")}</button>
+            <div className="row" style={{ gap: 8 }}>
+              {/* قرار المالك (2026-09-18): إلغاء الإقامة يُفتح من ملف نهاية الخدمة. */}
+              {user?.can_submit_on_behalf && (
+                <a className="btn ghost" title={t("eosc_cancel_residency_hint")}
+                   href={`/requests?type=ADMRESCXL&new=1&employee=${sel.employee_id}`}>
+                  {t("eosc_cancel_residency")}
+                </a>
+              )}
+              <button className="ghost" onClick={() => setSel(null)}>{t("eosc_close")}</button>
+            </div>
           </div>
 
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>

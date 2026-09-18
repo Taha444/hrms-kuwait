@@ -439,9 +439,23 @@ def submit_request(data: schemas.RequestIn, request: Request,
                 status_code=403,
                 detail="لا يجوز توجيه إنذار أو جزاء لصاحب هذا الدور")
 
+    # إلغاء الإقامة: إقامٌة نشطة واحدة بلا تجديٍد مفتوح — وإلا فلا محلّ للطلب.
+    if data.request_type_code == "ADMRESCXL":
+        _permit, _why = workflow.residency_to_cancel(db, emp.id)
+        if _permit is None:
+            raise HTTPException(status_code=409, detail=_why)
+
     rt = workflow.get_request_type(db, emp.company_id, data.request_type_code)
     if not rt:
         raise HTTPException(status_code=404, detail="نوع الطلب غير معرّف")
+    # **وإلغاُء الإقامة يقدّمه HR أو المدير لا غيرهما** (قرار المالك
+    # 2026-09-18). ولا يُقاس بـ``visible_to_employee``: تلك علامُة عرٍض في
+    # الكتالوج تشمل أنواًعا يقدّمها الموظف فعًلا من مواضع أخرى (الإضافي،
+    # الجواز، النقل) — فجعلُها صلاحيًة يغيّر سلوَك خمسٍة وعشرين نوًعا بلا قرار.
+    if data.request_type_code == "ADMRESCXL" and user.role not in (
+            "hr", "company_manager", "super_admin"):
+        raise HTTPException(status_code=403,
+                            detail="طلب إلغاء الإقامة يقدّمه HR أو مدير الشركة")
 
     # R6-A §5 — Backend Allowlist: نرفض POST على كود مُستبدَل بنوع أحدث متاح،
     # لأن إخفاءه من الكتالوج وحده لا يكفي (واجهة قديمة أو API خارجي قد ينشئ مباشرة).

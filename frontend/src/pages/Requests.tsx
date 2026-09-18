@@ -86,6 +86,10 @@ export default function Requests() {
           x.code === wanted || (x.subtypes || []).some((s: any) => s.code === wanted));
         setTypeCode(exists ? wanted! : (r.data[0]?.code || ""));
         if (params.get("new") === "1") setShowNew(true);
+        // ?employee= — يصل من ملف نهاية الخدمة («اطلب إلغاء الإقامة»): الطلب
+        // يُقدَّم نيابةً عن موظٍف بعينه فلا يُعاد اختياره.
+        const forEmp = Number(params.get("employee"));
+        if (forEmp) setOnBehalfOf(forEmp);
         // حالة منفصلة عن err: تأثير [typeCode] يمسح err عند تغيير النوع، فكانت
         // هذه الرسالة تُمحى في نفس اللحظة التي تُعرض فيها.
         if (wanted && !exists)

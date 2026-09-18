@@ -343,6 +343,9 @@ LEGACY_REQUEST_ALIASES: dict[str, dict] = {
     "REQGEN": {"canonical": "WF-029", "subtype": "GENERAL"},
     "REQMIS": {"canonical": "WF-029", "subtype": "FIELD_MISSION"},
     "REQGOV": {"canonical": "WF-029", "subtype": "GOV_TRANSACTION"},
+    # قرار المالك 2026-09-18 — مواصفة V1.5 لا تعدّ إلغاء الإقامة بين مساراتها
+    # التسعة والعشرين، فيُنسب إلى المعاملة الحكومية العامة بنوعه الفرعي.
+    "ADMRESCXL": {"canonical": "WF-029", "subtype": "RESIDENCY_CANCELLATION"},
     "REQFILE": {"canonical": "WF-029", "subtype": "FILE_COPY"},
     "REQDOC": {"canonical": "WF-029", "subtype": "DOCUMENT_UPLOAD"},
     "REQSIG": {"canonical": "WF-029", "subtype": "SIGNATURE_CHANGE"},

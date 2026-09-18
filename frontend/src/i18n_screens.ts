@@ -368,4 +368,6 @@ export const screens: Record<string, { ar: string; en: string }> = {
   ops_gc_all_ready: { ar: "كل الموظفين جاهزون لإصدار العقد الحكومي", en: "Every employee is ready for a government contract" },
   att_locating: { ar: "جارٍ تحديد موقعك…", en: "Getting your location…" },
   kpi_of_whom_vacation: { ar: "منهم {n} في إجازة", en: "of whom {n} on leave" },
+  eosc_cancel_residency: { ar: "اطلب إلغاء الإقامة", en: "Request residency cancellation" },
+  eosc_cancel_residency_hint: { ar: "يعتمده المدير، ثم ينفّذه المندوب ويرفع الإثبات الحكومي فتصير الإقامة «ملغاة» وتتوقف تنبيهات تجديدها.", en: "Approved by the manager, then the delegate carries it out and uploads the government proof; the residency becomes 'cancelled' and its renewal alerts stop." },
 };

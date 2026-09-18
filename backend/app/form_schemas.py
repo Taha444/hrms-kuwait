@@ -706,6 +706,19 @@ SCHEMAS.update({
         "meta": {"legacy_aliases": ["warning_response"], "strict_validation": False},
     },
     # ------------------------- طلبات عامة -------------------------
+    "ADMRESCXL": {  # إلغاء إقامة — HR يقدّمه، المدير يعتمد، المندوب ينفّذ ويرفع الإثبات
+        "fields": [
+            _field("reason", "سبب الإلغاء", "select", required=True,
+                   options=[
+                       {"value": "final_exit", "label": "مغادرة نهائية"},
+                       {"value": "transfer", "label": "تحويل إلى صاحب عمل آخر"},
+                       {"value": "other", "label": "سبب آخر"},
+                   ]),
+            _field("notes", "ملاحظات", "textarea", max_length=500),
+        ],
+        "attachments": {"required": [], "optional": ["gov_proof"]},
+        "meta": {"strict_validation": False},
+    },
     "REQGEN": {  # طلب عام أو اقتراح — المسؤول المباشر فقط
         "fields": [
             _field("subject", "الموضوع", "text", required=True, max_length=200),
@@ -846,6 +859,8 @@ _VERIFIED_ENFORCE_REQUIRED = (
     "ADMWARN",
     # والخصم كذلك: مبلٌغ أو شهٌر ناقص يعني أثًرا لا يقع أو يقع في غير شهره.
     "ADMDED",
+    # وإلغاء الإقامة (قرار المالك 2026-09-18): إلغاٌء بلا سبٍب مسجَّل لا يُقبل.
+    "ADMRESCXL",
 )
 
 for _code in _VERIFIED_ENFORCE_REQUIRED:
