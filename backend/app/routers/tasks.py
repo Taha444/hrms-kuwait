@@ -31,6 +31,50 @@ _CATEGORY = {
 }
 
 
+#: ما يعود إلى موظٍف — فرُعه فرُع الموظف.
+_EMPLOYEE_OWNED = {"request": models.Request, "renewal": models.ResidencyRenewal,
+                   "permit": models.Permit, "eos_case": models.EosCase}
+
+
+def _task_branch(db: Session, task: models.Task) -> int | None:
+    """فرُع المهمة من الكيان الذي تخصّه؛ ``None`` لمهمٍة على مستوى الشركة."""
+    et, eid = task.related_entity_type, task.related_entity_id
+    if not eid:
+        return None
+    emp_id = None
+    if et == "employee":
+        emp_id = eid
+    elif et == "branch":
+        return eid
+    elif et in _EMPLOYEE_OWNED:
+        row = db.get(_EMPLOYEE_OWNED[et], eid)
+        emp_id = getattr(row, "employee_id", None)
+    elif et == "document":
+        doc = db.get(models.Document, eid)
+        if doc and doc.entity_type == "employee":
+            emp_id = doc.entity_id
+        elif doc and doc.entity_type == "branch":
+            return doc.entity_id
+    emp = db.get(models.Employee, emp_id) if emp_id else None
+    return emp.branch_id if emp else None
+
+
+def _may_claim_scope(db: Session, user: models.User, task: models.Task) -> bool:
+    """قرار المالك (2026-09-18): الالتقاُط بنطاق الفرع.
+
+    من له نطاق فروع لا يلتقط إلا مهمًة في فروعه — أو مهمًة أُسندت إليه
+    هو. ومهمُة الشركة (ترخيص، رواتب) بلا فرع: لمن لا نطاَق فروٍع له.
+    """
+    from ..deps import resolve_scope
+
+    if task.assignee_user_id == user.id:
+        return True
+    allowed = resolve_scope(user, db).branch_ids
+    if allowed is None:
+        return True
+    return _task_branch(db, task) in allowed
+
+
 def _category(task_type: str) -> str:
     return _CATEGORY.get(task_type, "system")
 
@@ -117,6 +161,7 @@ def my_tasks(response: Response, status: str | None = "open",
             # والأعلام من شرط المنع نفسه — لا زرٌّ يظهر ثم يفشل.
             "can_claim": bool(t.status in ("open", "in_progress")
                               and not is_notification(t.type)
+                              and _may_claim_scope(db, user, t)
                               and (not t.claimed_by_user_id
                                    or t.claimed_by_user_id == user.id)),
             "can_release": bool(t.claimed_by_user_id
@@ -228,6 +273,8 @@ def claim_task(task_id: int, user: models.User = Depends(get_current_user),
     assert_same_company(user, task.company_id, db=db)
     if task.status not in ("open", "in_progress"):
         raise HTTPException(status_code=400, detail="لا يمكن التقاط مهمة غير مفتوحة")
+    if not _may_claim_scope(db, user, task):
+        raise HTTPException(status_code=403, detail="هذه المهمة خارج نطاق فروعك")
     if task.claimed_by_user_id and task.claimed_by_user_id != user.id:
         raise HTTPException(status_code=409,
                             detail="المهمة ملتقطة من مستخدم آخر — انتظر إطلاقها أو تنفيذها")
