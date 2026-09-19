@@ -73,4 +73,57 @@ def test_import_creates_branches_with_their_points(fname):
         if ids:
             purge(db, "branches", ids)
         purge(db, "companies", [cid])
+        db.commit()  # ``purge`` لا يحفظ — وشركٌة باقية تُطابَق في الاختبار التالي
+        db.close()
+
+
+def test_the_same_shop_under_another_code_is_not_duplicated():
+    """المحلُّ نفسه بكوٍد قديم (أُدخل يدوًيا) لا يُنشأ له فرٌع ثاٍن — يُطابَق بالرقم الآلي."""
+    import secrets
+
+    d = json.loads((DATA / "gulf_union_import.json").read_text(encoding="utf-8"))
+    target = d["branches"][0]
+    db = SessionLocal()
+    co = models.Company(name=d["company"]["name"])
+    db.add(co)
+    db.commit()
+    cid = co.id
+    old = models.Branch(company_id=cid, name="محل قديم", code="OLD1",
+                        address=f"عنوان قديم — الرقم الآلي للعنوان: {target['paci_address_no']}",
+                        qr_secret=secrets.token_hex(8))
+    db.add(old)
+    db.commit()
+    try:
+        report = run(d, Path("."), apply=True, db=db)
+        db.commit()
+        codes = [b.code for b in db.scalars(select(models.Branch).where(
+            models.Branch.company_id == cid)).all()]
+        assert target["code"] not in codes and "OLD1" in codes, codes
+        assert len(codes) == len(d["branches"]), codes
+        assert any("بالرقم الآلي" in line and "OLD1" in line for line in report["branches"]), report
+    finally:
+        ids = [b.id for b in db.scalars(select(models.Branch).where(
+            models.Branch.company_id == cid)).all()]
+        purge(db, "branches", ids)
+        purge(db, "companies", [cid])
+        db.commit()  # ``purge`` لا يحفظ — وشركٌة باقية تُطابَق في الاختبار التالي
+        db.close()
+
+
+def test_a_name_matching_two_companies_stops_the_import():
+    """اسٌم يطابق شركتين لا يُختار منه الأول صمتًا — كان يحدث في الوضع المباشر وحده."""
+    d = json.loads((DATA / "milano_import.json").read_text(encoding="utf-8"))
+    db = SessionLocal()
+    a = models.Company(name=d["company"]["name"])
+    b = models.Company(name=d["company"]["name"] + " (نسخة)")
+    db.add_all([a, b])
+    db.commit()
+    ids = [a.id, b.id]
+    try:
+        with pytest.raises(SystemExit) as e:
+            run(d, Path("."), apply=False, db=db)
+        assert "أكثر من شركة" in str(e.value)
+    finally:
+        purge(db, "companies", ids)
+        db.commit()
         db.close()

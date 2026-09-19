@@ -103,9 +103,16 @@ def _company(db: Session, spec: dict) -> models.Company | None:
         # **المطابقة على الصورة المجرَّدة**: الاسم يُكتب «الأزرق» و«الازرق»
         # في مستندات الشركة نفسها، فالمطابقة الحرفية ترى اسمين حيث يرى
         # القارئ اسًما واحًدا — وتقول «أنشئ الشركة» وهي قائمة.
-        for c in db.scalars(select(models.Company)).all():
-            if contains_ar(c.name, needle):
-                return c
+        hits = [c for c in db.scalars(select(models.Company)).all()
+                if contains_ar(c.name, needle)]
+        # **واسٌم يطابق شركتين لا يُختار منه الأول صمتًا** — فروٌع ومستنداٌت
+        # تذهب إلى شركٍة غير المقصودة. ووضُع الموقع يوقف بهذا من قبل؛
+        # فالوضعان قاعدٌة واحدة.
+        if len(hits) > 1:
+            raise SystemExit(
+                "أكثر من شركة تطابق الاسم: " + "، ".join(f"#{c.id} {c.name}" for c in hits)
+                + " — حدِّدها بـmatch_by.id في ملف البيانات.")
+        return hits[0] if hits else None
     return None
 
 
@@ -125,11 +132,30 @@ def _geo(b: dict) -> dict:
     return out
 
 
+def _same_shop(address: str | None, b: dict) -> bool:
+    """هل عنواُن فرٍع قائم يحمل الرقَم الآلي لهذا المحل؟"""
+    paci = (b.get("paci_address_no") or "").strip()
+    return bool(paci and address and paci in address)
+
+
 def _branch(db: Session, company_id: int, b: dict) -> models.Branch | None:
-    """الفرع بكوده — والكود هوية ثابتة لا تتغيّر بتغيّر الاسم."""
-    return db.scalar(select(models.Branch).where(
+    """الفرع بكوده — ثم **بالرقم الآلي في عنوانه**.
+
+    الكود هويٌة ثابتة، لكنه هويُّة النظام لا المحل: شركٌة أُدخلت فروعها
+    بأكواٍد أخرى (يدوًيا أو قبل ملف الاستيراد) يُنشئ لها الكوُد وحده فرًعا
+    ثانيًا للمحل نفسه — فيتوزّع حضوره وموظفوه على صّفين. والرقُم الآلي
+    للوحدة هويُّة المحل عند الدولة، فيُطابَق به قبل أن يُنشأ شيء.
+    """
+    by_code = db.scalar(select(models.Branch).where(
         models.Branch.company_id == company_id,
         models.Branch.code == b["code"]))
+    if by_code is not None:
+        return by_code
+    for existing in db.scalars(select(models.Branch).where(
+            models.Branch.company_id == company_id)).all():
+        if _same_shop(existing.address, b):
+            return existing
+    return None
 
 
 def _document(db: Session, company_id: int, entity_type: str,
@@ -199,7 +225,10 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
                 db.add(existing)
                 db.flush()
         else:
-            report["branches"].append(f"  = فرع قائم: {b['code']} — {existing.name}")
+            report["branches"].append(
+                f"  = فرع قائم: {b['code']} — {existing.name}"
+                + (f" (بالرقم الآلي — كوده في النظام «{existing.code}»)"
+                   if existing.code != b["code"] else ""))
             for field in ("governorate", "governorate_en", "address"):
                 new = b.get(field)
                 if new and not getattr(existing, field, None):
@@ -361,15 +390,31 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
                     f"تعذّر تحديث حقول الشركة: {r.status_code} {r.text[:160]}")
 
     # ---- الفروع ----------------------------------------------------------
-    existing = {b.get("code"): b for b in _get("/branches") if b.get("code")}
+    mine = [x for x in _get("/branches", params={"company_id": company["id"]})
+            if x.get("company_id") == company["id"]]
+    existing = {x.get("code"): x for x in mine if x.get("code")}
     by_no: dict[str, dict] = {}
     for b in data["branches"]:
-        found = existing.get(b["code"])
+        # بالكود، ثم بالرقم الآلي في العنوان — المحلُّ نفسه بكوٍد آخر ليس فرًعا جديًدا.
+        found = existing.get(b["code"]) or next(
+            (x for x in mine if _same_shop(x.get("address"), b)), None)
         if found:
-            report["branches"].append(f"  = فرع قائم: {b['code']} — {found.get('name')}")
+            other = found.get("code") != b["code"]
+            report["branches"].append(
+                f"  = فرع قائم: {b['code']} — {found.get('name')}"
+                + (f" (بالرقم الآلي — كوده في الموقع «{found.get('code')}»)" if other else ""))
+            if _geo(b) and found.get("latitude") is None:
+                report["skipped"].append(
+                    f"الفرع {found.get('code')}: قائٌم بلا إحداثيات — تُضبَط من شاشة الفروع "
+                    f"({b['latitude']}, {b['longitude']})")
             by_no[b["no"]] = found
             continue
         report["branches"].append(f"  + فرع جديد: {b['code']} — {b['name']}")
+        geo = _geo(b)
+        if geo:
+            report["branches"].append(
+                f"      ⌖ {geo['latitude']}, {geo['longitude']}"
+                + (f" · {geo['geofence_radius_m']}م" if geo.get("geofence_radius_m") else ""))
         if apply:
             body = {"name": b["name"], "code": b["code"],
                     "governorate": b.get("governorate"),

@@ -33,6 +33,7 @@ def victim():
         old = db.scalar(select(models.User).where(models.User.civil_id == CIVIL))
         if old:
             purge(db, "users", [old.id])
+            db.commit()
         u = models.User(civil_id=CIVIL, full_name="حساب حارس", role="hr", company_id=1,
                         password_hash=hash_password(PW), is_active=True, status="active",
                         must_change_password=False)
@@ -45,6 +46,7 @@ def victim():
     db = SessionLocal()
     try:
         purge(db, "users", [uid])
+        db.commit()
     finally:
         db.close()
 
