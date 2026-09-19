@@ -31,7 +31,10 @@ def _mig():
 def test_every_imported_branch_has_its_own_paci_point_inside_kuwait():
     rows = {code: (paci, lat, lng) for code, paci, lat, lng, _ in _mig().BRANCHES}
     seen = set()
-    for f in sorted((ROOT.parent / "docs" / "data").glob("*_import.json")):
+    # الشركاُت الثالث التي كانت في النظام قبل الترحيل؛ والاتحاد الخليجي وميلانو
+    # يدخلان بإحداثياتهما في ملفات الاستيراد نفسها (test_zzz_import_new_companies).
+    for name in ("blue_nile_import.json", "mohamed_ibrahim_import.json", "qimat_al_nile_import.json"):
+        f = ROOT.parent / "docs" / "data" / name
         for b in json.loads(f.read_text(encoding="utf-8")).get("branches", []):
             seen.add(b["code"])
             assert b["code"] in rows, f"فرعٌ بلا إحداثي: {b['code']}"

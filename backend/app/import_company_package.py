@@ -109,6 +109,22 @@ def _company(db: Session, spec: dict) -> models.Company | None:
     return None
 
 
+def _geo(b: dict) -> dict:
+    """إحداثياُت الفرع ونصُف قطره من ملف البيانات — إن وُجدت.
+
+    **لا تأتي من المستندات** (الترخيص لا يحمل إحداثيًّا)، بل من كويت فايندر
+    بالرقم الآلي للوحدة، ويُذكر مصدرها في ملف البيانات (``_geo_source``).
+    فلا تُخمَّن: ما لم يُذكر يبقى فارًغا ويُقال في التقرير.
+    """
+    out = {}
+    if b.get("latitude") is not None and b.get("longitude") is not None:
+        out["latitude"] = float(b["latitude"])
+        out["longitude"] = float(b["longitude"])
+        if b.get("geofence_radius_m"):
+            out["geofence_radius_m"] = int(b["geofence_radius_m"])
+    return out
+
+
 def _branch(db: Session, company_id: int, b: dict) -> models.Branch | None:
     """الفرع بكوده — والكود هوية ثابتة لا تتغيّر بتغيّر الاسم."""
     return db.scalar(select(models.Branch).where(
@@ -178,7 +194,8 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
                     address=b.get("address"),
                     # سرٌّ لكل فرع: مشترٌك بين فرعين يعني بصًما من مكان لآخر.
                     qr_secret=secrets.token_hex(16),
-                    kiosk_key=secrets.token_hex(16))
+                    kiosk_key=secrets.token_hex(16),
+                    **_geo(b))
                 db.add(existing)
                 db.flush()
         else:
@@ -191,13 +208,22 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
                         setattr(existing, field, new)
         if existing is not None:
             by_no[b["no"]] = existing
+        geo = _geo(b)
+        if geo:
+            report["branches"].append(
+                f"      ⌖ {geo['latitude']}, {geo['longitude']}"
+                + (f" · {geo['geofence_radius_m']}م" if geo.get("geofence_radius_m") else ""))
+            # فرٌع قائٌم بلا إحداثيات يأخذها؛ وما له إحداثيٌّ لا يُكتب فوقه.
+            if apply and existing is not None and getattr(existing, "latitude", None) is None:
+                for k, v in geo.items():
+                    setattr(existing, k, v)
         # الإحداثيات لا تأتي من المستندات — تُذكر ولا تُخمَّن.
-        if existing is not None and not getattr(existing, "latitude", None):
+        elif existing is None or not getattr(existing, "latitude", None):
             report["skipped"].append(
                 f"الفرع {b['code']}: بلا إحداثيات — البصم بالموقع لا يعمل حتى تُضبَط")
 
     # ---- المستندات -------------------------------------------------------
-    hashes = _manifest_hashes(source)
+    hashes = _manifest_hashes(source) if data["documents"] else {}
     for doc in data["documents"]:
         name = doc["file"]
         path = _find(source, name)
@@ -348,7 +374,8 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
             body = {"name": b["name"], "code": b["code"],
                     "governorate": b.get("governorate"),
                     "governorate_en": b.get("governorate_en"),
-                    "address": b.get("address")}
+                    "address": b.get("address"),
+                    **_geo(b)}
             # الشركة صريحة: صاحب الشركات والإدارة العليا لا شركة لهما،
             # ومن له شركته يتجاهلها الخادم ويستعمل نطاقه.
             r = s.post(api + "/branches", json=body,
@@ -379,7 +406,7 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
                 _seen[key] = set()
         return _seen[key]
 
-    hashes = _manifest_hashes(source)
+    hashes = _manifest_hashes(source) if data["documents"] else {}
     for doc in data["documents"]:
         name = doc["file"]
         path = _find(source, name)
@@ -439,15 +466,19 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
 def main() -> None:
     p = argparse.ArgumentParser(description="إدخال حزمة مستندات شركة")
     p.add_argument("--data", required=True, help="ملف البيانات المراجَع (JSON)")
-    p.add_argument("--source", required=True, help="مجلد حزمة المستندات")
+    p.add_argument("--source", help="مجلد حزمة المستندات (يلزم إن كان في الملف مستندات)")
     p.add_argument("--apply", action="store_true", help="يكتب فعًلا")
     p.add_argument("--api", help="عنوان الموقع المنشور — يمرّ كل شيء من واجهته")
     p.add_argument("--civil-id", help="الرقم المدني للدخول (مع --api)")
     args = p.parse_args()
 
     data = json.loads(Path(args.data).read_text(encoding="utf-8"))
-    source = Path(args.source)
-    if not source.is_dir():
+    # **ملفٌّ بلا مستندات لا يحتاج حزمة**: شركٌة تُدخَل بفروعها ومستنداتها
+    # لم تُجمَع بعد — كان يُطلب مجلٌد وبياٌن فارغان ليمرّ.
+    if data.get("documents") and not args.source:
+        raise SystemExit("في الملف مستندات — مرِّر --source مجلد الحزمة.")
+    source = Path(args.source) if args.source else Path(".")
+    if data.get("documents") and not source.is_dir():
         raise SystemExit(f"مجلد الحزمة غير موجود: {source}")
 
     if args.api:
