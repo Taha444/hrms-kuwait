@@ -200,9 +200,9 @@
     "updated": ""
   },
   "DLV-41": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "partial",
+    "note": "docs/USER_GUIDE_AR.md بالعربية؛ الإنجليزية لم تُكتب",
+    "updated": "2026-09-19"
   },
   "DLV-42": {
     "status": "pending",
@@ -250,9 +250,9 @@
     "updated": ""
   },
   "DLV-51": {
-    "status": "pending",
-    "note": "",
-    "updated": ""
+    "status": "fixed",
+    "note": "docs/USER_GUIDE_AR.md — أسئلة شائعة",
+    "updated": "2026-09-19"
   },
   "DLV-52": {
     "status": "fixed",

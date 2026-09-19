@@ -48,8 +48,8 @@ const EMPLOYEE_STEPS: StepDef[] = [
     target: '[data-tour="nav-attendance"]',
     title: { ar: "بصمة الحضور", en: "My Attendance" },
     body: {
-      ar: "لتسجيل الحضور والانصراف بمسح QR الفرع أو التسجيل اليدوي المسموح به.",
-      en: "Punch in/out by scanning the branch QR — the fastest way to log attendance.",
+      ar: "لتسجيل الحضور والانصراف بمسح QR الفرع — فعّل الموقع في جوالك، فالمسح يُقبل داخل نطاق الفرع.",
+      en: "Punch in/out by scanning the branch QR — turn on location; scans are accepted within the branch radius.",
     },
   },
   {
@@ -345,8 +345,8 @@ const OWNER_STEPS: StepDef[] = [
     target: '[data-tour="nav-employees"]',
     title: { ar: "الموظفون", en: "Employees" },
     body: {
-      ar: "عرض كامل لموظفي الشركات. لا صلاحية إضافة/تعديل (رقابي فقط).",
-      en: "Full read view of employees across companies. No add/edit — oversight only.",
+      ar: "عرض كامل لموظفي الشركات — والتشغيل اليومي للمدير وشؤون الموظفين. وإليك: إنشاء الشركات وتعطيلها، عضويات الشركات، فكّ التحقق الثنائي، الصيغ، وروابط البوابات الحكومية.",
+      en: "Full view of employees across companies — daily operations belong to managers and HR. Yours: creating/disabling companies, company memberships, 2FA reset, templates, and government portal links.",
     },
   },
   {
@@ -377,8 +377,8 @@ const OWNER_STEPS: StepDef[] = [
     target: '[data-tour="nav-tasks"]',
     title: { ar: "المهام", en: "Tasks" },
     body: {
-      ar: "شارة المهام تظهر المتأخرات والتصعيدات — لن تُسند لك مهام تشغيلية بحكم الدور الرقابي.",
-      en: "Task badge shows overdue and escalations — no operational tasks are assigned to your oversight role.",
+      ar: "شارة المهام تظهر المتأخرات والتصعيدات — وتنبيهات فشل المهام المجدولة، ومنها النسخ الاحتياطي، تصلك هنا: لا تتركها.",
+      en: "Task badge shows overdue items and escalations — and scheduled-job failures, including backups, land here: don't leave them.",
     },
   },
 ];

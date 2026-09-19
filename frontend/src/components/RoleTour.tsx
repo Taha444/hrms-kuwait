@@ -19,7 +19,18 @@ export default function RoleTour() {
   const [checked, setChecked] = useState(false);
 
   const tourKey = user?.role ? tourKeyForRole(user.role) : "";
-  const steps = user?.role ? getTourForRole(user.role, lang) : [];
+  // **وخطوُة قائمٍة لا يراها المستخدم تُسقَط.** كانت تُعرض في وسط الشاشة
+  // تشرح عنصًرا لا مكان له عنده: جولُة شؤون الموظفين تقول «صدّر التقارير»
+  // و«اربط الحسابات» والدوُر لا يملك صلاحيتيهما. والقائمة تُبنى من
+  // الصلاحيات نفسها — فحضوُر عنصرها هو الحكم، ولو أُسندت صلاحيٌة فردية.
+  //
+  // والتصفيُة **عند فتح الجولة لا عند أول رسم**: React ترسم المكوّن قبل أن
+  // تضع القائمة في الصفحة، فتصفيٌة مبكرة تُسقط كلَّ خطوات القائمة — وجولُة
+  // شؤون الموظفين كلُّها منها فتصير فارغًة ولا تُفتح أبًدا.
+  const allSteps = user?.role ? getTourForRole(user.role, lang) : [];
+  const steps = open
+    ? allSteps.filter((s) => !s.target.includes('"nav-') || !!document.querySelector(s.target))
+    : allSteps;
 
   useEffect(() => {
     if (!user || !tourKey || steps.length === 0) return;
