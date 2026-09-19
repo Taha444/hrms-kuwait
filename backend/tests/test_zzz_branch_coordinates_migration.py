@@ -35,7 +35,9 @@ def test_every_imported_branch_has_its_own_paci_point_inside_kuwait():
     # يدخلان بإحداثياتهما في ملفات الاستيراد نفسها (test_zzz_import_new_companies).
     for name in ("blue_nile_import.json", "mohamed_ibrahim_import.json", "qimat_al_nile_import.json"):
         f = ROOT.parent / "docs" / "data" / name
-        for b in json.loads(f.read_text(encoding="utf-8")).get("branches", []):
+        _d = json.loads(f.read_text(encoding="utf-8"))
+        # والمُزال بطلب المالك باٍق في الإنتاج حتى يُؤرشَف — وإحداثيُّه وُضع.
+        for b in _d.get("branches", []) + _d.get("removed_branches", []):
             seen.add(b["code"])
             assert b["code"] in rows, f"فرعٌ بلا إحداثي: {b['code']}"
             paci, lat, lng = rows[b["code"]]

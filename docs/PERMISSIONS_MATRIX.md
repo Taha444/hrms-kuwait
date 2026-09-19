@@ -226,9 +226,12 @@
 ### إدارة الفروع والمواقع (`manage_branches`)
 
 - `GET /api/branches/{branch_id}/kiosk-url`
+- `POST /api/branches/{branch_id}/archive`
 - `POST /api/branches/{branch_id}/kiosk-key/rotate`
+- `POST /api/branches/{branch_id}/restore`
 - `POST /api/branches/{branch_id}/supervisors/{user_id}`
 - `POST /api/branches`
+- `POST /api/companies/{company_id}/headquarters`
 - `PUT /api/branches/{branch_id}`
 
 ### إدارة جميع الشركات (إدارة عليا) (`manage_companies`)

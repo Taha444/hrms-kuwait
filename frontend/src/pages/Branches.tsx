@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
 
 // R3-A §5 — إدارة الفروع + مفتاح شاشة QR:
@@ -34,6 +34,16 @@ export default function Branches() {
     }));
   };
   useEffect(() => { branches.forEach((b) => loadLink(b.id)); }, [branches]);
+
+  // أرشفة فرعٍ مكرر أو خارج ملف الشركة — لا حذف؛ والخادم يرفض فرعًا عليه موظفون.
+  const archive = async (branch: any) => {
+    const reason = window.prompt(t("br_archive_reason"));
+    if (!reason || !reason.trim()) return;
+    try {
+      await api.post(`/branches/${branch.id}/archive`, null, { params: { reason: reason.trim() } });
+      setMsg(t("br_archived_ok")); load();
+    } catch (e: any) { setMsg(errMsg(e, t("error"))); }
+  };
 
   const rotate = async (branch: any) => {
     if (links[branch.id]?.masked && !confirm(t("br_rotate_confirm"))) return;
@@ -167,6 +177,9 @@ export default function Branches() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div>
                 <b>{b.name}</b>
+                {b.is_headquarters && (
+                  <span className="pill gold" style={{ marginInlineStart: 8 }} title={t("br_hq_hint")}>{t("br_hq")}</span>
+                )}
                 {b.code && <code style={{ marginInlineStart: 8, fontSize: 12 }}>{b.code}</code>}
                 <span className="muted"> · {t("geofence")} {b.geofence_radius_m}{t("meters")}</span>
                 {/* ما ينقص الفرع يُقال، فلا يُكتشَف حين يقف به عمل. */}
@@ -179,6 +192,11 @@ export default function Branches() {
               </div>
               <div className="row">
                 <button className="ghost" onClick={() => openEdit(b)}>{t("br_edit")}</button>
+                {!b.is_headquarters && (
+                  <button className="ghost" style={{ color: "var(--danger)" }} onClick={() => archive(b)}>
+                    {t("br_archive")}
+                  </button>
+                )}
                 <button onClick={() => rotate(b)}>
                   {link?.masked ? t("br_rotate_again") : t("br_rotate")}
                 </button>

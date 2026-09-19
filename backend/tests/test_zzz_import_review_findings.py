@@ -141,7 +141,7 @@ def test_the_three_datasets_are_readable_and_declare_their_gaps():
 
     root = Path(__file__).resolve().parents[2] / "docs" / "data"
     expect = {"blue_nile_import.json": (11, 14),
-              "qimat_al_nile_import.json": (7, 7),
+              "qimat_al_nile_import.json": (6, 7),  # مصنع ذي فكتري ليس في ملف المالك
               "mohamed_ibrahim_import.json": (3, 2)}
     for name, (nb, nd) in expect.items():
         d = json.loads((root / name).read_text(encoding="utf-8"))

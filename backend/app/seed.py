@@ -453,10 +453,10 @@ def build_company(db, cfg) -> dict:
     # **موظفو المقر على فرع «المقر» لا على المحلات** — قرار المالك (2026-09-19).
     # كانوا على أول محل، فيراهم مسؤوله في «موظفو الفرع» وهم أعلى منه.
     first = cfg["branches"][0]
-    hq = models.Branch(company_id=company.id, name="المقر", code="HQ",
+    hq = models.Branch(company_id=company.id, name="مقر الشركة", code="HQ", is_headquarters=True,
                        latitude=first[1], longitude=first[2],
                        geofence_radius_m=120, qr_secret=secrets.token_hex(16),
-                       kiosk_key=secrets.token_urlsafe(24), address="المقر",
+                       kiosk_key=secrets.token_urlsafe(24), address="مقر الشركة",
                        governorate="العاصمة", governorate_en="Al-Asimah")
     db.add(hq)
     db.flush()

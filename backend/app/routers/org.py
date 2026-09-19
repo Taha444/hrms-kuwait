@@ -20,10 +20,13 @@ router = APIRouter(tags=["org"])
 # ----------------------------- الفروع -----------------------------
 
 @router.get("/branches", response_model=list[schemas.BranchOut])
-def list_branches(company_id: int | None = None,
+def list_branches(company_id: int | None = None, include_archived: bool = False,
                   user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     q = select(models.Branch)
+    # الفرع المؤرشَف لا يُختار ولا يُعرض — ويبقى تاريخه (طلب المالك 2026-09-19).
+    if not include_archived:
+        q = q.where(models.Branch.status != "archived")
     if cid is not None:
         q = q.where(models.Branch.company_id == cid)
     # تقييد بنطاق فروع المستخدم (مسؤول الفرع لا يرى فروعًا أخرى)
@@ -61,6 +64,94 @@ def create_branch(data: schemas.BranchIn, request: Request,
     db.add(branch)
     db.flush()
     audit(db, user, "create_branch", "branch", branch.id, request=request)
+    db.commit()
+    db.refresh(branch)
+    return branch
+
+
+HQ_NAME = "مقر الشركة"
+
+
+@router.post("/companies/{company_id}/headquarters", response_model=schemas.BranchOut,
+             status_code=201)
+def create_headquarters(company_id: int, data: schemas.BranchIn, request: Request,
+                        user: models.User = Depends(require_perm("manage_branches")),
+                        db: Session = Depends(get_db)):
+    """**مقرُّ الشركة** — طلب المالك (2026-09-19).
+
+    ليس «فرًعا»: يُسمّى «مقر الشركة»، ومديُره مديُر الشركة (مرحلُة «مسؤول
+    الفرع» لموظفيه تذهب إليه)، وعليه الموظفون الإداريون. **واحٌد لكل شركة.**
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    if user.role not in CROSS_COMPANY_ROLES and user.company_id != company_id:
+        raise HTTPException(status_code=403, detail="ليست شركتك")
+    if db.get(models.Company, company_id) is None:
+        raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+    existing = db.scalar(select(models.Branch).where(
+        models.Branch.company_id == company_id, models.Branch.is_headquarters.is_(True)))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"للشركة مقرٌّ قائم (#{existing.id})")
+    body = data.model_dump()
+    body.update(name=HQ_NAME, code=body.get("code") or "HQ")
+    hq = models.Branch(company_id=company_id, qr_secret=secrets.token_hex(16),
+                       kiosk_key=secrets.token_hex(16), is_headquarters=True, **body)
+    db.add(hq)
+    db.flush()
+    audit(db, user, "create_headquarters", "branch", hq.id, request=request)
+    db.commit()
+    db.refresh(hq)
+    return hq
+
+
+def _live_employees_on(db: Session, branch_id: int) -> int:
+    from ..deps import INACTIVE_EMPLOYMENT
+
+    return db.scalar(select(func.count()).select_from(models.Employee).where(
+        models.Employee.branch_id == branch_id,
+        models.Employee.status.notin_(INACTIVE_EMPLOYMENT))) or 0
+
+
+@router.post("/branches/{branch_id}/archive", response_model=schemas.BranchOut)
+def archive_branch(branch_id: int, reason: str, request: Request,
+                   user: models.User = Depends(require_perm("manage_branches")),
+                   db: Session = Depends(get_db)):
+    """أرشفُة فرٍع مكرٍَّر أو خارج ملف الشركة — **لا حذف**: يبقى حضوره وتاريخه.
+
+    ولا يُؤرشَف فرٌع عليه موظفون قائمون — يُنقلون أولًا بطلب النقل، فلا يبقى
+    موظٌف على فرٍع لا يُعرض ولا يُبصَم فيه. ولا يُؤرشَف مقرُّ الشركة.
+    """
+    branch = db.get(models.Branch, branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    assert_same_company(user, branch.company_id, db=db)
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب الأرشفة إلزامي")
+    if branch.is_headquarters:
+        raise HTTPException(status_code=409, detail="لا يُؤرشَف مقر الشركة")
+    n = _live_employees_on(db, branch.id)
+    if n:
+        raise HTTPException(status_code=409, detail=(
+            f"على الفرع {n} موظف — انقلهم إلى فرعهم الصحيح أولًا بطلب النقل، ثم أرشفه"))
+    branch.status = "archived"
+    audit(db, user, "archive_branch", "branch", branch.id, detail=reason.strip()[:300],
+          request=request)
+    db.commit()
+    db.refresh(branch)
+    return branch
+
+
+@router.post("/branches/{branch_id}/restore", response_model=schemas.BranchOut)
+def restore_branch(branch_id: int, request: Request,
+                   user: models.User = Depends(require_perm("manage_branches")),
+                   db: Session = Depends(get_db)):
+    """استرجاُع فرٍع أُرشف بالخطأ."""
+    branch = db.get(models.Branch, branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    assert_same_company(user, branch.company_id, db=db)
+    branch.status = "active"
+    audit(db, user, "restore_branch", "branch", branch.id, request=request)
     db.commit()
     db.refresh(branch)
     return branch
@@ -412,13 +503,31 @@ def list_licenses(company_id: int | None = None,
 
 @router.post("/licenses", status_code=201)
 def create_license(name: str, license_no: str | None = None, issuing_authority: str | None = None,
-                   allowed_workers: int = 0, request: Request = None,
+                   allowed_workers: int = 0, expiry_date: date | None = None,
+                   issue_date: date | None = None, address: str | None = None,
+                   license_type: str | None = None, company_id: int | None = None,
+                   request: Request = None,
                    user: models.User = Depends(require_perm("manage_licenses")),
                    db: Session = Depends(get_db)):
-    if user.company_id is None:
-        raise HTTPException(status_code=400, detail="يجب أن يكون المستخدم تابعًا لشركة")
-    lic = models.License(company_id=user.company_id, name=name, license_no=license_no,
-                         issuing_authority=issuing_authority, allowed_workers=allowed_workers)
+    """ترخيٌص للشركة.
+
+    **وكان بلا تاريخ انتهاء**: الترخيُص يُسجَّل ولا يأتي تنبيُه تجديده أبًدا —
+    فالمسُح اليومي يقرأ ``expiry_date``. ومن لا شركة له (الإدارة العليا وصاحب
+    الشركات) يحدّد الشركة صراحًة، كإنشاء الفرع.
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    cid = user.company_id
+    if company_id is not None and user.role in CROSS_COMPANY_ROLES:
+        if db.get(models.Company, company_id) is None:
+            raise HTTPException(status_code=404, detail="الشركة غير موجودة")
+        cid = company_id
+    if cid is None:
+        raise HTTPException(status_code=400, detail="حدّد الشركة (company_id)")
+    lic = models.License(company_id=cid, name=name, license_no=license_no,
+                         issuing_authority=issuing_authority, allowed_workers=allowed_workers,
+                         expiry_date=expiry_date, issue_date=issue_date, address=address,
+                         license_type=license_type)
     db.add(lic)
     db.flush()
     audit(db, user, "create_license", "license", lic.id, request=request)

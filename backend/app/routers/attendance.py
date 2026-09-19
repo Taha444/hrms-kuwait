@@ -94,6 +94,8 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
     branch = db.get(models.Branch, int(payload["branch_id"]))
     if not branch:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    if branch.status == "archived":
+        raise HTTPException(status_code=403, detail="هذا الفرع مؤرشَف — لا حضور فيه")
 
     # **ورمٌز صدر قبل تدوير المفتاح لا يُقبَل.**
     #

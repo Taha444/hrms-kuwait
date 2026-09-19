@@ -185,6 +185,9 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
             "فهويّتها قراٌر يُتَّخذ مرّة، ولا يُتَّخذ من مستورِد مستندات."
         )
     report["company"].append(f"الشركة: #{company.id} — {company.name}")
+    if data.get("headquarters"):
+        report["skipped"].append(
+            "مقر الشركة والتراخيص والفروع المخالفة للملف: تُطابَق عبر الموقع (--api) وحده")
 
     # ---- حقول الشركة: يُملأ الناقص، ولا يُستبدَل الموجود -------------------
     for field in ("name_en", "entity_type", "file_number", "commercial_reg"):
@@ -327,7 +330,7 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_api(data: dict, source: Path, *, apply: bool, base: str,
-            token: str) -> dict:
+            token: str, archive_extras: bool = False) -> dict:
     """يُدخل الحزمة **عبر واجهة الموقع** لا عبر قاعدة البيانات مباشرة.
 
     **ولماذا وضٌع ثانٍ**: الكتابة في القاعدة من جهاز بعيد تحفظ ملفات
@@ -346,6 +349,7 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
     s = httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=180)
     report: dict[str, list[str]] = {
         "company": [], "branches": [], "documents": [], "skipped": [], "blocked": [],
+        "licenses": [], "extras": [],
     }
 
     def _get(path, **kw):
@@ -430,6 +434,9 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
                 continue
             by_no[b["no"]] = r.json()
 
+    _reconcile_api(data, company, s, api, _get, report, apply=apply,
+                   archive_extras=archive_extras)
+
     # ---- المستندات -------------------------------------------------------
     #: أنواع المستندات السارية لكل كيان — تُقرأ من الأرشيف نفسه، مرّة.
     _seen: dict[tuple[str, int], set[str]] = {}
@@ -508,6 +515,143 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
     return report
 
 
+def _branch_no(code: str | None) -> str | None:
+    m = re.search(r"(\d+)$", code or "")
+    return str(int(m.group(1))) if m else None
+
+
+def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *,
+                   apply: bool, archive_extras: bool) -> None:
+    """مقرُّ الشركة، وتراخيُصها، وفروعها المخالفة لملفها — طلب المالك (2026-09-19).
+
+    **ملفُّ المالك هو المرجع** («محلات الشركات بالعناوين»): ما فيه يُنشأ، وما
+    ليس فيه أو تكرّر يُعرَض ويُؤرشَف بطلبه (``--archive-extras``) — **لا يُحذف**،
+    ولا يُؤرشَف فرٌع عليه موظفون: يُقال إلى أيّ فرٍع يُنقلون.
+    والمطابقُة **بالأرقام لا بالأسماء**: الأسماء على الموقع قد تكون عربيًة أو
+    إنجليزيًة أو بصيغٍة أخرى، والرقُم الآلي والرمُز ورقُم الترخيص ثابتة.
+    """
+    cid = company["id"]
+    specs = list(data.get("branches") or [])
+    hq_spec = data.get("headquarters")
+
+    def _live():
+        return [x for x in _get("/branches", params={"company_id": cid})
+                if x.get("company_id") == cid]
+
+    # ---- مقرُّ الشركة ------------------------------------------------------
+    live = _live()
+    hq = next((x for x in live if x.get("is_headquarters")), None)
+    if hq_spec:
+        if hq:
+            report["branches"].append(f"  = مقر الشركة قائم: #{hq['id']} — {hq.get('name')}")
+        else:
+            geo = _geo(hq_spec)
+            report["branches"].append(
+                f"  + مقر الشركة (جديد) — {hq_spec.get('address')}"
+                + (f"\n      ⌖ {geo['latitude']}, {geo['longitude']} · {geo.get('geofence_radius_m', 100)}م"
+                   if geo else ""))
+            if apply:
+                body = {"name": "مقر الشركة", "code": hq_spec.get("code") or "HQ",
+                        "governorate": hq_spec.get("governorate"),
+                        "governorate_en": hq_spec.get("governorate_en"),
+                        "address": hq_spec.get("address"), **geo}
+                r = s.post(api + f"/companies/{cid}/headquarters", json=body)
+                if r.status_code >= 400:
+                    report["blocked"].append(f"تعذّر إنشاء مقر الشركة: {r.status_code} {r.text[:160]}")
+
+    # ---- التراخيص --------------------------------------------------------
+    try:
+        existing_lic = {str(x.get("license_no") or "").strip(): x
+                        for x in _get("/licenses", params={"company_id": cid})}
+    except Exception as e:  # noqa: BLE001 — صلاحيٌة ناقصة تُقال ولا تُسقط الباقي
+        existing_lic = None
+        report["blocked"].append(f"تعذّرت قراءة التراخيص ({e}) — تحتاج صلاحية «إدارة التراخيص»")
+    if existing_lic is not None:
+        for spec in specs + ([{**hq_spec, "name": "مقر الشركة"}] if hq_spec else []):
+            no = str(spec.get("license_no") or "").strip()
+            if not no:
+                continue
+            cur = existing_lic.get(no)
+            if cur is None:
+                report["licenses"].append(
+                    f"  + ترخيص {no} — {spec.get('name')} — ينتهي {spec.get('expiry') or '—'}")
+                if apply:
+                    params = {"name": spec.get("name"), "license_no": no, "company_id": cid,
+                              "license_type": "commercial", "address": spec.get("address")}
+                    if spec.get("expiry"):
+                        params["expiry_date"] = spec["expiry"]
+                    r = s.post(api + "/licenses", params=params)
+                    if r.status_code >= 400:
+                        report["blocked"].append(f"تعذّر تسجيل الترخيص {no}: {r.status_code} {r.text[:160]}")
+            elif spec.get("expiry") and str(cur.get("expiry_date") or "")[:10] != spec["expiry"]:
+                report["blocked"].append(
+                    f"الترخيص {no}: انتهاؤه على الموقع «{cur.get('expiry_date')}» وفي الملف "
+                    f"«{spec['expiry']}» — لم يُغيَّر")
+            else:
+                report["licenses"].append(f"  = ترخيص قائم {no} — {spec.get('name')}")
+
+    # ---- الفروع المخالفة للملف ------------------------------------------
+    employees, offset = [], 0
+    while True:
+        page = _get("/employees", params={"company_id": cid, "limit": 500, "offset": offset})
+        employees += page
+        if len(page) < 500:
+            break
+        offset += 500
+    staff = {}
+    for e in employees:
+        staff[e.get("branch_id")] = staff.get(e.get("branch_id"), 0) + 1
+
+    live = [x for x in _live() if not x.get("is_headquarters") and x.get("status") != "archived"]
+    by_spec: dict[str, list[dict]] = {}
+    unmatched = []
+    for x in live:
+        spec = next((b for b in specs if b["code"] == x.get("code")), None) or next(
+            (b for b in specs if _same_shop(x.get("address"), b)), None)
+        if spec is None:
+            unmatched.append(x)
+        else:
+            by_spec.setdefault(spec["code"], []).append(x)
+
+    def _label(x):
+        return f"#{x['id']} {x.get('code') or '—'} «{x.get('name')}» ({staff.get(x['id'], 0)} موظف)"
+
+    extras: list[tuple[dict, str, dict | None]] = []
+    for code, members in by_spec.items():
+        if len(members) > 1:
+            keep = next((m for m in members if m.get("code") == code), members[0])
+            for m in members:
+                if m is not keep:
+                    extras.append((m, f"مكرر لـ{code}", keep))
+    for x in unmatched:
+        twin = next((b for b in specs if _branch_no(b["code"]) and
+                     _branch_no(b["code"]) == _branch_no(x.get("code"))), None)
+        keep = next((m for m in by_spec.get(twin["code"], [])), None) if twin else None
+        why = (f"ليس في ملف الشركة — غالبًا المحلُّ نفسه {twin['code']} «{twin['name']}»"
+               if twin else "ليس في ملف الشركة")
+        extras.append((x, why, keep))
+    for spec in specs:
+        if spec["code"] not in by_spec:
+            report["extras"].append(f"  ✗ ناقص على الموقع: {spec['code']} «{spec['name']}»"
+                                    + ("" if apply else " — يُنشأ مع --apply"))
+
+    for x, why, keep in extras:
+        n = staff.get(x["id"], 0)
+        line = f"  ⚠ {_label(x)} — {why}"
+        if n:
+            report["extras"].append(
+                line + f"\n      عليه {n} موظف: انقلهم بطلب النقل"
+                + (f" إلى {_label(keep)}" if keep else "") + " ثم أعد التشغيل")
+            continue
+        if archive_extras and apply:
+            r = s.post(api + f"/branches/{x['id']}/archive",
+                       params={"reason": f"مطابقة ملف الشركة 2026-09-19: {why}"})
+            report["extras"].append(line + ("\n      → أُرشف" if r.status_code < 400
+                                            else f"\n      تعذّرت الأرشفة: {r.status_code} {r.text[:120]}"))
+        else:
+            report["extras"].append(line + "\n      → يُؤرشَف مع --apply --archive-extras")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="إدخال حزمة مستندات شركة")
     p.add_argument("--data", required=True, help="ملف البيانات المراجَع (JSON)")
@@ -515,6 +659,8 @@ def main() -> None:
     p.add_argument("--apply", action="store_true", help="يكتب فعًلا")
     p.add_argument("--api", help="عنوان الموقع المنشور — يمرّ كل شيء من واجهته")
     p.add_argument("--civil-id", help="الرقم المدني للدخول (مع --api)")
+    p.add_argument("--archive-extras", action="store_true",
+                   help="يؤرشف الفروع المكررة والخارجة عن ملف الشركة التي لا موظفين عليها")
     args = p.parse_args()
 
     data = json.loads(Path(args.data).read_text(encoding="utf-8"))
@@ -542,7 +688,8 @@ def main() -> None:
                 "content-type", "").startswith("application/json") else r.text[:200]
             raise SystemExit(f"تعذّر الدخول ({r.status_code}): {detail}")
         report = run_api(data, source, apply=args.apply,
-                         base=args.api, token=r.json()["access_token"])
+                         base=args.api, token=r.json()["access_token"],
+                         archive_extras=args.archive_extras)
     else:
         db = SessionLocal()
         try:
@@ -553,8 +700,10 @@ def main() -> None:
     head = "نُفِّذ" if args.apply else "تقرير فقط — لم يُكتب شيء"
     print(f"=== {head} ===")
     for section, title in (("company", "الشركة"), ("branches", "الفروع"),
+                           ("licenses", "التراخيص"),
+                           ("extras", "فروعٌ تخالف ملف الشركة"),
                            ("documents", "المستندات")):
-        if report[section]:
+        if report.get(section):
             print(f"\n{title}:")
             for line in report[section]:
                 print(line)

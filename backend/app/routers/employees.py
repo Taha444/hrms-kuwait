@@ -49,6 +49,10 @@ def _assert_no_duplicates(db: Session, cid: int, civil_id: str | None,
 
 def _assert_branch_in_scope(db: Session, user: models.User, *branch_ids: int | None):
     """من له نطاق فروع محدد لا يضيف/ينقل موظفًا إلى فرع خارج نطاقه."""
+    for bid in branch_ids:
+        b = db.get(models.Branch, bid) if bid else None
+        if b is not None and b.status == "archived":
+            raise HTTPException(status_code=409, detail="هذا الفرع مؤرشَف — اختر فرعًا قائمًا")
     sc = resolve_scope(user, db)
     if sc.branch_ids is None:
         return

@@ -236,6 +236,8 @@
 | `kiosk_key` | VARCHAR(64) | ✓ |  |  |
 | `auto_checkout_minutes` | INTEGER |  |  |  |
 | `address` | VARCHAR(300) | ✓ |  |  |
+| `is_headquarters` | BOOLEAN |  |  |  |
+| `status` | VARCHAR(20) |  |  |  |
 | `created_at` | DATETIME |  |  |  |
 
 ## break_glass_sessions

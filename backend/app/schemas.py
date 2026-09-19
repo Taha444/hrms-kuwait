@@ -422,6 +422,9 @@ class BranchOut(BranchIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     company_id: int
+    #: «مقر الشركة» لا فرع — يُنشأ بمستورِد الشركة، والشاشة تسمّيه (طلب المالك 2026-09-19).
+    is_headquarters: bool = False
+    status: str = "active"
 
 
 class ShiftIn(BaseModel):

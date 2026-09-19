@@ -22,6 +22,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     event,
+    false as sa_false,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -310,6 +311,10 @@ class Branch(Base):
     kiosk_key: Mapped[str | None] = mapped_column(String(64))  # مفتاح شاشة عرض QR (قابل للتدوير)
     auto_checkout_minutes: Mapped[int] = mapped_column(Integer, default=15)
     address: Mapped[str | None] = mapped_column(String(300))
+    # مقرُّ الشركة الرئيسي — «مقر الشركة» لا «فرع»: مديره مدير الشركة (طلب المالك 2026-09-19).
+    is_headquarters: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
+    # active | archived — الفرع المؤرشَف يختفي من القوائم والحضور ويبقى تاريخه.
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

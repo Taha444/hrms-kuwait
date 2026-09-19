@@ -917,6 +917,16 @@ def _stage_approvers_by_role(db: Session, req: models.Request,
             # المستخدمين لم يصله طلب قط، والشاشة تُظهره مسنًدا.
             from .deps import branch_supervisor_users
 
+            # **ومقرُّ الشركة مديُره مديُر الشركة** (طلب المالك 2026-09-19): لا
+            # «مسؤول فرع» على المقر، فكانت طلباُت موظفيه الإداريين تقف بتنبيه
+            # «لا مسؤول مرتبط بفرع الموظف».
+            _br = db.get(models.Branch, emp.branch_id)
+            if _br is not None and _br.is_headquarters:
+                mgrs = [u for u in users_by_role(db, req.company_id, ["company_manager"])
+                        if u.employee_id != emp.id]
+                if mgrs:
+                    from .delegation import expand_approvers_with_delegates
+                    return expand_approvers_with_delegates(db, mgrs, req.company_id)
             users = branch_supervisor_users(db, req.company_id, emp.branch_id)
             if users:
                 # V1.5 Phase 3: يوسّع القائمة لتشمل أي مفوَّض إليهم نشطين

@@ -376,4 +376,9 @@ export const screens: Record<string, { ar: string; en: string }> = {
   tpl_applied_system: { ar: "طُبّقت نسخة النظام", en: "System version applied" },
   tpl_hr_copy_note: { ar: "تعديلك على صيغة مشتركة يُنشئ نسخة لشركتك وحدها — لا يتغيّر نصّ الشركات الأخرى.", en: "Editing a shared template creates a copy for your company only — other companies' text is unchanged." },
   payroll_fix_hint: { ar: "لتصحيح خطأ بعد الاعتماد: أكمِل المسيّر حتى القفل، ثم «مسيّر تسوية» — يُسجَّل التصحيح بجانب الأصل ولا يُمحى من اعتمد.", en: "To fix an error after approval: take the run through to lock, then create an adjustment run — the correction is recorded next to the original and the approvers are not erased." },
+  br_hq: { ar: "مقر الشركة", en: "Company HQ" },
+  br_hq_hint: { ar: "مديره مدير الشركة، وعليه الموظفون الإداريون", en: "Managed by the company manager; administrative staff work here" },
+  br_archive: { ar: "أرشفة", en: "Archive" },
+  br_archive_reason: { ar: "سبب أرشفة الفرع (مكرر أو ليس في ملف الشركة) — يبقى تاريخه ولا يُحذف:", en: "Reason for archiving (duplicate or not in the company file) — its history is kept, nothing is deleted:" },
+  br_archived_ok: { ar: "أُرشف الفرع", en: "Branch archived" },
 };
