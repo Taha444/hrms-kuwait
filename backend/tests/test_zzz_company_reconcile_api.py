@@ -107,3 +107,55 @@ def test_reconcile_creates_hq_licenses_and_handles_extras(client, monkeypatch,
     assert n_hq == 1, "مقرٌّ ثاٍن في التشغيل الثاني"
     assert n_lic == len(want), "ترخيٌص مكرّر في التشغيل الثاني"
     assert any("أُرشف" in x for x in rep2["extras"]), rep2["extras"]
+
+
+def test_the_staffed_duplicate_stays_and_the_empty_twin_is_archived(client, monkeypatch):
+    """ما ظهر في الإنتاج (2026-09-19): الفرع القديم GUF-2 عليه خمسة موظفين،
+    واستيراد الملف أنشأ GU02 فارًغا للمحلّ نفسه. فكانت الأداة تُبقي الفارغ
+    لأن كوده كود الملف، وتطلب نقل الموظفين إليه — فيضيع ارتباط سجلّهم
+    وأرقامهم الوظيفية بفرعهم. **يبقى من عليه الموظفون، ويُكمَّل من الملف.**
+    """
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    gu02 = next(b for b in data["branches"] if b["code"] == "GU02")
+    db = SessionLocal()
+    co = models.Company(name="شركة الاتحاد الخليجي للأقمشة")
+    db.add(co)
+    db.flush()
+    old = models.Branch(company_id=co.id, name=gu02["name"], code="GUF-2",
+                        address=f"القبلة — الرقم الآلي للعنوان: {gu02['paci_address_no']}",
+                        qr_secret=secrets.token_hex(8))
+    twin = models.Branch(company_id=co.id, name=gu02["name"], code="GU02",
+                         address=gu02["address"], qr_secret=secrets.token_hex(8),
+                         latitude=gu02["latitude"], longitude=gu02["longitude"])
+    db.add_all([old, twin])
+    db.flush()
+    emp = models.Employee(company_id=co.id, name="موظف فعلي", branch_id=old.id, status="active")
+    db.add(emp)
+    db.commit()
+    cid, old_id, twin_id, emp_id = co.id, old.id, twin.id, emp.id
+    db.close()
+    try:
+        rep = _run(client, monkeypatch, archive=True)
+        db = SessionLocal()
+        try:
+            kept, gone = db.get(models.Branch, old_id), db.get(models.Branch, twin_id)
+            assert gone.status == "archived", "بقي التوأم الفارغ"
+            assert kept.status == "active", "أُرشف الفرع الذي عليه الموظفون"
+            assert kept.latitude == gu02["latitude"], "لم يُكمَّل الباقي بإحداثيات الملف"
+            assert kept.governorate == gu02["governorate"]
+            assert kept.code == "GUF-2", "غُيّر كود فرٍع داخٍل في أرقام موظفيه"
+        finally:
+            db.close()
+        assert not any("انقلهم" in x for x in rep["extras"]), rep["extras"]
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "employees", [emp_id])
+            purge(db, "licenses", [x.id for x in db.scalars(select(models.License).where(
+                models.License.company_id == cid)).all()])
+            purge(db, "branches", [x.id for x in db.scalars(select(models.Branch).where(
+                models.Branch.company_id == cid)).all()])
+            purge(db, "companies", [cid])
+            db.commit()
+        finally:
+            db.close()

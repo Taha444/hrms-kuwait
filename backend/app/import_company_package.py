@@ -520,6 +520,33 @@ def _branch_no(code: str | None) -> str | None:
     return str(int(m.group(1))) if m else None
 
 
+def _complete_keeper(keep: dict, spec: dict, s, api: str, report: dict, *, apply: bool) -> None:
+    """الفرع الباقي من المكرَّر يُكمَّل من ملف الشركة بما **ينقصه فقط**.
+
+    الإحداثيات ونصف القطر والمحافظة: بلاها لا يعمل البصم بالموقع ولا يتولّد
+    العقد الحكومي. ولا يُستبدَل ما عليه (اسمه وكوده وعنوانه تبقى كما هي).
+    """
+    fill = {}
+    if keep.get("latitude") is None and spec.get("latitude") is not None:
+        fill.update(_geo(spec))
+    for k in ("governorate", "governorate_en"):
+        if not keep.get(k) and spec.get(k):
+            fill[k] = spec[k]
+    tag = f"#{keep['id']} {keep.get('code')}"
+    if not fill:
+        report["extras"].append(f"  ✓ يبقى {tag} (عليه الموظفون) — لا ينقصه شيء من الملف")
+        return
+    what = "، ".join(sorted({"الإحداثيات" if k in ("latitude", "longitude", "geofence_radius_m")
+                            else "المحافظة" for k in fill}))
+    if not apply:
+        report["extras"].append(f"  ✓ يبقى {tag} (عليه الموظفون) — يُكمَّل من الملف: {what} — مع --apply")
+        return
+    r = s.put(api + f"/branches/{keep['id']}", json=fill)
+    report["extras"].append(
+        f"  ✓ يبقى {tag} (عليه الموظفون) — " + (f"كُمِّل من الملف: {what}" if r.status_code < 400
+                                                else f"تعذّر إكماله: {r.status_code} {r.text[:120]}"))
+
+
 def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *,
                    apply: bool, archive_extras: bool) -> None:
     """مقرُّ الشركة، وتراخيُصها، وفروعها المخالفة لملفها — طلب المالك (2026-09-19).
@@ -617,12 +644,19 @@ def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *
         return f"#{x['id']} {x.get('code') or '—'} «{x.get('name')}» ({staff.get(x['id'], 0)} موظف)"
 
     extras: list[tuple[dict, str, dict | None]] = []
+    spec_by_code = {b["code"]: b for b in specs}
     for code, members in by_spec.items():
         if len(members) > 1:
-            keep = next((m for m in members if m.get("code") == code), members[0])
+            # **يبقى الفرع الذي عليه الموظفون** لا صاحُب كود الملف: عليه سجلُّ
+            # حضورهم ورواتبهم، وكوده داخٌل في أرقامهم الوظيفية (GUF-GUF6-00002)؛
+            # وإبقاء الفارغ يعني نقل كل موظف بطلٍب ليبقى فرٌع بلا تاريخ.
+            # وعند التساوي يبقى صاحب كود الملف.
+            keep = max(members, key=lambda m: (staff.get(m["id"], 0), m.get("code") == code))
             for m in members:
                 if m is not keep:
                     extras.append((m, f"مكرر لـ{code}", keep))
+            if keep.get("code") != code:
+                _complete_keeper(keep, spec_by_code[code], s, api, report, apply=apply)
     for x in unmatched:
         twin = next((b for b in specs if _branch_no(b["code"]) and
                      _branch_no(b["code"]) == _branch_no(x.get("code"))), None)
