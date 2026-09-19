@@ -79,3 +79,28 @@ def test_the_migration_matches_by_paci_then_code_and_keeps_manual_points(tmp_pat
     assert got["بالرقم الآلي"] == (None, None) and got["بالرمز"] == (None, None)
     assert got["يدوي"] == (29.1, 48.1), "العكسُ محا ما لم يضعه"
     con.close()
+
+
+def test_market_branches_get_200m_unless_set_by_hand(tmp_path):
+    """قرار المالك (2026-09-19): 200م للأسواق الكبيرة، و100م للمباني المنفصلة."""
+    db = tmp_path / "radius.db"
+    url = f"sqlite:///{db.as_posix()}"
+    _alembic(url, "upgrade", "k9f0a1b2c3d")
+    con = sqlite3.connect(db)
+    ins = ("INSERT INTO branches (company_id, name, code, address, geofence_radius_m, qr_secret, "
+           "auto_checkout_minutes, created_at) VALUES (1,?,?,?,?,'s',15,'2026-09-19 00:00:00')")
+    con.execute(ins, ("سوق الصفاة", "MAI02", "القبلة — الرقم الآلي للعنوان: 10228877", 100))
+    con.execute(ins, ("كاظمة يدوي", "BN01", "الجهراء — الرقم الآلي للعنوان: 14708253", 120))
+    con.execute(ins, ("الفحيحيل", "BN05", "الفحيحيل — الرقم الآلي للعنوان: 13813772", 100))
+    con.commit()
+    con.close()
+    _alembic(url, "upgrade", "l0a1b2c3d4e")
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT name, geofence_radius_m FROM branches"))
+    con.close()
+    assert got == {"سوق الصفاة": 200, "كاظمة يدوي": 120, "الفحيحيل": 100}, got
+    _alembic(url, "downgrade", "k9f0a1b2c3d")
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT name, geofence_radius_m FROM branches"))
+    con.close()
+    assert got == {"سوق الصفاة": 100, "كاظمة يدوي": 120, "الفحيحيل": 100}, got
