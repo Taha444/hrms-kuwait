@@ -409,11 +409,34 @@ def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_
     }
 
 
+def confirm_current_password(db: Session, user: models.User, password: str,
+                             request: Request, detail: str = "كلمة المرور غير صحيحة") -> None:
+    """إعادُة إدخال كلمة المرور داخل الجلسة — تُحصى كما يُحصى الدخول.
+
+    تُطلب الكلمُة هنا لتصمد إن سُرقت الجلسة؛ وكان الفشُل بلا عدٍّ ولا قفٍل ولا
+    أثر: فمن سرق جلسًة يخمّنها بلا حدّ ثم يُعطّل التحقق الثنائي أو يأخذ رموَز
+    الاسترداد. فالقاعدُة قاعدُة الرمز الثنائي: يُحصى الفشُل على الحساب، وعند
+    الحدّ يُقفَل **وتُبطَل جلساتُه** — فالجلسُة المسروقة تنتهي معه.
+    """
+    if verify_password(password, user.password_hash):
+        user.failed_attempts = 0
+        return
+    now = datetime.now(timezone.utc)
+    user.failed_attempts = (user.failed_attempts or 0) + 1
+    if user.failed_attempts >= MAX_FAILED:
+        user.locked_until = now + timedelta(minutes=LOCK_MINUTES)
+        user.failed_attempts = 0
+        user.tokens_valid_after = now
+    audit(db, user, "password_reconfirm_fail", "user", user.id, request=request)
+    db.commit()
+    raise HTTPException(status_code=400, detail=detail)
+
+
 @router.post("/change-password")
 def change_password(data: schemas.ChangePasswordIn, request: Request,
                     user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not verify_password(data.old_password, user.password_hash):
-        raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
+    confirm_current_password(db, user, data.old_password, request,
+                             detail="كلمة المرور الحالية غير صحيحة")
     user.password_hash = hash_password(data.new_password)
     user.must_change_password = False
     # V2.2 §9 — إبطال كل الجلسات السابقة (بما فيها الحالية) بعد تغيير كلمة المرور

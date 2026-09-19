@@ -202,9 +202,10 @@ def verify(data: VerifyIn, request: Request,
 @router.post("/disable")
 def disable(data: DisableIn, request: Request,
             user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """يعطل 2FA (يحتاج كلمة السر الحالية للتأكيد)."""
-    if not verify_password(data.password, user.password_hash):
-        raise HTTPException(status_code=400, detail="كلمة المرور غير صحيحة")
+    """يعطل 2FA (يحتاج كلمة السر الحالية للتأكيد — ويُحصى الفشل)."""
+    from .auth import confirm_current_password
+
+    confirm_current_password(db, user, data.password, request)
     if not user.totp_confirmed:
         return {"ok": True, "already_disabled": True}
     user.totp_secret = None
@@ -236,8 +237,9 @@ def regenerate_recovery(data: DisableIn, request: Request,
                         user: models.User = Depends(get_current_user),
                         db: Session = Depends(get_db)):
     """QA-30 — يولّد رموز استرداد جديدة (يبطل القديمة) بعد تأكيد كلمة المرور."""
-    if not verify_password(data.password, user.password_hash):
-        raise HTTPException(status_code=400, detail="كلمة المرور غير صحيحة")
+    from .auth import confirm_current_password
+
+    confirm_current_password(db, user, data.password, request)
     if not (user.totp_secret and user.totp_confirmed):
         raise HTTPException(status_code=400, detail="2FA غير مفعّل لحسابك")
     codes = generate_recovery_codes(user)
