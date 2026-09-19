@@ -450,6 +450,15 @@ def build_company(db, cfg) -> dict:
                           governorate="العاصمة", governorate_en="Al-Asimah")
         db.add(b)
         branches.append(b)
+    # **موظفو المقر على فرع «المقر» لا على المحلات** — قرار المالك (2026-09-19).
+    # كانوا على أول محل، فيراهم مسؤوله في «موظفو الفرع» وهم أعلى منه.
+    first = cfg["branches"][0]
+    hq = models.Branch(company_id=company.id, name="المقر", code="HQ",
+                       latitude=first[1], longitude=first[2],
+                       geofence_radius_m=120, qr_secret=secrets.token_hex(16),
+                       kiosk_key=secrets.token_urlsafe(24), address="المقر",
+                       governorate="العاصمة", governorate_en="Al-Asimah")
+    db.add(hq)
     db.flush()
 
     shift = models.Shift(company_id=company.id, name="دوام رسمي", start_time=time(8, 0),
@@ -484,13 +493,13 @@ def build_company(db, cfg) -> dict:
     # يمكّنهم من تقديم طلبات لأنفسهم (إجازة/شهادة راتب/تصحيح حضور/سلفة...) مثل أي موظف.
     # ملاحظة على التسلسل: مدير الشركة أول (بدون مدير مباشر)، والبقية يتبعونه لاحقًا
     admin_staff = [
-        (manager, "مدير الشركة", 2500, "both", branches[0].id, -1200),
-        (hr, "موظف موارد بشرية", 900, "both", branches[0].id, -1000),
-        (deleg1, "مندوب أول", 550, "qr", branches[0].id, -800),
-        (deleg2, "مندوب ثاني", 550, "qr", branches[1].id, -750),
+        (manager, "مدير الشركة", 2500, "both", hq.id, -1200),
+        (hr, "موظف موارد بشرية", 900, "both", hq.id, -1000),
+        (deleg1, "مندوب أول", 550, "qr", hq.id, -800),
+        (deleg2, "مندوب ثاني", 550, "qr", hq.id, -750),
         (sup1, f"مسؤول {cfg['branches'][0][0]}", 800, "both", branches[0].id, -900),
         (sup2, f"مسؤول {cfg['branches'][1][0]}", 800, "both", branches[1].id, -850),
-        (accountant, "محاسب", 750, "both", branches[0].id, -500),
+        (accountant, "محاسب", 750, "both", hq.id, -500),
     ]
     manager_emp_id: int | None = None
     for user_obj, job_title, salary, mode, branch_id, days_ago in admin_staff:

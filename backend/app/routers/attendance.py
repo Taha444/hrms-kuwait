@@ -470,6 +470,10 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
                                 detail="لا تملك صلاحية مراجعة حضور هذا الفرع")
         target = {branch_id} if branch_id else allowed
         emp_q = emp_q.where(models.Employee.branch_id.in_(target))
+        from ..deps import hidden_staff_ids
+        hidden = hidden_staff_ids(user, db, scope)
+        if hidden:
+            emp_q = emp_q.where(models.Employee.id.notin_(hidden))
     elif branch_id:
         emp_q = emp_q.where(models.Employee.branch_id == branch_id)
     employees = db.scalars(emp_q.order_by(models.Employee.name)).all()
@@ -756,9 +760,12 @@ def branch_attendance(branch_id: int,
               detail="attendance_branch_out_of_scope")
         db.commit()
         raise HTTPException(status_code=403, detail="لا تملك صلاحية حضور هذا الفرع")
+    from ..deps import hidden_staff_ids
+    hidden = hidden_staff_ids(user, db) or {-1}
     rows = db.scalars(
         select(models.AttendanceRecord)
-        .where(models.AttendanceRecord.branch_id == branch_id)
+        .where(models.AttendanceRecord.branch_id == branch_id,
+               models.AttendanceRecord.employee_id.notin_(hidden))
         .order_by(models.AttendanceRecord.check_in_at.desc()).limit(200)
     ).all()
     return [{"id": r.id, "employee_id": r.employee_id, "check_in_at": r.check_in_at,

@@ -49,9 +49,15 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
     from ..deps import resolve_scope
     _sc = resolve_scope(user, db)
 
+    from ..deps import hidden_staff_ids
+    _hidden = hidden_staff_ids(user, db, _sc)
+
     def in_scope(stmt, emp_col, branch_col=None):
         if _sc.self_employee_id is not None:
             return stmt.where(emp_col == _sc.self_employee_id)
+        if _hidden:
+            # ومن هو أعلى منه لا يُوجَد بالبحث — قرار 33.
+            stmt = stmt.where(emp_col.notin_(_hidden))
         if _sc.branch_ids is not None and branch_col is not None:
             return stmt.where(branch_col.in_(_sc.branch_ids))
         return stmt

@@ -166,8 +166,10 @@ def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
     if bids is not None and branch_id not in bids:
         raise HTTPException(status_code=404, detail="الفرع غير موجود")
     today = kuwait_today()
+    from ..deps import hidden_staff_ids
     emp_ids = select(models.Employee.id).where(models.Employee.branch_id == branch_id,
-                                               models.Employee.status == "active")
+                                               models.Employee.status == "active",
+                                               models.Employee.id.notin_(hidden_staff_ids(user, db) or {-1}))
 
     employees = db.scalar(select(func.count()).select_from(emp_ids.subquery())) or 0
     present_today = db.scalar(select(func.count(func.distinct(models.AttendanceRecord.employee_id)))

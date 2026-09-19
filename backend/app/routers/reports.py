@@ -35,6 +35,7 @@ def _scoped_branches(user, db, branch_id: int | None) -> set[int] | None:
 
 
 def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = None,
+                   hidden: set[int] | frozenset = frozenset(),
                    viewer_role: str | None = None):
     """P1-#17 — Accountant يحصل على minimum necessary payroll data فقط:
     employee_no, name, basic_salary, contract_type, hire_date, civil_id (text), status.
@@ -47,6 +48,8 @@ def _employee_rows(db: Session, cid: int | None, branch_ids: set[int] | None = N
         q = q.where(models.Employee.company_id == cid)
     if branch_ids is not None:
         q = q.where(models.Employee.branch_id.in_(branch_ids))
+    if hidden:
+        q = q.where(models.Employee.id.notin_(hidden))
     emps = db.scalars(q.order_by(models.Employee.name)).all()
 
     if viewer_role == "accountant":
@@ -74,7 +77,9 @@ def export_employees(request: Request, fmt: str = "xlsx", company_id: int | None
                      db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     # P1-#17 — نمرّر دور المستخدم عشان _employee_rows يقلّم الأعمدة للمحاسب
+    from ..deps import hidden_staff_ids
     headers, rows = _employee_rows(db, cid, _scoped_branches(user, db, branch_id),
+                                   hidden_staff_ids(user, db),
                                   viewer_role=user.role)
     audit(db, user, "EXPORT_REPORT", "report", None,
           detail=f"employees:{reason or ''} scope={user.role}",
@@ -166,6 +171,10 @@ def export_attendance(request: Request, month: str | None = None, fmt: str = "cs
     bscope = _scoped_branches(user, db, branch_id)
     if bscope is not None:
         q = q.where(models.AttendanceRecord.branch_id.in_(bscope))
+        from ..deps import hidden_staff_ids
+        hidden = hidden_staff_ids(user, db)
+        if hidden:
+            q = q.where(models.AttendanceRecord.employee_id.notin_(hidden))
     recs = db.scalars(q.order_by(models.AttendanceRecord.check_in_at)).all()
     emp_names = {e.id: e.name for e in db.scalars(select(models.Employee)).all()}
     headers = ["الموظف", "الدخول", "الخروج", "الحالة", "دقائق العمل", "الإضافي"]

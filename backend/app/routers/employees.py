@@ -19,6 +19,7 @@ from ..deps import (
     audit,
     get_current_user,
     get_user_perms,
+    hidden_staff_ids,
     require_perm,
     resolve_scope,
     scope_company_id,
@@ -103,6 +104,10 @@ def _get_emp(db: Session, user: models.User, emp_id: int) -> models.Employee:
         audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "employee", emp.id, detail="branch_out_of_scope")
         db.commit()
         raise HTTPException(status_code=404, detail="الموظف غير موجود")  # خارج نطاق فرعك
+    if emp.id in hidden_staff_ids(user, db, sc):
+        audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "employee", emp.id, detail="higher_staff")
+        db.commit()
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")  # أعلى منك — قرار 33
     if sc.self_employee_id is not None and emp.id != sc.self_employee_id:
         audit(db, user, "FORBIDDEN_SCOPE_ACCESS", "employee", emp.id, detail="self_scope_only")
         db.commit()
@@ -128,6 +133,9 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
     sc = resolve_scope(user, db)
     if sc.branch_ids is not None:
         base = base.where(models.Employee.branch_id.in_(sc.branch_ids))
+        hidden = hidden_staff_ids(user, db, sc)
+        if hidden:
+            base = base.where(models.Employee.id.notin_(hidden))
     if sc.self_employee_id is not None:
         base = base.where(models.Employee.id == sc.self_employee_id)
     if q:
@@ -1303,6 +1311,9 @@ def list_employees_without_policy(company_id: int | None = None,
     allowed = resolve_scope(user, db).branch_ids
     if allowed is not None:
         q = q.where(models.Employee.branch_id.in_(allowed or {-1}))
+        hidden = hidden_staff_ids(user, db)
+        if hidden:
+            q = q.where(models.Employee.id.notin_(hidden))
     rows = db.scalars(q.order_by(models.Employee.name)).all()
     return [{"id": e.id, "name": e.name, "employee_no": e.employee_no,
              "company_id": e.company_id, "branch_id": e.branch_id,

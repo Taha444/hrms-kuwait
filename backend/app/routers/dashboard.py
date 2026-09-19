@@ -172,8 +172,11 @@ def dashboard(company_id: int | None = None,
         emp_ids = select(models.Employee.id).where(models.Employee.branch_id.in_(bids))
         if cid is not None:
             emp_ids = emp_ids.where(models.Employee.company_id == cid)
+        from ..deps import hidden_staff_ids
+        _hidden = hidden_staff_ids(user, db) or {-1}
         branch_emps = db.scalar(select(func.count()).select_from(models.Employee).where(
-            models.Employee.status.in_(PAYABLE_STATUSES), models.Employee.branch_id.in_(bids))) or 0
+            models.Employee.status.in_(PAYABLE_STATUSES), models.Employee.branch_id.in_(bids),
+            models.Employee.id.notin_(_hidden))) or 0
         branch_vac = db.scalar(select(func.count()).select_from(models.Employee).where(
             models.Employee.status == "vacation", models.Employee.branch_id.in_(bids))) or 0
         pending = db.scalar(select(func.count()).select_from(models.Request).where(

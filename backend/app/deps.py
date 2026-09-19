@@ -411,6 +411,27 @@ def _effective_scope_level(user: models.User) -> str:
     return level
 
 
+#: **من لا يراه صاحُب نطاق الفروع ولو كان على فرعه** — قرار المالك (2026-09-19).
+#:
+#: موظفو المقر (المدير، الشؤون، المحاسب، المندوب…) قد يُسجَّلون على فرٍع، فكان
+#: مسؤوُل الفرع يرى ملفاتهم ورواتبهم في «موظفو الفرع» — وهم أعلى منه. «هما اللي
+#: يشوفوه، مش العكس.» فكلُّ موضٍع يُرشِّح بالفرع يُرشِّح بهذا أيًضا.
+STAFF_HIDDEN_FROM_BRANCH = frozenset({
+    "super_admin", "company_owner", "company_manager", "hr",
+    "accountant", "delegate", "branch_supervisor"})
+
+
+def hidden_staff_ids(user: models.User, db: Session, scope: "DataScope | None" = None) -> set[int]:
+    """ملفاُت الموظفين ذوي الأدوار الإدارية — مخفيٌّة عمّن نطاقه فروع، إلا ملفّه هو."""
+    sc = scope if scope is not None else resolve_scope(user, db)
+    if sc.branch_ids is None:
+        return set()
+    ids = db.scalars(select(models.User.employee_id).where(
+        models.User.role.in_(sorted(STAFF_HIDDEN_FROM_BRANCH)),
+        models.User.employee_id.isnot(None))).all()
+    return {i for i in ids if i and i != user.employee_id}
+
+
 def resolve_scope(user: models.User, db: Session) -> DataScope:
     """يحسم نطاق البيانات الكامل للمستخدم وفق scope_level (المرجع الوحيد)."""
     from .permissions import CROSS_COMPANY_ROLES

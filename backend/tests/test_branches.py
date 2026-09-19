@@ -9,7 +9,7 @@ def test_company_structure(client):
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["company"]["name"]
-    assert len(d["branches"]) == 2  # فرعان للشركة 1
+    assert len(d["branches"]) == 3  # محلّان + «المقر» للشركة 1 (قرار 33)
     assert sum(b["employee_count"] for b in d["branches"]) <= d["total_employees"]
     # مسؤول الفرع يظهر
     assert any(b["supervisors"] for b in d["branches"])

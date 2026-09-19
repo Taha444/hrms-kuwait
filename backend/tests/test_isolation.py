@@ -96,7 +96,7 @@ def test_dashboard_scopes_to_selected_company(client):
     # (manager/hr/2×delegate/2×supervisor/accountant) = 13 لكل شركة
     assert c1["employees"] == 13 and c2["employees"] == 13
     assert all_["employees"] == 26  # المجموع عند اختيار "كل الشركات"
-    assert c1["branches"] == 2 and c2["branches"] == 2
+    assert c1["branches"] == 3 and c2["branches"] == 3  # محلّان + «المقر» (قرار 33)
 
 
 def test_manager_not_cross_company(client):
