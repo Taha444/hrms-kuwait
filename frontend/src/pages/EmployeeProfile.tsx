@@ -27,8 +27,6 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const [licOpts, setLicOpts] = useState<any[]>([]);
   const [editErr, setEditErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [term, setTerm] = useState({ end_date: "", reason: "termination",
-                                     notice_served: "", notice_served_date: "" });
   const [settlement, setSettlement] = useState<any>(null);
   const [exit_, setExit] = useState<any>(null);   // EXIT-UI — مسودة إنهاء الخدمة
   const [consumed, setConsumed] = useState(0);
@@ -68,11 +66,6 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
   const EV_AR: Record<string, string> = {
     warning: t("ev_warning"), penalty: t("ev_penalty"), bonus: t("ev_bonus"),
     promotion: t("ev_promotion"), note: t("ev_note"),
-  };
-  const REASONS: Record<string, string> = {
-    termination: t("rsn_termination"), contract_expiry: t("rsn_contract_expiry"), resignation: t("rsn_resignation"),
-    death: t("rsn_death"), disability: t("rsn_disability"), misconduct: t("rsn_misconduct"),
-    marriage: t("rsn_marriage"), retirement: t("rsn_retirement"),
   };
   // EXIT-UI — لكل مرحلة لونها: مسودٌة معلَّقة ليست إنجاًزا.
   const EXIT_PILL: Record<string, string> = {
@@ -229,30 +222,6 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
       kind: evForm.kind, title: evForm.title, amount: evForm.amount || undefined } });
     setEvForm({ kind: "warning", title: "", amount: "" }); loadExtras();
   };
-  // EXIT-UI — ``POST /terminate`` يُنشئ **مسودة** ولا يُنهي خدمة أحد: الحالة
-  // تبقى ``active`` حتى يعتمدها غير من حضّرها، ويُخلى الطرف، ويقرّ الموظف،
-  // ثم تُنفَّذ. وكانت الشاشة تقول «تم إنهاء الخدمة» بعد التحضير وحده —
-  // فيصدّق المستخدم أن الخدمة انتهت وهي قائمة، وتبقى المسودة معلَّقة أبًدا.
-  const terminate = async () => {
-    if (!term.end_date) return;
-    if (!confirm(t("epf_term_confirm"))) return;
-    // يُرسَل المستهلَك فقط؛ المتبقّي يُحسب آليًا في الخادم
-    // قرار المالك (2026-09-17) — بدل الإنذار في الفصل غير التأديبي وحده،
-    // والخادم يرفض الحساب بلا الجواب؛ فلا يُرسَل حقلٌ فارغ يُقرأ «لا».
-    const params: Record<string, any> = { end_date: term.end_date, reason: term.reason,
-                                          used_leave_days: consumed };
-    if (term.reason === "termination") {
-      if (!term.notice_served) { setMsg(t("epf_notice_served")); return; }
-      params.notice_served = term.notice_served;
-      if (term.notice_served === "true") params.notice_served_date = term.notice_served_date;
-    }
-    let r;
-    try {
-      r = await api.post(`/employees/${id}/terminate`, null, { params });
-    } catch (ex: any) { setMsg(errMsg(ex, t("epf_term_btn"))); return; }
-    setSettlement(r.data.settlement); setMsg(t("epf_term_drafted")); load(); loadExit(); onChanged?.();
-  };
-
   // ودورة المسودة كاملة من الشاشة: اعتماد ← إخلاء طرف ← إقرار ← تنفيذ،
   // وإلغاٌء في كل وقت — فمسودٌة لا تُلغى تحبس الموظف: وجودها يمنع تحضير
   // غيرها بـ409 يقول «الغِها أوًلا».
@@ -863,34 +832,17 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
               )}
             </div>
           )}
+          {/* 2026-09-22 — قرار المالك (مكتوب أعلاه في EosCases.tsx): حالة
+              نهاية الخدمة (EosCase) هي المرجع، لا مسودة ملف الموظف. كان
+              هذا النموذج يفتح مساًرا موازًيا لا يظهر في شاشة "/eos/cases"
+              الرسمية ولا يُخطر أحًدا — فمن أراد إنهاء خدمة يُوجَّه للشاشة
+              الرسمية بدل فتح مسار ثانٍ هنا. المسودات القديمة المفتوحة عبر
+              هذا المسار (الكتلة أعلاه) تبقى قابلة للإدارة حتى تُغلق. */}
           {can("terminate_employee") && !ENDED.includes(e.status) && !exit_?.exists && (
             <div className="card" style={{ borderTop: "3px solid var(--danger)" }}>
               <h3>{t("emp_terminate")}</h3>
-              <p className="muted">{t("epf_leave_hint")}</p>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-end">{t("epf_term_end_date")}</label>
-                  <input id="epf-term-end" type="date" value={term.end_date} onChange={(ev) => setTerm({ ...term, end_date: ev.target.value })} /></div>
-                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-reason">{t("epf_reason")}</label>
-                  <select id="epf-term-reason" value={term.reason} onChange={(ev) => setTerm({ ...term, reason: ev.target.value })}>
-                    {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select></div>
-                {term.reason === "termination" && (
-                  <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-notice">{t("epf_notice_served")}</label>
-                    <select id="epf-term-notice" value={term.notice_served} onChange={(ev) => setTerm({ ...term, notice_served: ev.target.value })}>
-                      <option value="">{t("epf_notice_unset")}</option>
-                      <option value="true">{t("epf_notice_yes")}</option>
-                      <option value="false">{t("epf_notice_no")}</option>
-                    </select></div>
-                )}
-                {term.reason === "termination" && term.notice_served === "true" && (
-                  <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-notice-date">{t("epf_notice_date")}</label>
-                    <input id="epf-term-notice-date" type="date" value={term.notice_served_date} onChange={(ev) => setTerm({ ...term, notice_served_date: ev.target.value })} /></div>
-                )}
-                <div className="field" style={{ flex: 1 }}><label htmlFor="epf-term-used-leave">{t("eos_used_leave")}</label>
-                  <input id="epf-term-used-leave" type="number" min={0} step={1} value={consumed} onChange={(ev) => setConsumed(+ev.target.value)} /></div>
-                <div className="field" style={{ alignSelf: "flex-end" }}>
-                  <button className="danger" onClick={terminate}>{t("epf_term_btn")}</button></div>
-              </div>
+              <p className="muted">{t("epf_term_use_eos_cases")}</p>
+              <a className="btn" href="/eos/cases">{t("epf_term_go_eos_cases")}</a>
             </div>
           )}
           {(() => {

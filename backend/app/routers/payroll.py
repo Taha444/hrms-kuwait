@@ -83,7 +83,8 @@ def _notify_payroll_ready(db: Session, pr: models.PayrollRun) -> None:
                                  users_by_role)
     from ..permissions import ROLE_DEFAULT_PERMS
 
-    roles = [r for r, perms in ROLE_DEFAULT_PERMS.items() if "run_payroll" in perms]
+    # 2026-09-22 — من يعتمد لا من يشغّل: approve_payroll (فُصلت عن run_payroll).
+    roles = [r for r, perms in ROLE_DEFAULT_PERMS.items() if "approve_payroll" in perms]
     impartial = [u for u in users_by_role(db, pr.company_id, roles)
                  if not _self_approval_blocked(u, pr)]
 
@@ -194,7 +195,7 @@ def run(period: str, request: Request, company_id: int | None = None, force_futu
 
 @router.post("/runs/{run_id}/approve")
 def approve_run(run_id: int, request: Request,
-                user: models.User = Depends(require_perm("run_payroll")),
+                user: models.User = Depends(require_perm("approve_payroll")),
                 db: Session = Depends(get_db)):
     """PILOT-P0-7 — اعتماد المسيّر (prepared → approved) بشرط مختلف المُجَهِّز."""
     from ..deps import assert_same_company
@@ -218,7 +219,7 @@ def approve_run(run_id: int, request: Request,
 
 @router.post("/runs/{run_id}/finalize")
 def finalize_run(run_id: int, request: Request,
-                 user: models.User = Depends(require_perm("run_payroll")),
+                 user: models.User = Depends(require_perm("approve_payroll")),
                  db: Session = Depends(get_db)):
     """PILOT-P0-7 — finalize بعد الاعتماد (approved → finalized). قابل للـlock بعده.
     SEC2-17: يمنع finalize في وضع STRICT فقط (SEC2_17_STRICT_FINALIZE=true)."""
@@ -261,7 +262,7 @@ def finalize_run(run_id: int, request: Request,
 
 @router.post("/runs/{run_id}/lock")
 def lock_run(run_id: int, request: Request,
-            user: models.User = Depends(require_perm("run_payroll")),
+            user: models.User = Depends(require_perm("approve_payroll")),
             db: Session = Depends(get_db)):
     """يقفل المسيّر نهائًيا (finalized → locked). بعد Lock يجب adjustment_run بدل إعادة التشغيل."""
     from ..deps import assert_same_company
@@ -283,9 +284,13 @@ def lock_run(run_id: int, request: Request,
 @router.post("/runs/{run_id}/reopen")
 #: **ولماذا تبقى إعادُة الفتح للإدارة العليا وحدها — قياٌس لا تضييق.**
 #:
-#: قيس مساُر المحاسب كامًلا: ``run`` ← ``approve`` (بشرط مختلِف المُجَهِّز)
-#: ← ``finalize`` ← ``lock`` ← ``adjustment_run``. **كلُّها بـ
-#: ``run_payroll``**، أي أن المحاسب يملك كلَّ خطوٍة إلا هذه.
+#: قيس المساَر الكامل: ``run`` (المحاسب، ``run_payroll``) ← ``approve``
+#: (بشرط مختلِف المُجَهِّز، ``approve_payroll`` — 2026-09-22: فُصلت عن
+#: ``run_payroll`` فتمنح لمدير الشركة أيًضا، إذ لا يعتمد مسيّرَ شركةٍ
+#: بمحاسٍب واحٍد أحٌد غيرَه) ← ``finalize`` ← ``lock`` (الثلاثة
+#: بـ``approve_payroll``) ← ``adjustment_run`` (يعود لـ``run_payroll``:
+#: تسويٌة تشبه تشغيًلا جديًدا لا قراًرا). فكلُّ خطوٍة لها معتمُدها، إلا
+#: هذه.
 #:
 #: فمسيٌَّر خاطٌئ قبل القفل له مساٌر كامٌل مدقٌَّق بيده: يُقفله ثم يُصدر
 #: تسويًة. **وذلك المساُر أصّح من إعادة الفتح**: إعادُة الفتح تمسح
@@ -396,12 +401,16 @@ def list_runs(company_id: int | None = None,
 
     perms = get_user_perms(user, db)
     may_run = has_permission(user.role, perms, "run_payroll")
+    # 2026-09-22 — الاعتماد/الإقفال/القفل صارت approve_payroll (فُصلت عن
+    # run_payroll، انظر تعليق reopen_run) — لولا هذا الفصل لَبقي مديُر
+    # الشركة، صاحُب صلاحية approve_payroll وحدها، بلا زرٍّ واحٍد يظهر له.
+    may_approve = has_permission(user.role, perms, "approve_payroll")
     names = {u.id: u.full_name for u in db.scalars(select(models.User).where(
         models.User.company_id == (cid or user.company_id)))}
 
     out = []
     for r in rows:
-        self_blocked = may_run and r.status == "prepared" and _self_approval_blocked(user, r)
+        self_blocked = may_approve and r.status == "prepared" and _self_approval_blocked(user, r)
         out.append({
             "id": r.id, "period": r.period, "status": r.status,
             "totals": (r.totals_json or {}).get("totals"),
@@ -415,9 +424,9 @@ def list_runs(company_id: int | None = None,
             "locked_at": r.locked_at,
             "adjustment_of_run_id": r.adjustment_of_run_id,
             "adjustment_reason": r.adjustment_reason,
-            "can_approve": bool(may_run and r.status == "prepared" and not self_blocked),
-            "can_finalize": bool(may_run and r.status == "approved"),
-            "can_lock": bool(may_run and r.status == "finalized"),
+            "can_approve": bool(may_approve and r.status == "prepared" and not self_blocked),
+            "can_finalize": bool(may_approve and r.status == "approved"),
+            "can_lock": bool(may_approve and r.status == "finalized"),
             "can_reopen": bool(user.role == "super_admin"
                                and r.status in ("approved", "finalized")),
             "can_adjust": bool(may_run and r.status == LOCKED_STATUS),

@@ -723,6 +723,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   epf_status_changed: { ar: "تم تغيير الحالة", en: "Status changed" },
   epf_no_events: { ar: "لا أحداث بعد.", en: "No events yet." },
   epf_leave_hint: { ar: "النظام يحسب الرصيد المستحق تلقائيًا — أدخل عدد الأيام المستهلكة فقط.", en: "The system computes accrued balance automatically — just enter days used." },
+  epf_term_use_eos_cases: { ar: "إنهاء الخدمة يُفتح من شاشة «حالات نهاية الخدمة» — المرجع الرسمي لمسار الخروج بكل مراحله وفصل سلطاته.", en: "Termination is opened from the \"EOS Cases\" screen — the official reference for the exit path, with all its stages and separation of duties." },
+  epf_term_go_eos_cases: { ar: "افتح حالات نهاية الخدمة", en: "Open EOS Cases" },
   epf_accrued_yrs: { ar: "المستحق ({y} سنة خدمة)", en: "Accrued ({y} service years)" },
   epf_used: { ar: "المستهلَك", en: "Used" },
   epf_term_end_date: { ar: "تاريخ انتهاء الخدمة", en: "End-of-service Date" }, epf_reason: { ar: "السبب", en: "Reason" },

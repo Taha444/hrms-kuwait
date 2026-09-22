@@ -29,6 +29,13 @@ PERMISSIONS: dict[str, str] = {
     "view_attendance": "عرض الحضور",
     "record_attendance": "تسجيل الحضور (خدمة ذاتية)",
     "run_payroll": "تشغيل مسيّر الرواتب",
+    # 2026-09-22 — فُصلت عن run_payroll: كانت تحكم التشغيل والاعتماد
+    # والإقفال والقفل مًعا بصلاحية واحدة، فتعتمد المسيّر على محاسب ثانٍ فقط
+    # (يمنع self-approval التقاطع مع نفس الدور) — شركة بمحاسب واحد لا
+    # معتمِد لها إطلاًقا. الاعتماد صار صلاحيًة مستقلًة تُمنح لمدير الشركة
+    # أيًضا، على نمط approve_finance/approve_leave وبقية صلاحيات الاعتماد
+    # المفصولة أدناه.
+    "approve_payroll": "اعتماد وإقفال وقفل مسيّر الرواتب",
     "view_payroll": "عرض الرواتب",
     "calculate_eos": "حساب مكافأة نهاية الخدمة",
     "view_reports": "عرض التقارير",
@@ -153,7 +160,13 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
                         # طلباته الشخصية تُرفع نيابًة عنه من الشؤون القانونية.
                         "manage_users",
                         # قرار المالك (2026-09-11) — تعديل بيانات شركته.
-                        "manage_company"},
+                        "manage_company",
+                        # 2026-09-22 — المدير هو معتمِد الرواتب (يطابق دوره في كل مجالات
+                        # الاعتماد الأخرى)، لا يُشغّلها: run_payroll تبقى للمحاسب وحده.
+                        # view_payroll لازمة أيًضا — بدونها الصفحة نفسها محجوبة عنه
+                        # فرًعا (``/payroll`` محروسة بـview_payroll في App.tsx) ولو
+                        # ملك approve_payroll.
+                        "approve_payroll", "view_payroll"},
     # محاسب الشركة: الرواتب والخصومات + الراتب الفعلي (مالي)، وهو أيًضا موظف له ملف
     # وحضور خاص به (submit_request/record_attendance) مثل أي موظف آخر بالشركة.
     # approve_request إلزامي (P0-01): المحاسب معتمِد فعلي في مراحل كثيرة (السلف/القروض
@@ -166,6 +179,9 @@ ROLE_DEFAULT_PERMS: dict[str, set[str]] = {
         "approve_finance",
         "approve_general",
         "approve_leave",
+        # 2026-09-22 — تبقى معه أيًضا: تُتيح لمحاسب ثانٍ (إن وُجد) اعتماد
+        # مسيّر زميله، وself-approval يمنعه من اعتماد مسيّره هو.
+        "approve_payroll",
         "approve_personnel","view_employee", "view_payroll", "run_payroll", "manage_deductions",
                    "view_actual_salary", "edit_actual_salary",
                    "view_reports", "export_reports", "view_tasks",
@@ -372,6 +388,7 @@ LEGACY_TO_PA: dict[str, tuple[str, str]] = {
     "manage_licenses": ("licenses", "edit"),
     "view_payroll": ("payroll", "read"),
     "run_payroll": ("payroll", "add"),
+    "approve_payroll": ("payroll", "approve"),
     "manage_templates": ("templates", "edit"),
     "manage_users": ("users", "edit"),
     "view_audit": ("audit", "read"),
@@ -395,7 +412,7 @@ PAGE_ACTIONS: dict[str, list[str]] = {
     "attendance": ["read", "add", "export"],
     "permits":    ["read", "edit", "print"],
     "licenses":   ["read", "edit", "print"],
-    "payroll":    ["read", "add", "export", "print"],
+    "payroll":    ["read", "add", "approve", "export", "print"],
     "templates":  ["read", "edit", "print"],
     "users":      ["read", "edit"],
     "audit":      ["read", "export"],

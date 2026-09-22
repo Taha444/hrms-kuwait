@@ -976,6 +976,28 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
     audit(db, user, "prepare_termination", "employee", emp.id,
           detail=f"{reason} @ {end_date} = {settlement['total_settlement']} KWD (draft)",
           request=request)
+    # 2026-09-22 — مسودة تصير جاهزة للاعتماد ولا شيء يخبر معتمِدها. كانت
+    # الطريقة الوحيدة لاكتشافها فتح ملف هذا الموظف بالذات وتبويب "نهاية
+    # الخدمة" فيه — لا مهمة، ولا قائمة مركزية. على نمط
+    # ``payroll._notify_payroll_ready``: مهمة لكل من يملك approve_termination
+    # في الشركة (المحاسب عادًة)، غير من حضّر المسودة نفسه.
+    from ..notifications import create_task, users_by_role
+    from ..permissions import ROLE_DEFAULT_PERMS
+    approver_roles = [r for r, perms in ROLE_DEFAULT_PERMS.items()
+                      if "approve_termination" in perms]
+    for approver in users_by_role(db, emp.company_id, approver_roles):
+        if approver.id == user.id:
+            continue
+        create_task(
+            db, company_id=emp.company_id, type="termination_ready",
+            assignee_user_id=approver.id, severity="warning",
+            title=f"مسودة إنهاء خدمة بانتظار الاعتماد: {emp.name}",
+            detail=(f"جهّز {user.full_name} مسودة إنهاء خدمة لـ{emp.name} "
+                    f"بتاريخ {end_date} — تحتاج اعتمادك (فصل السلطات يمنع "
+                    f"من حضّرها من اعتمادها)."),
+            related_entity_type="employee", related_entity_id=emp.id,
+            dedup_key=f"termination_ready:{emp.id}:u{approver.id}",
+        )
     db.commit()
     return {"ok": True, "employee_id": emp.id, "status": emp.status,
             "stage": "prepared", "settlement": settlement}

@@ -124,7 +124,12 @@ EOS_FLOW = ["initiated", "calculated", "approved", "clearance", "acknowledged",
 # الأدوار المخوّلة لكل انتقال (super_admin يمرّ دائمًا للطوارئ)
 _STAGE_ROLES = {
     "calculated": ("accountant",),
-    "approved": ("accountant", "company_manager", "hr"),  # يُقيَّد لاحقًا بـSoD
+    # 2026-09-22 — كانت تضمّ "hr" أيًضا، فتُظهر الشاشة زرّ اعتماد لمن لا
+    # يملك الصلاحية الفعلية (``approve_termination`` ممنوحة لـaccountant
+    # وcompany_manager وحدهما — انظر تعليق PILOT-P0-8/QA §6 أدناه: "جهة
+    # ثالثة غير من حسب التسوية (المالية) وغير من فتح الحالة (HR)"). فيرى
+    # HR زرًّا يفشل بـ403 عند الضغط. القائمة صارت مطابقة للصلاحية الفعلية.
+    "approved": ("accountant", "company_manager"),
     "clearance": ("hr",),
     "settled": ("accountant",),
     "printed": ("hr",),
