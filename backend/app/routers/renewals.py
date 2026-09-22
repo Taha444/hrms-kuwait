@@ -1173,9 +1173,11 @@ def hr_verify_renewal(rid: int, request: Request,
 # R8 §3 — توليد العقد الحكومي لتجديد الإقامة
 # ==========================================================================
 # القاعدة الحاكمة: عند التجديد نحتاج **فقط** العقد الحكومي (بلا عقد الشركة).
-# عقد الشركة يُوقَّع مرة واحدة عند التعيين. النموذج يُقرأ من DocumentTemplate
-# بكود "GOV-CONTRACT-RENEWAL" (يُضاف من الإدارة عبر /templates بعد الحصول على
-# نموذج وزارة الداخلية الرسمي). البيانات تُملأ تلقائيًا من الموظف/الشركة.
+# عقد الشركة يُوقَّع مرة واحدة عند التعيين. المصدر ملف الهيئة الرسمي نفسه
+# (``gov_contract_form``) — صفّ DocumentTemplate بكود "GOV-CONTRACT-RENEWAL"
+# ليس شرًطا (GC-01)، يبقى مرجًعا اختياريًا لرقم الإصدار فقط إن وُجد.
+# البيانات تُملأ تلقائيًا من الموظف/الشركة، وحقلٌ ناقص يُطبع فارًغا
+# (2026-09-22) بدل أن يوقف التوليد.
 
 @router.post("/{rid}/gov-contract/generate")
 def generate_gov_contract(rid: int, request: Request,
@@ -1239,16 +1241,12 @@ def generate_gov_contract(rid: int, request: Request,
         "company_file_number": (company.file_number if company else "") or "",
     })
     ctx.update(_gov_contract_context(db, emp, company, rn))
-    # RNW-06 — لا توليد بحقل ناقص. _fill_html يستبدل المفقود بـ"................"
-    # فينتج عقد حكومي بمربّعات فارغة يوقّعه الموظف ويُقدَّم لجهة رسمية. نرفض
-    # ونسمّي الناقص بالعربية ليعرف المندوب أين يذهب ليصلحه.
+    # RNW-06 (عُدّلت 2026-09-22، بطلب صريح): لا رفض بعد اليوم لحقل ناقص —
+    # العقد يُطبع بالخانة فارغة ويملؤها الموظف يدويًا، واستكمال البيانات
+    # في النظام صار مهمة لاحقة (ترقية) لا شرط توليد. ``missing`` يبقى
+    # معلوماتيًا فقط: يُسجَّل في التدقيق ليُعرف لاحقًا ما تبقّى.
     missing = [label for key, label in R.GOV_CONTRACT_REQUIRED_FIELDS.items()
                if not str(ctx.get(key) or "").strip()]
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=("تعذّر توليد العقد الحكومي — بيانات ناقصة في ملف الموظف أو الشركة: "
-                    + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
 
     reference_no = _generate_reference_no(db, "GOV-REN", rn.company_id,
                                           (tpl.version if tpl else 1) or 1)
@@ -1258,11 +1256,7 @@ def generate_gov_contract(rid: int, request: Request,
     # HTML يقلّده. القالب في القاعدة يبقى مرجًعا للنسخة ورقم الإصدار،
     # والمحتوى يأتي من ملف الوورد ببصمته الأصلية.
     content_bytes, ext, mime, docx_missing, snap = gov_contract_form.generate(ctx)
-    if docx_missing:
-        raise HTTPException(
-            status_code=400,
-            detail=("تعذّر توليد العقد الحكومي — بيانات ناقصة: "
-                    + "، ".join(docx_missing) + ". أكملها ثم أعد التوليد."))
+    missing = missing or docx_missing
     checksum = hashlib.sha256(content_bytes).hexdigest()
 
     # احفظ كـissued document على الموظف مربوط بالتجديد
@@ -1298,8 +1292,10 @@ def generate_gov_contract(rid: int, request: Request,
     )
     db.add(doc)
     db.flush()
+    missing_note = f" — حقول فارغة: {'، '.join(missing)}" if missing else ""
     audit(db, user, "generate_gov_contract", "residency_renewal", rn.id,
-          detail=f"gov contract → {reference_no} ({ext})", request=request, company_id=rn.company_id)
+          detail=f"gov contract → {reference_no} ({ext}){missing_note}",
+          request=request, company_id=rn.company_id)
     db.commit()
 
     # GC-01 — لم يعد هناك «html» يُعاد للواجهة: العقد ملف بتخطيط الهيئة
@@ -1307,13 +1303,17 @@ def generate_gov_contract(rid: int, request: Request,
     # وإعادة HTML مقلّد كانت هي المشكلة الأصلية.
     if (format or "").lower() in ("pdf", "file", "download"):
         return file_response(fpath, filename=f"{safe_ref}.{ext}", media_type=mime)
+    note = "اطبع العقد → الموظف يوقّعه → ارفع النسخة الموقّعة عبر upload بـdoc_type=renewal_signed_gov"
+    if missing:
+        note += f" — تنبيه: العقد طُبع بخانات فارغة ({'، '.join(missing)}) لنقص في ملف الموظف/الشركة، أكملها لاحقًا."
     return {
         "ok": True,
         "format": ext,
         "download_url": f"/api/renewals/{rn.id}/gov-contract?format=file",
         "document_id": doc.id, "reference_no": reference_no,
         "checksum_sha256": checksum,
-        "note": "اطبع العقد → الموظف يوقّعه → ارفع النسخة الموقّعة عبر upload بـdoc_type=renewal_signed_gov",
+        "missing_fields": missing,
+        "note": note,
     }
 
 

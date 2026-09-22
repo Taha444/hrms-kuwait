@@ -26,6 +26,8 @@ export default function Renewals() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
+  // 2026-09-22 — تنبيه غير حاجب: خانات طُبعت فارغة في آخر عقد حكومي مولَّد.
+  const [govMissingNote, setGovMissingNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isEmp = !!user?.employee_id;
@@ -51,13 +53,8 @@ export default function Renewals() {
     }).catch((e) => setErr(errMsg(e, t("error"))));
   };
 
-  // R9 §11 — تحقق من وجود قالب العقد الحكومي عند التحميل
-  const [govContractTplExists, setGovContractTplExists] = useState<boolean | null>(null);
-  useEffect(() => {
-    api.get("/templates/exists", { params: { codes: "GOV-CONTRACT-RENEWAL" } })
-      .then((r) => setGovContractTplExists(!!r.data["GOV-CONTRACT-RENEWAL"]))
-      .catch(() => setGovContractTplExists(null));  // لا نُظهر التحذير عند فشل الاتصال
-  }, []);
+  // R9 §11 (أُلغي 2026-09-22): القالب لم يعد شرًطا للتوليد (GC-01) —
+  // زر توليد العقد الحكومي متاح دائًما، والحقل الناقص يُطبع فارًغا.
   useEffect(() => { load(); }, []);
 
   const act = async (fn: () => Promise<any>, ok?: string) => {
@@ -120,6 +117,12 @@ export default function Renewals() {
     const ext = r.data.format || "pdf";
     await downloadFile(`/documents/${r.data.document_id}/download`, {},
                        `${t("rnw_gov_file")}-${r.data.reference_no || sel.id}.${ext}`.replace(/\//g, "-"));
+    // 2026-09-22 — العقد يصدر دائًما؛ لو فيه خانات طُبعت فارغة، نُبقي المندوب
+    // على علم بدل أن يكتشفها من الورقة نفسها فقط (تنبيه لا حجب). act() يكتب
+    // فوق msg بعد fn()، فنعيد النص هنا كي لا يضيع.
+    const missing: string[] = r.data.missing_fields || [];
+    setGovMissingNote(missing.length
+      ? `${t("rnw_gov_missing_note")}: ${missing.join("، ")}` : "");
   }, t("rnw_gov_generated"));
 
   // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)
@@ -382,25 +385,23 @@ export default function Renewals() {
                     R8 §3 — عقد الشركة اختياري في التجديد (الفارق عن التعيين). العقد الحكومي فقط الإلزامي. */}
                 {isPro && sel.status === "awaiting_contracts" && (
                   <>
-                    {govContractTplExists === false && (
-                      <div className="err" style={{ width: "100%", fontSize: 12 }}>
-                        {t("rnw_tpl_missing_1")} <code>GOV-CONTRACT-RENEWAL</code> {t("rnw_tpl_missing_2")}{" "}
-                        <b>{t("rnw_tpl_missing_3")}</b> {t("rnw_tpl_missing_4")}
-                      </div>
-                    )}
                     <button onClick={generateGovContract}
-                            disabled={govContractTplExists === false}
-                            style={{
-                              background: govContractTplExists === false ? "#999" : "#0e5a54",
-                              color: "white",
-                              cursor: govContractTplExists === false ? "not-allowed" : "pointer",
-                            }}>
+                            style={{ background: "#0e5a54", color: "white", cursor: "pointer" }}>
                       {t("rnw_generate_gov")}
                     </button>
                     {!hasDoc("renewal_contract_gov") && <UploadBtn docType="renewal_contract_gov" label={t("rnw_upload_contract_gov")} />}
                     <span className="muted" style={{ fontSize: 11 }}>
                       {t("rnw_internal_optional")}
                     </span>
+                    {govMissingNote && (
+                      <div style={{
+                        width: "100%", fontSize: 12, color: "var(--warning)",
+                        background: "var(--warning-bg)", padding: "9px 12px",
+                        borderRadius: 10, marginTop: 6,
+                      }}>
+                        ⚠ {govMissingNote}
+                      </div>
+                    )}
                   </>
                 )}
                 {/* الموظف: النسخ الموقّعة — R9 §1: الحكومي فقط إلزامي */}

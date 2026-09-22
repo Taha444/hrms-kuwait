@@ -19,8 +19,9 @@
   يُفعل بالورقة.
 - وما عدا ذلك يُطبع كما في الملف الرسمي — ومنه «30 يومًا» في البند السابع.
 
-**وحقلٌ ناقص يوقف التوليد ويسمّيه**: خانةٌ فارغة في ورقة تُقدَّم للهيئة
-إقرارٌ مطبوع بأن البيانات ناقصة.
+**وحقلٌ ناقص** (تعديل 2026-09-22): لم يعد يوقف التوليد — الخانة تُطبع
+فارغة والعقد يصدر، والموظف يملؤها يدويًا. استكمال البيانات في النظام
+مهمة لاحقة (ترقية)، لا شرط لإصدار الورقة.
 """
 from __future__ import annotations
 
@@ -251,17 +252,24 @@ def fill(values: dict) -> bytes:
 
 
 def generate(ctx: dict) -> tuple[bytes, str, str, list[str], dict]:
-    """يعيد ``(bytes, ext, mime, missing, snapshot)`` — بنفس عقد المولّد السابق."""
+    """يعيد ``(bytes, ext, mime, missing, snapshot)``.
+
+    **تعديل 2026-09-22 (بطلب صريح، يعدّل قرار 2026-09-17 أعلاه):** الحقل
+    الناقص لم يعد يوقف التوليد — ``fill()`` أصًلا يرسم الخانة فارغة إن
+    غاب مفتاحها (انظر ``if text:`` في الحلقة أعلاه)، فالتوليد يمضي دائًما
+    ويعود العقد كما هو، والناقص يُعاد في ``missing`` كتنبيه معلوماتي فقط
+    يعرضه المستدعي دون أن يمنع به الطباعة. استكمال البيانات صار مهمة
+    لاحقة (ترقية) لا شرط توليد.
+    """
     values = values_from(ctx)
     missing = missing_fields(values)
-    if missing:
-        return (b"", "pdf", "application/pdf", missing, {})
     content = fill(values)
     snapshot = {k: v for k, v in values.items() if not k.startswith("_")}
     snapshot["contract_term"] = "definite" if values["_definite"] else "indefinite"
     snapshot["form_sha256"] = ASSET_SHA256
     snapshot["wage_source"] = ctx.get("wage_source") or ""
-    return (content, "pdf", "application/pdf", [], snapshot)
+    snapshot["missing_fields"] = missing
+    return (content, "pdf", "application/pdf", missing, snapshot)
 
 
 def environment_report() -> dict:

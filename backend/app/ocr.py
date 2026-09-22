@@ -20,6 +20,37 @@ from typing import Protocol
 _TD3_LINE = 44
 
 
+def _configure_tesseract() -> None:
+    """يضبط مسار Tesseract صراحًة بدل الاعتماد على PATH وحده.
+
+    التثبيت الرسمي على ويندوز لا يضيف نفسه دائًما لـPATH فور التثبيت
+    (والعمليات القائمة أصًلا لا ترى تحديث PATH إلا بعد إعادة تشغيلها)،
+    فنتحقّق من TESSERACT_CMD / TESSDATA_PREFIX أوًلا، ثم من مسار
+    التثبيت الافتراضي على ويندوز، قبل أن نترك pytesseract يبحث في PATH.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        return
+
+    cmd = os.environ.get("TESSERACT_CMD")
+    if not cmd:
+        default_win = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.exists(default_win):
+            cmd = default_win
+    if cmd and os.path.exists(cmd):
+        pytesseract.pytesseract.tesseract_cmd = cmd
+
+    if not os.environ.get("TESSDATA_PREFIX"):
+        default_tessdata = os.path.join(
+            os.environ.get("LOCALAPPDATA", ""), "tessdata")
+        if os.path.isdir(default_tessdata):
+            os.environ["TESSDATA_PREFIX"] = default_tessdata
+
+
+_configure_tesseract()
+
+
 def _check_digit(data: str) -> int:
     """رقم الضبط وفق معيار ICAO 9303 (أوزان 7,3,1)."""
     weights = [7, 3, 1]

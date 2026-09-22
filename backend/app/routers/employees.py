@@ -1788,12 +1788,9 @@ def _issue_gov_contract(db: Session, user: models.User, request: Request,
     ctx.update(gov_contract_data.contract_context(db, emp, company))
 
     content_bytes, ext, mime, missing, snap = gov_contract_form.generate(ctx)
-    # GC-08 — خانٌة فارغة في ورقة تُقدَّم للهيئة إقراٌر مطبوع بأن البيانات
-    # ناقصة. فيُسمّى الناقصُ ولا يُولَّد.
-    if missing:
-        raise HTTPException(status_code=400, detail=(
-            "تعذّر توليد العقد الحكومي — بيانات ناقصة في ملف الموظف أو الشركة: "
-            + "، ".join(missing) + ". أكملها ثم أعد التوليد."))
+    # GC-08 (عُدّلت 2026-09-22، بطلب صريح): لا رفض بعد اليوم لحقل ناقص —
+    # الخانة تُطبع فارغة ويملؤها الموظف يدويًا. ``missing`` يبقى معلوماتيًا
+    # فقط، يُسجَّل في التدقيق.
 
     tpl = db.scalar(select(models.DocumentTemplate).where(
         models.DocumentTemplate.code == "GOV-CONTRACT-HIRE",
@@ -1827,10 +1824,11 @@ def _issue_gov_contract(db: Session, user: models.User, request: Request,
     )
     db.add(doc)
     db.flush()
+    missing_note = f" — حقول فارغة: {'، '.join(missing)}" if missing else ""
     audit(db, user, "generate_hire_contract", "employee", emp.id,
           detail=(f"GOV-CONTRACT-HIRE → {reference_no} (pdf, "
                   f"{snap.get('contract_term')}, أجر {snap.get('wage')} "
-                  f"من {snap.get('wage_source') or '-'})"),
+                  f"من {snap.get('wage_source') or '-'}){missing_note}"),
           request=request, company_id=emp.company_id)
     # ``format=pdf`` يُنزّل الورقة، وغيرُه يعيد بياناتِ الإصدار (المرجع
     # والبصمة) — وهو ما كان يعود به هذا المسار قبل النموذج الرسمي.
@@ -1838,7 +1836,7 @@ def _issue_gov_contract(db: Session, user: models.User, request: Request,
         return file_response(fpath, filename=f"{safe_ref}.pdf", media_type=mime)
     return {"ok": True, "document_id": doc.id, "reference_no": reference_no,
             "checksum_sha256": checksum, "template_code": "GOV-CONTRACT-HIRE",
-            "contract_term": snap.get("contract_term")}
+            "contract_term": snap.get("contract_term"), "missing_fields": missing}
 
 
 @router.post("/{emp_id}/gov-contract/generate")

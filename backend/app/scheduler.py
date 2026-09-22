@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from .database import SessionLocal
 from .notifications import daily_scan, digest_scan, sla_scan
 from .clock import today as kuwait_today
+from .job_lock import daily_key, hourly_key, run_once
 
 logger = logging.getLogger("hrms.scheduler")
 _scheduler: BackgroundScheduler | None = None
@@ -130,7 +131,6 @@ def _run_digest():
 def _run_backup():
     """النسخة الليلية خارج الخادم — قرار المالك (2026-09-19). لا تُجدوَل بلا إعداد."""
     from .backup import BackupConfig, run_backup
-    from .job_lock import daily_key, run_once
 
     cfg = BackupConfig.from_env()
     if cfg is None:
