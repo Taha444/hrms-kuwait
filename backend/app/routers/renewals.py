@@ -113,9 +113,11 @@ _approved_wage = gov_contract_data.approved_wage
 
 def _gov_contract_context(db: Session, emp: models.Employee,
                           company: models.Company | None,
-                          rn: models.ResidencyRenewal) -> dict:
+                          rn: models.ResidencyRenewal,
+                          representative_id: int | None = None) -> dict:
     start = rn.new_expiry_date if getattr(rn, "new_expiry_date", None) else None
-    return gov_contract_data.contract_context(db, emp, company, start_date=start)
+    return gov_contract_data.contract_context(db, emp, company, start_date=start,
+                                              representative_id=representative_id)
 
 
 def _generated_contract_doc(db, rn):
@@ -1182,6 +1184,7 @@ def hr_verify_renewal(rid: int, request: Request,
 @router.post("/{rid}/gov-contract/generate")
 def generate_gov_contract(rid: int, request: Request,
                           format: str = "html",
+                          representative_id: int | None = None,
                           user: models.User = Depends(get_current_user),
                           db: Session = Depends(get_db)):
     """R8 §3 — يُولّد العقد الحكومي لطلب تجديد. يستخدم template بكود
@@ -1240,7 +1243,7 @@ def generate_gov_contract(rid: int, request: Request,
         "old_permit_expiry": (permit.expiry_date.isoformat() if permit and permit.expiry_date else ""),
         "company_file_number": (company.file_number if company else "") or "",
     })
-    ctx.update(_gov_contract_context(db, emp, company, rn))
+    ctx.update(_gov_contract_context(db, emp, company, rn, representative_id=representative_id))
     # RNW-06 (عُدّلت 2026-09-22، بطلب صريح): لا رفض بعد اليوم لحقل ناقص —
     # العقد يُطبع بالخانة فارغة ويملؤها الموظف يدويًا، واستكمال البيانات
     # في النظام صار مهمة لاحقة (ترقية) لا شرط توليد. ``missing`` يبقى

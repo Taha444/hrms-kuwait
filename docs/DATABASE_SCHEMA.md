@@ -3,7 +3,7 @@
 > **مولَّد من النماذج** بـ`backend/scripts/db_schema_doc.py` — لا يُحرَّر باليد.
 > والترحيلات في `backend/alembic/versions`؛ الإنتاج على PostgreSQL والاختبار على SQLite.
 
-عدد الجداول: **52**.
+عدد الجداول: **53**.
 
 ## الفهرس
 
@@ -18,6 +18,7 @@
 - [`branches`](#branches) — فرُع الشركة: عنوانه ومحافظته وإحداثياته ونطاق السياج ومفتاح شاشة الحضور.
 - [`break_glass_sessions`](#break-glass-sessions) — V2.2 §13.5 (AC-05) — نافذة تجاوز طارئة لـSuper Admin، موقّتة وموثّقة.
 - [`companies`](#companies) — الشركة (صاحب العمل): بياناتها القانونية وسجلّها التجاري وممثّلها، وإعدادات نهاية الخدمة والإجازة.
+- [`company_representatives`](#company-representatives) — GC-11 — ممثّل مفوَّض بالتوقيع عن الشركة، قد يتعدّد لشركة واحدة.
 - [`consumed_tokens`](#consumed-tokens) — منع إعادة استخدام رموز QR وتذاكر التسجيل (anti-replay).
 - [`deductions`](#deductions) — خصٌم من أجر الموظف بقرار (أو قسط قرض) — يُحتسب في مسيّر شهره.
 - [`departments`](#departments) — الإدارة/القسم داخل فرع (الهرم: شركة ← فرع ← إدارة ← موظفون).
@@ -279,6 +280,20 @@
 | `created_at` | DATETIME |  |  |  |
 
 قيود التفرّد: (`commercial_reg`)
+
+## company_representatives
+
+النموذج: `models.CompanyRepresentative` — GC-11 — ممثّل مفوَّض بالتوقيع عن الشركة، قد يتعدّد لشركة واحدة.
+
+| العمود | النوع | فارغ؟ | مفتاح | يشير إلى |
+|---|---|:-:|:-:|---|
+| `id` | INTEGER |  | PK |  |
+| `company_id` | INTEGER |  |  | `companies.id` |
+| `name` | VARCHAR(160) |  |  |  |
+| `name_en` | VARCHAR(160) | ✓ |  |  |
+| `civil_id` | VARCHAR(20) | ✓ |  |  |
+| `status` | VARCHAR(20) |  |  |  |
+| `created_at` | DATETIME |  |  |  |
 
 ## consumed_tokens
 

@@ -109,6 +109,7 @@ export const screens: Record<string, { ar: string; en: string }> = {
   fch_by: { ar: "المُنفِّذ", en: "By" },
   rnw_st_pending_hr_verify: { ar: "بانتظار تحقق HR", en: "Awaiting HR verification" },
   rnw_gov_file: { ar: "العقد-الحكومي", en: "government-contract" },
+  rnw_gov_representative: { ar: "الطرف الأول (ممثّل الشركة):", en: "First Party (company representative):" },
   rnw_gov_generated: { ar: "✓ تم توليد العقد الحكومي بنموذج الهيئة — اطبعه ووقّعه ثم ارفع النسخة الموقّعة", en: "✓ Government contract generated on the authority's form — print, sign and upload the signed copy" },
   rnw_finalize_required: { ar: "الرقم المرجعي + رقم الإقامة الجديد + تاريخ الانتهاء إلزامية", en: "Reference number, new residency number and expiry date are required" },
   rnw_finalized: { ar: "✓ تم تسجيل بيانات المعاملة الحكومية", en: "✓ Government transaction details recorded" },

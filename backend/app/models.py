@@ -72,6 +72,26 @@ class Company(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class CompanyRepresentative(Base):
+    """GC-11 — ممثّل مفوَّض بالتوقيع عن الشركة، قد يتعدّد لشركة واحدة.
+
+    الحقلان الفرديان على ``Company`` (representative_name/civil_id) افترضا
+    ممثلا واحدا لكل شركة. وشركات هذه المجموعة يمثّلها شريكان أو أكثر بحسب
+    من هو حاضر وقت التوقيع — أحدهم قد يغيب عن معاملة بعينها والآخر لا.
+    فصار المصدر جدولا لا عمودا، ومن يولّد العقد يختار "الطرف الأول"
+    لهذه النسخة بعينها بدل قيمة واحدة مفروضة على الجميع.
+    """
+    __tablename__ = "company_representatives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    name_en: Mapped[str | None] = mapped_column(String(160))
+    civil_id: Mapped[str | None] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active/inactive
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class User(Base):
     """حساُب دخول لشخٍص واحد: دوره وشركته وربطه بملف موظف وحالة التحقق الثنائي."""
     __tablename__ = "users"

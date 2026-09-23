@@ -1798,7 +1798,8 @@ def _generate_hire_contract(db: Session, user: models.User, request: Request,
 
 
 def _issue_gov_contract(db: Session, user: models.User, request: Request,
-                        emp: models.Employee, format: str = "pdf"):
+                        emp: models.Employee, format: str = "pdf",
+                        representative_id: int | None = None):
     """يملأ نموذج الهيئة ويحفظه مستندًا صادرًا على الموظف."""
     import hashlib
 
@@ -1807,7 +1808,8 @@ def _issue_gov_contract(db: Session, user: models.User, request: Request,
 
     company = db.get(models.Company, emp.company_id)
     ctx = _resolve_authoritative_data(db, emp, extras={})
-    ctx.update(gov_contract_data.contract_context(db, emp, company))
+    ctx.update(gov_contract_data.contract_context(db, emp, company,
+                                                  representative_id=representative_id))
 
     content_bytes, ext, mime, missing, snap = gov_contract_form.generate(ctx)
     # GC-08 (عُدّلت 2026-09-22، بطلب صريح): لا رفض بعد اليوم لحقل ناقص —
@@ -1864,6 +1866,7 @@ def _issue_gov_contract(db: Session, user: models.User, request: Request,
 @router.post("/{emp_id}/gov-contract/generate")
 def generate_employee_gov_contract(emp_id: int, request: Request,
                                    format: str = "json",
+                                   representative_id: int | None = None,
                                    user: models.User = Depends(require_perm("upload_documents")),
                                    db: Session = Depends(get_db)):
     """العقد الحكومي للتعيين — **من نموذج الهيئة نفسه** (قرار المالك 2026-09-17).
@@ -1874,7 +1877,8 @@ def generate_employee_gov_contract(emp_id: int, request: Request,
     (``gov_contract_data``).
     """
     emp = _get_emp(db, user, emp_id)
-    result = _issue_gov_contract(db, user, request, emp, format=format)
+    result = _issue_gov_contract(db, user, request, emp, format=format,
+                                 representative_id=representative_id)
     db.commit()
     return result
 

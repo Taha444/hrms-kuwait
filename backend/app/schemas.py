@@ -122,6 +122,15 @@ class CompanyOut(CompanyIn):
     status: str
 
 
+class CompanyRepresentativeOut(BaseModel):
+    """GC-11 — عنصر واحد من قائمة ممثّلي الشركة، لاختيار "الطرف الأول" وقت توليد العقد."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    name_en: str | None = None
+    civil_id: str | None = None
+
+
 # ----------------------------- المستخدمون -----------------------------
 
 class UserIn(BaseModel):

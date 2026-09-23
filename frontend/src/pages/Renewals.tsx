@@ -28,6 +28,15 @@ export default function Renewals() {
   const [rejectReason, setRejectReason] = useState("");
   // 2026-09-22 — تنبيه غير حاجب: خانات طُبعت فارغة في آخر عقد حكومي مولَّد.
   const [govMissingNote, setGovMissingNote] = useState("");
+  // GC-11 — ممثّلو شركة الموظف قد يتعدّدون؛ المندوب يختار "الطرف الأول" لهذه المعاملة بعينها.
+  const [representatives, setRepresentatives] = useState<any[]>([]);
+  const [representativeId, setRepresentativeId] = useState<number | "">("");
+  useEffect(() => {
+    if (!sel?.company_id) { setRepresentatives([]); setRepresentativeId(""); return; }
+    api.get(`/companies/${sel.company_id}/representatives`)
+      .then((r) => { setRepresentatives(r.data); setRepresentativeId(r.data[0]?.id ?? ""); })
+      .catch(() => setRepresentatives([]));
+  }, [sel?.company_id]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isEmp = !!user?.employee_id;
@@ -113,7 +122,8 @@ export default function Renewals() {
   // الثلاث)، لا صفحة HTML تُبنى في المتصفح. فيُنزَّل كما وُلِّد: أي إعادة
   // بناء له في نافذة طباعة تفقد الشعار والتخطيط — وهي المشكلة الأصلية.
   const generateGovContract = () => act(async () => {
-    const r = await api.post(`/renewals/${sel.id}/gov-contract/generate`);
+    const params = representativeId ? { representative_id: representativeId } : {};
+    const r = await api.post(`/renewals/${sel.id}/gov-contract/generate`, null, { params });
     const ext = r.data.format || "pdf";
     await downloadFile(`/documents/${r.data.document_id}/download`, {},
                        `${t("rnw_gov_file")}-${r.data.reference_no || sel.id}.${ext}`.replace(/\//g, "-"));
@@ -385,6 +395,17 @@ export default function Renewals() {
                     R8 §3 — عقد الشركة اختياري في التجديد (الفارق عن التعيين). العقد الحكومي فقط الإلزامي. */}
                 {isPro && sel.status === "awaiting_contracts" && (
                   <>
+                    {representatives.length > 1 && (
+                      <div className="row" style={{ gap: 8, alignItems: "center", width: "100%" }}>
+                        <label style={{ fontSize: 12 }}>{t("rnw_gov_representative")}</label>
+                        <select value={representativeId}
+                                onChange={(e) => setRepresentativeId(Number(e.target.value))}>
+                          {representatives.map((r) => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <button onClick={generateGovContract}
                             style={{ background: "#0e5a54", color: "white", cursor: "pointer" }}>
                       {t("rnw_generate_gov")}

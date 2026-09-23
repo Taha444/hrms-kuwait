@@ -48,13 +48,46 @@ def approved_wage(db: Session, emp: models.Employee) -> tuple[str, str]:
     return ("" if emp.basic_salary is None else str(emp.basic_salary)), "employee_master"
 
 
+def resolve_representative(db: Session, company: models.Company | None,
+                           representative_id: int | None) -> tuple[str, str, str]:
+    """GC-11 — "الطرف الأول" لنسخة عقد بعينها، لا عمود ثابت على الشركة.
+
+    شركات هذه المجموعة يمثّلها أكثر من شريك، وأيّهم حاضر وقت التوقيع
+    يتفاوت من معاملة لأخرى — فمن يولّد العقد يختار من ``company_representatives``.
+    ``representative_id`` غير المطابق لشركة الموظف (خطأ إدخال أو تلاعب في
+    الطلب) يُتجاهَل بصمت ويقع الاختيار على الافتراضي، لا أن يُطبع في عقد
+    شركة اسم ممثّل شركة أخرى. وبلا اختيار: أول ممثّل نشط، ثم الحقول
+    الفردية القديمة على ``Company`` (شركات لم تُدخَل لها بعد صفوف ممثّلين).
+    """
+    if company is None:
+        return "", "", ""
+    rep = None
+    if representative_id:
+        rep = db.get(models.CompanyRepresentative, representative_id)
+        if rep is not None and (rep.company_id != company.id or rep.status != "active"):
+            rep = None
+    if rep is None:
+        rep = db.scalar(select(models.CompanyRepresentative).where(
+            models.CompanyRepresentative.company_id == company.id,
+            models.CompanyRepresentative.status == "active",
+        ).order_by(models.CompanyRepresentative.id))
+    if rep is not None:
+        return rep.name, (rep.name_en or ""), (rep.civil_id or "")
+    return (company.representative_name or "", company.representative_name_en or "",
+            company.representative_civil_id or "")
+
+
 def contract_context(db: Session, emp: models.Employee,
                      company: models.Company | None,
-                     start_date: date | None = None) -> dict:
+                     start_date: date | None = None,
+                     representative_id: int | None = None) -> dict:
     """حقولُ النموذج الرسمي التي لا يوفّرها سياق القوالب العام.
 
     كلها من مصدر السلطة في القاعدة، ولا شيء منها من payload الطلب: العقد
     يُقدَّم لجهة رسمية، ومن يستطيع تحرير أجره في نموذج يستطيع تزويره.
+    الاستثناء الوحيد ``representative_id``: ليس بيانا يُملأ بل اختيارا بين
+    خيارات مصدرها القاعدة نفسها (GC-11) — ``resolve_representative`` يتحقق
+    من مطابقته لشركة الموظف قبل استخدامه.
     """
     from .clock import today as kuwait_today
 
@@ -77,11 +110,12 @@ def contract_context(db: Session, emp: models.Employee,
     today = kuwait_today()
     start = start_date or emp.hire_date or today
     wage, wage_source = approved_wage(db, emp)
+    rep_name, rep_name_en, rep_civil_id = resolve_representative(db, company, representative_id)
     return {
         "residence_no": (residence.number if residence else "") or "",
-        "company_rep_name": (company.representative_name if company else "") or "",
-        "company_rep_name_en": (company.representative_name_en if company else "") or "",
-        "company_civil_id": (company.representative_civil_id if company else "") or "",
+        "company_rep_name": rep_name,
+        "company_rep_name_en": rep_name_en,
+        "company_civil_id": rep_civil_id,
         "labour_dept": (branch.governorate if branch else "") or "",
         "labour_dept_en": (branch.governorate_en if branch else "") or "",
         "wage": wage,

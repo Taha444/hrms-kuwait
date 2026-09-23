@@ -102,6 +102,23 @@ def update_company(company_id: int, data: schemas.CompanyUpdate, request: Reques
     return company
 
 
+@router.get("/{company_id}/representatives", response_model=list[schemas.CompanyRepresentativeOut])
+def list_representatives(company_id: int, user: models.User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    """GC-11 — قائمة الممثّلين المفوَّضين بالتوقيع عن الشركة، لاختيار "الطرف
+    الأول" وقت توليد العقد الحكومي. نفس نطاق ``list_companies``: شركته وحدها
+    لغير العابرين — رقمها المدني بيانٌ شخصي يُطبع في مستند رسمي."""
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    if user.role not in CROSS_COMPANY_ROLES and user.company_id != company_id:
+        raise HTTPException(status_code=403, detail="لا تملك الاطلاع على ممثّلي شركة أخرى")
+    q = select(models.CompanyRepresentative).where(
+        models.CompanyRepresentative.company_id == company_id,
+        models.CompanyRepresentative.status == "active",
+    ).order_by(models.CompanyRepresentative.id)
+    return list(db.scalars(q).all())
+
+
 @router.post("/{company_id}/status")
 def set_status(company_id: int, status: str, request: Request,
                user: models.User = Depends(require_owner_or_admin),

@@ -257,6 +257,16 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
       .then((r) => setHireTplExists(r.data))
       .catch(() => setHireTplExists(null));
   }, []);
+  // GC-11 — ممثّلو الشركة قد يتعدّدون (شريك يغيب عن معاملة وآخر لا)؛
+  // من يولّد العقد يختار "الطرف الأول" لهذه النسخة بعينها.
+  const [representatives, setRepresentatives] = useState<any[]>([]);
+  const [representativeId, setRepresentativeId] = useState<number | "">("");
+  useEffect(() => {
+    if (!savedEmp?.company_id) return;
+    api.get(`/companies/${savedEmp.company_id}/representatives`)
+      .then((r) => { setRepresentatives(r.data); setRepresentativeId(r.data[0]?.id ?? ""); })
+      .catch(() => setRepresentatives([]));
+  }, [savedEmp?.company_id]);
   const generateHireContract = async (kind: "gov" | "company", fmt: "html" | "pdf" = "html") => {
     let format = fmt;
     if (!savedEmp?.id) return;
@@ -265,9 +275,10 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
       const endpoint = kind === "gov" ? "gov-contract/generate" : "company-contract/generate";
       // العقدُ الحكوميُّ ورقُة الهيئة نفسها: PDF دائًما.
       if (kind === "gov") format = "pdf";
+      const repParam = (kind === "gov" && representativeId) ? `&representative_id=${representativeId}` : "";
       if (format === "pdf") {
         // R9 §5 — نطلب PDF ونحفظه كملف
-        const r = await api.post(`/employees/${savedEmp.id}/${endpoint}?format=pdf`, null,
+        const r = await api.post(`/employees/${savedEmp.id}/${endpoint}?format=pdf${repParam}`, null,
                                 { responseType: "blob" });
         const url = URL.createObjectURL(r.data);
         window.open(url, "_blank");
@@ -794,6 +805,20 @@ export default function EmployeeOnboarding({ branches, departments, onDone, onCa
                              : "قالب/قوالب غير موجودة — التوليد التلقائي معطّل. اطلب من الإدارة إنشائها في /templates."}
                     </div>
                   )
+                )}
+                {representatives.length > 1 && (
+                  <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 10 }}>
+                    <label style={{ fontSize: 12 }}>
+                      {isEn ? "First Party (representative) for the government contract:"
+                            : "الطرف الأول (ممثّل الشركة) في العقد الحكومي:"}
+                    </label>
+                    <select value={representativeId}
+                            onChange={(e) => setRepresentativeId(Number(e.target.value))}>
+                      {representatives.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => generateHireContract("company", "html")}
