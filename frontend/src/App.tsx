@@ -513,11 +513,20 @@ function NotFound() {
 }
 
 function Protected({ children, need }: { children: React.ReactNode; need?: boolean }) {
-  const { user, loading, activeCompanyId } = useAuth();
+  const { user, loading, activeCompanyId, impersonatingName } = useAuth();
   const { t } = useI18n();
+  const loc = useLocation();
   if (loading) return <div className="auth-wrap" style={{ color: "#fff" }}>{t("loading")}</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (user.must_change_password) return <Navigate to="/change-password" replace />;
+  // SW-001 — التحقق الثنائي **إلزاميٌّ** لأدوار الإدارة والموارد البشرية: الخادم يحسب
+  // ``twofa_required`` ولا يمنع الدخول (وإلا تعذّر التفعيل نفسه)، فالواجهة هي التي
+  // تحصر صاحبه في صفحة التفعيل حتى يُتمّه — كما تفعل مع تغيير كلمة المرور. وجلسةُ
+  // الانتحال لا تُحصَر: التفعيل شأن صاحب الحساب الحقيقي لا المُنتحِل.
+  if (user.twofa_required && !user.twofa_enabled && !impersonatingName
+      && loc.pathname !== "/two-factor" && loc.pathname !== "/change-password") {
+    return <Navigate to="/two-factor" replace />;
+  }
   // الإدارة العليا/المالك يجب أن يختاروا شركة أولًا
   if (user.is_cross_company && !activeCompanyId) return <Navigate to="/select-company" replace />;
   // حارس صلاحية المسار: نفس قاعدة إظهار الرابط في القائمة الجانبية (لا يفتح المسار مباشرة عبر الرابط)

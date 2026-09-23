@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { errMsg } from "../api";
 import { useI18n } from "../i18n";
+import { useAuth } from "../auth";
 import { fmtKuwaitDateTime } from "../utils/datetime";
 
 // V2.2 §9 — نصوص ثنائية اللغة (dictionary صغير محلي للـpage)
@@ -120,6 +121,7 @@ type Enrollment = {
 
 export default function TwoFactor() {
   const { lang } = useI18n();
+  const { user: me, refreshUser } = useAuth();
   const t = L[lang === "en" ? "en" : "ar"];
   const [status, setStatus] = useState<Status | null>(null);
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
@@ -155,6 +157,7 @@ export default function TwoFactor() {
       setEnrollment(null);
       setCode("");
       await loadStatus();
+      await refreshUser();   // وإلا بقي الحارس يرى «غير مفعّل» ويعيده إلى هنا
     } catch (e: any) { setErr(errMsg(e, t.err_code_invalid)); }
     finally { setBusy(false); }
   };
@@ -181,6 +184,7 @@ export default function TwoFactor() {
       setMsg(t.disabled);
       setPassword("");
       await loadStatus();
+      await refreshUser();
     } catch (e: any) { setErr(errMsg(e, t.err_disable)); }
     finally { setBusy(false); }
   };
@@ -195,6 +199,10 @@ export default function TwoFactor() {
           <h2 id="tfa-title">{t.two_factor}</h2>
           <div className="sub">
             {status.enabled ? t.enabled_desc
+              : me?.twofa_required
+                ? (lang === "en"
+                    ? "2FA is REQUIRED for your role — set it up now to continue using the system."
+                    : "التحقق الثنائي إلزامي لدورك — فعّله الآن لتتابع استخدام النظام.")
               : status.sensitive_role
                 ? (lang === "en"
                     ? `Your role (${status.role || ""}) handles sensitive data — 2FA is strongly recommended.`

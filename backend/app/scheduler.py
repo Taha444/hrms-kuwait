@@ -53,6 +53,32 @@ def _alert_job_failure(job: str, exc: Exception) -> None:
 
 
 
+def _resolve_job_failures(db, job: str) -> int:
+    """**نجاحُ المهمة يُغلق تنبيهات فشلها.** قيس على الإنتاج (2026-09-23): زال عطلُ
+    ``NameError`` وبقيت 62 مهمةً «حرجة» مفتوحة على لوحة الإدارة، تدفن كلَّ مهمةٍ
+    حقيقية وتوحي أن النظام ما زال معطّلًا. فالتنبيه يُقفل عند أول جولةٍ ناجحة لنفس
+    المهمة (مفتاحُه ``job_fail:<job>:…``)، ولا يبقى إلا فشلٌ لم يُعالَج.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from . import models
+
+    rows = db.scalars(select(models.Task).where(
+        models.Task.type == "job_failure",
+        models.Task.status.in_(("open", "in_progress")),
+        models.Task.dedup_key.like(f"job_fail:{job}:%"))).all()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for t in rows:
+        t.status = "done"
+        t.completed_at = now
+    if rows:
+        db.commit()
+        logger.info("%s: أُغلق %d تنبيهُ فشلٍ قديم بعد نجاح الجولة", job, len(rows))
+    return len(rows)
+
+
 def _run_daily_scan():
     db = SessionLocal()
     try:
@@ -84,6 +110,7 @@ def _run_daily_scan():
             due = apply_due_effects(db)
             if due["applied"] or due["failed"]:
                 logger.info("apply_due_effects: %s", due)
+            _resolve_job_failures(db, "daily_scan")
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل المسح اليومي")
         _alert_job_failure("daily_scan", exc)
@@ -103,6 +130,7 @@ def _run_sla_scan():
             result = sla_scan(db)
             if result.get("escalated"):
                 logger.info("sla_scan: %s", result)
+            _resolve_job_failures(db, "sla_scan")
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل مسح SLA")
         _alert_job_failure("sla_scan", exc)
@@ -121,6 +149,7 @@ def _run_digest():
                 return
             result = digest_scan(db)
             logger.info("digest_scan: %s", result)
+            _resolve_job_failures(db, "digest_scan")
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل digest اليومي")
         _alert_job_failure("digest_scan", exc)
@@ -142,6 +171,7 @@ def _run_backup():
                 return
             result = run_backup(cfg)
             logger.info("backup: %s", result)
+            _resolve_job_failures(db, "backup")
     except Exception as exc:  # pragma: no cover
         logger.exception("فشل النسخ الاحتياطي")
         _alert_job_failure("backup", exc)
