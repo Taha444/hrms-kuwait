@@ -42,8 +42,23 @@ def _parse_period(period: str) -> tuple[int, int]:
         raise HTTPException(status_code=400, detail="صيغة الفترة يجب أن تكون YYYY-MM")
 
 
+def _refuse_other_company(cid: int | None, requested: int | None) -> None:
+    """**شركةٌ صريحة تخالف شركة الجلسة تُرفَض ولا تُستبدَل بصمت** (SW-009، 2026-09-24).
+
+    غير الإدارة العليا مقيَّدٌ بشركة جلسته أيًّا كان ما طلب — وهذا حاجزٌ مقصود. لكنّ
+    الردّ 200 ببيانات شركةٍ أخرى لمن طلب شركةً بعينها يُضلّله في الرواتب تحديدًا:
+    محاسبٌ عضوٌ في ثلاث شركات طلب رواتب الرابعة فتلقّى رواتب الأولى بلا تنبيه. فالطلب
+    الصريح المخالف يُرفَض ويُقال له كيف يبدّل الشركة.
+    """
+    if requested and cid is not None and int(requested) != int(cid):
+        raise HTTPException(status_code=403, detail=(
+            f"الشركة المطلوبة (#{requested}) ليست شركة جلستك (#{cid}) — بدّل الشركة أولًا "
+            "ثم أعد الطلب."))
+
+
 def _company(user: models.User, company_id: int | None) -> int:
     cid = scope_company_id(user, company_id)
+    _refuse_other_company(cid, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="يجب تحديد الشركة لتشغيل المسيّر")
     return cid
@@ -383,6 +398,7 @@ def list_runs(company_id: int | None = None,
               user: models.User = Depends(require_perm("view_payroll")),
               db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
+    _refuse_other_company(cid, company_id)
     q = select(models.PayrollRun)
     if cid is not None:
         q = q.where(models.PayrollRun.company_id == cid)
