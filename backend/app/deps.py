@@ -196,7 +196,19 @@ def get_current_user(
 
     # R9 §16 — مستخدم متعدد الشركات: طبّق active_company_id من JWT
     # transiently على user.company_id + user.employee_id لكل هذا الطلب.
-    # لا يُحفظ في DB — بس يُقلّد شركة/موظف المستخدم لأغراض العزل.
+    #
+    # BUG (اكتُشف 2026-09-24 باختبار حي لحسابات حقيقية): تعليق «لا يُحفظ
+    # في DB» كان خطأً — ``user.company_id = ...`` كتابة عادية على كائن
+    # SQLAlchemy مُتتبَّع، تُعلَّم dirty. وأي commit لاحق في نفس الطلب
+    # (``enforce_idle_timeout`` يكتب ``last_activity_at`` على أغلب
+    # الطلبات) يُسرّب الشركة النشطة اللحظية فتصير **دائمة** في صفّ
+    # المستخدم. ورُصد فعليًا: مندوب على خمس شركات ومديرٌ على شركتين
+    # انتهى بهما ``company_id`` مثبَّتًا على آخر شركة فتحاها — أي عزلٌ
+    # لاحق يعتمد القيمة المخزَّنة (بدل مطالبة الطلب بـactive_company_id)
+    # كان سينكسر بصمت.
+    #
+    # ``set_committed_value`` يضبط القيمة في الكائن فقط دون تعليمها dirty
+    # — يقلّد شركة/موظف المستخدم لهذا الطلب فعًلا بلا أي احتمال تسرّب.
     if getattr(user, "is_cross_company", False):
         active_cid = payload.get("active_company_id")
         if active_cid:
@@ -205,9 +217,9 @@ def get_current_user(
                 models.UserCompanyLink.company_id == int(active_cid),
             ))
             if link:
-                # لا نلمس الـpersisted rows — تعديل ذاكرة الطلب فقط
-                user.company_id = link.company_id
-                user.employee_id = link.employee_id
+                from sqlalchemy.orm.attributes import set_committed_value
+                set_committed_value(user, "company_id", link.company_id)
+                set_committed_value(user, "employee_id", link.employee_id)
                 # حفظ marker لأي منطق مستقبلي يعرف إنه cross-company
                 request.state.active_company_id = link.company_id
             else:
