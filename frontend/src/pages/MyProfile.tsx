@@ -117,6 +117,7 @@ export default function MyProfile() {
   if (err) return <div className="card empty">{err}</div>;
   if (!p) return <div className="empty">{t("loading")}</div>;
   const e = p.employee;
+  const isOwnerProfile = !!p.is_owner;
   const kwd = t("kwd_currency");
 
   return (
@@ -125,7 +126,10 @@ export default function MyProfile() {
         <div>
           <div className="eyebrow">{t("my_profile")}</div>
           <h2 id="profile-title" style={{ margin: "2px 0 0" }}>{e.name}</h2>
-          <div className="sub" aria-label={t("mp_job_aria", { v: e.job_title || t("mp_not_set") })}>{e.job_title || "—"}</div>
+          {!isOwnerProfile && (
+            <div className="sub" aria-label={t("mp_job_aria", { v: e.job_title || t("mp_not_set") })}>{e.job_title || "—"}</div>
+          )}
+          {isOwnerProfile && <div className="sub">{t("owner_role_label")}</div>}
           {e.employee_no && (
             <div style={{
               display: "inline-block", marginTop: 6, background: "#e0ece8",
@@ -143,19 +147,29 @@ export default function MyProfile() {
           <h3>{t("tab_personal")}</h3>
           <b>{t("fld_civil_id")}:</b> {e.civil_id || "—"}<br />
           <b>{t("epf_nationality")}:</b> {e.nationality || "—"}<br />
-          <b>{t("epf_gender")}:</b> {e.gender === "male" ? t("gender_male") : e.gender === "female" ? t("gender_female") : "—"}<br />
+          {!isOwnerProfile && (
+            <><b>{t("epf_gender")}:</b> {e.gender === "male" ? t("gender_male") : e.gender === "female" ? t("gender_female") : "—"}<br /></>
+          )}
           <b>{t("epf_dob")}:</b> {e.date_of_birth || "—"}<br />
           <b>{t("epf_email")}:</b> {e.email || "—"}<br />
-          <b>{t("emp_phone")}:</b> {e.phone || "—"}
+          <b>{t("emp_phone")}:</b> {e.phone || "—"}<br />
+          {isOwnerProfile && (
+            <>
+              <b>{t("epf_passport")}:</b> {e.passport_number || "—"}<br />
+              <b>{t("owner_passport_expiry")}:</b> {e.passport_expiry || "—"}
+            </>
+          )}
         </div>
-        <div className="card">
-          <h3>{t("my_contract")}</h3>
-          <b>{t("epf_job")}:</b> {e.job_title || "—"}<br />
-          <b>{t("epf_salary")}:</b> {e.basic_salary} {kwd}<br />
-          <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br />
-          <b>{t("epf_contract")}:</b> {contractTypeAr(e.contract_type)}<br />
-          <b>{t("epf_passport")}:</b> {e.passport_number || "—"}
-        </div>
+        {!isOwnerProfile && (
+          <div className="card">
+            <h3>{t("my_contract")}</h3>
+            <b>{t("epf_job")}:</b> {e.job_title || "—"}<br />
+            <b>{t("epf_salary")}:</b> {e.basic_salary} {kwd}<br />
+            <b>{t("epf_hire")}:</b> {e.hire_date || "—"}<br />
+            <b>{t("epf_contract")}:</b> {contractTypeAr(e.contract_type)}<br />
+            <b>{t("epf_passport")}:</b> {e.passport_number || "—"}
+          </div>
+        )}
       </div>
 
       <div className="card">

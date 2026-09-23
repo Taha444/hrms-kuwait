@@ -124,6 +124,7 @@ function Sidebar({ open }: { open: boolean }) {
           <Item to="/structure" icon="branches" label={t("structure")} />
           <Item to="/reports" icon="doc" label={t("reports")} />
           <Item to="/tasks" icon="tasks" label={t("tasks")} badge={taskCount} />
+          <Item to="/my-profile" icon="employees" label={t("my_profile")} />
           {can("view_payroll") && <Item to="/payroll" icon="eos" label={t("payroll")} />}
           {can("view_audit") && <Item to="/audit" icon="lock" label={t("audit")} />}
         </div>
@@ -554,7 +555,7 @@ export default function App() {
       <Route path="/requests/:id" element={<Protected><RequestDetail /></Protected>} />
       <Route path="/employees" element={<Guarded need={(a) => a.can("view_employee")}><Employees /></Guarded>} />
       <Route path="/employees/:id" element={<Guarded need={(a) => a.can("view_employee")}><Employees /></Guarded>} />
-      <Route path="/my-profile" element={<Guarded need={(a) => a.isEmployee}><MyProfile /></Guarded>} />
+      <Route path="/my-profile" element={<Guarded need={(a) => a.isEmployee || a.isOwner}><MyProfile /></Guarded>} />
       <Route path="/renewals" element={<Guarded need={(a) => a.canRenewals}><Renewals /></Guarded>} />
       <Route path="/structure" element={<Guarded need={(a) => a.canStructure}><CompanyStructure /></Guarded>} />
       <Route path="/archive" element={<Guarded need={(a) => a.canArchive}><Archive /></Guarded>} />

@@ -304,6 +304,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   my_profile: { ar: "ملفي الشخصي", en: "My Profile" },
   my_contract: { ar: "بيانات العقد", en: "Contract" },
   my_documents: { ar: "مستنداتي", en: "My Documents" },
+  owner_role_label: { ar: "صاحب الشركة", en: "Company Owner" },
+  owner_passport_expiry: { ar: "انتهاء الجواز", en: "Passport expiry" },
   my_warnings: { ar: "إنذاراتي", en: "My Warnings" },
   my_no_warnings: { ar: "لا توجد إنذارات — أحسنت!", en: "No warnings — well done!" },
   my_download: { ar: "تنزيل", en: "Download" },

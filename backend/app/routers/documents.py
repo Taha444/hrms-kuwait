@@ -207,6 +207,18 @@ async def upload_document(
             raise HTTPException(status_code=404, detail="الفرع غير موجود")
         assert_same_company(user, branch.company_id, db=db)
         company_id = branch.company_id
+    elif entity_type == "user":
+        # مستندات صاحب الشركة (company_owner): لا سجل موظف له أصًلا — عضويته
+        # في الشركات تمثيلية (تعدد شركات)، لا وظيفية. فرضه في employees
+        # كان يعني عدّه في تعداد الموظفين والرواتب وهو ليس منهم. سجلّه
+        # الحقيقي هو حسابه (users) نفسه.
+        from ..permissions import CROSS_COMPANY_ROLES
+        target = db.get(models.User, entity_id)
+        if not target or target.role != "company_owner":
+            raise HTTPException(status_code=404, detail="صاحب الشركة غير موجود")
+        if user.role not in CROSS_COMPANY_ROLES:
+            raise HTTPException(status_code=403, detail="غير مخوّل")
+        company_id = None
     else:
         company_id = user.company_id
 

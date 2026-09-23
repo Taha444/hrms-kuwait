@@ -411,7 +411,7 @@
 | العمود | النوع | فارغ؟ | مفتاح | يشير إلى |
 |---|---|:-:|:-:|---|
 | `id` | INTEGER |  | PK |  |
-| `company_id` | INTEGER |  |  | `companies.id` |
+| `company_id` | INTEGER | ✓ |  | `companies.id` |
 | `entity_type` | VARCHAR(30) |  |  |  |
 | `entity_id` | INTEGER |  |  |  |
 | `document_type_code` | VARCHAR(50) |  |  |  |
@@ -1114,6 +1114,10 @@
 | `full_name` | VARCHAR(200) | ✓ |  |  |
 | `email` | VARCHAR(200) | ✓ |  |  |
 | `phone` | VARCHAR(30) | ✓ |  |  |
+| `date_of_birth` | DATE | ✓ |  |  |
+| `nationality` | VARCHAR(80) | ✓ |  |  |
+| `passport_number` | VARCHAR(40) | ✓ |  |  |
+| `passport_expiry` | DATE | ✓ |  |  |
 | `role` | VARCHAR(30) |  |  |  |
 | `scope_level` | VARCHAR(10) |  |  |  |
 | `scope_branch_id` | INTEGER | ✓ |  | `branches.id` |

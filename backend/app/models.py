@@ -103,6 +103,12 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(30))
+    # هوية صاحب الشركة (company_owner): لا سجل employees له، فهذه حقوله
+    # الأساسية الوحيدة — لا تُملأ عملًيا إلا لهذا الدور.
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    nationality: Mapped[str | None] = mapped_column(String(80))
+    passport_number: Mapped[str | None] = mapped_column(String(40))
+    passport_expiry: Mapped[date | None] = mapped_column(Date)
     role: Mapped[str] = mapped_column(String(30), default="employee")
     # مستوى نطاق البيانات: company=كل الشركة، branch=فرع واحد، multi=عدة فروع، self=سجله فقط
     scope_level: Mapped[str] = mapped_column(String(10), default="company")
@@ -556,7 +562,8 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    # لا قيمة لمستند صاحب شركة (entity_type="user"): لا ينتمي لشركة واحدة.
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
     entity_type: Mapped[str] = mapped_column(String(30), default="employee")  # employee/company/license
     entity_id: Mapped[int] = mapped_column(Integer, index=True)
     document_type_code: Mapped[str] = mapped_column(String(50))

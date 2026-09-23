@@ -28,9 +28,42 @@ def _own_employee(user: models.User, db: Session) -> models.Employee:
     return emp
 
 
+def _owner_documents(user: models.User, db: Session):
+    docs = db.scalars(select(models.Document).where(
+        models.Document.entity_type == "user",
+        models.Document.entity_id == user.id,
+        models.Document.is_current == True,  # noqa: E712
+    )).all()
+    _doc_type_names = {r.code: r.name for r in db.scalars(select(models.DocumentType)).all()}
+    return [{"id": d.id, "type": d.document_type_code,
+             "type_label": _doc_type_names.get(d.document_type_code, d.document_type_code),
+             "title": d.title, "expiry_date": d.expiry_date, "version": d.version}
+            for d in docs]
+
+
 @router.get("/profile")
 def my_profile(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """ملف الموظف الشخصي: بياناته + العقد + المستندات + الإجازات + الإنذارات (بدون إقامات حكومية)."""
+    """ملف الموظف الشخصي: بياناته + العقد + المستندات + الإجازات + الإنذارات (بدون إقامات حكومية).
+
+    صاحب الشركة (company_owner) لا سجل موظف له — عضويته في الشركات تمثيلية
+    (CROSS_COMPANY_ROLES)، لا وظيفية. فرعٌ مختصر هنا يعيد هويته الأساسية
+    (من users نفسها) ومستنداته (entity_type="user")، بلا عقد/راتب/إجازات/
+    إنذارات — تلك لا معنى لها لصاحب الشركة.
+    """
+    if user.role == "company_owner":
+        return {
+            "is_owner": True,
+            "employee": {
+                "name": user.full_name, "civil_id": user.civil_id,
+                "nationality": user.nationality, "gender": None,
+                "date_of_birth": user.date_of_birth, "email": user.email,
+                "phone": user.phone, "passport_number": user.passport_number,
+                "passport_expiry": user.passport_expiry,
+            },
+            "documents": _owner_documents(user, db),
+            "leaves": [], "warnings": [], "may_receive_warning": False,
+        }
+
     emp = _own_employee(user, db)
     docs = db.scalars(select(models.Document).where(
         models.Document.entity_type == "employee",
@@ -53,6 +86,7 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
     # HR والإدارة يرون كل شيء (لكن هذا endpoint خاص بـMy Profile فقط — الموظف نفسه).
     # يُعرض فقط: النوع (سنوية/مرضية/...) والحالة (معتمَدة/مرفوضة).
     return {
+        "is_owner": False,
         "employee": schemas.EmployeeOut.model_validate(emp),
         # QA-14 (sweep) — نفس الإصلاح الذي طُبّق في ملف الموظف: الاسم البشري
         # لا الكود. المسار الثاني للوظيفة نفسها كان قد فاتني.
@@ -79,6 +113,18 @@ def my_document(document_type_code: str,
     مستند الموظف ملكه: يحتاجه للبنك والسفارة والجهات الحكومية، وتقييد التنزيل
     بمرة واحدة يجعله يراجع HR لأجل نسخة من ورقته هو. لا قيد هنا عمًدا.
     """
+    if user.role == "company_owner":
+        doc = db.scalar(select(models.Document).where(
+            models.Document.entity_type == "user",
+            models.Document.entity_id == user.id,
+            models.Document.document_type_code == document_type_code,
+            models.Document.is_current == True,  # noqa: E712
+        ))
+        if not doc or not doc.file_path or not key_exists(doc.file_path):
+            raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+        return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
+                            media_type=doc.mime or "application/octet-stream")
+
     emp = _own_employee(user, db)
     doc = db.scalar(select(models.Document).where(
         models.Document.entity_type == "employee",

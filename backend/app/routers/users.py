@@ -483,6 +483,33 @@ def set_user_status(user_id: int, status: str, request: Request,
     return {"ok": True, "status": status}
 
 
+@router.post("/{user_id}/identity")
+def set_owner_identity(user_id: int, request: Request,
+                       date_of_birth: str | None = None,
+                       nationality: str | None = None,
+                       passport_number: str | None = None,
+                       passport_expiry: str | None = None,
+                       user: models.User = Depends(require_perm("manage_users")),
+                       db: Session = Depends(get_db)):
+    """هوية صاحب الشركة الأساسية — لا سجل employees له فتُحفظ على حسابه
+    نفسه. مقصورة على company_owner: غيره له سجل موظف كامل الحقول أصًلا."""
+    from datetime import date as _date
+    target = _get_scoped_user(db, user, user_id)
+    if target.role != "company_owner":
+        raise HTTPException(status_code=400, detail="هذا البند لأصحاب الشركات فقط")
+    if date_of_birth is not None:
+        target.date_of_birth = _date.fromisoformat(date_of_birth) if date_of_birth else None
+    if nationality is not None:
+        target.nationality = nationality or None
+    if passport_number is not None:
+        target.passport_number = passport_number or None
+    if passport_expiry is not None:
+        target.passport_expiry = _date.fromisoformat(passport_expiry) if passport_expiry else None
+    audit(db, user, "set_owner_identity", "user", target.id, request=request)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{user_id}/scope")
 def set_data_scope(user_id: int, level: str | None = None, branch_id: int | None = None,
                    branch_ids: list[int] | None = Query(None), request: Request = None,
