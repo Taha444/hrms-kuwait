@@ -687,6 +687,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                   <option value="civil_id">{t("epf_doc_civil")}</option>
                   <option value="residency">{t("epf_doc_residency")}</option>
                   <option value="contract">{t("epf_doc_contract")}</option>
+                  <option value="work_permit">{t("epf_doc_work_permit")}</option>
                 </select>
                 <input aria-label={t("epf_upload_title")} type="file" ref={fileRef} onChange={(e) => e.target.files && ocrPreview(e.target.files[0])} />
                 <button onClick={upload}>{t("epf_upload_save")}</button>
