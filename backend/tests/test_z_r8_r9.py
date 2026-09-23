@@ -2931,9 +2931,9 @@ def test_sec02_twofa_required_for_sensitive_roles(client):
     """SEC-02 — الأدوار التي تملك بيانات غيرها يُلزَم أصحابها بالتفعيل."""
     from app.permissions import TWOFA_REQUIRED_ROLES
 
-    # قرار المالك (2026-09-24): مدير الشركة وصاحب الشركات فقط.
-    assert TWOFA_REQUIRED_ROLES == {"company_owner", "company_manager"}
-    for opt in ("super_admin", "hr", "delegate"):
+    # قرار المالك (2026-09-24): صاحب الشركات وحده؛ مدير الشركة اختياري بمحض إرادته.
+    assert TWOFA_REQUIRED_ROLES == {"company_owner"}
+    for opt in ("super_admin", "company_manager", "hr", "delegate"):
         assert opt not in TWOFA_REQUIRED_ROLES, opt
     # الموظف والمحاسب ومسؤول الفرع: اختياري
     assert "employee" not in TWOFA_REQUIRED_ROLES
@@ -2941,7 +2941,7 @@ def test_sec02_twofa_required_for_sensitive_roles(client):
 
     for civ, pw, expected in [("100000000002", "hr12345", False),
                               ("100000000003", "deleg123", False),
-                              ("100000000001", "manager123", True),
+                              ("100000000001", "manager123", False),
                               ("100000000101", "emp12345", False)]:
         r = client.post("/api/auth/login", json={"civil_id": civ, "password": pw})
         assert r.status_code == 200, r.text
