@@ -565,7 +565,14 @@ def daily_scan(db: Session) -> dict:
     # فعًلا: بعد إصلاح أوّل صار العدّاد 32 والمُنشأ 60. والقياس على الفرق
     # يبقى صحيًحا مهما أُضيفت مواضع، لأنه يصف النتيجة لا الطريق إليها.
     made = (db.scalar(select(func.count()).select_from(models.Task)) or 0) - _before
-    return {"generated": made, "scanned_at": today.isoformat()}
+
+    # **والمسحُ يُنظّف ما يتقادم** (SW-007، 2026-09-23): مهامٌّ وتصعيداتٌ تشير إلى طلباتٍ
+    # لم تعد موجودة بقيت مفتوحةً «حرجة» على حساب HR (112 عنصرًا وصندوقُ الطلبات صفر).
+    # لا يُحذف صفّ: كلُّ إغلاقٍ ببرهانٍ وسببٍ مكتوب (انظر ``task_cleanup``).
+    from . import task_cleanup
+
+    cleaned = task_cleanup.run(db, apply=True, only=task_cleanup.AUTOMATIC_BUCKETS)
+    return {"generated": made, "cleaned": cleaned["total"], "scanned_at": today.isoformat()}
 
 
 def sla_scan(db: Session) -> dict:

@@ -37,6 +37,14 @@ REASON_CLOSED_REQUEST = "أُغلقت آلًيا: الطلب المرتبط بل
 REASON_RENEWED = "أُغلقت آلًيا: التصريح جُدِّد وتاريخ انتهائه لم يعد قريًبا."
 REASON_ORPHAN = "أُغلقت آلًيا: الكيان المرتبط لم يعد موجوًدا."
 REASON_STALE_DIGEST = "أُغلقت آلًيا: خلاصة يومية انقضى وقتها."
+REASON_ESCALATION_SOURCE_CLOSED = "أُغلقت آلًيا: المهمة التي صُعِّد بشأنها لم تعد مفتوحة."
+
+#: ما يُنفَّذ **آليًّا كل يوم**: ما لا رجعةَ فيه ولا يُعاد توليده — كيانٌ محذوف، تصعيدٌ لمهمةٍ أُغلقت،
+#: علّةُ فرعٍ زالت.
+#: **ولا تدخل هنا** ``renewed_permits`` (نافذته 60 يومًا وتنبيه المسح 90: فيُغلق ما ولّده المسح
+#: ثم يُعاد توليده كل يوم) ولا ``closed_requests`` و``stale_digests`` (يعالجها مساراتها).
+AUTOMATIC_BUCKETS = ("orphans", "orphan_escalations", "resolved_branch_gaps")
+REASON_BRANCH_GAP_RESOLVED = "أُغلقت آلًيا: الفرع زالت عنه العلّة (أُدخلت إحداثياته أو أُرشف أو حُذف)."
 
 #: الأنواع المعلوماتية **الدورية**: قيمتها في يومها.
 #:
@@ -170,9 +178,60 @@ def _orphans(db: Session, company_id: int | None) -> list[models.Task]:
     return out
 
 
+def _orphan_escalations(db: Session, company_id: int | None) -> list[models.Task]:
+    """تصعيدات SLA لمهمةٍ **لم تعد مفتوحة** (أُغلقت أو زالت).
+
+    قيس على الإنتاج (2026-09-23): 69 تصعيدًا «حرجًا» مفتوحًا على حساب HR لطلباتٍ غير
+    موجودة. والتصعيد مفتاحه ``sla_escalation:<task_id>:u<user>`` — فمصدره يُعرف من
+    مفتاحه، وإذا أُغلق المصدر لم يبقَ ما يُصعَّد بشأنه.
+    """
+    q = select(models.Task).where(
+        models.Task.status.in_(OPEN),
+        models.Task.type == "sla_escalation",
+        models.Task.dedup_key.like("sla_escalation:%"))
+    if company_id is not None:
+        q = q.where(models.Task.company_id == company_id)
+    out = []
+    for t in db.scalars(q).all():
+        parts = (t.dedup_key or "").split(":")
+        if len(parts) < 2 or not parts[1].isdigit():
+            continue
+        src = db.get(models.Task, int(parts[1]))
+        if src is None or src.status not in OPEN:
+            out.append(t)
+    return out
+
+
+def _resolved_branch_gaps(db: Session, company_id: int | None) -> list[models.Task]:
+    """«فرعٌ بلا إحداثيات» بعد أن زالت علّته.
+
+    المسح اليوميّ يُنشئ التنبيه (``branch_no_coords:<id>``) ولا شيء كان يُغلقه: بعد أن
+    أُدخلت إحداثيات الفروع الأربعة والأربعين وحُذفت المكرَّرات ظلّت سبعُ مهامّ «فرعٌ
+    بلا إحداثيات» مفتوحةً على حساب HR (2026-09-23) توحي بأن الموقع ناقص وهو مكتمل.
+    """
+    q = select(models.Task).where(
+        models.Task.status.in_(OPEN),
+        models.Task.type == "config_gap",
+        models.Task.dedup_key.like("branch_no_coords:%"))
+    if company_id is not None:
+        q = q.where(models.Task.company_id == company_id)
+    out = []
+    for t in db.scalars(q).all():
+        tail = (t.dedup_key or "").split(":", 1)[-1]
+        if not tail.isdigit():
+            continue
+        b = db.get(models.Branch, int(tail))
+        if b is None or b.latitude is not None or b.status == "archived":
+            out.append(t)
+    return out
+
+
 def run(db: Session, *, company_id: int | None = None,
-        apply: bool = False) -> dict:
-    """يجمع ما يجب إغلاقه ويُغلقه عند ``apply``. قابل لإعادة التشغيل."""
+        apply: bool = False, only: tuple[str, ...] | None = None) -> dict:
+    """يجمع ما يجب إغلاقه ويُغلقه عند ``apply``. قابل لإعادة التشغيل.
+
+    ``only`` يحصر الدفعات المنفَّذة (المسح اليومي يمرّر ``AUTOMATIC_BUCKETS``).
+    """
     buckets = [
         ("duplicates", _duplicates(db, company_id), REASON_DUPLICATE),
         ("closed_requests", _on_closed_requests(db, company_id),
@@ -180,7 +239,13 @@ def run(db: Session, *, company_id: int | None = None,
         ("renewed_permits", _stale_permit_tasks(db, company_id), REASON_RENEWED),
         ("orphans", _orphans(db, company_id), REASON_ORPHAN),
         ("stale_digests", _stale_periodic(db, company_id), REASON_STALE_DIGEST),
+        ("orphan_escalations", _orphan_escalations(db, company_id),
+         REASON_ESCALATION_SOURCE_CLOSED),
+        ("resolved_branch_gaps", _resolved_branch_gaps(db, company_id),
+         REASON_BRANCH_GAP_RESOLVED),
     ]
+    if only is not None:
+        buckets = [b for b in buckets if b[0] in only]
     report: dict[str, object] = {"apply": apply}
     seen: set[int] = set()
     total = 0
@@ -213,7 +278,7 @@ def main() -> None:
 
     print("تنظيف المهام —", "تنفيذ" if args.apply else "تقرير فقط (بلا كتابة)")
     for key in ("duplicates", "closed_requests", "renewed_permits", "orphans",
-                "stale_digests"):
+                "stale_digests", "orphan_escalations", "resolved_branch_gaps"):
         info = rep[key]
         print(f"  {key:<18} {info['count']}")
     print(f"  {'المجموع':<18} {rep['total']}")
