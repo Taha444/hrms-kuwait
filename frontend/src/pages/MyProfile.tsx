@@ -101,10 +101,19 @@ export default function MyProfile() {
     // التنزيل يبدو متاًحا "مرة واحدة فقط". رابط تنزيل مؤقت لا يخضع لذلك الحجب.
     try {
       const res = await api.get(`/me/document/${encodeURIComponent(type)}`, { responseType: "blob" });
-      const url = URL.createObjectURL(res.data as Blob);
+      const blob = res.data as Blob;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${type}.pdf`;
+      // امتداد الملف من نوعه الفعلي (blob.type) لا من كود نوع المستند — مستند
+      // مدني/جواز غالًبا صورة لا PDF، وتسميته دائًما ".pdf" ينتج ملًفا
+      // بمحتوى صورة وامتداد PDF: يفشل أي عارض PDF في فتحه.
+      const EXT_BY_MIME: Record<string, string> = {
+        "application/pdf": "pdf", "image/jpeg": "jpg", "image/jpg": "jpg",
+        "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+      };
+      const ext = EXT_BY_MIME[blob.type] || (blob.type.split("/")[1] || "bin");
+      a.download = `${type}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
