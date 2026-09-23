@@ -25,8 +25,14 @@ export default function Payroll() {
   const [runs, setRuns] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [loadErr, setLoadErr] = useState("");
 
-  const loadRuns = () => api.get("/payroll/runs").then((r) => setRuns(r.data)).catch(() => {});
+  // 2026-09-23 — كان الفشل هنا يُبتلَع صامًتا (catch فارغ)، فمن سُحبت منه
+  // الصلاحية أثناء عمله يرى "لا توجد مسيّرات محفوظة" — يبدو كأن لا بيانات،
+  // لا أن الوصول مُنِع. رسالة الخادم نفسها واضحة ("ليس لديك صلاحية: ...")؛
+  // كانت تُطبَع في console وحده ولا تصل الشاشة.
+  const loadRuns = () => api.get("/payroll/runs").then((r) => { setRuns(r.data); setLoadErr(""); })
+    .catch((e: any) => { setRuns([]); setLoadErr(errMsg(e, t("error"))); });
   useEffect(() => { loadRuns(); }, []);
 
   // PR-UI — دورة المسيّر لم يكن لها مخرج من الشاشة: يُجهَّز ولا يُعتمَد ولا
@@ -133,6 +139,7 @@ export default function Payroll() {
 
       <div className="card">
         <h3>{t("payroll_runs")}</h3>
+        {loadErr && <div className="err">{loadErr}</div>}
         <table>
           <thead><tr><th>{t("payroll_period")}</th><th>{t("payroll_count")}</th><th>{t("payroll_net")}</th><th>{t("status")}</th><th>{t("payroll_trail")}</th><th></th></tr></thead>
           <tbody>
@@ -175,7 +182,7 @@ export default function Payroll() {
                 </td>
               </tr>
             ))}
-            {!runs.length && <tr><td colSpan={6} className="empty">{t("pay_no_runs")}</td></tr>}
+            {!runs.length && !loadErr && <tr><td colSpan={6} className="empty">{t("pay_no_runs")}</td></tr>}
           </tbody>
         </table>
       </div>
