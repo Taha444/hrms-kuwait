@@ -74,18 +74,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (totp_code) body.totp_code = totp_code;
     const r = await api.post("/auth/login", body);
     setTokens(r.data.access_token, r.data.refresh_token);
-    // R9 §16 — مستخدم متعدد الشركات: نحفظ قائمة شركاته للـpicker
+    // R9 §16 — مستخدم متعدد الشركات (مثل محمد فاروق): نحفظ قائمة شركاته
+    // للـpicker — /auth/me لا يعيدها، لا مصدر لها غير استجابة الدخول نفسها.
+    //
+    // BUG (اكتُشف 2026-09-23 بأول حساب flag-based حقيقي): كان هذا الفرع
+    // يعيد user مُصطنعًا بلا استدعاء setUser() — فسياق AuthProvider (`user`)
+    // يبقى null، وحارس المسار في App.tsx (`user ? ... : <Navigate to=
+    // "/login">`) على /change-password و/select-company يُعيد الحساب فورًا
+    // لصفحة الدخول قبل أن يراها. لم يظهر العطل من قبل لأن company_owner/
+    // super_admin يمّران بالفرع العادي أصًلا (user.is_cross_company عمود
+    // DB خام يخصّ الـflag، لا الدور — راجع auth.py). فصار المسار موحًدا:
+    // /auth/me يحسب needs_company_selection بنفسه ويعمل بلا شركة نشطة
+    // (مُدرَج في allowed_paths)، فلا داعي لفرعٍ خاص أصًلا.
     if (r.data.is_cross_company && r.data.companies) {
       localStorage.setItem("cross_company_options", JSON.stringify(r.data.companies));
       localStorage.removeItem("active_company_id");
-      // نرد user بدون data كامل — الـpicker هيوجهنا لـselect-company
-      return {
-        is_cross_company: true,
-        needs_company_selection: true,  // Login.tsx يقرأها لتوجيه /select-company
-        companies: r.data.companies,
-      } as any;
+    } else {
+      localStorage.removeItem("cross_company_options");
     }
-    localStorage.removeItem("cross_company_options");
     await refreshUser();
     const me = await api.get("/auth/me");
     setUser(me.data);
