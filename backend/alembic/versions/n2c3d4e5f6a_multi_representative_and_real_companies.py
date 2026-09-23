@@ -172,10 +172,10 @@ def upgrade() -> None:
             "INSERT INTO branches (company_id, name, code, governorate, governorate_en, "
             "geofence_radius_m, qr_secret, auto_checkout_minutes, address, is_headquarters, "
             "status, created_at) "
-            "VALUES (:cid, :name, :code, :gov, :gov_en, :radius, :qr, 15, :addr, 0, "
+            "VALUES (:cid, :name, :code, :gov, :gov_en, :radius, :qr, 15, :addr, :hq, "
             "'active', CURRENT_TIMESTAMP)"),
             {"cid": cid, "name": shop, "code": code, "gov": gov, "gov_en": GOV_EN.get(gov),
-             "radius": radius, "qr": secrets.token_hex(16), "addr": address})
+             "radius": radius, "qr": secrets.token_hex(16), "addr": address, "hq": False})
 
     for name, rep_name, rep_name_en, civil_id in REPRESENTATIVES:
         cid = company_ids.get(name)
