@@ -75,9 +75,9 @@ def test_a_branch_gap_task_closes_once_the_branch_has_coordinates_or_is_gone():
     db.add_all([fixed, missing])
     db.flush()
     mk = lambda key: _t(db, type="config_gap", company_id=co.id, dedup_key=key)  # noqa: E731
-    t_fixed = mk(f"branch_no_coords:{fixed.id}")
-    t_still = mk(f"branch_no_coords:{missing.id}")
-    t_gone = mk("branch_no_coords:987654321")
+    t_fixed = mk(f"branch_no_coords:{fixed.id}:u8")
+    t_still = mk(f"branch_no_coords:{missing.id}:u8")
+    t_gone = mk("branch_no_coords:987654321:u8")
     db.commit()
     ids = [t_fixed.id, t_still.id, t_gone.id]
     cid, bids = co.id, [fixed.id, missing.id]

@@ -217,7 +217,9 @@ def _resolved_branch_gaps(db: Session, company_id: int | None) -> list[models.Ta
         q = q.where(models.Task.company_id == company_id)
     out = []
     for t in db.scalars(q).all():
-        tail = (t.dedup_key or "").split(":", 1)[-1]
+        # المفتاح الفعليّ «branch_no_coords:<id>:u<user>» — ``notify_roles`` تُلحق المستلِم.
+        parts = (t.dedup_key or "").split(":")
+        tail = parts[1] if len(parts) > 1 else ""
         if not tail.isdigit():
             continue
         b = db.get(models.Branch, int(tail))
