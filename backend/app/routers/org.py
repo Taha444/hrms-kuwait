@@ -141,6 +141,53 @@ def archive_branch(branch_id: int, reason: str, request: Request,
     return branch
 
 
+def _branch_references(db: Session, branch_id: int) -> dict[str, int]:
+    """كلُّ صفٍّ في أي جدولٍ يشير إلى هذا الفرع — من مخطط النماذج نفسه لا من قائمٍة تُنسى."""
+    from ..database import Base
+    found: dict[str, int] = {}
+    for table in Base.metadata.tables.values():
+        for fk in table.foreign_keys:
+            if fk.column.table.name == "branches" and fk.column.name == "id":
+                n = db.scalar(select(func.count()).select_from(table).where(
+                    table.c[fk.parent.name] == branch_id)) or 0
+                if n:
+                    found[f"{table.name}.{fk.parent.name}"] = n
+    return found
+
+
+@router.delete("/branches/{branch_id}")
+def delete_branch(branch_id: int, reason: str, request: Request,
+                  user: models.User = Depends(require_perm("manage_branches")),
+                  db: Session = Depends(get_db)):
+    """حذٌف **نهائيٌّ** لفرٍع مكرَّر — للإدارة العليا وحدها، ولفرٍع **لا يشير إليه شيء**.
+
+    طلب المالك (2026-09-23): المكرَّر يُمسح لا يُؤرشَف. لكنّ الحذف لا يرجع، فلا
+    يُحذف فرٌع عليه موظف أو حضور أو ترخيص أو أي سجلٍّ آخر (يُفحص كلُّ جدولٍ
+    يشير إليه) — يُرفض بقائمة ما عليه، ويبقى الأرشفُة طريَق التاريخ. ولا يُحذف
+    مقرُّ الشركة. والحذف مقيَّد في التدقيق باسم الفرع وكوده قبل أن يزول.
+    """
+    if user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="حذف الفرع للإدارة العليا وحدها")
+    branch = db.get(models.Branch, branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب الحذف إلزامي")
+    if branch.is_headquarters:
+        raise HTTPException(status_code=409, detail="لا يُحذف مقر الشركة")
+    refs = _branch_references(db, branch.id)
+    if refs:
+        raise HTTPException(status_code=409, detail=(
+            "على الفرع سجلّات لا تُحذف: " + "، ".join(f"{k}={v}" for k, v in refs.items())
+            + " — أرشِفه بدل حذفه"))
+    audit(db, user, "delete_branch", "branch", branch.id, request=request,
+          company_id=branch.company_id,
+          detail=f"{branch.code} «{branch.name}» — {reason.strip()[:200]}")
+    db.delete(branch)
+    db.commit()
+    return {"ok": True, "deleted": branch_id}
+
+
 @router.post("/branches/{branch_id}/restore", response_model=schemas.BranchOut)
 def restore_branch(branch_id: int, request: Request,
                    user: models.User = Depends(require_perm("manage_branches")),

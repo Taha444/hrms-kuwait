@@ -330,7 +330,7 @@ def run(data: dict, source: Path, *, apply: bool, db: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_api(data: dict, source: Path, *, apply: bool, base: str,
-            token: str, archive_extras: bool = False) -> dict:
+            token: str, archive_extras: bool = False, delete_extras: bool = False) -> dict:
     """يُدخل الحزمة **عبر واجهة الموقع** لا عبر قاعدة البيانات مباشرة.
 
     **ولماذا وضٌع ثانٍ**: الكتابة في القاعدة من جهاز بعيد تحفظ ملفات
@@ -435,7 +435,7 @@ def run_api(data: dict, source: Path, *, apply: bool, base: str,
             by_no[b["no"]] = r.json()
 
     _reconcile_api(data, company, s, api, _get, report, apply=apply,
-                   archive_extras=archive_extras)
+                   archive_extras=archive_extras, delete_extras=delete_extras)
 
     # ---- المستندات -------------------------------------------------------
     #: أنواع المستندات السارية لكل كيان — تُقرأ من الأرشيف نفسه، مرّة.
@@ -556,7 +556,7 @@ def _complete_keeper(keep: dict, spec: dict, s, api: str, report: dict, *, apply
 
 
 def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *,
-                   apply: bool, archive_extras: bool) -> None:
+                   apply: bool, archive_extras: bool, delete_extras: bool = False) -> None:
     """مقرُّ الشركة، وتراخيُصها، وفروعها المخالفة لملفها — طلب المالك (2026-09-19).
 
     **ملفُّ المالك هو المرجع** («محلات الشركات بالعناوين»): ما فيه يُنشأ، وما
@@ -619,9 +619,17 @@ def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *
                     if r.status_code >= 400:
                         report["blocked"].append(f"تعذّر تسجيل الترخيص {no}: {r.status_code} {r.text[:160]}")
             elif spec.get("expiry") and str(cur.get("expiry_date") or "")[:10] != spec["expiry"]:
-                report["blocked"].append(
-                    f"الترخيص {no}: انتهاؤه على الموقع «{cur.get('expiry_date')}» وفي الملف "
-                    f"«{spec['expiry']}» — لم يُغيَّر")
+                # **الملف هو المرجع** (قرار المالك 2026-09-23): يُضبَط الانتهاء عليه.
+                report["licenses"].append(
+                    f"  ≠ ترخيص {no}: انتهاؤه على الموقع «{cur.get('expiry_date')}» → "
+                    f"«{spec['expiry']}» (من الملف)")
+                if apply:
+                    r = s.post(api + f"/pro/licenses/{cur['id']}/renew",
+                               params={"expiry_date": spec["expiry"],
+                                       "note": "مطابقة ملف الشركة 2026-09-23"})
+                    if r.status_code >= 400:
+                        report["blocked"].append(
+                            f"تعذّر ضبط انتهاء الترخيص {no}: {r.status_code} {r.text[:160]}")
             else:
                 report["licenses"].append(f"  = ترخيص قائم {no} — {spec.get('name')}")
 
@@ -686,13 +694,22 @@ def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *
                 line + f"\n      عليه {n} موظف: انقلهم بطلب النقل"
                 + (f" إلى {_label(keep)}" if keep else "") + " ثم أعد التشغيل")
             continue
-        if archive_extras and apply:
+        if delete_extras and apply:
+            # حذٌف نهائي بطلب المالك؛ والخادم يرفض فرًعا يشير إليه أي سجلّ، فلا نُؤرشفه
+            # بدلًا منه بصمت — يُقال ما عليه ويُترك لقراره.
+            r = s.delete(api + f"/branches/{x['id']}",
+                         params={"reason": f"مطابقة ملف الشركة 2026-09-23: {why}"})
+            report["extras"].append(line + ("\n      → حُذف نهائيًا" if r.status_code < 400
+                                            else f"\n      لم يُحذف: {r.status_code} {r.text[:200]}"))
+        elif archive_extras and apply:
             r = s.post(api + f"/branches/{x['id']}/archive",
                        params={"reason": f"مطابقة ملف الشركة 2026-09-19: {why}"})
             report["extras"].append(line + ("\n      → أُرشف" if r.status_code < 400
                                             else f"\n      تعذّرت الأرشفة: {r.status_code} {r.text[:120]}"))
         else:
-            report["extras"].append(line + "\n      → يُؤرشَف مع --apply --archive-extras")
+            report["extras"].append(line + ("\n      → يُحذف نهائيًا مع --apply --delete-extras"
+                                            if delete_extras else
+                                            "\n      → يُؤرشَف مع --apply --archive-extras"))
 
 
 def main() -> None:
@@ -702,6 +719,8 @@ def main() -> None:
     p.add_argument("--apply", action="store_true", help="يكتب فعًلا")
     p.add_argument("--api", help="عنوان الموقع المنشور — يمرّ كل شيء من واجهته")
     p.add_argument("--civil-id", help="الرقم المدني للدخول (مع --api)")
+    p.add_argument("--delete-extras", action="store_true",
+                   help="يحذف نهائيًا المكرر الفارغ (الإدارة العليا؛ يرفض ما عليه سجلّات)")
     p.add_argument("--archive-extras", action="store_true",
                    help="يؤرشف الفروع المكررة والخارجة عن ملف الشركة التي لا موظفين عليها")
     args = p.parse_args()
@@ -732,7 +751,8 @@ def main() -> None:
             raise SystemExit(f"تعذّر الدخول ({r.status_code}): {detail}")
         report = run_api(data, source, apply=args.apply,
                          base=args.api, token=r.json()["access_token"],
-                         archive_extras=args.archive_extras)
+                         archive_extras=args.archive_extras,
+                         delete_extras=args.delete_extras)
     else:
         db = SessionLocal()
         try:

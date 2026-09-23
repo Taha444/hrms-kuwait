@@ -5,7 +5,7 @@
 وكلمة المرور يُطلبان **مرة واحدة** (كلمة المرور لا تُطبَع ولا تُحفَظ ولا تمرّ بسطر الأوامر).
 
     python scripts/reconcile_all.py                              # تقرير فقط
-    python scripts/reconcile_all.py --apply --archive-extras     # ينفّذ
+    python scripts/reconcile_all.py --apply --delete-extras     # ينفّذ
 
 يحتاج حساًبا يملك «إدارة الفروع» و«إدارة التراخيص» (الإدارة العليا).
 """
@@ -34,6 +34,7 @@ def main() -> None:
     ap.add_argument("--api", default="https://hrms-kuwait-production.up.railway.app")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--archive-extras", action="store_true")
+    ap.add_argument("--delete-extras", action="store_true")
     a = ap.parse_args()
 
     civil = input("الرقم المدني: ").strip()
@@ -52,7 +53,8 @@ def main() -> None:
         print(f"\n################ {name}")
         try:
             rep = run_api(data, Path("."), apply=a.apply, base=a.api, token=token,
-                          archive_extras=a.archive_extras)
+                          archive_extras=a.archive_extras,
+                          delete_extras=a.delete_extras)
         except SystemExit as e:
             print(f"  ✗ توقّف: {e}")
             continue
@@ -65,7 +67,7 @@ def main() -> None:
                 print(f"\n{title}:")
                 print("\n".join(f"  · {x}" for x in rep[key]))
     if not a.apply:
-        print("\nلإجرائه فعًلا: أضف --apply --archive-extras")
+        print("\nلإجرائه فعًلا: أضف --apply --delete-extras")
 
 
 if __name__ == "__main__":

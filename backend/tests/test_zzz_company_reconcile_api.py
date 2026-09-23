@@ -60,13 +60,13 @@ def company_with_old_branches():
         db.close()
 
 
-def _run(client, monkeypatch, *, archive: bool):
+def _run(client, monkeypatch, *, archive: bool, delete: bool = False):
     token = login(client, *ADMIN)
     monkeypatch.setattr(httpx, "Client", lambda **kw: client.__class__(
         app, headers=kw.get("headers")))
     data = json.loads(DATA.read_text(encoding="utf-8"))
     return run_api(data, Path("."), apply=True, base="http://testserver", token=token,
-                   archive_extras=archive)
+                   archive_extras=archive, delete_extras=delete)
 
 
 def test_reconcile_creates_hq_licenses_and_handles_extras(client, monkeypatch,
@@ -196,6 +196,84 @@ def test_an_empty_kept_duplicate_takes_the_file_code(client, monkeypatch):
                 models.License.company_id == cid)).all()])
             purge(db, "branches", [x.id for x in db.scalars(select(models.Branch).where(
                 models.Branch.company_id == cid)).all()])
+            purge(db, "companies", [cid])
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_empty_duplicates_are_deleted_and_the_file_expiry_wins(client, monkeypatch):
+    """طلب المالك (2026-09-23): المكرَّر الفارغ **يُمسح** لا يُؤرشَف، وتاريخ الانتهاء
+    الصحيح هو الذي في الملف. وما عليه سجلّ لا يُمسح (الخادم يرفضه ويُقال ما عليه)."""
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    gu02 = next(b for b in data["branches"] if b["code"] == "GU02")
+    db = SessionLocal()
+    co = models.Company(name="شركة الاتحاد الخليجي للأقمشة")
+    db.add(co)
+    db.flush()
+    empty = models.Branch(company_id=co.id, name="x", code="GUF-2", qr_secret=secrets.token_hex(8),
+                          address=f"القبلة — الرقم الآلي للعنوان: {gu02['paci_address_no']}")
+    keep = models.Branch(company_id=co.id, name="x", code="GU02", qr_secret=secrets.token_hex(8),
+                         address=gu02["address"])
+    db.add_all([empty, keep])
+    db.add(models.License(company_id=co.id, name="ترخيص", license_no=gu02["license_no"],
+                          expiry_date=__import__("datetime").date(2026, 1, 1)))
+    db.commit()
+    cid, empty_id, keep_id = co.id, empty.id, keep.id
+    db.close()
+    try:
+        _run(client, monkeypatch, archive=False, delete=True)
+        db = SessionLocal()
+        try:
+            assert db.get(models.Branch, empty_id) is None, "لم يُمسح المكرَّر الفارغ"
+            assert db.get(models.Branch, keep_id) is not None
+            lic = db.scalar(select(models.License).where(
+                models.License.company_id == cid, models.License.license_no == gu02["license_no"]))
+            assert str(lic.expiry_date) == gu02["expiry"], lic.expiry_date
+        finally:
+            db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "licenses", [x.id for x in db.scalars(select(models.License).where(
+                models.License.company_id == cid)).all()])
+            purge(db, "branches", [x.id for x in db.scalars(select(models.Branch).where(
+                models.Branch.company_id == cid)).all()])
+            purge(db, "companies", [cid])
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_a_branch_with_records_or_the_hq_is_never_deleted(client):
+    token = login(client, *ADMIN)
+    h = {"Authorization": f"Bearer {token}"}
+    db = SessionLocal()
+    co = models.Company(name="شركة اختبار الحذف")
+    db.add(co)
+    db.flush()
+    busy = models.Branch(company_id=co.id, name="عليه موظف", code="DB1", qr_secret=secrets.token_hex(8))
+    hq = models.Branch(company_id=co.id, name="مقر الشركة", code="HQ", is_headquarters=True,
+                       qr_secret=secrets.token_hex(8))
+    db.add_all([busy, hq])
+    db.flush()
+    emp = models.Employee(company_id=co.id, name="موظف", branch_id=busy.id, status="active")
+    db.add(emp)
+    db.commit()
+    cid, busy_id, hq_id, emp_id = co.id, busy.id, hq.id, emp.id
+    db.close()
+    try:
+        r = client.delete(f"/api/branches/{busy_id}", params={"reason": "تجربة"}, headers=h)
+        assert r.status_code == 409 and "employees.branch_id" in r.text, r.text
+        r = client.delete(f"/api/branches/{hq_id}", params={"reason": "تجربة"}, headers=h)
+        assert r.status_code == 409, r.text
+        r = client.delete(f"/api/branches/{busy_id}", params={"reason": ""}, headers=h)
+        assert r.status_code == 400, r.text
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "employees", [emp_id])
+            purge(db, "branches", [busy_id, hq_id])
             purge(db, "companies", [cid])
             db.commit()
         finally:
