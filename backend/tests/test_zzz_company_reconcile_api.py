@@ -159,3 +159,44 @@ def test_the_staffed_duplicate_stays_and_the_empty_twin_is_archived(client, monk
             db.commit()
         finally:
             db.close()
+
+
+def test_an_empty_kept_duplicate_takes_the_file_code(client, monkeypatch):
+    """ميلانو في الإنتاج (2026-09-23): فرعان فارغان لكل محلّ برمزين قديمين
+    (MUF-x وMUT-x) ولا فرَع بكود الملف (ML..). كانت الأداة تُبقي أحدهما بكوده
+    القديم فتبقى الشركة برموٍز لا تطابق ملفها. الفارغ يُوحَّد كوده مع الملف."""
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    gu02 = next(b for b in data["branches"] if b["code"] == "GU02")
+    db = SessionLocal()
+    co = models.Company(name="شركة الاتحاد الخليجي للأقمشة")
+    db.add(co)
+    db.flush()
+    addr = f"القبلة — الرقم الآلي للعنوان: {gu02['paci_address_no']}"
+    a = models.Branch(company_id=co.id, name="x", code="OLD1", address=addr,
+                      qr_secret=secrets.token_hex(8))
+    b = models.Branch(company_id=co.id, name="x", code="OLD2", address=addr,
+                      qr_secret=secrets.token_hex(8))
+    db.add_all([a, b])
+    db.commit()
+    cid, ids = co.id, (a.id, b.id)
+    db.close()
+    try:
+        _run(client, monkeypatch, archive=True)
+        db = SessionLocal()
+        try:
+            rows = [db.get(models.Branch, i) for i in ids]
+            live = [r for r in rows if r.status == "active"]
+            assert len(live) == 1 and live[0].code == "GU02", [(r.code, r.status) for r in rows]
+        finally:
+            db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "licenses", [x.id for x in db.scalars(select(models.License).where(
+                models.License.company_id == cid)).all()])
+            purge(db, "branches", [x.id for x in db.scalars(select(models.Branch).where(
+                models.Branch.company_id == cid)).all()])
+            purge(db, "companies", [cid])
+            db.commit()
+        finally:
+            db.close()

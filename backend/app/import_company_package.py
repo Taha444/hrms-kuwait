@@ -520,30 +520,38 @@ def _branch_no(code: str | None) -> str | None:
     return str(int(m.group(1))) if m else None
 
 
-def _complete_keeper(keep: dict, spec: dict, s, api: str, report: dict, *, apply: bool) -> None:
+def _complete_keeper(keep: dict, spec: dict, s, api: str, report: dict, *, apply: bool,
+                     staffed: int = 0) -> None:
     """الفرع الباقي من المكرَّر يُكمَّل من ملف الشركة بما **ينقصه فقط**.
 
     الإحداثيات ونصف القطر والمحافظة: بلاها لا يعمل البصم بالموقع ولا يتولّد
-    العقد الحكومي. ولا يُستبدَل ما عليه (اسمه وكوده وعنوانه تبقى كما هي).
+    العقد الحكومي. ولا يُستبدَل ما عليه (اسمه وعنوانه يبقيان).
+
+    **وكوده يُوحَّد مع ملف الشركة إن كان فارًغا** (لا موظفين): لا رقَم وظيفًيا
+    يحمل كوده القديم، وإبقاُء ``MUT02`` مكان ``ML02`` يترك الشركة برموٍز
+    لا تطابق ملفها. أمّا ذو الموظفين فكوده داخٌل في أرقامهم فلا يُمَسّ.
     """
     fill = {}
+    if not staffed and keep.get("code") != spec.get("code"):
+        fill["code"] = spec["code"]
     if keep.get("latitude") is None and spec.get("latitude") is not None:
         fill.update(_geo(spec))
     for k in ("governorate", "governorate_en"):
         if not keep.get(k) and spec.get(k):
             fill[k] = spec[k]
     tag = f"#{keep['id']} {keep.get('code')}"
+    who = f"(عليه {staffed} موظف)" if staffed else "(فارغ)"
     if not fill:
-        report["extras"].append(f"  ✓ يبقى {tag} (عليه الموظفون) — لا ينقصه شيء من الملف")
+        report["extras"].append(f"  ✓ يبقى {tag} {who} — لا ينقصه شيء من الملف")
         return
-    what = "، ".join(sorted({"الإحداثيات" if k in ("latitude", "longitude", "geofence_radius_m")
-                            else "المحافظة" for k in fill}))
+    label = {"code": "الكود", "governorate": "المحافظة", "governorate_en": "المحافظة"}
+    what = "، ".join(sorted({label.get(k, "الإحداثيات") for k in fill}))
     if not apply:
-        report["extras"].append(f"  ✓ يبقى {tag} (عليه الموظفون) — يُكمَّل من الملف: {what} — مع --apply")
+        report["extras"].append(f"  ✓ يبقى {tag} {who} — يُكمَّل من الملف: {what} — مع --apply")
         return
     r = s.put(api + f"/branches/{keep['id']}", json=fill)
     report["extras"].append(
-        f"  ✓ يبقى {tag} (عليه الموظفون) — " + (f"كُمِّل من الملف: {what}" if r.status_code < 400
+        f"  ✓ يبقى {tag} {who} — " + (f"كُمِّل من الملف: {what}" if r.status_code < 400
                                                 else f"تعذّر إكماله: {r.status_code} {r.text[:120]}"))
 
 
@@ -656,7 +664,8 @@ def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *
                 if m is not keep:
                     extras.append((m, f"مكرر لـ{code}", keep))
             if keep.get("code") != code:
-                _complete_keeper(keep, spec_by_code[code], s, api, report, apply=apply)
+                _complete_keeper(keep, spec_by_code[code], s, api, report, apply=apply,
+                                 staffed=staff.get(keep["id"], 0))
     for x in unmatched:
         twin = next((b for b in specs if _branch_no(b["code"]) and
                      _branch_no(b["code"]) == _branch_no(x.get("code"))), None)
