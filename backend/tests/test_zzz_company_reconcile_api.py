@@ -278,3 +278,39 @@ def test_a_branch_with_records_or_the_hq_is_never_deleted(client):
             db.commit()
         finally:
             db.close()
+
+
+def test_a_lone_old_coded_branch_is_completed_from_the_file(client, monkeypatch):
+    """ميلانو (2026-09-23): MUT08 وMUT10 فرعان وحيدان لمحلّيهما، فلم يُوحَّد كودهما
+    ولا أُكمل موقعهما لأن الإكمال كان للمكرَّر وحده."""
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    gu02 = next(b for b in data["branches"] if b["code"] == "GU02")
+    db = SessionLocal()
+    co = models.Company(name="شركة الاتحاد الخليجي للأقمشة")
+    db.add(co)
+    db.flush()
+    b = models.Branch(company_id=co.id, name="x", code="OLD8", qr_secret=secrets.token_hex(8),
+                      address=f"القبلة — الرقم الآلي للعنوان: {gu02['paci_address_no']}")
+    db.add(b)
+    db.commit()
+    cid, bid = co.id, b.id
+    db.close()
+    try:
+        _run(client, monkeypatch, archive=False, delete=True)
+        db = SessionLocal()
+        try:
+            row = db.get(models.Branch, bid)
+            assert row is not None and row.code == "GU02" and row.latitude == gu02["latitude"],                 (row.code, row.latitude)
+        finally:
+            db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "licenses", [y.id for y in db.scalars(select(models.License).where(
+                models.License.company_id == cid)).all()])
+            purge(db, "branches", [y.id for y in db.scalars(select(models.Branch).where(
+                models.Branch.company_id == cid)).all()])
+            purge(db, "companies", [cid])
+            db.commit()
+        finally:
+            db.close()

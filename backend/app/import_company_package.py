@@ -674,6 +674,10 @@ def _reconcile_api(data: dict, company: dict, s, api: str, _get, report: dict, *
             if keep.get("code") != code:
                 _complete_keeper(keep, spec_by_code[code], s, api, report, apply=apply,
                                  staffed=staff.get(keep["id"], 0))
+        elif members[0].get("code") != code:
+            # فرٌع واحد للمحلّ بكودٍ قديم (ميلانو: MUT08 بدل ML08) — يُكمَّل كالباقي من مكرَّر.
+            _complete_keeper(members[0], spec_by_code[code], s, api, report, apply=apply,
+                             staffed=staff.get(members[0]["id"], 0))
     for x in unmatched:
         twin = next((b for b in specs if _branch_no(b["code"]) and
                      _branch_no(b["code"]) == _branch_no(x.get("code"))), None)
