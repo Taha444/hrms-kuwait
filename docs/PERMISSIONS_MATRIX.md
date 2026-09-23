@@ -17,6 +17,7 @@
 | اعتماد المعاملات الحكومية والإقامات (`approve_government`) |  | ✓ |  | ✓ | ✓ | ✓ |  |  | ✓ |
 | اعتماد الشكاوى والتظلمات (`approve_grievance`) |  | ✓ |  |  | ✓ |  |  |  | ✓ |
 | اعتماد الحضور والإجازات (`approve_leave`) |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |
+| اعتماد وإقفال وقفل مسيّر الرواتب (`approve_payroll`) |  | ✓ | ✓ |  |  |  |  |  | ✓ |
 | اعتماد بيانات الموظف والتطوير الوظيفي (`approve_personnel`) |  | ✓ | ✓ | ✓ | ✓ |  |  |  | ✓ |
 | اعتماد الطلبات (عام — مهجور) (`approve_request`) |  |  |  |  |  |  |  |  | ✓ |
 | اعتماد إنهاء خدمة موظف (سلطة مستقلة عن التحضير) (`approve_termination`) |  | ✓ | ✓ |  |  |  |  |  | ✓ |
@@ -53,7 +54,7 @@
 | عرض سجل التدقيق (`view_audit`) | ✓ |  |  |  |  |  |  |  | ✓ |
 | عرض وتنزيل المستندات (`view_documents`) | ✓ | ✓ |  |  | ✓ | ✓ |  |  | ✓ |
 | عرض الموظفين (`view_employee`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |
-| عرض الرواتب (`view_payroll`) | ✓ |  | ✓ |  |  |  |  |  | ✓ |
+| عرض الرواتب (`view_payroll`) | ✓ | ✓ | ✓ |  |  |  |  |  | ✓ |
 | عرض التقارير (`view_reports`) | ✓ | ✓ | ✓ | ✓ |  |  |  |  | ✓ |
 | عرض المهام والتنبيهات (`view_tasks`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ |
 
@@ -152,6 +153,12 @@
 - `POST /api/requests/{req_id}/decide` (أيٌّ منها)
 - `POST /api/requests/{req_id}/received` (أيٌّ منها)
 
+### اعتماد وإقفال وقفل مسيّر الرواتب (`approve_payroll`)
+
+- `POST /api/payroll/runs/{run_id}/approve`
+- `POST /api/payroll/runs/{run_id}/finalize`
+- `POST /api/payroll/runs/{run_id}/lock`
+
 ### اعتماد بيانات الموظف والتطوير الوظيفي (`approve_personnel`)
 
 - `GET /api/requests/inbox` (أيٌّ منها)
@@ -225,6 +232,7 @@
 
 ### إدارة الفروع والمواقع (`manage_branches`)
 
+- `DELETE /api/branches/{branch_id}`
 - `GET /api/branches/{branch_id}/kiosk-url`
 - `POST /api/branches/{branch_id}/archive`
 - `POST /api/branches/{branch_id}/kiosk-key/rotate`
@@ -307,6 +315,7 @@
 - `POST /api/users/apply-template/{user_id}/{template_code}`
 - `POST /api/users/auto-link-employees`
 - `POST /api/users/copy-permissions`
+- `POST /api/users/{user_id}/identity`
 - `POST /api/users/{user_id}/link-employee`
 - `POST /api/users/{user_id}/matrix/reset`
 - `POST /api/users/{user_id}/matrix`
@@ -337,9 +346,6 @@
 - `POST /api/eos/cases/{case_id}/settle`
 - `POST /api/payroll/run`
 - `POST /api/payroll/runs/{run_id}/adjustment`
-- `POST /api/payroll/runs/{run_id}/approve`
-- `POST /api/payroll/runs/{run_id}/finalize`
-- `POST /api/payroll/runs/{run_id}/lock`
 
 ### تقديم الطلبات (خدمة ذاتية) (`submit_request`)
 

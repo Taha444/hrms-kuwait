@@ -421,6 +421,53 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     return emp
 
 
+@router.post("/{emp_id}/assign-branch")
+def assign_branch(emp_id: int, branch_id: int, reason: str, request: Request,
+                  effective_date: date | None = None,
+                  user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """نقلٌ مباشر إلى فرع — **للإدارة العليا وحدها**، في أي وقت، ومُقيَّد بسببه.
+
+    قرار المالك (2026-09-23): النقل العاديّ يبقى بـ``REQTRF`` يعتمده مستخدمٌ آخر
+    (وتعديل ``PUT`` لا يمسّ الفرع)، لكنّ ``super_admin`` ينقل أيَّ موظف مباشرةً —
+    وأولُ استعماله وضعُ الإداريين (مدير، HR، محاسب، مندوب) على «مقر الشركة»
+    وهم بلا فرع أصلًا فلا جهةَ حاليّة تعتمد نقلَهم.
+
+    ويبقى الأثر واضحًا: سجلُّ تغيير الحقل (قبل/بعد/من/متى/لماذا) وحدثُ تدقيق
+    باسم الفرعين. ولا يُنقل إلى فرعٍ من شركةٍ أخرى ولا إلى فرعٍ مؤرشف.
+    """
+    if user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="النقل المباشر للإدارة العليا وحدها")
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب النقل إلزامي")
+    emp = db.get(models.Employee, emp_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    branch = db.get(models.Branch, branch_id)
+    if not branch or branch.company_id != emp.company_id:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود في شركة الموظف")
+    if branch.status == "archived":
+        raise HTTPException(status_code=409, detail="هذا الفرع مؤرشَف — اختر فرعًا قائمًا")
+    old = emp.branch_id
+    if old == branch.id:
+        return {"ok": True, "changed": False, "branch_id": branch.id}
+    old_branch = db.get(models.Branch, old) if old else None
+    db.add(models.EmployeeFieldChange(
+        company_id=emp.company_id, employee_id=emp.id, field_name="branch_id",
+        old_value=None if old is None else str(old), new_value=str(branch.id),
+        effective_date=effective_date or kuwait_today(), changed_by=user.id,
+        reason=reason.strip()[:300]))
+    # فرعُ الدوام الفعليّ يتبع الرسميّ إن كان فارغًا أو مطابقًا له — ولا يُمسّ إن اختلف عمدًا.
+    if emp.actual_branch_id in (None, old):
+        emp.actual_branch_id = branch.id
+    emp.branch_id = branch.id
+    audit(db, user, "assign_branch", "employee", emp.id, request=request,
+          company_id=emp.company_id,
+          detail=f"{old_branch.name if old_branch else 'بلا فرع'} → {branch.name} — {reason.strip()[:200]}")
+    db.commit()
+    return {"ok": True, "changed": True, "branch_id": branch.id, "from": old}
+
+
 @router.get("/{emp_id}/change-history")
 def employee_change_history(emp_id: int,
                             user: models.User = Depends(require_perm("view_employee")),
