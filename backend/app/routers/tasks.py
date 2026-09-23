@@ -240,7 +240,13 @@ def run_scan(user: models.User = Depends(require_perm("manage_tasks")), db: Sess
         if not granted:
             raise HTTPException(status_code=409, detail=(
                 "المسح اليومي يعمل الآن — أعد المحاولة بعد انتهائه."))
-        return daily_scan(db)
+        result = daily_scan(db)
+        # نجاحُ المسح اليدويّ يُغلق تنبيهات فشل المسح اليومي كنجاحه المجدوَل — وإلا بقيت
+        # «فشل مهمة مجدولة: daily_scan» حرجةً حتى جولة الصباح التالية رغم أن المسح نجح الآن.
+        from ..scheduler import _resolve_job_failures
+
+        result["failure_alerts_closed"] = _resolve_job_failures(db, "daily_scan")
+        return result
 
 
 @router.post("/{task_id}/claim")

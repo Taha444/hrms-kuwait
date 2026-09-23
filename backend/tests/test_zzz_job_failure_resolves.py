@@ -41,3 +41,25 @@ def test_a_successful_run_closes_only_its_own_jobs_failures():
         purge(db, "tasks", list(ids))
         db.commit()
         db.close()
+
+
+def test_a_manual_scan_also_closes_the_daily_scan_failure_alerts(client):
+    from tests.conftest import login
+
+    db = SessionLocal()
+    a = _fail_task(db, "daily_scan", "job_fail:daily_scan:2026-09-20:u9002")
+    b = _fail_task(db, "sla_scan", "job_fail:sla_scan:2026-09-20:u9002")
+    db.commit()
+    ids = (a.id, b.id)
+    try:
+        h = {"Authorization": f"Bearer {login(client, '000000000000', 'admin123')}"}
+        r = client.post("/api/tasks/run-scan", headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["failure_alerts_closed"] >= 1
+        db.expire_all()
+        assert db.get(models.Task, ids[0]).status == "done"
+        assert db.get(models.Task, ids[1]).status == "open", "أُغلق فشلُ job آخر"
+    finally:
+        purge(db, "tasks", list(ids))
+        db.commit()
+        db.close()
