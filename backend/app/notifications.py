@@ -294,6 +294,22 @@ def notify_employee_self(db: Session, employee_id: int, **kwargs) -> int:
 EXPIRY_THRESHOLDS = [0, 7, 15, 30, 60, 90]
 
 
+def expiry_when(days_left: int, expiry) -> str:
+    """«ينتهي خلال N يومًا» — وللمنتهي «انتهى منذ N يومًا».
+
+    قيس على الإنتاج (2026-09-24): «الترخيص ينتهي خلال -1195 يومًا» و«ترخيص قارب على
+    الانتهاء» لترخيصٍ انتهى منذ ثلاث سنوات — عددُ أيامٍ سالبٌ ولفظٌ يقول العكس.
+    """
+    if days_left >= 0:
+        return f"ينتهي خلال {days_left} يومًا ({expiry})"
+    return f"انتهى منذ {-days_left} يومًا ({expiry})"
+
+
+def expiry_title(kind_ar: str, name: str, days_left: int) -> str:
+    return (f"{kind_ar} قارب على الانتهاء: {name}" if days_left >= 0
+            else f"{kind_ar} منتهي الصلاحية: {name}")
+
+
 def expiry_bucket(days_left: int) -> int | None:
     """يرجع أصغر عتبة تنبيه وقع ضمنها days_left (أو None إن كان أبعد من 90 يومًا)."""
     for t in EXPIRY_THRESHOLDS:
@@ -349,7 +365,9 @@ def daily_scan(db: Session) -> dict:
             detail=((f"{kind_ar} للعامل {name} (حالته «{emp.status}») تنتهي خلال "
                      f"{days_left} يومًا ({permit.expiry_date}) — تُحسم بالإلغاء أو "
                      "التحويل لا بالتجديد.") if ended else
-                    f"{kind_ar} للعامل {name} تنتهي خلال {days_left} يومًا ({permit.expiry_date})."),
+                    (f"{kind_ar} للعامل {name} تنتهي خلال {days_left} يومًا ({permit.expiry_date})."
+                     if days_left >= 0 else
+                     f"{kind_ar} للعامل {name} انتهت منذ {-days_left} يومًا ({permit.expiry_date}).")),
             related_entity_type="permit", related_entity_id=permit.id,
             severity=sev, due_date=permit.expiry_date, dedup_key=dk,
         )
@@ -438,8 +456,8 @@ def daily_scan(db: Session) -> dict:
             # مستندات ثابتة مع مندوب محدد (غير شائع لكن مدعوم)
             create_task(
                 db, company_id=doc.company_id, assignee_user_id=assigned_pro_id,
-                type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
-                detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
+                type="doc_expiring", title=expiry_title("مستند", title, days_left),
+                detail=f"المستند ({title}) {expiry_when(days_left, doc.expiry_date)}.",
                 related_entity_type="document", related_entity_id=doc.id,
                 severity=sev, due_date=doc.expiry_date,
                 dedup_key=f"{dk}:u{assigned_pro_id}",
@@ -448,8 +466,8 @@ def daily_scan(db: Session) -> dict:
             # مستندات رسمية (جوازات/إقامات) بدون PRO محدد → كل المندوبين
             notify_roles(
                 db, doc.company_id, ["delegate"],
-                type="doc_expiring", title=f"مستند قارب على الانتهاء: {title}",
-                detail=f"المستند ({title}) ينتهي خلال {days_left} يومًا ({doc.expiry_date}).",
+                type="doc_expiring", title=expiry_title("مستند", title, days_left),
+                detail=f"المستند ({title}) {expiry_when(days_left, doc.expiry_date)}.",
                 related_entity_type="document", related_entity_id=doc.id,
                 severity=sev, due_date=doc.expiry_date, dedup_key=dk,
             )
@@ -471,8 +489,8 @@ def daily_scan(db: Session) -> dict:
                 sev = expiry_severity(days_left)
                 notify_roles(
                     db, lic.company_id, ["delegate"],
-                    type="license_expiring", title=f"ترخيص قارب على الانتهاء: {lic.name}",
-                    detail=f"الترخيص {lic.name} ينتهي خلال {days_left} يومًا ({lic.expiry_date}).",
+                    type="license_expiring", title=expiry_title("ترخيص", lic.name, days_left),
+                    detail=f"الترخيص {lic.name} {expiry_when(days_left, lic.expiry_date)}.",
                     related_entity_type="license", related_entity_id=lic.id,
                     severity=sev, due_date=lic.expiry_date,
                     dedup_key=f"license_expiring:{lic.id}:{bucket}",

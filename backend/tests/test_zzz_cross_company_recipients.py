@@ -46,6 +46,9 @@ def test_a_linked_member_receives_the_alerts_of_every_company_he_belongs_to():
             models.Task.related_entity_id == lic.id)).all()
         assert got, "ترخيص شركةٍ ينتمي إليها لم يصله"
         assert all(t.company_id == away.id for t in got)
+        # والمنتهي يُقال منتهيًا لا «قارب على الانتهاء» ولا «خلال -100 يومًا».
+        assert "منتهي" in got[0].title and "قارب" not in got[0].title, got[0].title
+        assert "منذ 100 يومًا" in got[0].detail and "-100" not in got[0].detail, got[0].detail
     finally:
         db.rollback()
         purge(db, "tasks", [t.id for t in db.scalars(select(models.Task).where(
