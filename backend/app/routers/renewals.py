@@ -294,6 +294,12 @@ def create_renewal(employee_id: int | None = Form(None), permit_id: int | None =
                                     models.Permit.status == "active").order_by(models.Permit.expiry_date))
     if not permit or not permit.expiry_date:
         raise HTTPException(status_code=400, detail="لا توجد إقامة سارية بتاريخ انتهاء لهذا الموظف")
+    # M15 — ``permit_id`` المُرسَل كان يُحمَّل بلا نسبٍ لصاحبه: مندوبُ شركةٍ ربط معاملته
+    # بإقامة موظفٍ في **شركةٍ أخرى** (قيس 201)، فتُحسب مدتُها ونوعُ تجديدها منها، وينتهي
+    # الإنهاء بالكتابة على إقامة غيره. فالإقامة تخصّ **هذا الموظف**، وفعّالة، وإقامة.
+    if (permit.employee_id != eid or permit.company_id != emp.company_id
+            or permit.kind != "residency" or permit.status != "active"):
+        raise HTTPException(status_code=404, detail="لا توجد إقامة سارية بهذا الرقم لهذا الموظف")
 
     # **ولا تُجدَّد إقامةُ من انتهت خدمته** — بابٌ ثالثٌ للقاعدة الموحَّدة
     # ``INACTIVE_EMPLOYMENT``: ``create_request`` يمنعه والبصمُ يمنعه، وملفُّ
