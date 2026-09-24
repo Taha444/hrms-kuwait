@@ -339,6 +339,7 @@
 ### تسجيل الحضور (خدمة ذاتية) (`record_attendance`)
 
 - `POST /api/attendance/check-in`
+- `POST /api/attendance/validate-gps`
 - `POST /api/attendance/validate-qr`
 
 ### تشغيل مسيّر الرواتب (`run_payroll`)

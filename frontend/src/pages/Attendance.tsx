@@ -27,6 +27,12 @@ export default function Attendance() {
 
   const loadRecords = () => api.get("/attendance/my").then((r) => setRecords(r.data)).catch(() => {});
 
+  // نمطُ الحضور من الخادم: من نمطُه «gps» يبصم بالموقع بلا رمز (وكان لا يستطيع البصم أصلًا).
+  const [gpsOnly, setGpsOnly] = useState(false);
+  useEffect(() => {
+    api.get("/me/profile").then((r) => setGpsOnly(r.data?.employee?.attendance_mode === "gps")).catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadRecords();
     navigator.geolocation?.getCurrentPosition(
@@ -102,6 +108,20 @@ export default function Attendance() {
     }
   };
 
+  const validateGps = async () => {
+    setErr(""); setMsg("");
+    await ensureCoords();
+    if (coords.current.lat == null || coords.current.lng == null) return setErr(t("att_gps_need_location"));
+    try {
+      const r = await api.post("/attendance/validate-gps", { lat: coords.current.lat, lng: coords.current.lng });
+      setBranchName(r.data.branch.name);
+      setTicket(r.data.checkin_ticket);
+      setStep(2);
+      setMsg(t("att_verified_msg", { branch: r.data.branch.name }));
+      startSelfieCam();
+    } catch (e: any) { setErr(errMsg(e, t("error"))); }
+  };
+
   // ---------- الخطوة 2: السيلفي ----------
   const startSelfieCam = async () => {
     try {
@@ -156,7 +176,8 @@ export default function Attendance() {
           <div>
             <p className="muted">{t("att_scan_hint")}</p>
             <video ref={videoRef} playsInline muted style={{ display: scanningUI ? "block" : "none" }} />
-            {!scanningUI && <button onClick={startScan}>{t("att_scan_btn")}</button>}
+            {!scanningUI && !gpsOnly && <button onClick={startScan}>{t("att_scan_btn")}</button>}
+            {!scanningUI && gpsOnly && <button onClick={validateGps}>{t("att_gps_btn")}</button>}
             {scanningUI && <p className="muted">{t("att_searching")}</p>}
           </div>
         )}

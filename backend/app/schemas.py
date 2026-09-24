@@ -446,6 +446,11 @@ class ShiftIn(BaseModel):
 
 # ----------------------------- الحضور -----------------------------
 
+class ValidateGpsIn(BaseModel):
+    lat: float
+    lng: float
+
+
 class ValidateQrIn(BaseModel):
     qr_token: str
     lat: float | None = None

@@ -898,7 +898,9 @@ const dict: Record<string, { ar: string; en: string }> = {
   br_rotated: { ar: "تم توليد/تدوير مفتاح الشاشة — الرابط القديم لم يعد صالحًا.", en: "Kiosk key generated/rotated — the old link is no longer valid." },
   // الحضور الذاتي
   att_step_scan: { ar: "مسح الرمز", en: "Scan Code" }, att_step_selfie: { ar: "السيلفي والتسجيل", en: "Selfie & Record" },
-  att_scan_btn: { ar: "📷 مسح الرمز", en: "📷 Scan Code" }, att_scan_hint: { ar: "وجّه الكاميرا إلى شاشة رمز QR في الفرع. لا يمكن إدخال الرمز يدويًا.", en: "Point the camera at the branch QR screen. Manual entry is disabled." },
+  att_scan_btn: { ar: "📷 مسح الرمز", en: "📷 Scan Code" },
+  att_gps_btn: { ar: "📍 تسجيل بالموقع", en: "📍 Check in by location" },
+  att_gps_need_location: { ar: "فعّل خدمة الموقع واسمح للمتصفح بها ثم أعد المحاولة.", en: "Enable location services and allow the browser to use them, then try again." }, att_scan_hint: { ar: "وجّه الكاميرا إلى شاشة رمز QR في الفرع. لا يمكن إدخال الرمز يدويًا.", en: "Point the camera at the branch QR screen. Manual entry is disabled." },
   att_capture: { ar: "📸 التقاط", en: "📸 Capture" }, att_checkin: { ar: "تسجيل حضور", en: "Check In" },
   att_checkout: { ar: "تسجيل انصراف", en: "Check Out" }, att_recapture: { ar: "إعادة الالتقاط", en: "Retake" },
   att_branch_confirmed: { ar: "الفرع المؤكَّد", en: "Confirmed branch" }, att_my_log: { ar: "سجلّي", en: "My Log" },

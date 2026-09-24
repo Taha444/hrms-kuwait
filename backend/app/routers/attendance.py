@@ -147,6 +147,39 @@ def validate_qr(data: schemas.ValidateQrIn, request: Request,
     }
 
 
+@router.post("/validate-gps")
+def validate_gps(data: schemas.ValidateGpsIn, request: Request,
+                 user: models.User = Depends(require_perm("record_attendance")),
+                 db: Session = Depends(get_db)):
+    """الخطوة 1 لمن نمطُه ``gps``: التحقق من الموقع وإصدار التذكرة — بلا رمز QR.
+
+    قيس على الإنتاج (2026-09-24): موظفٌ نمطُه ``gps`` لا يستطيع البصم إطلاقًا: الطريقُ
+    الوحيد لتذكرة التسجيل ``validate-qr`` وهو يردّه بـ«نمط حضورك لا يعتمد على رمز QR». فخيارٌ
+    يقدّمه النظام في شاشة الموظف («gps») لا يعمل — وتنبيهُ «فرع بلا إحداثيات» نفسُه يفترض
+    أن من نمطُه GPS يبصم. الفرعُ هو فرعُه المسجَّل، والسياجُ الجغرافيّ إلزاميٌّ.
+    """
+    emp = _resolve_employee(db, user)
+    if emp.attendance_mode != "gps":
+        raise HTTPException(status_code=400, detail="نمط حضورك لا يعتمد على الموقع وحده")
+    if not emp.branch_id:
+        raise HTTPException(status_code=400, detail="لا فرع مسجَّل لك — راجع شؤون الموظفين")
+    branch = db.get(models.Branch, emp.branch_id)
+    if not branch:
+        raise HTTPException(status_code=404, detail="الفرع غير موجود")
+    if branch.status == "archived":
+        raise HTTPException(status_code=403, detail="هذا الفرع مؤرشَف — لا حضور فيه")
+    if branch.latitude is None:
+        raise HTTPException(status_code=400, detail=(
+            "فرعُك بلا إحداثيات فلا يُتحقَّق من موقعك — راجع شؤون الموظفين"))
+    assert_same_company(user, branch.company_id, db=db)
+    _check_geofence(emp, branch, data.lat, data.lng)
+    ticket, _ = qr_token.make_checkin_ticket(emp.id, branch.id, data.lat, data.lng)
+    audit(db, user, "validate_gps", "branch", branch.id, request=request)
+    db.commit()
+    return {"ok": True, "branch": {"id": branch.id, "name": branch.name},
+            "checkin_ticket": ticket, "ticket_expires_in": qr_token.TICKET_TTL_SECONDS}
+
+
 @router.post("/check-in")
 async def check_in(request: Request, checkin_ticket: str = Form(...),
                    action: str = Form(...), selfie: UploadFile = File(...),
