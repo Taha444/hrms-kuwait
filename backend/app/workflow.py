@@ -2619,8 +2619,33 @@ def resubmit(db: Session, req: models.Request, user: models.User, updated_payloa
         raise ValueError("هذا الطلب ليس في حالة إعادة للتصحيح")
     if req.requester_user_id != user.id and user.role not in ("hr", "super_admin"):
         raise PermissionError("إعادة التقديم مقتصرة على مقدّم الطلب أو الموارد البشرية")
+
+    # M09 — **بابٌ ثانٍ إلى pending لا يمرّ بحرّاس الإنشاء.** كان يقلب الطلب
+    # من returned إلى pending بلا فحص حالة الموظف ولا بصمة التكرار، فيعود
+    # طلبُ موظفٍ انتهت خدمتُه إلى صندوق المعتمِدين، ويسقط تصادمُه مع طلبٍ
+    # مطابق بـIntegrityError خام (500) لا برسالة. وهنا حارساهما نفسُهما.
+    employee = db.get(models.Employee, req.employee_id)
+    if employee is not None and (employee.status or "").strip().lower() in BLOCKED_EMPLOYEE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"لا يُعاد تقديم طلب لموظف حالته «{employee.status}». "
+                    "أعِد تفعيل الملف أوًلا إن كان ذلك مقصوًدا."))
+    payload = {**(req.payload_json or {}), **(updated_payload or {})}
+    # والبصمة تُشتقّ من الحمولة **بعد** التصحيح: الحمولة المصحَّحة هي الطلب.
+    fp = request_fingerprint(req.employee_id, req.request_type_code, payload)
+    clash = db.scalar(select(models.Request.id).where(
+        models.Request.dedup_fingerprint == fp,
+        models.Request.closed_at.is_(None),
+        models.Request.id != req.id))
+    if clash is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"يوجد طلب مطابق مفتوح بالفعل (#{clash}) — تابعه بدل إعادة "
+                    "تقديم نسخة ثانية منه."))
+
     if updated_payload:
-        req.payload_json = {**(req.payload_json or {}), **updated_payload}
+        req.payload_json = payload
+    req.dedup_fingerprint = fp
     req.status = "pending"
     req.current_stage = 0
     req.closed_at = None
@@ -2629,7 +2654,14 @@ def resubmit(db: Session, req: models.Request, user: models.User, updated_payloa
         approver_role=user.role, approver_user_id=user.id, decision="resubmitted",
     ))
     enter_stage(db, req, rt)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # السباق: طلبٌ مطابق أُنشئ بين الفحص والالتزام — يحسمه الفهرس الفريد.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="أُنشئ طلب مطابق للتوّ — تابع الطلب القائم بدل إعادة تقديم نسخة ثانية.")
     db.refresh(req)
     return req
 

@@ -1535,8 +1535,11 @@ def test_return_resubmit_reapprove_full_cycle(client):
     assert client.get(f"/api/requests/{req_id}", headers=mgr).json()["status"] == "returned"
 
     # 2) الموظف يعيد التقديم ببيانات مصحّحة
+    # حمولةٌ فريدة: نفس الحمولة يفتحها اختبارٌ سابق في الملف ويتركها مفتوحة،
+    # وإعادة التقديم صارت تحرس البصمة كالإنشاء (M09) فتردّها 409 لأنها نسخةٌ ثانية.
     re = client.post(f"/api/requests/{req_id}/resubmit", headers=emp_h, json={
-        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar", "notes": "قرض سكني"},
+        "payload_json": {"purpose": "بنك الكويت الوطني", "language": "ar",
+                         "notes": "قرض سكني — دورة الإرجاع"},
     })
     assert re.status_code == 200, re.text
     after_resubmit = client.get(f"/api/requests/{req_id}", headers=mgr).json()
