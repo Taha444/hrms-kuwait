@@ -1100,6 +1100,45 @@ def _is_untouched_duplicate(db: Session, req: models.Request) -> bool:
     return decided is None
 
 
+#: أنواع الطلبات التي ``_apply_leave`` يطبّقها (سجلّ إجازة + خصم رصيد).
+LEAVE_APPLY_CODES = ("REQLV", "leave")
+
+#: حالات الطلب التي ما زالت تنتظر قرارًا أو أثرًا (المُرجَع والمرفوض والملغى خارجها).
+_LEAVE_LIVE_STATUSES = ("pending", "awaiting_signature", "awaiting_delegate",
+                        "ready_for_pickup", "apply_failed")
+
+
+def _assert_no_leave_overlap(db: Session, employee: models.Employee, payload: dict) -> None:
+    """يرفض (409) إجازةً تتداخل مع إجازة معتمَدة أو طلب إجازة ما زال حيًّا لنفس الموظف."""
+    p = payload or {}
+    try:
+        start, end = _as_date(p.get("start_date")), _as_date(p.get("end_date"))
+    except Exception:  # noqa: BLE001 — صحّة الحمولة يحكمها مخطّط النموذج لا هذا الحارس
+        return
+    if not start or not end or end < start:
+        return
+    row = db.scalar(select(models.Leave).where(
+        models.Leave.employee_id == employee.id, models.Leave.status == "approved",
+        models.Leave.start_date <= end, models.Leave.end_date >= start).limit(1))
+    if row is not None:
+        raise HTTPException(status_code=409, detail=(
+            f"تتداخل هذه الإجازة مع إجازة معتمَدة (#{row.id}) من {row.start_date} إلى "
+            f"{row.end_date} — عدّل التواريخ أو ألغِ القائمة أولًا."))
+    for other in db.scalars(select(models.Request).where(
+            models.Request.employee_id == employee.id,
+            models.Request.request_type_code.in_(LEAVE_APPLY_CODES),
+            models.Request.status.in_(_LEAVE_LIVE_STATUSES))).all():
+        op = other.payload_json or {}
+        try:
+            o_start, o_end = _as_date(op.get("start_date")), _as_date(op.get("end_date"))
+        except Exception:  # noqa: BLE001
+            continue
+        if o_start and o_end and o_start <= end and o_end >= start:
+            raise HTTPException(status_code=409, detail=(
+                f"يوجد طلب إجازة قائم (#{other.id}) يتداخل مع هذه الفترة "
+                f"({o_start} — {o_end}) — تابعه أو ألغِه قبل طلب غيره."))
+
+
 def create_request(db: Session, employee: models.Employee, requester: models.User,
                    rt: models.RequestType, payload: dict) -> models.Request:
     # P3-15 — موضوع يملكه غير هذه الوحدة لا يُفتح هنا.
@@ -1157,6 +1196,11 @@ def create_request(db: Session, employee: models.Employee, requester: models.Use
         # يُعاد الطلب القائم لا خطأ: إعادة المحاولة بعد انقطاع يجب أن
         # تنجح، ورسالة فشل تدفع المستخدم إلى محاولة ثالثة.
         return existing
+    # M12 — **إجازتان متداخلتان لا تُفتحان معًا.** لا حارس تداخل كان في أيّ موضع: تُعتمد
+    # الأولى (5–10) والثانية (7–12) فتُسجَّلان وتُخصم أيامُهما معًا من الرصيد عن أيامٍ
+    # مشتركة. وهنا — بعد حماية الضغط المزدوج لا قبلها — كي تبقى إعادةُ المحاولة تُرجع الطلب.
+    if rt.code in LEAVE_APPLY_CODES:
+        _assert_no_leave_overlap(db, employee, payload)
     if existing is not None:
         # **طلب تقدّم في مساره ليس تكراًرا لضغطة مزدوجة.**
         #

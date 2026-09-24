@@ -45,7 +45,7 @@ def _emp_id() -> int:
 
 def _body(**over):
     return {"employee_id": _emp_id(), "request_type_code": "REQLV",
-            "payload_json": {"start_date": "2029-03-01", "end_date": "2029-03-03",
+            "payload_json": {"start_date": "2031-03-01", "end_date": "2031-03-03",
                              "days": 3, "leave_type": "unpaid",
                              "reason": "قياس التكرار", **over}}
 
@@ -64,9 +64,13 @@ def test_a_different_request_still_passes(client):
     """ولا يُحجَب المختلف: الحارس على التطابق لا على النوع."""
     hdr = auth_headers(login(client, *EMP))
     first = client.post("/api/requests", headers=hdr,
-                        json=_body(reason="سبب أول")).json()["id"]
+                        json=_body(reason="سبب أول", start_date="2031-03-20",
+                                   end_date="2031-03-22")).json()["id"]
+    # تواريخ مختلفة: إجازتان لنفس الموظف بنفس الفترة صارتا تُردّان (M12) — والمقيس هنا
+    # أن الحارس على التطابق لا على النوع، فالمختلف بكل شيء يمرّ.
     second = client.post("/api/requests", headers=hdr,
-                         json=_body(reason="سبب ثانٍ")).json()["id"]
+                         json=_body(reason="سبب ثانٍ", start_date="2031-03-10",
+                                    end_date="2031-03-12")).json()["id"]
     assert first != second, "حُجب طلب مختلف"
 
 
@@ -164,7 +168,10 @@ def test_a_superseded_fingerprint_is_released(client):
     إرسال مطابق، فيُنشأ الجديد ولا يُعاد القديم.
     """
     hdr = auth_headers(login(client, *EMP))
-    body = _body(start_date="2029-07-01", end_date="2029-07-02", days=2)
+    # الآلية غير مرتبطة بالإجازة، ونوعُ الإجازة صار يردّ الفترةَ المكرَّرة (M12) — فنقيسها
+    # على شهادة راتب: بصمةٌ واحدة، إرسالان متطابقان، الأول متقادم.
+    body = {"employee_id": _emp_id(), "request_type_code": "salary_certificate",
+            "payload_json": {"purpose": "بنك M12", "language": "ar", "notes": "بصمة متقادمة"}}
     first = client.post("/api/requests", headers=hdr, json=body).json()["id"]
 
     # نُقدّم عمره خارج النافذة كما لو مضى يوم

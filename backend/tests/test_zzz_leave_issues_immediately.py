@@ -99,9 +99,12 @@ def test_the_document_is_issued_and_carries_the_signature(client):
 
     eid = _emp_id()
     hdr = auth_headers(login(client, *EMP))
+    # تواريخُ خاصة بهذا الاختبار: إجازةٌ أخرى لنفس الموظف بنفس التواريخ (الاختبار الأول)
+    # صارت تُردّ 409 — حارس التداخل (M12) — فلا تُعاد التواريخ بين اختبارين.
     rid = client.post("/api/requests", headers=hdr, json={
         "employee_id": eid, "request_type_code": "REQLV",
-        "payload_json": LEAVE}).json()["id"]
+        "payload_json": {**LEAVE, "start_date": "2027-12-06",
+                         "end_date": "2027-12-10"}}).json()["id"]
     for who in (SUP, HR):
         client.post(f"/api/requests/{rid}/decide",
                     headers=auth_headers(login(client, *who)),

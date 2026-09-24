@@ -48,6 +48,57 @@ def _fresh_environment_report():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _leave_state_isolation():
+    """M12 — طلباتُ الإجازة وسجلّاتُها التي أنشأها الاختبار لا تبقى لما بعده.
+
+    القاعدة واحدةٌ لكامل الجلسة (``_setup_db``)، وحارسُ تداخل الإجازات في ``create_request``
+    يرفض فترةً تتداخل مع طلبٍ حيٍّ أو إجازةٍ معتمَدة لنفس الموظف — وهو صحيحٌ في الإنتاج. أما
+    هنا فاختباراتٌ كثيرة تستعمل الإجازة **وسيلةً** لقياس شيءٍ آخر (اعتماد، تدقيق، سباق) بنفس
+    الموظف المزروع وتواريخَ ثابتة، فكانت تتصادم بما تركه غيرُها (35 اختبارًا فشلت). فيُغلَق
+    ما أنشأه كلُّ اختبار وحده: ما ``id`` أكبر من لقطة البداية، ولأنواع الإجازة فقط.
+    """
+    from sqlalchemy import func, select, update
+
+    from app import models
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        base_req = db.scalar(select(func.max(models.Request.id))) or 0
+        base_leave = db.scalar(select(func.max(models.Leave.id))) or 0
+    finally:
+        db.close()
+    yield
+    db = SessionLocal()
+    try:
+        # **إغلاقٌ لا حذف**: حذف الطلب يُعيد معرّفَه لاختبارٍ لاحق في SQLite، فتلتبس به
+        # أسطرُ تدقيقٍ قديمة تشير إلى المعرّف نفسه (اختبارات التدقيق تقرؤها بالمعرّف).
+        # والحارس يتجاهل ما ليس حيًّا (الملغى) وما ليس «معتمَدًا» (سجلّ الإجازة الملغى).
+        from datetime import datetime, timezone
+
+        from app import workflow
+
+        for req in db.scalars(select(models.Request).where(
+                models.Request.id > base_req,
+                models.Request.request_type_code.in_(("REQLV", "leave")),
+                models.Request.status.in_(("pending", "awaiting_signature",
+                                           "awaiting_delegate", "ready_for_pickup",
+                                           "apply_failed")))).all():
+            req.status = "cancelled"
+            req.closed_at = datetime.now(timezone.utc)
+            req.dedup_fingerprint = None
+            workflow._close_open_tasks(db, req)   # كما يفعل التطبيق: لا مهمة على طلبٍ منتهٍ
+        db.execute(update(models.Leave).where(
+            models.Leave.id > base_leave, models.Leave.status == "approved")
+            .values(status="cancelled"))
+        db.commit()
+    except Exception:  # noqa: BLE001 — تنظيفٌ مساعد لا يُسقط اختبارًا
+        db.rollback()
+    finally:
+        db.close()
+
+
 def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
