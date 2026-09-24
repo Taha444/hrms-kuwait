@@ -460,8 +460,13 @@ def list_runs(company_id: int | None = None,
     # run_payroll، انظر تعليق reopen_run) — لولا هذا الفصل لَبقي مديُر
     # الشركة، صاحُب صلاحية approve_payroll وحدها، بلا زرٍّ واحٍد يظهر له.
     may_approve = has_permission(user.role, perms, "approve_payroll")
-    names = {u.id: u.full_name for u in db.scalars(select(models.User).where(
-        models.User.company_id == (cid or user.company_id)))}
+    # **الأسماء تُقرأ بمعرّفات من جهّز واعتمد وأنهى وقفل، لا بمستخدمي الشركة**: المحاسب متعدّد
+    # الشركات ``company_id`` عنده فارغ، فكان اسمُه يغيب من «جهّزه» (``prepared_by: null``) —
+    # وفصلُ السلطات لا يُثبَت بغير أسماء (2026-09-24).
+    _ids = {i for r in rows for i in (r.prepared_by_user_id, r.approved_by_user_id,
+                                       r.finalized_by_user_id, r.locked_by_user_id) if i}
+    names = ({u.id: u.full_name for u in db.scalars(select(models.User).where(
+        models.User.id.in_(_ids)))} if _ids else {})
 
     out = []
     for r in rows:

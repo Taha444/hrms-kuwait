@@ -78,3 +78,22 @@ def test_only_the_preparer_or_the_top_admin_may_cancel(client):
             db.commit()
         finally:
             db.close()
+
+
+def test_the_run_list_names_a_preparer_who_has_no_company(client):
+    """المحاسب متعدّد الشركات (company_id فارغ) كان يظهر «جهّزه: —» — فصل السلطات بلا أسماء."""
+    h = _admin(client)          # super_admin: company_id فارغ كالمحاسب المتعدّد
+    run_id = client.post("/api/payroll/run", params={"period": "2019-05", "company_id": 1,
+                                                     "allow_open_attendance": True},
+                         headers=h).json()["run_id"]
+    try:
+        rows = client.get("/api/payroll/runs", params={"company_id": 1}, headers=h).json()
+        row = next(x for x in rows if x["id"] == run_id)
+        assert row["prepared_by"], "اسم المجهِّز غائب"
+    finally:
+        db = SessionLocal()
+        try:
+            purge(db, "payroll_runs", [run_id])
+            db.commit()
+        finally:
+            db.close()
