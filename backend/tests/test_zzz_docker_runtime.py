@@ -114,7 +114,17 @@ def test_the_production_image_is_the_one_at_the_repo_root():
 # ---------------------------------------------------------------------------
 #: استيراد داخل دالة لا يظهر عند الإقلاع ولا في الاختبارات المحلية —
 #: يظهر أول مرة على الخادم البعيد وقت أول رفع ملف.
-_LAZY_IMPORTS = {"boto3": "app/storage.py — STORAGE_BACKEND=s3"}
+_LAZY_IMPORTS = {
+    "boto3": "app/storage.py — STORAGE_BACKEND=s3",
+    # 2026-09-24 — نفس عطل boto3 بالحرف: ``fill()`` تستورد pypdf داخل
+    # الدالة (app/gov_contract_form.py) فلا يظهر غيابها عند الإقلاع ولا في
+    # أي اختبار يستدعي الدالة داخل نفس بيئة التطوير التي ثُبِّتت فيها يدويًّا.
+    # كانت مثبّتة محليًّا (ومن ثم في كل تشغيل محلي واختبار) وغائبة عن
+    # requirements.txt، فنجح توليد العقد الحكومي محليًّا وفشل 500 على
+    # الإنتاج لكل موظف بلا استثناء — ModuleNotFoundError: No module named
+    # 'pypdf'، مكتشَف من traceback حقيقي من خادم الإنتاج.
+    "pypdf": "app/gov_contract_form.py — تعبئة نموذج العقد الحكومي فوق أصل PDF",
+}
 
 
 def test_lazily_imported_packages_are_declared():
@@ -145,4 +155,12 @@ def test_the_s3_backend_still_needs_the_declared_package():
     src = (ROOT / "backend" / "app" / "storage.py").read_text(encoding="utf-8")
     assert "import boto3" in src, (
         "لم تعد storage.py تستورد boto3 — احذف الحزمة و_LAZY_IMPORTS معًا"
+    )
+
+
+def test_the_gov_contract_form_still_needs_the_declared_package():
+    """توثيق سبب الحارس: لو زال الاستيراد زال سببه (نفس منطق اختبار S3)."""
+    src = (ROOT / "backend" / "app" / "gov_contract_form.py").read_text(encoding="utf-8")
+    assert "from pypdf import" in src, (
+        "لم تعد gov_contract_form.py تستورد pypdf — احذف الحزمة و_LAZY_IMPORTS معًا"
     )

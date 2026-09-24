@@ -17,6 +17,10 @@ bleach==6.4.0
 reportlab==5.0.0
 arabic-reshaper==3.0.1
 python-bidi==0.6.11
+# قراءة/كتابة PDF لرسم العقد الحكومي فوق أصل الهيئة (app/gov_contract_form.py) —
+# كانت مثبَّتة محليًّا فقط ولا تظهر هنا، فنجح التوليد محليًّا وسقط 500 على
+# كل عقد حكومي في الإنتاج (ModuleNotFoundError) — انظر test_zzz_docker_runtime.py
+pypdf==6.14.2
 # قراءة صورة الجواز (MRZ) — تحتاج ثنائي Tesseract مثبَّتًا على النظام (انظر Dockerfile)
 pytesseract==0.3.13
 pillow==12.3.0

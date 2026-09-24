@@ -25,7 +25,7 @@ from sqlalchemy import delete as sa_delete, select
 
 from app import models
 from app.database import SessionLocal
-from tests.conftest import auth_headers, login, purge
+from tests.conftest import auth_headers, login, plain_employee_clause, purge
 
 HR = ("100000000002", "hr12345")
 MANAGER = ("100000000001", "manager123")
@@ -41,9 +41,12 @@ def proposal(client):
     """اقتراٌح معلَّق من الموارد البشرية على راتب موظف."""
     db = SessionLocal()
     try:
+        # موظفٌ لا يعلو HR في التسلسل — وإلا رفض المسار طلَب تغيير راتبه
+        # (assert_outranks_record)، وهذا الاختبار يقيس شكل الطابور لا الحدود.
         emp = db.scalars(select(models.Employee).where(
             models.Employee.status == "active",
-            models.Employee.basic_salary > 0).limit(1)).first()
+            models.Employee.basic_salary > 0,
+            plain_employee_clause(models)).limit(1)).first()
         eid = emp.id
     finally:
         db.close()
