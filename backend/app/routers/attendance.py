@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 from .. import attendance_close, models, schemas
 from ..config import settings
 from ..database import get_db
-from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
+from ..deps import (assert_outranks_record, assert_same_company, audit, get_current_user,
+                    require_perm, scope_company_id)
 from ..qr import haversine_m
 from ..safe_files import read_limited
 from .. import qr_token
@@ -407,6 +408,10 @@ def my_attendance(user: models.User = Depends(get_current_user), db: Session = D
              "overtime_minutes": r.overtime_minutes, "method": r.method} for r in rows]
 
 
+#: حالات السجلّ الفردي التي يُصحَّح إليها (بقية مفردات الشاشة خلايا تُحسب: إجازة/عطلة/مستقبل).
+CORRECTABLE_STATUSES = ("present", "late", "early_leave", "absent")
+
+
 @router.put("/{record_id}/correct")
 def correct_attendance(record_id: int, request: Request, reason: str,
                        check_in_at: datetime | None = None,
@@ -422,9 +427,33 @@ def correct_attendance(record_id: int, request: Request, reason: str,
         raise HTTPException(status_code=404, detail="السجل غير موجود")
     assert_same_company(user, rec.company_id, db=db, request=request)
 
-    # V2.2 §17 — لا تصحيح على شهر مقفل: يشترط reopen صريح أولاً
-    if rec.check_in_at:
-        period = rec.check_in_at.strftime("%Y-%m")
+    # M11 — التصحيح كتابةٌ على سجلّ موظف تُبنى عليه الرواتب، فيحكمه ما يحكم كل كتابة على
+    # ملف موظف (قرار المالك #38): لا تُصحَّح سجلات من هو أعلى منك ولا سجلُّك أنت — كان
+    # HR يصحّح حضورَه وحضورَ مدير الشركة بـ200.
+    _emp = db.get(models.Employee, rec.employee_id)
+    if _emp is not None:
+        assert_outranks_record(db, user, _emp, allow_self=False)
+
+    # **الحالةُ من مفردات السجلّ لا نصٌّ حرّ**: كانت ``zzz-hacked`` تُكتب وتخرج في التقارير.
+    if status is not None and status not in CORRECTABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=(
+            f"حالة غير صالحة — المسموح: {', '.join(CORRECTABLE_STATUSES)}"))
+
+    def _aware(v):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+
+    new_in = _aware(check_in_at) if check_in_at is not None else rec.check_in_at
+    new_out = _aware(check_out_at) if check_out_at is not None else rec.check_out_at
+    if new_in and new_out and _aware(new_out) <= _aware(new_in):
+        raise HTTPException(status_code=400, detail="وقت الانصراف يجب أن يكون بعد وقت الحضور")
+
+    # V2.2 §17 — لا تصحيح على شهر مقفل: يشترط reopen صريح أولاً.
+    # **والقفل على الشهرين معًا**: شهر السجلّ الحالي **والشهر الذي يُنقل إليه** — كان يُفحَص
+    # الأول وحده، فيُنقَل سجلٌّ من شهر مفتوح إلى شهرٍ مقفل (قيس 200) وهو ما وُضع القفل لمنعه.
+    periods = {p for p in (
+        rec.check_in_at.strftime("%Y-%m") if rec.check_in_at else None,
+        _aware(new_in).strftime("%Y-%m") if new_in else None) if p}
+    for period in sorted(periods):
         closed = db.scalar(select(models.AttendanceMonthClose).where(
             models.AttendanceMonthClose.company_id == rec.company_id,
             models.AttendanceMonthClose.period == period,
