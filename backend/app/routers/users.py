@@ -154,14 +154,22 @@ def list_orphaned_users(user: models.User = Depends(require_perm("manage_users")
                        db: Session = Depends(get_db)):
     """V2.2 §3 — كل الأدوار داخل الشركة (employee/hr/accountant/delegate/
     branch_supervisor/company_manager) لازم تكون مربوطة بموظف. المالك و
-    super_admin مستثنون. هنا نعرض كل الحسابات المكسورة داخل شركة المستخدم."""
+    super_admin مستثنون. هنا نعرض كل الحسابات المكسورة داخل شركة المستخدم.
+
+    **R9 §16**: ``enable-cross-company`` يُفرغ ``employee_id`` عمًدا — الربطُ
+    لحساب متعدد الشركات يصير عبر ``UserCompanyLink`` (عضويةٌ لكل شركة)، لا
+    عموًدا واحًدا يخصّ شركًة واحدًة. فحساٌب ``is_cross_company`` بلا أي عضوية
+    مُسجَّلة لا يزال مكسوًرا فعًلا، ويبقى في القائمة؛ ومن رُبط بعضويةٍ واحدةٍ
+    على الأقل ليس مكسوًرا، ولو ظل ``employee_id`` نفسه NULL كما يجب."""
     from ..permissions import CROSS_COMPANY_ROLES as _CC
     INTERNAL_ROLES = ["employee", "hr", "accountant", "delegate",
                       "branch_supervisor", "company_manager", "admin_employee"]
+    linked_cross_company_ids = select(models.UserCompanyLink.user_id).distinct()
     q = select(models.User).where(
         models.User.role.in_(INTERNAL_ROLES),
         models.User.employee_id.is_(None),
         models.User.is_active == True,  # noqa: E712
+        ~models.User.id.in_(linked_cross_company_ids),
     )
     if user.role not in _CC:
         q = q.where(models.User.company_id == user.company_id)

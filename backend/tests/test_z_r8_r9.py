@@ -731,6 +731,28 @@ def test_non_cross_company_user_cannot_select_company(client):
     assert "متعدد الشركات" in r.json()["detail"] or "cross" in r.json()["detail"].lower()
 
 
+def test_a_fully_linked_cross_company_account_is_not_reported_broken(client):
+    """R9 §16 × V2.2 §3 — حسابٌ رُبط بعنايةٍ (شركتان، وموظفٌ في كلٍّ منهما) لا
+    يظهر في ``/users/orphaned`` وكأنه مكسور.
+
+    **العطل**: ``enable-cross-company`` يفرغ ``employee_id`` عمًدا (الربطُ
+    صار عبر ``UserCompanyLink`` لا عموًدا واحًدا) — وقائمُة المكسورين تفحص
+    ``employee_id IS NULL`` وحده. فحساٌب أُعدّ بالضبط كما يريده الدليل
+    (محمد فاروق نفسه، مثال التوثيق) يبقى **أبديًّا** في قائمة «يحتاج ربطًا»،
+    ومن يقرؤها يعيد ربط ما هو مربوطٌ بالفعل أو يفقد الثقة في القائمة كلها.
+    """
+    ctx = _setup_cross_company_user(client)
+    try:
+        admin = auth_headers(login(client, *ADMIN))
+        r = client.get("/api/users/orphaned", headers=admin)
+        assert r.status_code == 200, r.text
+        assert not any(u["id"] == ctx["user_id"] for u in r.json()), (
+            "حسابٌ متعدد الشركات مربوطٌ بعضويتين ظهر في قائمة المكسورين"
+        )
+    finally:
+        _cleanup_cross_company_user(ctx["user_id"])
+
+
 def test_enable_cross_company_requires_super_admin(client):
     """R9 §16 — /enable-cross-company لـsuper_admin فقط."""
     mgr = auth_headers(login(client, *MGR))
