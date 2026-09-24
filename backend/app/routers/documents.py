@@ -220,7 +220,13 @@ async def upload_document(
             raise HTTPException(status_code=403, detail="غير مخوّل")
         company_id = None
     else:
-        company_id = user.company_id
+        # M06 — كان أيُّ ``entity_type`` نصّيّ يُقبل بأيّ ``entity_id`` وتُنسب الوثيقة لشركة
+        # الرافع: قيس أن مندوب الشركة 1 يرفع (200) وثيقةً على ``renewal`` تخصّ شركة 2 —
+        # وقارئا المعاملات (``_has``/``_renewal_docs``) يبحثان بالكيان لا بالشركة، فتُحسب
+        # وثيقةً لمعاملة غيره، وتُقلَب ``is_current`` لنسخته الأصلية. والأنواع المشروعة في
+        # الواجهة أربعة فقط؛ وثائق التجديد لها بابها (``/renewals/{id}/upload``).
+        raise HTTPException(status_code=400, detail=(
+            "نوع الكيان غير مدعوم — المسموح: employee أو company أو branch أو user"))
 
     # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
     _raw = await read_limited(file)
@@ -398,6 +404,11 @@ def download_document_version(doc_id: int, request: Request,
     السابقة كانت "محفوظة" ولا سبيل إلى فتحها: وجودها في القاعدة لا يكفي.
     """
     doc = db.get(models.Document, doc_id)
+    # M06 — **والتنزيل بالمعرّف باٌب كالتنزيل بالنوع** (``/latest``) **والقائمة**
+    # (``/history``): كلاهما يُخفي الورقة السرّية عمّن لا يراها، وهذا الباب كان يُخرجها
+    # لكل من يملك ``view_documents`` في الشركة بمعرّفٍ متسلسل (قيس: 404 هناك و200 هنا).
+    if doc is not None and not may_view_document(db, user, doc):
+        raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     assert_same_company(user, doc.company_id, db=db)
