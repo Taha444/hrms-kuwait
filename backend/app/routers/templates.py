@@ -576,19 +576,36 @@ def _build_context(db: Session, emp: models.Employee) -> dict:
 # ----------------------------------------------------------------------------
 
 
+#: ما يُملأ يدويًّا لكل مستند رغم أن السياق يحمل له قيمة افتراضية (شروط خاصة، فترة
+#: التجربة، تاريخ العقد…). وما عداه من مفاتيح السياق مصدره القاعدة فلا يُقبل من العميل.
+USER_FILLABLE_KEYS = frozenset({
+    "probation_days", "annual_leave_days", "special_conditions",
+    "special_condition_1", "special_condition_2", "special_condition_3",
+    "contract_date", "work_location", "payroll_cycle",
+})
+
+
 def _resolve_authoritative_data(db: Session, emp: models.Employee, extras: dict) -> dict:
     """يبني سياق التوليد من مصدر السلطة (DB) فقط. حقول العميل تُقبل فقط لو ما
     لها مقابل authoritative — لمنع تزوير الراتب/التاريخ من الفورم.
     """
     ctx = _build_context(db, emp)
-    # مفاتيح authoritative (لا تُقبَل من input) — الراتب والتاريخ والاسم من DB فقط
+    # مفاتيح authoritative (لا تُقبَل من input) — الراتب والتاريخ والاسم من DB فقط.
+    #
+    # **القفل يُشتقّ من السياق نفسه لا من قائمة تُكتب باليد.** كانت قائمةً من 17
+    # مفتاحًا، والسياق يبنيه ~60: فـ``official_salary`` و``actual_salary`` و
+    # ``residency_expiry`` و``passport_number`` و``date_today`` و``employment_status``
+    # والتوقيعان كانت تُقبل من ``extra`` وتُطبع على مستندٍ رسمي بمرجعٍ وبصمة
+    # (قيس: ``official_salary=99999`` خرجت كما أُرسلت والراتب الفعلي 2500).
+    # فكلُّ مفتاحٍ يبنيه السياق من القاعدة مقفول، إلا ما أُعلن هنا أنه يُملأ يدويًّا.
     LOCKED = {"basic_salary", "basic_salary_kwd", "allowances_total", "gross_salary",
               "hire_date", "civil_id", "employee_name",
               "employee_name_en", "employee_id", "job_title", "nationality",
               "contract_type", "company_name", "company_name_en",
               "commercial_reg", "branch_name", "department"}
+    locked = (set(ctx) - USER_FILLABLE_KEYS) | LOCKED
     for k, v in (extras or {}).items():
-        if k in LOCKED:
+        if k in locked:
             continue  # نتجاهل بصمت لضمان صحة البيانات
         ctx[k] = str(v)
     return ctx
