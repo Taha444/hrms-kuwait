@@ -798,14 +798,13 @@ def issue_employee_document(db: Session, t: models.DocumentTemplate, emp: models
     safe_ref = reference_no.replace("/", "_")
     fpath = save_at_key(pdf_bytes, f"forms/{safe_ref}.html")
 
-    # نسخة توقيع مصدر المستند لو له توقيع نشط
-    sig_version = None
-    active_sig = db.scalar(select(models.EmployeeSignature).where(
-        models.EmployeeSignature.user_id == user.id,
-        models.EmployeeSignature.status == "active",
-    ).order_by(models.EmployeeSignature.version.desc())) if hasattr(models, "EmployeeSignature") else None
-    if active_sig:
-        sig_version = getattr(active_sig, "version", None)
+    # نسخة توقيع مصدر المستند لو له توقيع نشط.
+    #
+    # M19.9 — كانت هذه تقرأ ``models.EmployeeSignature`` خلف ``hasattr``
+    # دفاعي؛ ذلك الصنف غير موجود (الحالي ``User.signature_version`` مباشرة،
+    # يحدّثه ``signatures.py`` عند كل رفع/اعتماد). فـhasattr كان يعود False
+    # دائًما وsig_version=None على كل مستند — رغم توقيع فعلي نشط لمن أصدره.
+    sig_version = user.signature_version if user.signature_path else None
 
     doc = models.Document(
         company_id=emp.company_id, entity_type="employee", entity_id=emp.id,

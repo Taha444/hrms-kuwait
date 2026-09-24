@@ -7,6 +7,8 @@ import os
 import struct
 import zlib
 
+from sqlalchemy import delete as sa_delete, select
+
 from tests.conftest import auth_headers, login
 
 
@@ -364,3 +366,62 @@ def test_generated_pdf_embeds_signature_when_available(client):
         size_with_sig = len(read_bytes(docs_with_sig[0].file_path))
         # التحقق ليّن — بس نتأكد إن الـ PDF أُنتِج بنجاح
         assert size_with_sig > 1000
+
+
+def test_a_generic_template_document_records_the_signature_that_issued_it(client):
+    """M19.9 — مستندٌ صادر عبر /templates/{id}/generate يحمل signature_version
+    الفعلي لمن أصدره، لا None دائًما.
+
+    ``issue_employee_document`` (app/routers/templates.py) يقرأ
+    ``models.EmployeeSignature`` خلف ``hasattr`` دفاعي — وهذا الصنف غير موجود
+    في models.py أصًلا (الموجود ``UserSignatureVersion`` باسم وحقول مختلفة).
+    فالحارس الدفاعي يُسكت الخطأ بدل أن يكشفه: ``hasattr`` يعود False دائًما،
+    و``signature_version`` يُسجَّل ``None`` على كل مستند — حتى لمن رفع توقيعًا
+    فعليًّا لحظة الإصدار، رغم وعد R1-A §8 الصريح بأن كل مستند صادر يحمل نسخة
+    توقيعه (DOC-20)."""
+    from app import models
+    from app.database import SessionLocal
+
+    admin = auth_headers(login(client, "000000000000", "admin123"))
+
+    # يرفع مُصدِر المستند توقيعًا حقيقيًّا أولًا
+    png = _signature_png()
+    up = client.post("/api/me/signature", headers=admin,
+                     files={"file": ("s.png", png, "image/png")})
+    assert up.status_code == 201, up.text
+
+    db = SessionLocal()
+    tid = None
+    try:
+        tpl = models.DocumentTemplate(
+            company_id=None, code="ZZZ-SIG-VERSION-CHECK", name="قالب فحص نسخة التوقيع",
+            category="other", body_html="<p>{{employee_name}}</p>", is_active=True)
+        db.add(tpl)
+        db.flush()
+        tid = tpl.id
+        emp = db.scalar(select(models.Employee).where(
+            models.Employee.status == "active").limit(1))
+        emp_id = emp.id
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        r = client.post(f"/api/templates/{tid}/generate", headers=admin,
+                        json={"employee_id": emp_id, "extra": {}, "save": True})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["signature_version"] is not None, (
+            "المُصدِر رفع توقيعًا فعليًّا والمستند لا يزال يسجّل signature_version=None"
+        )
+    finally:
+        db = SessionLocal()
+        try:
+            db.execute(sa_delete(models.Document).where(
+                models.Document.entity_type == "employee",
+                models.Document.title == "قالب فحص نسخة التوقيع"))
+            db.execute(sa_delete(models.DocumentTemplate).where(
+                models.DocumentTemplate.id == tid))
+            db.commit()
+        finally:
+            db.close()
