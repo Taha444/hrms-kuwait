@@ -88,6 +88,12 @@ def open_case(db, emp: models.Employee, *, termination_date: date, reason: str,
     if reason not in eos_engine.TERMINATION_REASONS:
         raise HTTPException(status_code=400, detail=(
             f"سبب غير معروف — المسموح: {list(eos_engine.TERMINATION_REASONS)}"))
+    # **المصدر الواحد للأبواب الثلاثة**: كانت الحالةُ تُفتح لتاريخ إنهاء قبل تاريخ التعيين،
+    # ولا يُرفض إلا عند الحساب لاحقًا برسالة عن مرحلة أخرى. (وحالةُ الموظف لا تُفحص هنا:
+    # ``execute_termination`` يضبطها قبل أن يفتح المرجع، فحارسُها في الباب الذي يحتاجه.)
+    if emp.hire_date and termination_date and termination_date < emp.hire_date:
+        raise HTTPException(status_code=400, detail=(
+            f"تاريخ انتهاء الخدمة ({termination_date}) أقدم من تاريخ التعيين ({emp.hire_date})"))
 
     existing = db.scalar(select(models.EosCase).where(
         models.EosCase.employee_id == emp.id,

@@ -11,8 +11,8 @@ from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
 from .. import exit_case, exit_guard
-from ..deps import (assert_same_company, audit, get_current_user, require_perm,
-                    require_super_admin)
+from ..deps import (assert_outranks_record, assert_same_company, audit, get_current_user,
+                    require_perm, require_super_admin)
 
 router = APIRouter(prefix="/eos", tags=["eos"])
 
@@ -224,6 +224,15 @@ def initiate_case(request: Request, employee_id: int,
     if not emp:
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id, db=db)
+    # قرار المالك (2026-09-24، #38): التسلسل يحكم كل كتابة على ملف موظف. هذا الباب
+    # (/eos/cases) كان بلا الحارس الذي في ``employees.prepare_termination`` — فيفتح HR
+    # إنهاءَ خدمة مدير الشركة من هنا وقد مُنع منه من هناك.
+    assert_outranks_record(db, user, emp, allow_self=False)
+    # ولا تُفتح حالةٌ لمن انتهت خدمته أصلًا (كانت تُفتح، فتُحسب تسويةٌ ثانية لمغادرة واحدة).
+    from ..deps import INACTIVE_EMPLOYMENT
+    if (emp.status or "").strip().lower() in INACTIVE_EMPLOYMENT:
+        raise HTTPException(status_code=409, detail=(
+            f"خدمة هذا الموظف منتهية بالفعل (الحالة «{emp.status}») — لا تُفتح له حالة جديدة"))
     # QA-18 — سجل وصول/صلاحية لا وظيفة: لا مستحق نهاية خدمة عليه، فحسابه
     # يخلق التزاًما ماليا لا وجود له.
     # P6-27 — لا يُفتح خروج ثانٍ بجانب خروج قائم: تاريخان لمغادرة واحدة.
