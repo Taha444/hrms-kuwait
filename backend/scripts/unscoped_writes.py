@@ -41,7 +41,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 #: ما يجعل جملًة مقيَّدًة بصٍّف أو بشركة.
-ROW_SCOPES = ("company_id", ".id ==", ".id.in_", "_id ==", "_id.in_")
+ROW_SCOPES = ("company_id", ".id ==", ".id.in_", "_id ==", "_id.in_",
+              # استثناءٌ **صريحٌ مُعلَّل** بالسطر نفسه: مسحُ موظفٍ تجريبيٍّ (admin.py) يمشي على
+              # المخطّط كلّه فلا يسمّي شركة، لكنّ كلَّ جملةٍ فيه مقيَّدةٌ بمعرّفات صفوفٍ
+              # استُخرجت من موظفٍ واحد بعد حارس الاسم «SWEEP_».
+              "purge-scope:")
 
 #: جداٌل عامّة لا تحمل شركًة — الحذف الدوري فيها مشروع.
 GLOBAL_TABLES = ("JobRun", "ConsumedToken", "RevokedToken")

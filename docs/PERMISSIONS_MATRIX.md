@@ -82,6 +82,7 @@
 - `POST /api/admin/break-glass/close`
 - `POST /api/admin/break-glass`
 - `POST /api/admin/ensure-catalog`
+- `POST /api/admin/purge-test-employee`
 - `POST /api/admin/reset-demo-data`
 - `POST /api/eos/calculate`
 - `POST /api/feature-flags`

@@ -225,3 +225,102 @@ def list_break_glass(limit: int = 50,
              "started_at": r.started_at, "expires_at": r.expires_at,
              "closed_at": r.closed_at, "uses": r.uses,
              "active": r.closed_at is None and r.expires_at > now} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# تنظيف موظفٍ تجريبيٍّ صنعه الفحص الشامل
+# ---------------------------------------------------------------------------
+
+TEST_PREFIX = "SWEEP_"
+
+
+def _purge_rows(db: Session, table, ids: list, counts: dict) -> None:
+    """يحذف صفوفًا **وكل ما يملكه أبناؤها**، ويفكّ الأعمدة الاختيارية بـ``NULL``.
+
+    والقاعدة: عمودٌ أجنبيٌّ **إلزاميٌّ** = الابن مملوكٌ للأب فيُحذف قبله؛ **اختياريٌّ** = إشارةٌ
+    فقط (من أنشأ، من اعتمد، مربوطٌ بموظف) فيُفَكّ ويبقى الصفّ — وبهذا يبقى سجلُّ التدقيق
+    سليمًا ولا يُحذف مستخدمٌ. الترتيبُ يُشتقّ من المخطّط لا من قائمةٍ تُنسى.
+    """
+    from ..database import Base
+
+    ids = [i for i in ids if i is not None]
+    if not ids:
+        return
+    pk_cols = list(table.primary_key.columns)
+    if len(pk_cols) != 1:
+        return
+    pk = pk_cols[0]
+    for child in Base.metadata.tables.values():
+        if child is table:
+            continue
+        for col in child.columns:
+            if not any(fk.column is pk for fk in col.foreign_keys):
+                continue
+            if col.nullable:
+                res = db.execute(child.update().where(col.in_(ids)).values({col.name: None}))  # purge-scope: صفوف موظفٍ SWEEP_ واحد
+                if res.rowcount:
+                    counts[f"{child.name}.{col.name}=NULL"] = counts.get(
+                        f"{child.name}.{col.name}=NULL", 0) + res.rowcount
+                continue
+            cpk = list(child.primary_key.columns)
+            if len(cpk) == 1:
+                kids = [r[0] for r in db.execute(select(cpk[0]).where(col.in_(ids)))]
+                _purge_rows(db, child, kids, counts)
+            else:
+                res = db.execute(child.delete().where(col.in_(ids)))  # purge-scope: صفوف موظفٍ SWEEP_ واحد
+                if res.rowcount:
+                    counts[child.name] = counts.get(child.name, 0) + res.rowcount
+    res = db.execute(table.delete().where(pk.in_(ids)))  # purge-scope: صفوف موظفٍ SWEEP_ واحد
+    if res.rowcount:
+        counts[table.name] = counts.get(table.name, 0) + res.rowcount
+
+
+@router.post("/purge-test-employee")
+def purge_test_employee(employee_id: int, request: Request, confirm: str | None = None,
+                        user: models.User = Depends(require_super_admin),
+                        db: Session = Depends(get_db)):
+    """يمسح موظفًا **تجريبيًّا** وما ينشأ حوله (طلباته وحضوره ومهامّه) — لا غيره.
+
+    طلبُ المالك (2026-09-24): «أنشئ حسابًا تجريبيًّا وجرّب عليه ثم امسحه». لا مسارَ في النظام
+    يحذف موظفًا (تُنهى الخدمة بمسارٍ بفصل سلطات) وهذا مقصود، فهذه النقطةُ ضيّقةٌ جدًّا:
+    - ``super_admin`` وحده، وفي الإنتاج بـ``confirm=PURGE-TEST-EMPLOYEE``.
+    - **اسمُ الموظف يبدأ بـ``SWEEP_``** — موظفٌ حقيقيّ لا يُمسّ مهما طُلب.
+    - **حسابُ الدخول لا يُحذف** (سجلُّ التدقيق يشير إليه): يُعطَّل ويُفَكّ عن الموظف.
+    - وسجلُّ التدقيق يبقى، ويُكتب فيه ما مُسح.
+    """
+    emp = db.get(models.Employee, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="الموظف غير موجود")
+    if not (emp.name or "").startswith(TEST_PREFIX):
+        raise HTTPException(status_code=403, detail=(
+            f"يُمسَح الموظفون التجريبيون فقط (الاسم يبدأ بـ{TEST_PREFIX}) — هذا موظفٌ حقيقيّ."))
+    if settings.is_production and (confirm or "").strip().upper() != "PURGE-TEST-EMPLOYEE":
+        raise HTTPException(status_code=400, detail=(
+            "هذا الفعل لا تراجع عنه. أعد النداء مع confirm=PURGE-TEST-EMPLOYEE."))
+
+    counts: dict[str, int] = {}
+    acct = db.scalars(select(models.User).where(models.User.employee_id == emp.id)).all()
+    req_ids = [r for r in db.scalars(select(models.Request.id).where(
+        models.Request.employee_id == emp.id)).all()]
+    # المهامّ المشتقّة: على طلباته أو عليه، أو مسنَدةٌ لحسابه (لا مفتاح أجنبيّ يجمعها).
+    from sqlalchemy import and_, or_
+    conds = [and_(models.Task.related_entity_type == "employee",
+                  models.Task.related_entity_id == emp.id)]
+    if req_ids:
+        conds.append(and_(models.Task.related_entity_type == "request",
+                          models.Task.related_entity_id.in_(req_ids)))
+    if acct:
+        conds.append(models.Task.assignee_user_id.in_([a.id for a in acct]))
+    task_ids = list(db.scalars(select(models.Task.id).where(or_(*conds))).all())
+    _purge_rows(db, models.Task.__table__, task_ids, counts)
+    _purge_rows(db, models.Employee.__table__, [emp.id], counts)
+    for a in acct:
+        a.is_active = False
+        a.employee_id = None
+    audit(db, user, "purge_test_employee", "employee", employee_id, request=request,
+          company_id=emp.company_id,
+          detail=f"{emp.name} — " + "، ".join(f"{k}={v}" for k, v in sorted(counts.items())),
+          after={"deleted": counts, "accounts_deactivated": [a.id for a in acct]})
+    db.commit()
+    return {"ok": True, "employee_id": employee_id, "deleted": counts,
+            "accounts_deactivated": [a.id for a in acct]}
