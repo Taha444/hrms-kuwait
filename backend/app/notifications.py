@@ -204,7 +204,16 @@ def users_by_role(db: Session, company_id: int | None, roles: list[str]) -> list
     q = select(models.User).where(models.User.role.in_(roles), models.User.is_active == True,  # noqa: E712
                                   employment_live_clause())
     if company_id is not None:
-        q = q.where(models.User.company_id == company_id)
+        # **ومتعدّد الشركات يصله ما في شركاته كلِّها لا شركتِه الأصلية وحدها** (SW-011،
+        # 2026-09-24): المندوب الحكومي الوحيد عضوٌ في الشركات الخمس بربط ``UserCompanyLink``
+        # و``company_id`` عنده شركتُه الأولى؛ فكانت تراخيصُ النيل الأزرق ومحمد إبراهيم
+        # المنتهية منذ أشهرٍ (وأحدُها منذ ثلاث سنوات) تُنشئ تنبيهاتٍ **لا تصل أحدًا**.
+        from sqlalchemy import or_
+
+        q = q.where(or_(
+            models.User.company_id == company_id,
+            models.User.id.in_(select(models.UserCompanyLink.user_id).where(
+                models.UserCompanyLink.company_id == company_id))))
     return list(db.scalars(q).all())
 
 
