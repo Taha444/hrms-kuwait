@@ -22,6 +22,7 @@ from ..deps import (
     get_user_perms,
     hidden_staff_ids,
     require_perm,
+    require_super_admin,
     resolve_scope,
     scope_company_id,
 )
@@ -164,8 +165,12 @@ def list_employees(response: Response, company_id: int | None = None, branch_id:
         like = f"%{q.strip()}%"
         # بحث بالاسم / الرقم المدني / رقم الموظف / رقم الإقامة
         permit_emp_ids = select(models.Permit.employee_id).where(models.Permit.number.ilike(like))
+        # employee_no داخليٌّ حاسمُ حالة (test_internal_keys_stay_case_sensitive) — نمطٌ
+        # منفصلُ الاسم لا ``like`` نفسها، والقيمة واحدة.
+        no_pattern = like
         conds = [models.Employee.name.ilike(like), models.Employee.civil_id.ilike(like),
                  models.Employee.passport_number.ilike(like),
+                 models.Employee.employee_no.like(no_pattern),
                  models.Employee.id.in_(permit_emp_ids)]
         if q.strip().isdigit():
             conds.append(models.Employee.id == int(q.strip()))
@@ -773,6 +778,32 @@ def add_permit(emp_id: int, kind: str, number: str | None = None,
     audit(db, user, "add_permit", "employee", emp_id, detail=kind, request=request)
     db.commit()
     return {"ok": True, "id": permit.id}
+
+
+@router.post("/{emp_id}/permits/{permit_id}/void")
+def void_permit(emp_id: int, permit_id: int, reason: str, request: Request,
+                user: models.User = Depends(require_super_admin),
+                db: Session = Depends(get_db)):
+    """يُبطل إقامة/إذن عمل أُدخل بالخطأ — **الإدارة العليا وحدها، ولا حذف**.
+
+    قيس أثناء المسح الشامل (2026-09-24): محاولةُ فحصٍ أنشأت إقامة تجريبية حقيقية على موظفٍ
+    حقيقي بلا نقطةِ رجوع — الإنشاء موجود والحذف غائب. ``Permit.status == "active"`` هو
+    الحارسُ الوحيد الذي يقرؤه كلُّ موضعٍ (التنبيهات، اللوحات، محرّك الانتهاء)، فإبطالها يكفي
+    ليختفي أثرُها من كل شاشة دون أن يفقد السجلُّ تاريخَه — كأرشفة الفرع تماًما.
+    """
+    permit = db.get(models.Permit, permit_id)
+    if not permit or permit.employee_id != emp_id:
+        raise HTTPException(status_code=404, detail="الإقامة/الإذن غير موجود")
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب الإبطال إلزامي")
+    if permit.status != "active":
+        raise HTTPException(status_code=409, detail=f"الإقامة بالفعل بحالة «{permit.status}»")
+    permit.status = "voided"
+    audit(db, user, "void_permit", "employee", emp_id, request=request,
+          company_id=permit.company_id,
+          detail=f"permit#{permit.id} ({permit.kind} {permit.number or '—'}) — {reason.strip()[:200]}")
+    db.commit()
+    return {"ok": True, "permit_id": permit.id, "status": "voided"}
 
 
 EMP_STATUSES = {"active", "vacation", "suspended", "resigned", "terminated", "retired", "archived"}

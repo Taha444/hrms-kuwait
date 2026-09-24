@@ -66,8 +66,13 @@ def global_search(q: str, user: models.User = Depends(get_current_user), db: Ses
 
     # الموظفون (بالاسم/المدني/الجواز/رقم الموظف)
     if can("view_employee"):
+        # قرار المسح الشامل (2026-09-24، M05): البحث بالاسم والمدني والجواز — بلا الرقم الوظيفي
+        # (GUF-HQ-00001) رغم أنه المعرّف المطبوع على كل مستند رسمي. مطابقٌ ما وُجد في قائمة الموظفين.
+        # employee_no داخليٌّ حاسمُ حالة — نمطٌ منفصلُ الاسم لا ``like`` نفسها.
+        no_pattern = like
         conds = [models.Employee.name.ilike(like), models.Employee.civil_id.ilike(like),
-                 models.Employee.passport_number.ilike(like)]
+                 models.Employee.passport_number.ilike(like),
+                 models.Employee.employee_no.like(no_pattern)]
         if q.isdigit():
             conds.append(models.Employee.id == int(q))
         emp_q = select(models.Employee).where(or_(*conds))

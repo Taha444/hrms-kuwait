@@ -35,9 +35,15 @@ def _urgency(days_left: int | None) -> str:
 @router.get("/permits")
 def list_permits(company_id: int | None = None, kind: str | None = None,
                  status: str | None = None, branch_id: int | None = None,
+                 include_voided: bool = False,
                  user: models.User = Depends(require_perm("manage_permits")),
                  db: Session = Depends(get_db)):
-    """متابعة الإقامات وأذونات العمل مع أيام الانتهاء والأولوية."""
+    """متابعة الإقامات وأذونات العمل مع أيام الانتهاء والأولوية.
+
+    **المُبطَل لا يظهر افتراضًا** (2026-09-24): لا فلتر حالة هنا كان يعني أن كل صفّ
+    ``voided`` (إبطال خطأ إدخال) يبقى مختلطًا بالسارية على شاشة متابعة PRO — كما كانت حالة
+    الترخيص المنتهي تبقى «سارية» على شاشات أخرى (SW-016). ``status`` صريحًا يتجاوز هذا.
+    """
     cid = scope_company_id(user, company_id)
     q = select(models.Permit)
     if cid is not None:
@@ -46,6 +52,8 @@ def list_permits(company_id: int | None = None, kind: str | None = None,
         q = q.where(models.Permit.kind == kind)
     if status:
         q = q.where(models.Permit.status == status)
+    elif not include_voided:
+        q = q.where(models.Permit.status != "voided")
     permits = db.scalars(q).all()
     emp_map = {e.id: e for e in db.scalars(select(models.Employee)).all()}
     today = kuwait_today()

@@ -84,6 +84,7 @@
 - `POST /api/admin/ensure-catalog`
 - `POST /api/admin/purge-test-employee`
 - `POST /api/admin/reset-demo-data`
+- `POST /api/employees/{emp_id}/permits/{permit_id}/void`
 - `POST /api/eos/calculate`
 - `POST /api/feature-flags`
 - `POST /api/payroll/runs/{run_id}/reopen`
