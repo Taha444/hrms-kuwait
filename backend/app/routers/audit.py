@@ -61,5 +61,12 @@ def list_audit(company_id: int | None = None, limit: int = 100, offset: int = 0,
              "on_behalf": bool(r.original_user_id),
              "acted_by": (user_names.get(r.original_user_id)
                           if r.original_user_id else None),
+             # **الحقول المخزَّنة كلُّها تُعرض** (M22، 2026-09-24): القاعدة تحفظ الصفة وقت
+             # الفعل والنتيجة والسبب وقبل/بعد والمعرّف المشترك ومتصفّح الفاعل، والواجهة كانت
+             # تعرض أحد عشر حقلًا فقط — فلا يُرى إن كان الفعل نجح أم فشل، ولا بأي صفة وقع.
+             "company_id": r.company_id, "branch_id": r.branch_id,
+             "actor_role": r.actor_role, "result": r.result, "reason": r.reason,
+             "before": r.before_json, "after": r.after_json,
+             "correlation_id": r.correlation_id, "user_agent": r.user_agent,
              "at": r.created_at}
             for r in rows]

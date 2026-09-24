@@ -599,6 +599,16 @@ def daily_scan(db: Session) -> dict:
     from . import task_cleanup
 
     cleaned = task_cleanup.run(db, apply=True, only=task_cleanup.AUTOMATIC_BUCKETS)
+    if cleaned["total"]:
+        # الاكتمال الآليّ يُسجَّل باسم النظام (M22.4) — من أغلق ولماذا وكم.
+        from .deps import audit
+
+        audit(db, None, "task_cleanup_auto", "task", None,
+              detail="أُغلقت آليًّا: " + "، ".join(
+                  f"{k}={v['count']}" for k, v in cleaned.items()
+                  if isinstance(v, dict) and v.get("count")),
+              after={k: v["count"] for k, v in cleaned.items() if isinstance(v, dict)})
+        db.commit()
     return {"generated": made, "cleaned": cleaned["total"], "scanned_at": today.isoformat()}
 
 
