@@ -396,6 +396,20 @@ def create_request_type(data: schemas.RequestTypeIn, request: Request,
 
 # ----------------------------- تقديم وعرض -----------------------------
 
+#: من يفتح كلَّ إجراءٍ إداريٍّ داخلي (ADM*) — أدوارُ أصحاب سلطته. ما لم يُذكر: HR ومدير الشركة.
+ADM_ORIGINATORS: dict[str, set[str]] = {
+    "ADMEMP": {"hr", "company_manager"},
+    "ADMDED": {"hr", "accountant", "company_manager"},
+    "ADMVIO": {"hr", "company_manager", "branch_supervisor"},
+    "ADMWARN": {"hr", "company_manager"},
+    "ADMTASK": {"hr", "company_manager", "delegate"},
+    "ADMMISS": {"hr", "company_manager"},
+    "ADMLIC": {"hr", "company_manager", "delegate"},
+    "ADMSIGN": {"hr", "company_manager"},
+    "ADMRESCXL": {"hr", "company_manager"},
+}
+
+
 @router.post("", status_code=201)
 def submit_request(data: schemas.RequestIn, request: Request,
                    user: models.User = Depends(require_perm("submit_request")),
@@ -428,6 +442,24 @@ def submit_request(data: schemas.RequestIn, request: Request,
                    "مقصور على الشؤون القانونية/HR والمندوب. يمكنك تقديم طلباتك "
                    "الخاصة فقط."
         )
+
+    # **التسلسل يحكم من يقدّم باسم غيره**: من هو أدنى في التسلسل لا يقدّم باسم من هو أعلى منه
+    # (قرار المالك 2026-09-24) — قُدِّم خصمٌ باسم مدير الشركة من المندوب.
+    if emp_id != user.employee_id and user.role != "super_admin":
+        _holder = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+        if _holder is not None and permissions.role_level(_holder.role) > permissions.role_level(user.role):
+            raise HTTPException(status_code=403, detail=(
+                "لا يجوز التقديم باسم من هو أعلى منك في التسلسل."))
+
+    # **الإجراءات الإدارية الداخلية (ADM*) يفتحها أصحابُ سلطتها لا كلُّ من يملك submit_request**:
+    # قيس أن موظفًا عاديًّا فتح «إصدار خصم» بالـAPI (كتالوجه يخفيه لكنّ الخادم لم يمنعه) —
+    # ``visible_to_employee`` علامة عرض لا صلاحية. فكلُّ نوعٍ له أدوارُ منشئيه (مأخوذةٌ من أول
+    # مرحلة في مساره وصاحب السلطة عليه)، والإدارة العليا وصاحب الشركات فوق ذلك.
+    if data.request_type_code.startswith("ADM") and user.role not in ("super_admin", "company_owner"):
+        _allowed = ADM_ORIGINATORS.get(data.request_type_code, {"hr", "company_manager"})
+        if user.role not in _allowed:
+            raise HTTPException(status_code=403, detail=(
+                "هذا إجراءٌ إداريّ داخليّ — يفتحه أصحابُ سلطته فقط، ولا يقدَّم كطلب موظف."))
 
     # الإنذار طلب يُوجَّه لموظف بعينه — ونفس قاعدة الإعفاء تحكمه هنا وفي
     # تسجيل الحدث المباشر: permissions.may_receive_warning هو المصدر الواحد،

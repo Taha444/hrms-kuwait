@@ -52,6 +52,15 @@ def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def plain_employee_clause(models_module):
+    """شرط SQLAlchemy: موظفٌ ليس صاحبَ حسابٍ بدورٍ إداريّ (لا يعلو HR ولا المحاسب)."""
+    from sqlalchemy import select as _select
+
+    return ~models_module.Employee.id.in_(
+        _select(models_module.User.employee_id).where(
+            models_module.User.role != "employee", models_module.User.employee_id.isnot(None)))
+
+
 def attach_file(client, headers, req_id: int):
     """يرفع ملفًّا حقيقيًا بنوع ``attachment`` — كما يفعل صاحبُ الطلب من صفحته.
 

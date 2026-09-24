@@ -105,8 +105,10 @@ def test_the_screen_offers_the_unlock_to_the_owner():
 def _employee():
     db = SessionLocal()
     try:
+        from tests.conftest import plain_employee_clause
         emp = db.scalar(select(models.Employee).where(
-            models.Employee.company_id == 1, models.Employee.branch_id.isnot(None)))
+            models.Employee.company_id == 1, models.Employee.branch_id.isnot(None),
+            plain_employee_clause(models)))
         other = db.scalar(select(models.Branch).where(
             models.Branch.company_id == 1, models.Branch.id != emp.branch_id))
         return emp.id, emp.civil_id, emp.name, emp.branch_id, (other.id if other else None)

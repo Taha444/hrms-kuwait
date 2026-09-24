@@ -45,7 +45,18 @@ def _may_manage(user: models.User, delegator: models.User) -> bool:
         return True
     if user.role == "super_admin":
         return True
-    return user.role == "hr" and user.company_id == delegator.company_id
+    # **ولا يُفوَّض باسم من هو أعلى منك** (قرار المالك 2026-09-24): كان HR يُنشئ باسم مدير
+    # الشركة تفويضًا يمنح غيرَه سلطة اعتمادات المدير. فـHR يفوّض باسم من هو في مستواه أو أدنى،
+    # ومدير الشركة وصاحب الشركات باسم من هو أدنى منهما في شركتهما.
+    from ..permissions import role_level
+
+    if user.company_id != delegator.company_id:
+        return False
+    if user.role == "hr":
+        return role_level(delegator.role) <= role_level("hr")
+    if user.role in ("company_manager", "company_owner"):
+        return role_level(delegator.role) < role_level(user.role)
+    return False
 
 
 @router.get("")

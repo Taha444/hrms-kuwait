@@ -2,6 +2,9 @@
 """R7 — اختبارات القبول للـgaps المتبقية بعد Round 7."""
 from datetime import date, timedelta
 
+from sqlalchemy import select
+
+from app import models
 from tests.conftest import auth_headers, login
 
 
@@ -99,7 +102,14 @@ def test_r7g_salary_change_requires_approval_by_different_user(client):
     admin = auth_headers(login(client, "000000000000", "admin123"))
 
     # موظف نستخدمه
-    emp_id = 1  # أي موظف نشط في شركة 1
+    from app.database import SessionLocal as _S
+    from tests.conftest import plain_employee_clause as _plain
+    _db = _S()
+    try:
+        emp_id = _db.scalar(select(models.Employee.id).where(
+            models.Employee.company_id == 1, models.Employee.status == "active", _plain(models)))
+    finally:
+        _db.close()
 
     # 1) HR يقترح
     r = client.post(f"/api/employees/{emp_id}/salary-change-request", headers=hr,
@@ -134,7 +144,16 @@ def test_r7g_salary_change_rejected_flow(client):
     hr = auth_headers(login(client, "100000000002", "hr12345"))
     mgr = auth_headers(login(client, "100000000001", "manager123"))
 
-    r = client.post(f"/api/employees/2/salary-change-request", headers=hr,
+    # لا HR نفسُه (ملفّه: لا يقترح تعديلًا على نفسه) ولا من هو أعلى — موظفٌ عاديّ.
+    from tests.conftest import plain_employee_clause as _plain
+    from app.database import SessionLocal as _S
+    _db = _S()
+    try:
+        _eid = _db.scalar(select(models.Employee.id).where(
+            models.Employee.company_id == 1, models.Employee.status == "active", _plain(models)))
+    finally:
+        _db.close()
+    r = client.post(f"/api/employees/{_eid}/salary-change-request", headers=hr,
                    params={"field_name": "job_title", "new_value": "مدير أول",
                           "effective_date": date.today().isoformat(),
                           "reason": "ترقية مقترحة"})

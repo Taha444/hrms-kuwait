@@ -128,9 +128,10 @@ def test_an_active_employee_is_still_accepted(client):
     db = SessionLocal()
     try:
         hr = db.scalar(select(models.User).where(models.User.civil_id == HR[0]))
+        from tests.conftest import plain_employee_clause
         active = db.scalar(select(models.Employee).where(
             models.Employee.company_id == hr.company_id,
-            models.Employee.status == "active"))
+            models.Employee.status == "active", plain_employee_clause(models)))
         emp_id, code = active.id, _leave_code(db)
     finally:
         db.close()

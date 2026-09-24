@@ -15,6 +15,7 @@ from ..doc_archive import visible_documents
 from ..database import get_db
 from .. import exit_guard
 from ..deps import (
+    assert_outranks_record,
     assert_same_company,
     audit,
     get_current_user,
@@ -305,6 +306,7 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
     تُسجَّل بتاريخ سريان مستقبلي (مفيد لزيادة راتب تسري الشهر القادم).
     الافتراضي: effective_date = اليوم = تسري فورًا."""
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=True)
 
     # **تدمير بيانات**: كان ``model_dump()`` يُنتج **كل** حقول المخطّط —
     # المُرسَل منها والغائب — فيكتب الغائب بقيمته الافتراضية. فطلب فيه
@@ -504,6 +506,7 @@ def apply_ocr(emp_id: int, data: schemas.OcrApplyIn, request: Request = None,
               db: Session = Depends(get_db)):
     """تطبيق بيانات OCR (بعد مراجعة المستخدم) على ملف الموظف — يحفظ القيم القديمة في التدقيق."""
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=True)
     fields = data.model_dump(exclude_none=True)
     _assert_no_duplicates(db, emp.company_id, fields.get("civil_id"),
                           fields.get("passport_number"), exclude_id=emp.id)
@@ -527,6 +530,7 @@ def set_actual_salary(emp_id: int, amount: float, request: Request = None,
     if amount < 0:
         raise HTTPException(status_code=400, detail="القيمة لا يمكن أن تكون سالبة")
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     old = emp.actual_salary
     # **وسجلُّ التغييرات الحرجة يراه** — ``actual_salary`` في
     # ``CRITICAL_FIELDS``، وشاشةُ «سجل التعديلات» تعرضه للمحاسب؛ وهذه النقطةُ
@@ -567,6 +571,7 @@ def set_attendance_mode(emp_id: int, mode: str, request: Request,
                     "وسجّل سبب الإعفاء. وموظف نشط بلا سياسة موثَّقة يوقف "
                     "إقفال مسيّر الرواتب."))
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     emp.attendance_mode = mode
     # ونمٌط فعليّ يُلغي إعفاًء سابًقا: بقاؤهما معًا يعني موظًفا يبصم ويُعدّ معفًى.
     emp.attendance_exempt = False
@@ -761,6 +766,7 @@ def add_permit(emp_id: int, kind: str, number: str | None = None,
                user: models.User = Depends(require_perm("manage_permits")),
                db: Session = Depends(get_db)):
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     permit = models.Permit(company_id=emp.company_id, employee_id=emp_id, kind=kind,
                            number=number, start_date=start_date, expiry_date=expiry_date)
     db.add(permit)
@@ -783,6 +789,7 @@ def set_status(emp_id: int, status: str, request: Request = None,
     if status not in EMP_STATUSES:
         raise HTTPException(status_code=400, detail="حالة غير صالحة")
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     old = emp.status
 
     # **ولا تُنهى خدمةٌ بقائمةٍ منسدلة.** الإنهاءُ مسارٌ مبنيٌّ بفصل سلطات
@@ -826,6 +833,7 @@ def add_event(emp_id: int, kind: str, title: str, detail: str | None = None,
     if kind not in EVENT_KINDS:
         raise HTTPException(status_code=400, detail="نوع حدث غير صالح")
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     # الإنذار لا يُوجَّه لمن هو فوق الشؤون القانونية في التسلسل. الفحص هنا على
     # الخادم لا في الواجهة: إخفاء الزر لا يمنع طلًبا مباشًرا على المسار.
     if kind in ("warning", "penalty"):
@@ -985,6 +993,7 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
     """
     import json
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if emp.status in PATH_ONLY_STATUSES:
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
     if emp.status == "archived":
@@ -1056,6 +1065,7 @@ def approve_termination(emp_id: int, request: Request = None,
                         db: Session = Depends(get_db)):
     """PILOT-P0-8 — اعتماد المسودة (يشترط مختلف المُحضِّر)."""
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة معلقة")
     if emp.pending_termination_prepared_by == user.id:
@@ -1077,6 +1087,7 @@ def clearance_termination(emp_id: int, request: Request = None,
     (يأتي بعد approve وقبل execute).
     """
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة إنهاء خدمة")
     if not emp.pending_termination_approved_at:
@@ -1122,6 +1133,7 @@ def execute_termination(emp_id: int, request: Request = None,
     V2.2 §13: كل الـstages التمهيدية إجبارية قبل التنفيذ."""
     import json
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if emp.status in PATH_ONLY_STATUSES:
         raise HTTPException(status_code=409, detail="خدمة الموظف منتهية بالفعل")
     if not emp.pending_termination_json:
@@ -1293,6 +1305,7 @@ def cancel_termination(emp_id: int, request: Request = None,
                        db: Session = Depends(get_db)):
     """PILOT-P0-8 — إلغاء المسودة قبل التنفيذ."""
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if not emp.pending_termination_json:
         raise HTTPException(status_code=404, detail="لا توجد مسودة معلقة لإلغائها")
     emp.pending_termination_json = None
@@ -1343,6 +1356,7 @@ def set_attendance_policy(emp_id: int, mode: str, exempt: bool = False,
     if mode not in ("none", "qr", "gps", "both"):
         raise HTTPException(status_code=400, detail="نمط حضور غير صالح")
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     if mode == "none":
         if not exempt or not (exempt_reason and exempt_reason.strip()):
             raise HTTPException(
@@ -1429,6 +1443,7 @@ def propose_salary_change(emp_id: int, field_name: str, new_value: str,
     if not reason or not reason.strip():
         raise HTTPException(status_code=400, detail="سبب التغيير إلزامي")
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     old = getattr(emp, field_name, None)
     req = models.SalaryChangeRequest(
         company_id=emp.company_id, employee_id=emp.id,
@@ -1685,6 +1700,7 @@ def transfer_employee(emp_id: int, to_company_id: int, note: str | None = None,
                       user: models.User = Depends(require_perm("transfer_employee")),
                       db: Session = Depends(get_db)):
     emp = _get_emp(db, user, emp_id)
+    assert_outranks_record(db, user, emp, allow_self=False)
     target = db.get(models.Company, to_company_id)
     if not target:
         raise HTTPException(status_code=404, detail="الشركة الهدف غير موجودة")

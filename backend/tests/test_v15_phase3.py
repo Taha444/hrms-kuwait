@@ -74,7 +74,7 @@ def test_task_release_by_owner_allows_reclaim(client):
 
 
 def test_delegation_create_and_list_by_hr(client):
-    """HR يقدر يمنح تفويض باسم أي مستخدم في الشركة."""
+    """HR لا يمنح تفويضًا باسم من هو أعلى منه (المدير) — قرار المالك 2026-09-24."""
     hr_tok = auth_headers(login(client, "100000000002", "hr12345"))
     now = datetime.now(timezone.utc)
     starts = now.isoformat()
@@ -83,7 +83,7 @@ def test_delegation_create_and_list_by_hr(client):
     r = client.post("/api/delegations", headers=hr_tok, params={"delegator_user_id": 3},
                     json={"delegate_user_id": 2, "starts_at": starts, "ends_at": ends,
                           "reason": "إجازة سنوية للمدير", "scope": "all"})
-    assert r.status_code in (201, 400), r.text  # 400 لو المستخدمين مش في نفس الشركة
+    assert r.status_code == 403, r.text
 
 
 def test_delegation_rejects_same_user(client):

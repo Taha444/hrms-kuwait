@@ -507,7 +507,9 @@ def test_hr_still_manages_delegations_inside_its_own_company(client):
             models.User.company_id == 1, models.User.role == "company_manager"))
         other = db.scalar(select(models.User).where(models.User.company_id == 2))
         assert hr1 is not None and mgr1 is not None and other is not None
-        assert _may_manage(hr1, mgr1) is True, "مُنع من شركته"
+        # ولا يفوّض باسم من هو أعلى منه (المدير) — التسلسل (قرار 2026-09-24) — لكنّ شركته لا يُمنع منها:
+        assert _may_manage(hr1, mgr1) is False, "فوّض باسم من هو أعلى منه"
+        assert _may_manage(mgr1, hr1) is True, "مُنع المدير من شركته"
         assert _may_manage(hr1, other) is False, "وصل إلى شركٍة أخرى"
         assert _may_manage(hr1, hr1) is True, "مُنع من نفسه"
     finally:

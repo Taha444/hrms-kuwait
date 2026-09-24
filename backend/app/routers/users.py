@@ -525,6 +525,8 @@ def set_data_scope(user_id: int, level: str | None = None, branch_id: int | None
     from ..deps import SCOPE_LEVELS
 
     target = _get_scoped_user(db, user, user_id)
+    if target.id == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="لا تغيّر نطاق بياناتك بنفسك — يغيّره من هو أعلى منك.")
     old_level, old_branch = target.scope_level, target.scope_branch_id
 
     # توافق خلفي: استنتاج المستوى من المُدخل القديم
@@ -654,6 +656,8 @@ def assign_permissions(user_id: int, data: schemas.PermissionAssignIn, request: 
     for code in data.perm_codes:
         if code not in PERMISSIONS:
             raise HTTPException(status_code=400, detail=f"صلاحية غير معروفة: {code}")
+    _assert_may_grant(db, user, target, list(data.perm_codes))
+    for code in data.perm_codes:
         existing = next((p for p in target.permissions if p.perm_code == code), None)
         if existing:
             existing.expires_at = data.expires_at
@@ -671,6 +675,8 @@ def revoke_permission(user_id: int, perm_code: str, request: Request,
                       user: models.User = Depends(require_perm("manage_users")),
                       db: Session = Depends(get_db)):
     target = _get_scoped_user(db, user, user_id)
+    if target.id == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="لا تعدّل صلاحيات نفسك — يعدّلها من هو أعلى منك.")
     perm = next((p for p in target.permissions if p.perm_code == perm_code), None)
     if perm:
         db.delete(perm)
@@ -686,6 +692,7 @@ def apply_template(user_id: int, template_code: str, request: Request,
     if template_code not in PERMISSION_TEMPLATES:
         raise HTTPException(status_code=404, detail="القالب غير موجود")
     target = _get_scoped_user(db, user, user_id)
+    _assert_may_grant(db, user, target, list(PERMISSION_TEMPLATES[template_code]["perms"]))
     existing = {p.perm_code for p in target.permissions}
     for code in PERMISSION_TEMPLATES[template_code]["perms"]:
         if code not in existing:
@@ -725,6 +732,9 @@ def set_matrix(user_id: int, data: schemas.MatrixIn, request: Request,
     """يضبط مصفوفة دقيقة للمستخدم. كل صفحة مذكورة تصبح مُدارة صراحةً (تتجاوز الدور)."""
     target = _get_scoped_user(db, user, user_id)
     valid_pages = {p["code"]: set(p["actions"]) for p in permission_matrix_catalog()}
+    _assert_may_grant(db, user, target, [f"{pg}.{a}" for pg, acts in data.grants.items()
+                                          if pg in valid_pages for a in acts
+                                          if a in valid_pages[pg]])
     # احذف كل المنح الدقيقة الحالية ثم اكتب الجديدة (لقطة كاملة)
     for p in [x for x in target.permissions if "." in x.perm_code]:
         db.delete(p)
@@ -755,6 +765,8 @@ def reset_matrix(user_id: int, request: Request,
     ومن يراجع بعد شهٍر يحتاج القائمة لا الحكم.
     """
     target = _get_scoped_user(db, user, user_id)
+    if target.id == user.id and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="لا تعدّل صلاحيات نفسك — يعدّلها من هو أعلى منك.")
     removed = [x.perm_code for x in target.permissions if "." in x.perm_code]
     for p in [x for x in target.permissions if "." in x.perm_code]:
         db.delete(p)
@@ -771,6 +783,7 @@ def copy_permissions(data: schemas.CopyPermsIn, request: Request,
                      db: Session = Depends(get_db)):
     src = _get_scoped_user(db, user, data.from_user_id)
     dst = _get_scoped_user(db, user, data.to_user_id)
+    _assert_may_grant(db, user, dst, [p.perm_code for p in src.permissions])
     existing = {p.perm_code for p in dst.permissions}
     for p in src.permissions:
         if p.perm_code not in existing:
@@ -793,6 +806,37 @@ def _get_scoped_user(db: Session, actor: models.User, user_id: int) -> models.Us
     if actor.id != target.id and not can_manage_role(actor.role, target.role):
         raise HTTPException(status_code=403, detail="لا يمكنك إدارة مستخدم بهذا المستوى")
     return target
+
+
+def _assert_may_grant(db: Session, actor: models.User, target: models.User,
+                      codes: list[str]) -> None:
+    """**لا يمنح أحدٌ نفسَه سلطةً، ولا يمنح غيرَه ما لا يملكه هو** (قرار المالك 2026-09-24).
+
+    «مش عايز حد ياخد أكتر من صلاحياته إلا لو التعديل من اللي أعلى منه»: قيس أن مدير الشركة
+    منح نفسه ``manage_licenses``، ومنح HR ``manage_templates`` وهي صلاحيةٌ لا يملكها هو
+    (للإدارة العليا وحدها). فالقاعدتان: (١) لا يعدّل أحدٌ صلاحيات **نفسه** — يعدّلها من هو
+    أعلى؛ (٢) المانح لا يمنح إلا **ضمن ما يملكه فعلًا**. والإدارة العليا وحدها بلا سقف.
+    """
+    if actor.role == "super_admin":
+        return
+    if actor.id == target.id:
+        raise HTTPException(status_code=403, detail=(
+            "لا تعدّل صلاحيات نفسك — يعدّلها من هو أعلى منك في التسلسل."))
+    mine = effective_permissions(actor.role, get_user_perms(actor, db))
+    over = sorted(c for c in codes if c not in mine and not _page_action_held(actor, mine, c))
+    if over:
+        raise HTTPException(status_code=403, detail=(
+            "لا تمنح ما لا تملكه: " + "، ".join(over) + " — يمنحها من هو أعلى منك."))
+
+
+def _page_action_held(actor: models.User, mine: set[str], code: str) -> bool:
+    """منحةٌ دقيقة «صفحة.فعل» يملكها المانح؟ (و«صفحة._» علامة «مُدارة» لا سلطة)."""
+    if "." not in code:
+        return False
+    page, action = code.split(".", 1)
+    if action == "_":
+        return True
+    return has_page_action(actor.role, mine, page, action)
 
 
 @router.post("/{user_id}/2fa/reset")

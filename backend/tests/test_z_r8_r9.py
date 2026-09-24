@@ -2446,11 +2446,11 @@ def test_on_behalf_restricted_to_hr(client):
         "request_type_code": "leave", "payload_json": payload})
     assert r.status_code == 201, r.text
 
-    # HR يقدّم باسم غيره — الإجراءات الداخلية
+    # HR يقدّم باسم غيره — لكن **لا باسم من هو أعلى منه** (قرار المالك 2026-09-24): المدير فوق HR.
     r = client.post("/api/requests", headers=hr, json={
         "request_type_code": "leave", "employee_id": mgr_emp_id,
         "payload_json": payload})
-    assert r.status_code == 201, r.text
+    assert r.status_code == 403, r.text
 
     # والمندوب كذلك — المعاملات الحكومية (تجديد إقامة/إذن عمل) يفتحها باسم
     # الموظف بحكم عمله، ولا يملك الموظف نفسه بدءها
@@ -2458,7 +2458,8 @@ def test_on_behalf_restricted_to_hr(client):
     r = client.post("/api/requests", headers=pro, json={
         "request_type_code": "leave", "employee_id": mgr_emp_id,
         "payload_json": payload})
-    assert r.status_code == 201, r.text
+    # ...لكن لا باسم من هو أعلى منه في التسلسل (قرار المالك 2026-09-24)
+    assert r.status_code == 403, r.text
 
 
 def test_ui_reads_on_behalf_flag_from_server(client):

@@ -23,9 +23,10 @@ HR = ("100000000002", "hr12345")
 def _emp():
     db = SessionLocal()
     try:
+        from tests.conftest import plain_employee_clause
         e = db.scalar(select(models.Employee).where(
             models.Employee.company_id == 1, models.Employee.status == "active",
-            models.Employee.basic_salary.isnot(None)))
+            models.Employee.basic_salary.isnot(None), plain_employee_clause(models)))
         return (e.id, (e.name, e.civil_id), float(e.basic_salary), e.hire_date,
                 e.job_title, e.contract_type)
     finally:

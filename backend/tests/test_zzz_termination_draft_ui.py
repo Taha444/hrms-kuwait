@@ -44,7 +44,9 @@ def emp_id(client):
     """موظف نشط تُحضَّر له مسودة — وتُلغى بعد القياس مهما جرى."""
     db = SessionLocal()
     try:
+        from tests.conftest import plain_employee_clause
         e = db.scalars(select(models.Employee).where(
+            plain_employee_clause(models),
             models.Employee.status == "active",
             models.Employee.hire_date.isnot(None),
             models.Employee.basic_salary > 0,

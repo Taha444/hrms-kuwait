@@ -20,9 +20,10 @@ HR = ("100000000002", "hr12345")
 def _setup():
     db = SessionLocal()
     try:
+        from tests.conftest import plain_employee_clause
         emp = db.scalar(select(models.Employee).where(
             models.Employee.company_id == 1, models.Employee.status == "active",
-            models.Employee.license_id.isnot(None)))
+            models.Employee.license_id.isnot(None), plain_employee_clause(models)))
         other = models.License(company_id=1, name="ترخيص قياس آخر", license_no="ZZ-1",
                                allowed_workers=5, status="active")
         db.add(other)

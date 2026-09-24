@@ -433,6 +433,33 @@ STAFF_HIDDEN_FROM_BRANCH = frozenset({
     "accountant", "delegate", "branch_supervisor"})
 
 
+def assert_outranks_record(db: Session, actor: models.User, emp: models.Employee,
+                           allow_self: bool = False) -> None:
+    """**لا يعدّل أحدٌ ملفَّ من هو أعلى منه في التسلسل — ولا ملفَّ نفسه في ما يمنحه سلطةً.**
+
+    قرار المالك (2026-09-24): «مش عايز حد ياخد أكتر من صلاحياته إلا لو التعديل من اللي أعلى
+    منه». قيس: HR أوقف ملفَّ مدير الشركة وكتب عليه ملاحظة، وقدّم المندوب خصمًا باسمه.
+    فالتسلسل ``ROLE_LEVEL`` يحكم كلَّ **كتابةٍ** على ملف موظف: يُمنَع الفاعل إن كان دورُ صاحب
+    الحساب المربوط بالملف **أعلى** من دوره (المتساويان يتعاملان)، ويُمنَع من تعديل ملفّه هو في
+    ما يغيّر حالتَه أو سلطتَه (``allow_self=False``). الإدارة العليا وصاحب الشركات فوق المدير
+    بحكم مستواهما. وملفٌّ بلا حساب في مستوى «موظف».
+    """
+    from .permissions import ROLE_LEVEL
+
+    if actor.role == "super_admin":
+        return
+    if emp.id == actor.employee_id:
+        if allow_self:
+            return
+        raise HTTPException(status_code=403, detail=(
+            "لا تُغيِّر ملفَّك بنفسك في ما يمسّ حالتَك أو سلطتَك — يفعلها من هو أعلى منك."))
+    holder = db.scalar(select(models.User).where(models.User.employee_id == emp.id))
+    target_level = ROLE_LEVEL.get(holder.role, 10) if holder else 10
+    if target_level > ROLE_LEVEL.get(actor.role, 0):
+        raise HTTPException(status_code=403, detail=(
+            "لا يجوز تعديل ملفّ من هو أعلى منك في التسلسل — يعدّله من هو أعلى منك."))
+
+
 def hidden_staff_ids(user: models.User, db: Session, scope: "DataScope | None" = None) -> set[int]:
     """ملفاُت الموظفين ذوي الأدوار الإدارية — مخفيٌّة عمّن نطاقه فروع، إلا ملفّه هو."""
     sc = scope if scope is not None else resolve_scope(user, db)

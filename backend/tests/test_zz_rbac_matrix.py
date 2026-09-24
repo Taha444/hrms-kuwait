@@ -2215,10 +2215,11 @@ def test_manager_is_not_a_warning_target(client):
                       params={"kind": "penalty", "title": "اختبار"})
     assert pen.status_code == 403, "وُجّع جزاء للمدير"
 
-    # والمكافأة تمرّ — الإعفاء من الانضباط لا من كل حدث
+    # والمكافأة كذلك لا يكتبها HR على ملفّ من هو أعلى منه (قرار المالك 2026-09-24): يكتبها المدير
+    # أو من فوقه. فالانضباط ممنوعٌ بقاعدة الإعفاء، وكلُّ كتابةٍ على الأعلى بقاعدة التسلسل.
     bonus = client.post(f"/api/employees/{mgr_emp_id}/events", headers=hr,
                         params={"kind": "bonus", "title": "مكافأة"})
-    assert bonus.status_code == 200, f"مُنعت مكافأة المدير: {bonus.text[:160]}"
+    assert bonus.status_code == 403, f"كتب HR على ملفّ المدير: {bonus.status_code}"
 
     # 2) الباب الثاني: طلب ADMWARN باسم المدير
     req = client.post("/api/requests", headers=hr, json={
