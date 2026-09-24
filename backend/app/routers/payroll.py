@@ -208,6 +208,45 @@ def run(period: str, request: Request, company_id: int | None = None, force_futu
     return {"ok": True, "run_id": run_id, "status": "prepared", **result}
 
 
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: int, reason: str, request: Request,
+               user: models.User = Depends(require_perm("run_payroll")),
+               db: Session = Depends(get_db)):
+    """إلغاء مسيّرٍ **مجهَّز لم يُعتمَد** — لا حذف، يبقى الصفّ ``cancelled`` بسببه.
+
+    كان المسيّر المجهَّز بلا مخرج إلا الاعتماد: خطأٌ في التجهيز (شهرٌ خاطئ، تجربة) يبقى في
+    القائمة وتبقى إشعاراته مفتوحةً عند المعتمدين. **للإدارة العليا ولمن جهّزه وحده**،
+    ولا يُلغى ما بعد ``prepared`` (يُصحَّح بمسيّر تسوية). ويُقفل إشعارُ «جاهز للمراجعة».
+    ثم يُعاد تجهيز الفترة نفسها متى شاء المحاسب.
+    """
+    pr = db.get(models.PayrollRun, run_id)
+    if not pr:
+        raise HTTPException(status_code=404, detail="المسيّر غير موجود")
+    from ..deps import assert_same_company
+    assert_same_company(user, pr.company_id, db=db)
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب الإلغاء إلزامي")
+    if pr.status != "prepared":
+        raise HTTPException(status_code=409, detail=(
+            f"لا يُلغى إلا المسيّر المجهَّز — هذا في حالة '{pr.status}' (يُصحَّح بمسيّر تسوية)"))
+    if user.role != "super_admin" and pr.prepared_by_user_id != user.id:
+        raise HTTPException(status_code=403, detail="يُلغي المسيّرَ من جهّزه أو الإدارة العليا")
+    pr.status = "cancelled"
+    # إشعاراتُ هذا المسيّر عند المعتمدين لم يعد لها معنى.
+    from datetime import datetime as _dt, timezone as _tz
+    for t in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "payroll_run",
+            models.Task.related_entity_id == pr.id,
+            models.Task.status.in_(("open", "in_progress")))).all():
+        t.status = "dismissed"
+        t.completed_at = _dt.now(_tz.utc)
+        t.detail = f"{(t.detail or '').strip()}\n— أُغلقت آليًّا: أُلغي المسيّر.".strip()
+    audit(db, user, "payroll_run_cancelled", "payroll_run", pr.id, request=request,
+          company_id=pr.company_id, detail=f"period={pr.period} — {reason.strip()[:200]}")
+    db.commit()
+    return {"ok": True, "run_id": pr.id, "status": pr.status}
+
+
 @router.post("/runs/{run_id}/approve")
 def approve_run(run_id: int, request: Request,
                 user: models.User = Depends(require_perm("approve_payroll")),
@@ -441,6 +480,8 @@ def list_runs(company_id: int | None = None,
             "adjustment_of_run_id": r.adjustment_of_run_id,
             "adjustment_reason": r.adjustment_reason,
             "can_approve": bool(may_approve and r.status == "prepared" and not self_blocked),
+            "can_cancel": bool(may_run and r.status == "prepared"
+                               and (user.role == "super_admin" or r.prepared_by_user_id == user.id)),
             "can_finalize": bool(may_approve and r.status == "approved"),
             "can_lock": bool(may_approve and r.status == "finalized"),
             "can_reopen": bool(user.role == "super_admin"

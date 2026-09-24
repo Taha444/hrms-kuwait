@@ -346,6 +346,7 @@
 - `POST /api/eos/cases/{case_id}/settle`
 - `POST /api/payroll/run`
 - `POST /api/payroll/runs/{run_id}/adjustment`
+- `POST /api/payroll/runs/{run_id}/cancel`
 
 ### تقديم الطلبات (خدمة ذاتية) (`submit_request`)
 

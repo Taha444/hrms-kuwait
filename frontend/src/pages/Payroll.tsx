@@ -160,6 +160,10 @@ export default function Payroll() {
                 <td>
                   <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                     {r.can_approve && <button className="sm" onClick={() => act(r.id, "approve")}>{t("payroll_approve")}</button>}
+                    {r.can_cancel && <button className="ghost sm" onClick={() => {
+                      const reason = askReason(t("payroll_cancel_reason"));
+                      if (reason) act(r.id, "cancel", { reason });
+                    }}>{t("payroll_cancel")}</button>}
                     {r.can_finalize && <button className="sm" onClick={() => act(r.id, "finalize")}>{t("payroll_finalize")}</button>}
                     {r.can_lock && <button className="sm" onClick={() => act(r.id, "lock")}>{t("payroll_lock")}</button>}
                     {r.can_reopen && <button className="ghost sm" onClick={() => {
