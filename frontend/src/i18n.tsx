@@ -563,6 +563,16 @@ const dict: Record<string, { ar: string; en: string }> = {
   audit_all: { ar: "كل العمليات", en: "All operations" },
   col_operation: { ar: "العملية", en: "Operation" }, col_entity: { ar: "الكيان", en: "Entity" },
   col_actor: { ar: "المنفّذ", en: "By" }, col_time: { ar: "الوقت", en: "Time" },
+  // M22 — الحقول التي يحفظها التدقيق وكانت الشاشة تُخفيها
+  audit_result: { ar: "النتيجة", en: "Result" },
+  audit_res_success: { ar: "نجح", en: "Success" }, audit_res_failure: { ar: "فشل", en: "Failed" },
+  audit_res_conflict: { ar: "تعارض", en: "Conflict" }, audit_res_denied: { ar: "مرفوض", en: "Denied" },
+  audit_system: { ar: "النظام (آلي)", en: "System (automated)" },
+  audit_acted_by: { ar: "نفّذه فعليًّا (انتحال):", en: "Actually done by (impersonation):" },
+  audit_more: { ar: "تفاصيل", en: "Details" }, audit_less: { ar: "إخفاء", en: "Hide" },
+  audit_reason: { ar: "السبب", en: "Reason" }, audit_role_at: { ar: "الصفة وقت الفعل", en: "Role at the time" },
+  audit_before: { ar: "قبل", en: "Before" }, audit_after: { ar: "بعد", en: "After" },
+  audit_corr: { ar: "معرّف الربط", en: "Correlation ID" }, audit_agent: { ar: "المتصفّح", en: "Browser" },
 
   // التقارير
   reports_sub: { ar: "تصدير البيانات إلى Excel أو CSV بترميز يدعم العربية", en: "Export data to Excel or CSV (Arabic-safe)" },
