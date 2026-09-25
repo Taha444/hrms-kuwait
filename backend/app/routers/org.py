@@ -13,6 +13,7 @@ from ..deps import (license_headcount, assert_same_company, audit, get_current_u
                     resolve_scope, scope_company_id)
 from ..qr import current_code, seconds_remaining
 from ..clock import today as kuwait_today
+from ..expiry_windows import WINDOW
 
 router = APIRouter(tags=["org"])
 
@@ -319,7 +320,7 @@ def branch_stats(branch_id: int, user: models.User = Depends(get_current_user),
     expiring_permits = db.scalar(select(func.count()).select_from(models.Permit).where(
         models.Permit.employee_id.in_(emp_ids), models.Permit.status == "active",
         models.Permit.expiry_date.isnot(None),
-        models.Permit.expiry_date <= today + timedelta(days=90))) or 0
+        models.Permit.expiry_date <= today + WINDOW)) or 0
 
     return {"branch_id": branch_id, "branch_name": branch.name, "employees": employees,
             "present_today": present_today, "on_leave": on_leave,

@@ -78,11 +78,12 @@ def classify(days_left: int) -> str | None:
     """يحدّد نوع التجديد من عدد الأيام المتبقّية (أو None إذا غير مسموح)."""
     if days_left is None:
         return None
-    if days_left > 90:
+    from .expiry_windows import URGENT_DAYS, WINDOW_DAYS
+    if days_left > WINDOW_DAYS:
         return None            # مبكر جدًا — غير مسموح
-    if days_left <= 30:
+    if days_left <= URGENT_DAYS:
         return "normal"
-    return "early"             # 31–90 يومًا
+    return "early"             # بين العتبتين
 
 
 def status_label(code: str, lang: str = "ar") -> str:

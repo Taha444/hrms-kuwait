@@ -21,15 +21,8 @@ GOV_ENTITIES = ["بلدية الكويت", "وزارة التجارة والصن
 
 
 def _urgency(days_left: int | None) -> str:
-    if days_left is None:
-        return "none"
-    if days_left < 0:
-        return "expired"
-    if days_left <= 30:
-        return "critical"
-    if days_left <= 90:
-        return "warning"
-    return "ok"
+    from ..expiry_windows import urgency
+    return "none" if days_left is None else urgency(days_left)
 
 
 @router.get("/permits")

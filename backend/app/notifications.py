@@ -816,3 +816,9 @@ def digest_scan(db: Session) -> dict:
     db.commit()
     return {"digests_created": digests_created, "users_scanned": len(grouped),
             "date": today}
+
+
+# عتبات التنبيه تشمل حدّي النافذة المشتركة — فلا تقول إحداهما ما لا تقوله الأخرى.
+from .expiry_windows import URGENT_DAYS as _URGENT, WINDOW_DAYS as _WINDOW  # noqa: E402
+
+assert max(EXPIRY_THRESHOLDS) == _WINDOW and _URGENT in EXPIRY_THRESHOLDS

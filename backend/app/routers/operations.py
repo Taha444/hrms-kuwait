@@ -13,6 +13,7 @@ from ..database import get_db
 from ..deps import get_current_user, get_user_perms, scope_company_id
 from ..permissions import has_permission
 from ..clock import today as kuwait_today
+from ..expiry_windows import WINDOW_DAYS
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
@@ -33,15 +34,8 @@ def require_operations(user: models.User = Depends(get_current_user),
 
 
 def _urgency(days: int | None) -> str:
-    if days is None:
-        return "ok"
-    if days < 0:
-        return "expired"
-    if days <= 30:
-        return "critical"
-    if days <= 90:
-        return "warning"
-    return "ok"
+    from ..expiry_windows import urgency
+    return urgency(days)
 
 
 @router.get("")
@@ -65,7 +59,7 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
         if branch_id and branch_of(p.employee_id) != branch_id:
             continue
         days = (p.expiry_date - today).days
-        if days > 90:
+        if days > WINDOW_DAYS:
             continue
         permits.append({"id": p.id, "type": "residency" if p.kind == "residency" else "work_permit",
                         "number": p.number, "employee": emp_map.get(p.employee_id).name if emp_map.get(p.employee_id) else None,
@@ -79,7 +73,7 @@ def operations_center(company_id: int | None = None, branch_id: int | None = Non
     licenses = []
     for l in db.scalars(lq).all():
         days = (l.expiry_date - today).days
-        if days > 90:
+        if days > WINDOW_DAYS:
             continue
         licenses.append({"id": l.id, "name": l.name, "license_no": l.license_no,
                          "expiry_date": l.expiry_date.isoformat(), "days_left": days, "urgency": _urgency(days)})

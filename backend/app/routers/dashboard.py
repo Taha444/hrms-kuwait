@@ -10,6 +10,7 @@ from .. import models
 from ..database import get_db
 from ..deps import get_current_user, scope_company_id
 from ..clock import today as kuwait_today
+from ..expiry_windows import URGENT, WINDOW
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -19,7 +20,7 @@ def dashboard(company_id: int | None = None,
              user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     today = kuwait_today()
-    soon = today + timedelta(days=90)
+    soon = today + WINDOW
 
     def count(model, *conds):
         q = select(func.count()).select_from(model)
@@ -135,7 +136,7 @@ def dashboard(company_id: int | None = None,
 
     # ----- PRO / المندوب: المعاملات الحكومية فقط -----
     if role == "delegate":
-        soon30 = today + timedelta(days=30)
+        soon30 = today + URGENT
         crit_tasks = db.scalar(select(func.count()).select_from(models.Task).where(
             models.Task.assignee_user_id == user.id, models.Task.status == "open",
             models.Task.severity == "critical")) or 0

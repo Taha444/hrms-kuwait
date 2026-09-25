@@ -1383,7 +1383,8 @@ def permits_due_without_case(user: models.User = Depends(get_current_user),
     from datetime import timedelta
 
     today = kuwait_today()
-    soon = today + timedelta(days=90)
+    from ..expiry_windows import WINDOW
+    soon = today + WINDOW
     q = select(models.Permit).where(
         models.Permit.kind == "residency",
         models.Permit.status == "active",
