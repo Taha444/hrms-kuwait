@@ -139,6 +139,7 @@ export default function Eos() {
               accrued: res.leave.accrued_days, used: res.leave.used_days, remaining: res.leave.remaining_days })}</p>
           )}
           {res.leave?.advance_note && <p className="err">⚠ {res.leave.advance_note}</p>}
+          {res.leave?.used_days_note && <p className="err">⚠ {res.leave.used_days_note}</p>}
           <p><b>{t("eosx_factor")}</b> {(res.entitlement_factor * 100).toFixed(2)}% — {res.factor_note}</p>
           {res.cap_applied && <p className="err">{t("eos_cap")}</p>}
           <p className="muted">{res.disclaimer}</p>

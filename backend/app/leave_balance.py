@@ -92,3 +92,24 @@ def leave_balance(db: Session, emp: models.Employee,
         "service_years": round(yrs, 3),
         "annual_entitlement": annual,
     }
+
+
+def annotate_typed_usage(db: Session, emp: models.Employee, result: dict,
+                         typed_days: float) -> dict:
+    """يُلحق بنتيجة حساب نهاية الخدمة ما يعرفه النظام عن المستهلَك.
+
+    المُدخل اليدوي يبقى هو المعتمَد في الحساب (قرار التصميم)، لكنّ قيمته
+    الافتراضية 0 — فمن أخذ إجازاتٍ معتمَدة وحُسبت تسويته بصفر يُصرف له بدل
+    إجازاتٍ أخذها. فيُعرض رقم النظام، وإن نقص المُدخل عنه حُذِّر بالرقمين.
+    """
+    system_used = round(used_days(db, emp), 2)
+    typed = round(float(typed_days or 0), 2)
+    leave = result.setdefault("leave", {})
+    leave["system_used_days"] = system_used
+    leave["used_days_mismatch"] = typed + 0.005 < system_used
+    leave["used_days_note"] = (
+        f"المُدخل ({typed:g} يوم) أقل من الإجازات السنوية المعتمَدة في النظام "
+        f"({system_used:g} يوم) — بدل الإجازات محسوبٌ على المُدخل، فراجعه قبل الاعتماد."
+    ) if leave["used_days_mismatch"] else None
+    return result
+

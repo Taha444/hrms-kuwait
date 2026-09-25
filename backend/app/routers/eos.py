@@ -11,6 +11,7 @@ from .. import eos as eos_engine
 from .. import models, schemas
 from ..database import get_db
 from .. import exit_case, exit_guard
+from .. import leave_balance as leave_balance_service
 from ..deps import (assert_outranks_record, assert_same_company, audit, get_current_user,
                     require_perm, require_super_admin)
 
@@ -98,6 +99,7 @@ def for_employee(data: schemas.EosForEmployeeIn,
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     result["employee"] = {"id": emp.id, "name": emp.name, "job_title": emp.job_title}
+    leave_balance_service.annotate_typed_usage(db, emp, result, data.used_leave_days)
     # V2.2 §30 (DOC-13) — حسبة مبدئية لا أمر صرف.
     #
     # ROOT CAUSE: الحاسبة تُعيد رقًما نهائي الشكل بلا وسم، فيُنسخ في رسالة أو
@@ -320,6 +322,7 @@ def calculate_case(case_id: int, request: Request, used_leave_days: float = 0,
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    leave_balance_service.annotate_typed_usage(db, emp, result, used_leave_days)
     case.used_leave_days = used_leave_days
     case.settlement_json = result
     case.calculated_by = user.id

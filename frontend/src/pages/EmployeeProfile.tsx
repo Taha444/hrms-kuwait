@@ -875,6 +875,7 @@ export default function EmployeeProfile({ id: idProp, onChanged }: { id?: number
                     accrued: s.leave.accrued_days, used: s.leave.used_days, remaining: s.leave.remaining_days })}</p>
                 )}
                 {s.leave?.advance_note && <p className="err">⚠ {s.leave.advance_note}</p>}
+                {s.leave?.used_days_note && <p className="err">⚠ {s.leave.used_days_note}</p>}
                 <p className="muted">{s.service?.text} · {s.factor_note}</p>
                 <p className="muted">{s.disclaimer}</p>
               </div>

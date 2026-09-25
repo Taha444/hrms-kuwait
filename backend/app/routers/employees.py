@@ -1053,6 +1053,7 @@ def prepare_termination(emp_id: int, end_date: date, reason: str = "termination"
             notice_days_owed=owed, notice=notice)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    leave_balance_service.annotate_typed_usage(db, emp, settlement, used_leave_days)
     settlement["_end_date"] = str(end_date)
     settlement["_reason"] = reason
     emp.pending_termination_json = json.dumps(settlement, ensure_ascii=False)
