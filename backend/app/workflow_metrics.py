@@ -95,7 +95,11 @@ def workflow_operations(db: Session, company_id: int | None,
     cycle = [_hours(r.created_at, r.closed_at) for r in requests if r.closed_at]
 
     # خرق SLA — على ما له مهلة فعلًا
+    # **والمهمة المسحوبة (dismissed) ليست عملًا أُهمل**: تنظيف المهام اليتيمة والمتقادمة يُقفلها
+    # بهذه الحالة وبوقت التنظيف، فكانت تُحسب «خرقًا» لأنها أُقفلت بعد موعدها — فيقول التقرير
+    # 100% خرق في فترةٍ بلا طلب واحد (SW-012). القياس على ما عُمل به أو ينتظر من يعمل به.
     tq = select(models.Task).where(models.Task.sla_due_at.isnot(None),
+                                   models.Task.status != "dismissed",
                                    models.Task.created_at >= start,
                                    models.Task.created_at <= end)
     if company_id is not None:
@@ -106,6 +110,7 @@ def workflow_operations(db: Session, company_id: int | None,
                    if (t.completed_at or now) > t.sla_due_at)
 
     total_tasks_q = select(func.count()).select_from(models.Task).where(
+        models.Task.status != "dismissed",
         models.Task.created_at >= start, models.Task.created_at <= end)
     if company_id is not None:
         total_tasks_q = total_tasks_q.where(models.Task.company_id == company_id)
