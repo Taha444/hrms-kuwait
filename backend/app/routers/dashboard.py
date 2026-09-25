@@ -91,7 +91,7 @@ def dashboard(company_id: int | None = None,
         # يُحسب بلا شرط status، فتدخل المؤرشفة والمستبدَلة ويصير المقام كل
         # التراخيص في التاريخ — فظهرت نسبة منتهية بلا مقابل في صفحة التصرّف.
         from ..compliance import license_compliance
-        _lic = license_compliance(db, user.company_id, today)
+        _lic = license_compliance(db, cid, today)
         total_licenses = _lic["total"]
         valid_licenses = _lic["valid"]
         expired_licenses = _lic["expired"]
@@ -156,7 +156,7 @@ def dashboard(company_id: int | None = None,
             "open_transactions": count(models.Request, models.Request.status == "awaiting_delegate"),
             # QA-20 — نفس تعريف مركز العمليات (وجهة البطاقة). كان يعدّ كل
             # مهامي المفتوحة أًيا كان نوعها، فيظهر رقم لا تجد له أثًرا بعد النقر.
-            "gov_tasks": count_open_gov_tasks(db, user.company_id),
+            "gov_tasks": count_open_gov_tasks(db, cid),
             "my_open_tasks": my_open_tasks,
             "notifications": crit_tasks,
         })
