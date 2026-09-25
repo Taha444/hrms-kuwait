@@ -199,8 +199,12 @@ async def _save_doc(db, user, request, entity_type, entity_id, company_id,
         models.Document.entity_type == entity_type, models.Document.entity_id == entity_id,
         models.Document.document_type_code == code, models.Document.is_current == True)).all()  # noqa: E712
     ver = max((d.version for d in prev), default=0) + 1
+    from .documents import _close_expiry_tasks_for
     for d in prev:
         d.is_current = False
+        # إذنُ العمل والبطاقةُ المدنية لهما تنبيهُ انتهاءٍ مربوطٌ بمعرّف **النسخة**: تُستبدَل بالجديدة
+        # فيبقى التنبيهُ مفتوحًا على نسخةٍ لم تعد تُراقَب (كما يُغلَق في رفع المستندات والأرشيف).
+        _close_expiry_tasks_for(db, d.id)
     doc = models.Document(company_id=company_id, entity_type=entity_type, entity_id=entity_id,
                           document_type_code=code, title=title, file_path=fpath,
                           mime=upload.content_type, expiry_date=expiry_date,
