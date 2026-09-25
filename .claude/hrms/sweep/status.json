@@ -883,12 +883,12 @@
       "checks": {
         "1": "pass",
         "2": "pass",
-        "3": "pending",
+        "3": "pass",
         "4": "pass",
-        "5": "pending",
-        "6": "pending",
+        "5": "pass",
+        "6": "pass",
         "7": "fail",
-        "8": "pending",
+        "8": "pass",
         "9": "pass"
       },
       "notes": {
@@ -913,19 +913,19 @@
           "at": "2026-09-25"
         },
         "check3": {
-          "note": "لم يُستقصَ بعد",
+          "note": "حرّاس test_v15_registry/acceptance_matrix",
           "at": "2026-09-25"
         },
         "check5": {
-          "note": "لم يُستقصَ بعد",
+          "note": "preview/generate/issue/download أبواب منفصلة، التنزيل مدقَّق",
           "at": "2026-09-25"
         },
         "check6": {
-          "note": "لم يُستقصَ بعد",
+          "note": "اختبارات الخطوط وPDF الطلبات",
           "at": "2026-09-25"
         },
         "check8": {
-          "note": "لم يُستقصَ بعد",
+          "note": "مسح 43 قالبًا: لا {{}} ولا None خام",
           "at": "2026-09-25"
         }
       }
