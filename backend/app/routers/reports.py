@@ -91,6 +91,15 @@ def export_employees(request: Request, fmt: str = "xlsx", company_id: int | None
     return _file(exports.to_xlsx("الموظفون", headers, rows, text_columns={1}), "employees.xlsx", XLSX_MIME)
 
 
+PAYROLL_STATUS_LABELS = {
+    "prepared": "مسودة — لم تُعتمد",
+    "approved": "معتمد — لم يُنهَ",
+    "finalized": "منتهٍ — لم يُقفَل",
+    "locked": "مقفل — نهائي",
+    "adjustment_run": "مسيّر تسوية",
+}
+
+
 @router.get("/payroll/{run_id}")
 def export_payroll(run_id: int, request: Request, fmt: str = "xlsx", reason: str | None = None,
                    # view_payroll (لا export_reports العام) — بيانات مالية حسّاسة (FIX-013)
@@ -103,12 +112,15 @@ def export_payroll(run_id: int, request: Request, fmt: str = "xlsx", reason: str
         raise HTTPException(status_code=404, detail="المسيّر غير موجود")
     assert_same_company(user, pr.company_id, db=db, request=request)
     headers = ["الاسم", "المسمى", "الأساسي", "أيام الحضور", "أيام الغياب",
-               "الإضافي", "خصم الغياب", "خصومات أخرى", "الإجمالي", "الصافي"]
+               "الإضافي", "خصم الغياب", "خصومات أخرى", "الإجمالي", "الصافي", "حالة المسيّر"]
+    # **المسيّر غير المقفل ليس نهائيًا**: مسودةٌ تُصدَّر بالاسم والأعمدة نفسها كالمقفل فتُقرأ رقمًا نهائيًا
+    # وتُصرف عليه رواتب. فالحالةُ عمودٌ في كل صفّ، وغير المقفل يحمل ``_DRAFT`` في اسم الملف.
+    status_label = PAYROLL_STATUS_LABELS.get(pr.status, pr.status)
     rows = [[p["name"], p["job_title"] or "", p["basic_salary"], p["present_days"],
              p["absent_days"], p["overtime_pay"], p["absence_deduction"],
-             p["other_deductions"], p["gross"], p["net"]]
+             p["other_deductions"], p["gross"], p["net"], status_label]
             for p in pr.totals_json.get("payslips", [])]
-    name = f"payroll_{pr.period}"
+    name = f"payroll_{pr.period}" + ("" if pr.status in ("locked", "adjustment_run") else "_DRAFT")
     audit(db, user, "EXPORT_REPORT", "payroll_run", run_id, detail=f"payroll:{reason}", request=request, company_id=pr.company_id)
     db.commit()
     if fmt == "csv":
