@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """خزنة المستندات: رفع بنُسخ (versioning) + اقتراح OCR + تنزيل الأحدث + مهام متسلسلة."""
+import re
 import logging
 import os
 from datetime import date, datetime, timezone
@@ -188,6 +189,23 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     """يرفع نسخة جديدة: تصبح الأحدث (is_current=True) والقديمة تُحفظ في التاريخ."""
+    # رمزُ النوع مفتاحٌ داخلي لا نصٌّ حرّ: كان أيُّ نصٍّ يُقبل (أطولُ من عمود التخزين يُسقط 500 على
+    # Postgres، وما فيه مسافاتٌ أو رموز يُنشئ «نوعًا» لا يعرفه أحد ولا تُراقَب تواريخه).
+    # والمستنداتُ «الأخرى» تحمل ``custom:<اسم حرّ>`` (يكتبه المستخدم بالعربية) فيُسمح بعد البادئة بنصٍّ
+    # حرٍّ بلا رموز تحكّم أو فواصل مسار؛ وما عداها مفاتيحُ لاتينية صارمة. والطولُ الكليّ ≤ عمود التخزين.
+    _code = document_type_code or ""
+    if _code.startswith("custom:"):
+        _ok = (8 <= len(_code) <= 50
+               and not re.search(r"[\x00-\x1f/\\<>]", _code))
+    else:
+        _ok = bool(re.fullmatch(r"[A-Za-z0-9_:\-]{1,50}", _code))
+    if not _ok:
+        raise HTTPException(status_code=400, detail=(
+            "رمز نوع المستند غير صالح — حتى 50 حرفًا: أحرفٌ لاتينية وأرقام و_ و: و-، "
+            "أو «custom:» متبوعةً باسمٍ حرّ"))
+    if issue_date and expiry_date and expiry_date < issue_date:
+        raise HTTPException(status_code=400, detail=(
+            f"تاريخ الانتهاء ({expiry_date}) أقدم من تاريخ الإصدار ({issue_date})"))
     # تحديد الشركة للعزل حسب نوع الكيان
     if entity_type == "employee":
         emp = db.get(models.Employee, entity_id)
