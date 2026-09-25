@@ -31,13 +31,28 @@ def neutralize(value):
     return value
 
 
+_LONG_DIGITS = re.compile(r"[0-9]{11,}")
+
+
+def _csv_cell(value):
+    """أرقامٌ طويلة (رقم مدني/هاتف/حساب) يعرضها Excel بصيغة علمية ``2.9E+11`` ويضيع منها ما بعد الخانة 15.
+
+    تُكتب ``="…"`` — يقرؤها Excel نصًّا كما هي. ولا خطر حقن: القيمة أرقامٌ صرفة تُتحقَّق بالتعبير قبل الإحاطة.
+    """
+    if isinstance(value, str) and _LONG_DIGITS.fullmatch(value):
+        return f'="{value}"'
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) >= 10 ** 11:
+        return f'="{value}"'
+    return neutralize(value)
+
+
 def to_csv(headers: list[str], rows: list[list]) -> bytes:
     """CSV بترميز UTF-8 مع BOM ليُفتح بالعربية في Excel مباشرة."""
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([neutralize(h) for h in headers])
     for r in rows:
-        writer.writerow([neutralize(v) for v in r])
+        writer.writerow([_csv_cell(v) for v in r])
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
