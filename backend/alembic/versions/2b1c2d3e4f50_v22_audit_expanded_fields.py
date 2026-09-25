@@ -26,6 +26,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # لا إسقاطَ أعمدة: تحمل قبل/بعد والفاعل الأصلي ومعرّف الربط — أثرَ قراراتٍ لا يُستعاد
+    # (كما في ``y4q5r6s7t8u``). يُسقَط الفهرس وحده: بلا بيانات.
     op.drop_index("ix_audit_log_correlation_id", "audit_log")
-    for col in ("after_json", "before_json", "correlation_id", "user_agent", "original_user_id"):
-        op.drop_column("audit_log", col)
