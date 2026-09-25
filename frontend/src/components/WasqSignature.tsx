@@ -130,7 +130,7 @@ export default function WasqSignature() {
           <span className="wasq-seal-text">
             <span className="wasq-seal-label">BUILT BY</span>
             <span className="wasq-seal-name">
-              WASQ<span className="ar">وَسْق</span>
+              WASQ<span className="ar">وَسْق</span>{/* i18n: data — اسمُ العلامة التجارية (وَسْق) يُكتب بالعربية والإنجليزية معًا عمدًا */}
             </span>
           </span>
         </a>

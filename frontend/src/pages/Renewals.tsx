@@ -132,7 +132,7 @@ export default function Renewals() {
     // فوق msg بعد fn()، فنعيد النص هنا كي لا يضيع.
     const missing: string[] = r.data.missing_fields || [];
     setGovMissingNote(missing.length
-      ? `${t("rnw_gov_missing_note")}: ${missing.join("، ")}` : "");
+      ? `${t("rnw_gov_missing_note")}: ${missing.join(t("list_sep"))}` : "");
   }, t("rnw_gov_generated"));
 
   // R4 §7 — Finalize (PRO يعبّي بيانات المعاملة الحكومية)

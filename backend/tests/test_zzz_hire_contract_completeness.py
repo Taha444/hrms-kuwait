@@ -102,10 +102,11 @@ def _issued(emp_id: int) -> int:
         db.close()
 
 
-def test_a_hire_contract_missing_a_used_field_is_refused(client):
-    """**ولا مستنَد يُحفَظ** — والرسالُة تسمّي الناقَص بالعربية كما في التجديد.
+def test_a_hire_contract_missing_a_used_field_is_issued_and_names_it(client):
+    """قرار المالك 2026-09-22 (بطلب صريح) عدّل 09-17: الناقص لا يوقف الإصدار — يصدر العقد
+    وتُطبع الخانة فارغة، و``missing_fields`` تسمّي الناقص بالعربية ليعلمه المُصدِر.
 
-    والجنسيُة خانٌة في نموذج الهيئة، فغيابُها يوقف الإصدار.
+    والجنسيةُ خانةٌ في نموذج الهيئة، فغيابُها يُقال ولا يُحجَب.
     """
     emp_id, nat, tpl_id = _setup(
         "<p>{{employee_name}} — {{civil_id}} — {{nationality}}</p>")
@@ -113,9 +114,9 @@ def test_a_hire_contract_missing_a_used_field_is_refused(client):
         _blank_nationality(emp_id)
         r = client.post(f"/api/employees/{emp_id}/gov-contract/generate",
                         headers=auth_headers(login(client, *HR1)))
-        assert r.status_code == 400, (r.status_code, r.text[:250])
-        assert "الجنسية" in r.text, r.text[:250]
-        assert _issued(emp_id) == 0, "صدر عقٌد ناقٌص وحُفظ على ملف الموظف"
+        assert r.status_code == 200, (r.status_code, r.text[:250])
+        assert any("الجنسية" in m for m in r.json().get("missing_fields", [])), r.text[:250]
+        assert _issued(emp_id) == 1, "لم يُحفَظ العقد الصادر على ملف الموظف"
     finally:
         _teardown(emp_id, nat, tpl_id)
 

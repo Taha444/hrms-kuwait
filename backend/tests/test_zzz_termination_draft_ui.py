@@ -215,12 +215,26 @@ def test_cancelling_frees_the_employee_for_another_attempt(client, emp_id):
 # ---------------------------------------------------------------------------
 
 def test_the_screen_no_longer_claims_the_service_ended():
-    """**جملٌة تصف ما لم يقع** هي العطل، لا الزرّ."""
+    """**جملٌة تصف ما لم يقع** هي العطل، لا الزرّ.
+
+    تحضيرُ الإنهاء انتقل من الملف الشخصي إلى الشاشة الرسمية ``/eos/cases`` (ce2585c: «نهاية
+    الخدمة تُوجَّه لمرجعها الرسمي وحده»)، فالجملةُ الصادقة القديمة ``epf_term_drafted`` صارت ميّتة في
+    الملف. والحارسُ يحرس الآن **ما يقرؤه المستخدم فعلًا**: (١) لا جملةَ «تمّ إنهاء الخدمة» بعد
+    التحضير، (٢) الملفُّ يوجّه إلى الشاشة الرسمية، (٣) وشاشةُ الحالات تقول «فُتحت المعاملة» لا
+    «انتهت الخدمة».
+    """
     i18n = I18N.read_text(encoding="utf-8")
     assert "epf_terminated_msg" not in i18n, "الجملة الكاذبة ما زالت"
-    assert "epf_term_drafted" in i18n
     page = PAGE.read_text(encoding="utf-8")
-    assert "epf_term_drafted" in page
+    assert "epf_term_use_eos_cases" in page, "الملف الشخصي لا يوجّه إلى الشاشة الرسمية للإنهاء"
+
+    eos_screen = (FRONT / "pages" / "EosCases.tsx").read_text(encoding="utf-8")
+    assert "eosc_opened" in eos_screen, "شاشة الحالات لا تُعلن ما وقع بعد الفتح"
+    screens = (FRONT / "i18n_screens.ts").read_text(encoding="utf-8")
+    m = re.search(r'eosc_opened:\s*\{\s*ar:\s*"([^"]+)"', screens)
+    assert m, "لا نصّ لـeosc_opened"
+    assert not re.search(r"انتهت خدمة|تم إنهاء|تمّ إنهاء", m.group(1)), (
+        f"رسالةُ الفتح تدّعي انتهاء الخدمة: {m.group(1)}")
 
 
 def test_the_screen_can_advance_the_draft_and_cancel_it():

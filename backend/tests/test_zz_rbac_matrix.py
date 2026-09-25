@@ -2384,7 +2384,7 @@ def test_rnw07_employee_gets_a_real_task(client):
         db.close()
 
 
-def test_rnw06_generation_refuses_incomplete_employee(client):
+def test_rnw06_generation_names_the_missing_field_without_refusing(client):
     """RNW-06 — التوليد يرفض ويسمّي الناقص، لا يطبع مربّعات فارغة.
 
     اختبار من طرف إلى طرف عبر المسار الحقيقي: موظف بلا رقم مدني، ومعاملة
@@ -2432,10 +2432,13 @@ def test_rnw06_generation_refuses_incomplete_employee(client):
     rid = started.json()["id"]
 
     gen = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
-    assert gen.status_code == 400, f"وُلّد عقد ببيانات ناقصة: {gen.status_code}"
-    assert "الرقم المدني" in gen.text, f"الرفض لا يسمّي الحقل الناقص: {gen.text[:200]}"
+    # **قرار المالك 2026-09-22 (بطلب صريح) عدّل قرار 09-17**: لا رفض لحقل ناقص — العقد يصدر
+    # والخانة تُطبع فارغة، و``missing_fields`` تُسمّي الناقص كي يعلمه المندوب (تنبيه لا حجب).
+    assert gen.status_code == 200, f"رُفض التوليد لحقل ناقص وقد أُلغي الحجب: {gen.status_code} {gen.text[:150]}"
+    assert any("الرقم المدني" in m for m in gen.json().get("missing_fields", [])), (
+        f"الناقص لا يُسمّى في missing_fields: {gen.text[:200]}")
 
-    # وبعد إكمال البيانات يمرّ — الحارس يمنع النقص لا التوليد نفسه
+    # وبعد إكمال البيانات لا ينقص شيء
     db = SessionLocal()
     try:
         e = db.get(models.Employee, emp_id)
@@ -2452,6 +2455,8 @@ def test_rnw06_generation_refuses_incomplete_employee(client):
         db.close()
     ok = client.post(f"/api/renewals/{rid}/gov-contract/generate", headers=pro)
     assert ok.status_code == 200, f"رُفض التوليد بعد اكتمال البيانات: {ok.text[:200]}"
+    assert not any("الرقم المدني" in m for m in ok.json().get("missing_fields", [])), (
+        "الرقم المدني اكتمل ولا يزال يُعدّ ناقصًا")
 
 
 def test_rnw05_08_10_11_contract_chain(client):

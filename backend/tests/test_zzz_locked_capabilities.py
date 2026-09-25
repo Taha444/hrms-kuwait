@@ -33,11 +33,20 @@ import inspect
 
 def test_the_accountant_owns_every_payroll_step_except_reopen():
     """**جوهُر ما انحلّ**: القدرُة لم تُفقَد — بل لها طريٌق أصّح."""
+    import re
+
+    from app import permissions as PM
     from app.routers import payroll as P
 
+    # **يُقاس ما يملكه المحاسب لا اسمُ الصلاحية**: اعتماد المسيّر صار له صلاحيةٌ مستقلة
+    # (``approve_payroll``، فصلُ «التشغيل» عن «الاعتماد») ولم يعد كلُّ ما بعد التجهيز
+    # ``run_payroll``. والادّعاء الذي يحرسه الاختبار — أن المحاسب يملك **كلَّ** خطوةٍ ما عدا
+    # إعادة الفتح — يبقى صحيحًا ما دام يحمل الصلاحيات التي تشترطها الخطوات.
+    accountant = set(PM.ROLE_DEFAULT_PERMS["accountant"])
     for fn in (P.run, P.approve_run, P.finalize_run, P.lock_run, P.adjustment_run):
-        src = inspect.getsource(fn)
-        assert 'require_perm("run_payroll")' in src, fn.__name__
+        needed = set(re.findall(r'require_perm\("([a-z_]+)"\)', inspect.getsource(fn)))
+        assert needed, f"{fn.__name__}: لا صلاحية مشترَطة"
+        assert needed <= accountant, f"{fn.__name__}: المحاسب لا يملك {needed - accountant}"
     assert "require_super_admin" in inspect.getsource(P.reopen_run)
 
 

@@ -144,13 +144,28 @@ def test_retirement_is_a_reason_with_full_entitlement():
     assert eos.notice_owed_days("retirement", 90, None, None, "2026-01-01") == 0.0
 
 
-def test_the_profile_offers_every_server_reason():
+def test_the_official_screen_offers_every_server_reason(client):
+    """**قائمةُ أسباب الإنهاء تُبنى من الخادم لا من نسخةٍ في الواجهة.**
+
+    كان الاختبارُ يقارن جدولَ ``REASONS`` ثابتًا في ``EmployeeProfile.tsx`` بأسباب الخادم. وانتقل
+    الإنهاءُ إلى الشاشة الرسمية ``EosCases`` (ce2585c) وحُذف ذلك الجدول: صارت الخياراتُ
+    ``Object.keys(policy.reasons)`` من ``/eos/cases/stage-roles`` — فلا نسخةَ ثانية تنحرف.
+    والثابتُ الذي يُحرَس الآن: (١) الشاشةُ تقرأ الخيارات من ``policy.reasons`` وحدها، (٢) والخادم
+    يُرجع **كلَّ** ``TERMINATION_REASONS`` (لا مجموعةً جزئية)، (٣) وتسميتُها تأتي معها.
+    """
     import pathlib
-    import re
 
     from app import eos
+    from tests.conftest import auth_headers, login
+
     src = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
-           / "EmployeeProfile.tsx").read_text(encoding="utf-8")
-    block = re.search(r"const REASONS: Record<string, string> = \{(.*?)\};", src, re.S).group(1)
-    offered = set(re.findall(r"(\w+): t\(", block))
-    assert offered == set(eos.TERMINATION_REASONS), (offered ^ set(eos.TERMINATION_REASONS))
+           / "EosCases.tsx").read_text(encoding="utf-8")
+    assert "Object.keys(policy?.reasons" in src, "الشاشة لا تبني الخيارات من الخادم"
+    assert "const REASONS" not in src, "عادت نسخةٌ ثابتة من الأسباب في الشاشة"
+
+    hr = auth_headers(login(client, "100000000002", "hr12345"))
+    r = client.get("/api/eos/cases/stage-roles", headers=hr)
+    assert r.status_code == 200, r.text[:150]
+    served = r.json()["reasons"]
+    assert set(served) == set(eos.TERMINATION_REASONS), set(served) ^ set(eos.TERMINATION_REASONS)
+    assert all(str(v).strip() for v in served.values()), "سببٌ بلا تسمية"

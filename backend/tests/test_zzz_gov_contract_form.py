@@ -126,11 +126,15 @@ def test_every_box_has_a_value_and_every_value_a_box():
     assert set(F.REQUIRED) <= set(values), "حقلٌ واجبٌ بلا قيمة في الخريطة"
 
 
-def test_a_missing_required_field_names_itself_and_stops():
+def test_a_missing_required_field_names_itself_and_no_longer_stops():
+    """قرار المالك 2026-09-22 (بطلب صريح، يعدّل 09-17): الحقل الناقص **لا يوقف** التوليد — تُطبع
+    الخانة فارغةً ويملؤها الموظف يدويًّا — و``missing`` يبقى **يُسمّي** الناقص ليعلمه المندوب."""
     content, _, _, missing, _ = F.generate({**CTX, "passport_number": "", "labour_dept": ""})
-    assert content == b""
+    assert content.startswith(b"%PDF"), "لم يُولَّد عقد رغم إلغاء الحجب"
     assert F.REQUIRED["passport_number"] in missing
     assert F.REQUIRED["labour_dept"] in missing
+    full, _, _, none_missing, _ = F.generate(CTX)
+    assert full.startswith(b"%PDF") and not none_missing, none_missing
 
 
 def test_nothing_is_taken_from_the_request_payload():

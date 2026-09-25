@@ -98,6 +98,37 @@ def _drop_second() -> None:
         db.close()
 
 
+def _approvers_expected(preparer_civil: str = ACC[0]) -> set[int]:
+    """من يُنتظَر إخطارهم: حَمَلة ``approve_payroll`` في الشركة 1 عدا المُجهِّز.
+
+    **2026-09-22 — من يعتمد لا من يشغّل**: الصلاحيةُ فُصلت عن ``run_payroll``، فيحملها المحاسب
+    **ومدير الشركة**. **الأدوارُ تُقرأ من ``ROLE_DEFAULT_PERMS``** لا من قائمة مكتوبة، و**أهليةُ
+    «فعّالٌ وعلى رأس العمل»** من ``users_by_role`` نفسها (لا نسخةَ ثانية): القاعدةُ واحدةٌ لكامل
+    الجلسة، وقد يكون ملفُّ موظفِ المدير غيرَ فعّالٍ بعد اختباراتٍ سابقة فلا يُخطَر — وهذا صحيح.
+    """
+    from app.notifications import users_by_role
+    from app.permissions import ROLE_DEFAULT_PERMS
+
+    roles = [r for r, perms in ROLE_DEFAULT_PERMS.items() if "approve_payroll" in perms]
+    db = SessionLocal()
+    try:
+        return {u.id for u in users_by_role(db, 1, roles) if u.civil_id != preparer_civil}
+    finally:
+        db.close()
+
+
+def _suspend_other_approvers(active: bool) -> None:
+    """يعطّل/يعيد مدير الشركة (حامل approve_payroll الآخر) ليُقاس غياب المحايد."""
+    db = SessionLocal()
+    try:
+        for u in db.scalars(select(models.User).where(
+                models.User.company_id == 1, models.User.role == "company_manager")).all():
+            u.is_active = active
+        db.commit()
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # الإشعار يُرسَل — ولمن يستطيع
 # ---------------------------------------------------------------------------
@@ -107,10 +138,16 @@ def test_preparing_a_run_notifies_an_impartial_approver(client):
     other = _second_accountant()
     run_id = None
     try:
+        # القاعدةُ واحدةٌ لكامل الجلسة وSQLite يُعيد استعمال معرّف المسيّر: مهامُّ ``payroll_ready``
+        # تركها اختبارٌ في ملفٍّ آخر بالمفتاح نفسه (``payroll_ready:{run}:u{id}``) تجعل النظامَ يتخطّى
+        # إنشاء مهمةٍ جديدة لصاحبها (dedup) فيبدو مُستلِمٌ كأنه لم يُخطَر. فتُنظَّف قبل التجهيز.
+        _purge()
         run_id, _ = _prepare(client)
         got = _tasks(f"payroll_ready:{run_id}:")
         assert got, "جُهِّز المسيّر ولم يُخطَر أحد"
-        assert {t.assignee_user_id for t in got} == {other.id}, \
+        expected = _approvers_expected()
+        assert other.id in expected, "المحاسب الثاني ليس ممّن يعتمدون"
+        assert {t.assignee_user_id for t in got} == expected, \
             [(t.assignee_user_id, t.title) for t in got]
     finally:
         _purge(run_id)
@@ -178,6 +215,9 @@ def test_a_run_with_no_impartial_approver_is_raised_not_buried(client):
     إعداد بصراحة — على نسق ``_warn_no_impartial_approver`` في الطلبات.
     """
     _drop_second()
+    # مدير الشركة يحمل approve_payroll أيضًا (2026-09-22) — فمحاسبٌ واحد لا يعني «لا معتمد» ما دام
+    # المدير فاعلًا. فيُعطَّل هنا ليُقاس غيابُ المحايد فعلًا، ويُعاد في finally.
+    _suspend_other_approvers(False)
     run_id = None
     try:
         run_id, _ = _prepare(client)
@@ -194,6 +234,7 @@ def test_a_run_with_no_impartial_approver_is_raised_not_buried(client):
         # ولا يُرسَل «راجِع» إلى من لا يستطيع المراجعة.
         assert not _tasks(f"payroll_ready:{run_id}:")
     finally:
+        _suspend_other_approvers(True)
         _purge(run_id)
 
 
