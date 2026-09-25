@@ -730,7 +730,7 @@
         "1": "pass",
         "2": "fail",
         "3": "pass",
-        "4": "fail",
+        "4": "pass",
         "5": "na",
         "6": "pending",
         "7": "pass",
@@ -754,7 +754,7 @@
           "at": "2026-09-25"
         },
         "check4": {
-          "note": "End<Hire يُرفض (ValueError→400) وأصبح يُرفض عند الفتح أيضًا؛ salary<=0 يُرفض في calculate_case وفي الحاسبة الحرة EosIn لكن لا في for-employee (انظر SW الأخير).",
+          "note": "SW-033 أُصلح: for-employee يستعمل _validate_termination_inputs",
           "at": "2026-09-25"
         },
         "check7": {

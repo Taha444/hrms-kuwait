@@ -89,6 +89,9 @@ def for_employee(data: schemas.EosForEmployeeIn,
         raise HTTPException(status_code=404, detail="الموظف غير موجود")
     assert_same_company(user, emp.company_id, db=db)
     company = db.get(models.Company, emp.company_id)
+    # نفس شروط مسودة الإنهاء: راتبٌ صفريّ كان يُنتج تسويةً صفريةً 200، وتاريخ تعيين ناقص رسالةً خامًا.
+    from .employees import _validate_termination_inputs
+    _validate_termination_inputs(emp, data.end_date, data.reason)
     try:
         result = eos_engine.calculate_eos(
             basic_salary=emp.basic_salary, hire_date=emp.hire_date, end_date=data.end_date,
