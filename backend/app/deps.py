@@ -615,10 +615,25 @@ def _actor_branch(db: Session, user: "models.User | None") -> int | None:
     return (emp.branch_id if emp else None) or getattr(user, "scope_branch_id", None)
 
 
+#: أحداثٌ اسمُها نفسُه فشلٌ أو رفض: ``success`` عليها كذبٌ في السجلّ (رفضُ نطاقٍ يُقرأ «نجح»).
+#: المصدر الواحد لـ``audit()`` وللكتابة المباشرة في ``AuditLog`` حيث لا يصل ``audit()``.
+FAILURE_ACTIONS = frozenset({
+    "FORBIDDEN_SCOPE_ACCESS", "totp_login_fail", "totp_fail", "password_reconfirm_fail",
+    "request_apply_failed",
+})
+
+
+def result_for(action: str, explicit: str | None = None) -> str:
+    """نتيجةُ الحدث: ما مُرِّر صراحةً، وإلا ``failure`` لأحداث الفشل المعروفة، وإلا ``success``."""
+    if explicit:
+        return explicit
+    return "failure" if action in FAILURE_ACTIONS else "success"
+
+
 def audit(db: Session, user: models.User | None, action: str, entity_type: str | None = None,
           entity_id: int | None = None, detail: str | None = None, request: Request | None = None,
           company_id: int | None = None, before: dict | None = None, after: dict | None = None,
-          correlation_id: str | None = None, result: str = "success",
+          correlation_id: str | None = None, result: str | None = None,
           reason: str | None = None, branch_id: int | None = None):
     """تسجيل عملية في سجل التدقيق.
 
@@ -655,7 +670,7 @@ def audit(db: Session, user: models.User | None, action: str, entity_type: str |
                    else _actor_branch(db, user)),
         # النتيجة حقل مُهيكَل لا نصّ حر: «لا يُسجَّل Success عند فشل
         # العملية» قاعدة لا تُفرَض على نصّ يُقرأ بالعين.
-        result=result,
+        result=result_for(action, result),
         reason=reason,
         before_json=before,
         after_json=after,
