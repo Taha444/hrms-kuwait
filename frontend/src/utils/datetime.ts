@@ -10,9 +10,14 @@
 
 const KUWAIT_TZ = "Asia/Kuwait";
 
+// الخادم يُرجع UTC بلا لاحقة منطقة ("2026-09-25T20:26:59") — والمتصفح يفسّر النصّ العاري بتوقيت
+// الجهاز لا UTC، فيظهر الوقتُ منحرفًا بفرق منطقة القارئ. فيُختم UTC صراحةً؛ ونصُّ التاريخ وحده لا يُمسّ.
+const _NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
 function _parse(raw: string | Date | null | undefined): Date | null {
   if (!raw) return null;
-  const d = raw instanceof Date ? raw : new Date(raw);
+  const v = typeof raw === "string" && _NAIVE_DATETIME.test(raw) ? raw.replace(" ", "T") + "Z" : raw;
+  const d = v instanceof Date ? v : new Date(v);
   return isNaN(d.getTime()) ? null : d;
 }
 

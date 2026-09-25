@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """عرض سجل التدقيق (Audit Trail) — مفلتر حسب الشركة، للإدارة والمالك والمدير."""
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..clock import KUWAIT_TZ
 from ..database import get_db
 from ..deps import require_perm, scope_company_id
 
@@ -34,10 +35,15 @@ def list_audit(company_id: int | None = None, limit: int = 100, offset: int = 0,
         q = q.where(models.AuditLog.entity_id == entity_id)
     if user_id is not None:
         q = q.where(models.AuditLog.user_id == user_id)
+    # اليومُ في الفلتر هو **يوم الكويت** (كما تعرضه الشاشة)، والمخزَّن UTC: يبدأ يومُ الكويت 21:00 UTC
+    # من اليوم السابق — فحدثٌ عند 01:00 صباحًا بتوقيت الكويت كان يسقط من يومه ويظهر في اليوم الذي قبله.
+    def _kuwait_day_utc(d: date) -> datetime:
+        return datetime.combine(d, time.min, KUWAIT_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+
     if from_date:
-        q = q.where(models.AuditLog.created_at >= datetime.combine(from_date, time.min))
+        q = q.where(models.AuditLog.created_at >= _kuwait_day_utc(from_date))
     if to_date:
-        q = q.where(models.AuditLog.created_at <= datetime.combine(to_date, time.max))
+        q = q.where(models.AuditLog.created_at < _kuwait_day_utc(to_date + timedelta(days=1)))
     limit = max(1, min(limit, 500))
     rows = db.scalars(q.order_by(models.AuditLog.created_at.desc())
                       .limit(limit).offset(max(offset, 0))).all()
