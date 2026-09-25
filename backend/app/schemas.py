@@ -81,7 +81,10 @@ class ResetPasswordIn(BaseModel):
 
 # ----------------------------- الشركات -----------------------------
 
-class CompanyIn(BaseModel):
+class CompanyBase(BaseModel):
+    """حقول الشركة **بلا حدود** — للقراءة. ``CompanyOut`` يرث منه لا من ``CompanyIn`` كي لا تُطبَّق
+    قيودُ الإدخال على سجلاتٍ قديمة مقروءة من القاعدة فتنكسر قائمة الشركات بأكملها (وهو الفخّ
+    نفسه الموثَّق في ``EmployeeOut``)."""
     name: str
     name_en: str | None = None
     commercial_reg: str | None = None
@@ -93,6 +96,23 @@ class CompanyIn(BaseModel):
     eos_max_months: int = 18
     alert_lead_days: int = 30
     annual_leave_days: int = 30
+
+
+# M03 — معاملاتُ الشركة **تُحسب بها مستحقات الموظفين**: قاسمُ الأجر اليومي ومدّةُ سقف المكافأة
+# وأيامُ الإجازة. وكانت تُقبل سالبةً وصفرًا ومليارًا (قيس 200)، فتخرج تسوياتٌ سالبة أو عبثية بلا
+# شكوى. والحدود واسعةٌ عمدًا (لا تحسم سياسةً) لكنها تسدّ ما لا معنى له: القاسم بين 1 و31 (لا يكون
+# أكثر من أيام الشهر)، وسقفُ المكافأة 1–120 شهرًا، والإجازة 0–365، ومهلة التنبيه 1–365 يومًا.
+_EOS_DIVISOR = Field(default=26, ge=1, le=31)
+_EOS_MAX_MONTHS = Field(default=18, ge=1, le=120)
+_ALERT_LEAD = Field(default=30, ge=1, le=365)
+_LEAVE_DAYS = Field(default=30, ge=0, le=365)
+
+
+class CompanyIn(CompanyBase):
+    eos_day_divisor: int = _EOS_DIVISOR
+    eos_max_months: int = _EOS_MAX_MONTHS
+    alert_lead_days: int = _ALERT_LEAD
+    annual_leave_days: int = _LEAVE_DAYS
 
 
 class CompanyUpdate(BaseModel):
@@ -110,13 +130,13 @@ class CompanyUpdate(BaseModel):
     commercial_reg: str | None = None
     entity_type: str | None = None
     file_number: str | None = None
-    eos_day_divisor: int | None = None
-    eos_max_months: int | None = None
-    alert_lead_days: int | None = None
-    annual_leave_days: int | None = None
+    eos_day_divisor: int | None = Field(default=None, ge=1, le=31)
+    eos_max_months: int | None = Field(default=None, ge=1, le=120)
+    alert_lead_days: int | None = Field(default=None, ge=1, le=365)
+    annual_leave_days: int | None = Field(default=None, ge=0, le=365)
 
 
-class CompanyOut(CompanyIn):
+class CompanyOut(CompanyBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     status: str
