@@ -944,7 +944,7 @@
         "3": "pending",
         "4": "pending",
         "5": "pass",
-        "6": "fail",
+        "6": "pass",
         "7": "pass"
       },
       "notes": {
@@ -957,7 +957,7 @@
           "at": "2026-09-24"
         },
         "check6": {
-          "note": "download_renewal_document (عقد حكومي/موقّع/بطاقة مدنية/إذن عمل) وdownload_request_document (مستند طلب مُولَّد) يقدّمان الملف بلا audit — بينما documents/archive تُدقّق كل تنزيل. أُضيف audit(download_renewal_document / download_request_document) بالشركة ومعرّف الربط، واختبار يفشل على القديم. (تنزيل مستند الموظف لنفسه selfservice.my_document لم يُدقَّق عمدًا: قرار المالك «بلا قيد».)",
+          "note": "كل أبواب التنزيل مدقَّقة؛ آخرها download_own_document",
           "at": "2026-09-25"
         },
         "check7": {

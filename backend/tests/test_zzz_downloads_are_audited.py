@@ -104,3 +104,36 @@ def test_a_generated_request_document_download_is_audited(client):
             db.commit()
         finally:
             db.close()
+
+
+def test_an_employees_own_document_download_is_audited(client):
+    key = save_bytes(b"%PDF-1.4 own", "documents", "m18own.pdf", prefix="m18own_")
+    db = SessionLocal()
+    try:
+        user = db.scalar(select(models.User).where(models.User.civil_id == EMP[0]))
+        doc = models.Document(company_id=user.company_id, entity_type="employee",
+                              entity_id=user.employee_id, document_type_code="m18_own_doc",
+                              title="x", file_path=key, mime="application/pdf",
+                              version=1, is_current=True, uploaded_by=user.id)
+        db.add(doc)
+        db.commit()
+        did = doc.id
+    finally:
+        db.close()
+    try:
+        h = auth_headers(login(client, *EMP))
+        r = client.get("/api/me/document/m18_own_doc", headers=h)
+        if r.status_code == 404:
+            r = client.get("/api/selfservice/document/m18_own_doc", headers=h)
+        assert r.status_code == 200, r.text[:120]
+        assert _audit_rows("download_own_document", did), "تنزيل الموظف لمستنده بلا تدقيق"
+    finally:
+        db = SessionLocal()
+        try:
+            db.execute(sa_delete(models.AuditLog).where(
+                models.AuditLog.action == "download_own_document",
+                models.AuditLog.entity_id == did))
+            db.execute(sa_delete(models.Document).where(models.Document.id == did))
+            db.commit()
+        finally:
+            db.close()

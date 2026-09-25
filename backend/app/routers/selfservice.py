@@ -6,7 +6,7 @@
 """
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..storage import file_response, key_exists
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import audit, get_current_user
 
 router = APIRouter(prefix="/me", tags=["self-service"])
 
@@ -106,7 +106,7 @@ def my_profile(user: models.User = Depends(get_current_user), db: Session = Depe
 
 
 @router.get("/document/{document_type_code}")
-def my_document(document_type_code: str,
+def my_document(document_type_code: str, request: Request,
                 user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """تنزيل أحدث نسخة من مستند للموظف نفسه — بلا حد لعدد المرات.
 
@@ -122,6 +122,9 @@ def my_document(document_type_code: str,
         ))
         if not doc or not doc.file_path or not key_exists(doc.file_path):
             raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+        audit(db, user, "download_own_document", "document", doc.id,
+              detail=document_type_code, request=request, company_id=doc.company_id)
+        db.commit()
         return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                             media_type=doc.mime or "application/octet-stream")
 
@@ -134,6 +137,9 @@ def my_document(document_type_code: str,
     ))
     if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+    audit(db, user, "download_own_document", "document", doc.id,
+          detail=document_type_code, request=request, company_id=doc.company_id)
+    db.commit()
     return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
