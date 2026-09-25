@@ -888,6 +888,17 @@ async def upload_request_document(req_id: int, request: Request, kind: str = For
 
     if kind not in ("signed_scan", "exit_permit", "generated_pdf", "attachment"):
         raise HTTPException(status_code=400, detail="نوع مستند غير صالح")
+    # **الصلاحيةُ قبل الحفظ، وبحسب النوع لا بحسب الحالة.** كانت الفحوص داخل فروع الحالة المطابقة
+    # وحدها، فمن يرى الطلب (وأولهم صاحبه) يرفع ``generated_pdf`` أو ``signed_scan`` أو
+    # ``exit_permit`` في أي حالةٍ أخرى بلا فحص — ويُحفَظ بإصدارٍ أعلى، و``/document/{kind}``
+    # يقدّم **أحدث** إصدار، فيحلّ ملفُه محلّ الشهادة الرسمية. وكان الملفُّ يُخزَّن قبل الرفض.
+    if kind == "generated_pdf":
+        raise HTTPException(status_code=403, detail="هذا المستند يولّده النظام ولا يُرفع")
+    if kind == "signed_scan" and not request_actions._may_execute(db, user, "signature", req):
+        raise HTTPException(status_code=403,
+                            detail="رفع النسخة الموقّعة من صلاحية شؤون الموظفين")
+    if kind == "exit_permit" and not request_actions._may_execute(db, user, "delegate", req):
+        raise HTTPException(status_code=403, detail="رفع إذن المغادرة من صلاحية المندوب")
     # AWS-01 — عبر طبقة التخزين لا على القرص مباشرة
     fpath = save_bytes(await read_limited(file), "requests", file.filename,
                        prefix=f"req{req.id}_{kind}_")

@@ -376,7 +376,7 @@
         "1": "pass",
         "2": "pending",
         "3": "fail",
-        "4": "pending",
+        "4": "pass",
         "5": "pass",
         "6": "pending"
       },
@@ -392,6 +392,10 @@
         "check3": {
           "note": "قيس (201): ADMDED بـdeduction_amount=-500 وصفر وpayroll_month='January'؛ _apply_deduction يردّها apply_failed لكن بعد مراحل الاعتماد كلّها. أُضيف min=0.001 وformat='month' (YYYY-MM) للحقول الأربعة المعلنة بذلك (payroll_month، first_deduction_month، effective_month، payroll_period) وفحص الصيغة في validate_payload، واختبار يضمن أن كل حقل يحمل YYYY-MM في تسميته يحمل الفحص. لم يُقيَّد سقف مبلغ الخصم (9,999,999 يُقبل) — قرار عمل.",
           "at": "2026-09-25"
+        },
+        "check4": {
+          "note": "صلاحية النوع قبل الحفظ؛ generated_pdf للنظام",
+          "at": "2026-09-26"
         }
       }
     },
