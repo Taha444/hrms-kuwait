@@ -858,7 +858,18 @@ def _close_renewal_tasks(db, rn) -> int:
     for task in open_tasks:
         task.status = "dismissed"
         task.completed_at = datetime.utcnow()
-    return len(open_tasks)
+    # وبلاغاتُ انتهاء **الإقامة القديمة** نفسها: تبقى مفتوحةً بعد التجديد، إذ يقيس التنظيف
+    # اليوميُّ على تاريخ انتهاء التصريح القديم (وهو قريبٌ لم يتغيّر) فلا يعدّها منتهية الصلاحية.
+    # كما يفعل إلغاءُ الإقامة تمامًا: الحاجةُ التي وُلد لها البلاغ قُضيت.
+    superseded = db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "permit",
+        models.Task.related_entity_id == rn.permit_id,
+        models.Task.status.in_(("open", "in_progress")),
+    )).all() if rn.permit_id else []
+    for task in superseded:
+        task.status = "done"
+        task.completed_at = datetime.utcnow()
+    return len(open_tasks) + len(superseded)
 
 
 #: الحدث في سجل التدقيق ← اسمه في القصة. الترجمة هنا لا في الواجهة:
