@@ -98,6 +98,7 @@ export default function Dashboard() {
             <div className="eyebrow">{t("dash_eyebrow")}</div>
             <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}{t("list_sep")}{user?.full_name}</h2>
             <div className="sub">{t("dash_sub")}</div>
+            {data.scope && <div className="sub" data-testid="dash-scope">{data.scope.all_companies ? t("dash_scope_all") : t("dash_scope_company", { name: data.scope.company_name })}</div>}
           </div>
         </div>
         <div className="grid stats">
@@ -143,6 +144,7 @@ export default function Dashboard() {
           <div className="eyebrow">{t("dash_eyebrow")}</div>
           <h2 style={{ margin: "2px 0 0" }}>{t("dash_welcome")}{t("list_sep")}{user?.full_name}</h2>
           <div className="sub">{t("dash_sub")}</div>
+            {data.scope && <div className="sub" data-testid="dash-scope">{data.scope.all_companies ? t("dash_scope_all") : t("dash_scope_company", { name: data.scope.company_name })}</div>}
         </div>
       </div>
       <div className="grid stats">

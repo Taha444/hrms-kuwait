@@ -65,7 +65,10 @@ def dashboard(company_id: int | None = None,
                     company_id=cid).subquery())) or 0
 
     role = user.role
-    data: dict = {"role": role}
+    # **نطاق الأرقام معلَنٌ لا مُستنتَج**: مجموعُ كل الشركات وشركةٌ واحدة يبدوان الرقمَ نفسه على الشاشة.
+    _co = db.get(models.Company, cid) if cid is not None else None
+    data: dict = {"role": role, "scope": {
+        "all_companies": cid is None, "company_id": cid, "company_name": _co.name if _co else None}}
 
     # ----- العامل: لا إحصائيات شركة، فقط مهامه وطلباته -----
     if role == "employee":

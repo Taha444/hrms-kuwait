@@ -282,6 +282,8 @@ const dict: Record<string, { ar: string; en: string }> = {
   dash_eyebrow: { ar: "لوحة التحكم", en: "Dashboard" },
   dash_welcome: { ar: "مرحبًا", en: "Welcome" },
   dash_sub: { ar: "نظرة سريعة على المؤشرات الخاصة بنطاقك", en: "A quick look at your key indicators" },
+  dash_scope_all: { ar: "الأرقام لكل الشركات مجتمعةً", en: "Figures cover all companies combined" },
+  dash_scope_company: { ar: "الأرقام لشركة: {name}", en: "Figures for company: {name}" },
   kpi_companies: { ar: "عدد الشركات", en: "Companies" },
   kpi_employees: { ar: "الموظفون النشطون", en: "Active Employees" },
   kpi_branches: { ar: "الفروع", en: "Branches" },
