@@ -276,20 +276,29 @@ def environment_report() -> dict:
     """ما يحتاجه التوليد — ويُقرأ في ``/api/health/deep``."""
     ok_asset = ASSET.exists() and asset_sha256() == ASSET_SHA256
     ok_font = FONT.exists()
-    try:
-        import arabic_reshaper  # noqa: F401
-        import reportlab  # noqa: F401
-        from bidi.algorithm import get_display  # noqa: F401
-        libs = True
-    except Exception:
-        libs = False
+    # **كلُّ ما تستورده ``fill()`` يُفحَص هنا** — ومنه ``pypdf``. كان الفحص يقرأ ثلاث مكتباتٍ
+    # ويترك الرابعة، فقالت لوحة الصحة «جاهز» (``can_render_pdf: true``) على الإنتاج بينما
+    # ``ModuleNotFoundError: No module named 'pypdf'`` يُسقط كلَّ عقدٍ بـ500 (2026-09-24).
+    # وفحصُ جاهزيةٍ ينقصه ما يحتاجه المولِّد أسوأ من غيابه: يطمئن حيث يجب أن يُنذر.
+    import importlib
+
+    missing_libs = []
+    for mod in ("arabic_reshaper", "reportlab", "bidi.algorithm", "pypdf"):
+        try:
+            importlib.import_module(mod)
+        except Exception:  # noqa: BLE001 — الغيابُ بأيّ سبب غيابٌ
+            missing_libs.append(mod)
+    libs = not missing_libs
     return {
         "form_present": ASSET.exists(),
         "form_fingerprint_ok": ok_asset,
         "arabic_font": FONT.name if ok_font else None,
         "libs": libs,
+        "missing_libs": missing_libs,
         "can_render_pdf": bool(ok_asset and ok_font and libs),
         "status": "ok" if (ok_asset and ok_font and libs) else "degraded",
-        "note": ("" if ok_asset else
-                 "نموذج الهيئة مفقود أو تغيّرت بصمته — لا يُولَّد عقد حتى يُراجَع"),
+        "note": ("" if ok_asset and libs else
+                 (f"مكتبة ناقصة على الخادم: {', '.join(missing_libs)} — لا يُولَّد عقد "
+                  "حتى تُثبَّت (requirements.txt)" if not libs else
+                  "نموذج الهيئة مفقود أو تغيّرت بصمته — لا يُولَّد عقد حتى يُراجَع")),
     }

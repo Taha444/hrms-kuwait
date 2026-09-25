@@ -651,6 +651,24 @@ def health_deep(request: Request):
                       "/api/verify/{code}"),
     }
 
+    # 11) **النسخة الاحتياطية خارج الخادم** — إعدادٌ غيابه لا يُرى إلا في سطر إقلاعٍ يقرؤه من
+    # يفتح سجلّات المنصّة. قرار المالك (2026-09-19): نسخ Railway المدمج **و**نسخةٌ ليلية
+    # مشفَّرة إلى S3/R2؛ والإنتاج بلا الثانية («لا نسخة ليلية») ولا شيء في اللوحة يقول ذلك.
+    # ليس ``fail``: النظام يعمل بلا النسخة الخارجية، والقرار لصاحبه — لكنّه يُقال.
+    try:
+        from .backup import BackupConfig
+        _bk = BackupConfig.from_env()
+        results["checks"]["backup"] = {
+            "status": "ok" if _bk else "not_configured",
+            "configured": bool(_bk),
+            "offsite_nightly": bool(_bk),
+            "note": ("نسخة ليلية مشفَّرة خارج الخادم مفعّلة" if _bk
+                     else "لا نسخة ليلية خارج الخادم — اضبط BACKUP_S3_BUCKET و"
+                          "BACKUP_ENCRYPTION_KEY (ومفاتيح S3) ليُفعَّل النسخ الليلي المشفَّر"),
+        }
+    except Exception as e:  # noqa: BLE001
+        results["checks"]["backup"] = {"status": "unknown", "error": str(e)[:200]}
+
     body = results if _health_detail_allowed(request) else _redact(results)
     if not ok:
         from fastapi.responses import JSONResponse

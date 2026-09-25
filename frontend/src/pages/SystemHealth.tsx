@@ -11,7 +11,7 @@ import Icon from "../Icon";
  * DEMO-1: زر "إعادة تعيين بيانات الديمو" (لـsuper_admin + بيئة مسموحة فقط)
  */
 type HealthCheck = {
-  status: "ok" | "fail" | "disabled";
+  status: "ok" | "fail" | "disabled" | "not_configured" | "degraded" | "unknown";
   [k: string]: any;
 };
 type Health = {
@@ -77,6 +77,9 @@ export default function SystemHealth() {
       ok: { bg: "#d1fae5", fg: "#065f46", label: isEn ? "OK" : "شغّال" },
       fail: { bg: "#fee2e2", fg: "#991b1b", label: isEn ? "FAIL" : "فشل" },
       disabled: { bg: "#e5e7eb", fg: "#374151", label: isEn ? "OFF" : "معطّل" },
+      // إعدادٌ غائب أو قدرةٌ ناقصة: ليست عطلًا يُسقط النظام لكنها تُقال بلونٍ يُرى.
+      not_configured: { bg: "#fef3c7", fg: "#92400e", label: isEn ? "NOT SET" : "غير مضبوط" },
+      degraded: { bg: "#fef3c7", fg: "#92400e", label: isEn ? "DEGRADED" : "متدهور" },
     };
     const s = map[status] || map.disabled;
     return (
@@ -242,6 +245,37 @@ export default function SystemHealth() {
               <span>{isEn ? "Legacy aliases" : "أسماء قديمة"}</span><b>{c.registry.legacy_prn_aliases || "—"}</b>
             </div>
           )}
+        </Card>
+
+        {/* ما يقوله الـAPI ولا تعرضه اللوحة لا يراه أحد: كان فحص العقد الحكومي يقول «جاهز»
+            والتوليد مستحيل (pypdf) ولا بطاقةَ له هنا. */}
+        <Card title={isEn ? "Government contract" : "العقد الحكومي"} status={c.gov_contract?.status || "unknown"}>
+          {c.gov_contract?.can_render_pdf
+            ? <span style={{ color: "#065f46" }}>✓ {isEn ? "PDF generation ready" : "توليد PDF جاهز"}</span>
+            : <span style={{ color: "#991b1b" }}>✗ {isEn ? "PDF generation unavailable" : "توليد PDF غير متاح"}</span>}
+          {(c.gov_contract?.missing_libs || []).length > 0 && (
+            <div style={{ marginTop: 6, color: "#b91c1c" }}>
+              {isEn ? "Missing libraries" : "مكتبات ناقصة"}: <code>{c.gov_contract.missing_libs.join(", ")}</code>
+            </div>
+          )}
+          {c.gov_contract?.note && <div style={{ marginTop: 6, fontSize: 11 }}>{c.gov_contract.note}</div>}
+        </Card>
+
+        <Card title={isEn ? "Off-site backup" : "نسخة احتياطية خارجية"} status={c.backup?.status || "unknown"}>
+          {c.backup?.note}
+        </Card>
+
+        <Card title={isEn ? "Document verification link" : "رابط التحقق من المستندات"} status={c.public_verify_url?.status || "unknown"}>
+          {c.public_verify_url?.note}
+        </Card>
+
+        <Card title={isEn ? "Default (seed) accounts" : "حسابات البذرة الافتراضية"} status={c.seed_accounts?.status || "unknown"}>
+          {c.seed_accounts?.status === "ok"
+            ? <span style={{ color: "#065f46" }}>✓ {isEn ? "None accepting seed passwords" : "لا حساب يقبل كلمة البذرة"}</span>
+            : <>
+                <b>{c.seed_accounts?.count ?? "?"}</b> {isEn ? "account(s) accept seed passwords" : "حساب يقبل كلمة مرور البذرة"}
+                {c.seed_accounts?.note && <div style={{ marginTop: 6, fontSize: 11 }}>{c.seed_accounts.note}</div>}
+              </>}
         </Card>
       </div>
 
