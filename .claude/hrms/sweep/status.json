@@ -942,7 +942,7 @@
         "1": "pass",
         "2": "pass",
         "3": "pending",
-        "4": "pending",
+        "4": "pass",
         "5": "pass",
         "6": "pass",
         "7": "pass"
@@ -966,6 +966,10 @@
         },
         "check5": {
           "note": "كل تنزيل يمرّ بـ_get_req/_get_renewal/assert_same_company/require_perm(view_documents)؛ والورقة السرّية تُحجَب في /latest و/history والتنزيل بالمعرّف (أُصلح M06).",
+          "at": "2026-09-25"
+        },
+        "check4": {
+          "note": "replace على نسخة تاريخية يُرفض 409",
           "at": "2026-09-25"
         }
       }
