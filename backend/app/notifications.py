@@ -395,6 +395,19 @@ def daily_scan(db: Session) -> dict:
         # المستندات المخصّصة: نتخطى ما لم يُفعّل notify_on_expiry
         if is_custom and not doc.notify_on_expiry:
             continue
+        # M16 — **مصدران لتنبيهٍ واحد، ومن انتهت خدمته يُنبَّه على جوازه.** قيس بتشغيل المسح:
+        # (١) إقامةُ موظفٍ حيّ تُنشئ تنبيهين كتصريح (المسح أعلاه) وتنبيهين آخرين كمستند —
+        # فالإقامة وإذن العمل يُنعكسان أصلًا في جدول التصاريح (``DOC_TYPE_TO_PERMIT_KIND``)
+        # ومسحُهما هناك؛ (٢) جوازُ موظفٍ أُنهيت خدمته يُنبَّه عنه المندوبون كأنه سارٍ.
+        if doc.entity_type == "employee":
+            from .routers.documents import DOC_TYPE_TO_PERMIT_KIND
+            from .deps import INACTIVE_EMPLOYMENT as _ENDED
+
+            if doc.document_type_code in DOC_TYPE_TO_PERMIT_KIND:
+                continue
+            _holder = db.get(models.Employee, doc.entity_id)
+            if _holder is not None and (_holder.status or "").strip().lower() in _ENDED:
+                continue
         days_left = (doc.expiry_date - today).days
         bucket = expiry_bucket(days_left)
         if bucket is None:
