@@ -532,7 +532,7 @@ def get_renewal(rid: int, user: models.User = Depends(get_current_user), db: Ses
 
 
 @router.get("/{rid}/document/{doc_type}")
-def download_renewal_document(rid: int, doc_type: str,
+def download_renewal_document(rid: int, doc_type: str, request: Request,
                               user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """تنزيل مستند تجديد (عقد/موقّع) أو مستند الموظف المرتبط (إذن عمل/بطاقة مدنية)."""
     rn = _get_renewal(db, user, rid)
@@ -553,6 +553,12 @@ def download_renewal_document(rid: int, doc_type: str,
         models.Document.document_type_code == doc_type, models.Document.is_current == True))  # noqa: E712
     if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
+    # M18 — **كلُّ تنزيلٍ يُدقَّق**: العقد الحكومي والبطاقة المدنية وإذن العمل أوراقٌ حسّاسة، وكان
+    # تنزيلُها بلا أثر بينما تنزيل مستند الموظف والأرشيف يُسجَّل — فمن نزّلها لا يُعرَف.
+    audit(db, user, "download_renewal_document", "renewal", rn.id,
+          detail=f"{doc_type} v{doc.version} (doc#{doc.id})", request=request,
+          company_id=rn.company_id, correlation_id=f"renewal:{rn.id}")
+    db.commit()
     return file_response(doc.file_path, filename=os.path.basename(doc.file_path),
                         media_type=doc.mime or "application/octet-stream")
 
@@ -868,6 +874,8 @@ TIMELINE_LABELS = {
     "finalize_renewal": "سُجّلت بيانات المعاملة الحكومية",
     "hr_verify_renewal": "التحقق النهائي واكتمال المعاملة",
     "renewal_ocr_read": "قرأ النظام المستند",
+    # M18 — تنزيل مستند المعاملة يُدقَّق، ويظهر في قصتها: من نزّل العقد أو البطاقة ومتى.
+    "download_renewal_document": "نُزِّل مستند من المعاملة",
 }
 
 #: P4-22 — «رُفع مستند» تخفي أهمّ ما في القصة.

@@ -938,7 +938,7 @@ def mark_received(req_id: int, user: models.User = Depends(require_any_perm(*per
 
 
 @router.get("/{req_id}/document/{kind}")
-def download_request_document(req_id: int, kind: str,
+def download_request_document(req_id: int, kind: str, request: Request,
                               user: models.User = Depends(get_current_user),
                               db: Session = Depends(get_db)):
     req = _get_req(db, user, req_id)
@@ -970,6 +970,11 @@ def download_request_document(req_id: int, kind: str,
         media = "text/html"
     else:
         media = "application/octet-stream"
+    # M18 — كلُّ تنزيلٍ يُدقَّق (شهادة راتب/خطاب/عقد مُولَّد): كان بلا أثر.
+    audit(db, user, "download_request_document", "request", req.id,
+          detail=f"{kind} v{doc.version}", request=request, company_id=req.company_id,
+          correlation_id=f"req:{req.id}")
+    db.commit()
     return file_response(doc.file_path, media_type=media,
                         filename=os.path.basename(doc.file_path))
 
