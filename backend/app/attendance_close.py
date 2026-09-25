@@ -16,6 +16,21 @@ from sqlalchemy.orm import Session
 from . import models
 
 
+def parse_period(period: str) -> tuple[int, int]:
+    """``YYYY-MM`` صارمة — المصدر الواحد لأبواب الإقفال وإعادة الفتح والاستعلام.
+
+    كانت ``2026-99`` تُقفَل وتُخزَّن، و``close-status`` عليها يسقط بـ500.
+    """
+    import re
+
+    from fastapi import HTTPException
+
+    if not isinstance(period, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", period.strip()):
+        raise HTTPException(status_code=400, detail="صيغة الفترة يجب أن تكون YYYY-MM (مثل 2026-06)")
+    y, m = period.strip().split("-")
+    return int(y), int(m)
+
+
 def get_close(db: Session, company_id: int, period: str):
     """صفّ الإغلاق الفعّال لهذه الفترة — أو لا شيء إن كانت مفتوحة."""
     row = db.scalar(select(models.AttendanceMonthClose).where(

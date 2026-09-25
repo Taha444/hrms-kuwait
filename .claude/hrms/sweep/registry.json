@@ -1,0 +1,511 @@
+{
+  "modules": [
+    {
+      "id": "M01",
+      "ar": "المصادقة والجلسات",
+      "en": "Auth & Sessions",
+      "skill": "hrms-sweep-identity",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "تسجيل الدخول لكل دور",
+        "أول دخول وتغيير كلمة السر",
+        "2FA للأدوار المعتمدة",
+        "Auto Logout ~10د",
+        "Rate limit و Lockout",
+        "المستخدم المعطّل لا يدخل",
+        "انتهاء الجلسة بعد تغيير كلمة السر",
+        "صلاحية التوكن ومدته"
+      ]
+    },
+    {
+      "id": "M02",
+      "ar": "المستخدمون والصلاحيات",
+      "en": "Users & Permissions",
+      "skill": "hrms-sweep-identity",
+      "roles": [
+        "SuperAdmin",
+        "Manager",
+        "HR"
+      ],
+      "checks": [
+        "إنشاء مستخدم وربطه بموظف",
+        "منع Employee User بلا employee_id",
+        "مصفوفة صلاحيات كل دور",
+        "Menu/Route/Button/API من مصدر واحد",
+        "تعديل صلاحية وأثره الفوري",
+        "Impersonation: actor/original_actor",
+        "Impersonation لا يرث خمول قديم",
+        "Impersonation لا يمنح اعتمادا ذاتيا"
+      ]
+    },
+    {
+      "id": "M03",
+      "ar": "الشركات والفروع والأقسام",
+      "en": "Companies · Branches · Departments",
+      "skill": "hrms-sweep-org",
+      "roles": [
+        "SuperAdmin",
+        "Owner",
+        "Manager"
+      ],
+      "checks": [
+        "إنشاء شركة · تفرّد السجل التجاري",
+        "بيانات الشركة في المستندات",
+        "إنشاء فرع وربط الموظفين",
+        "فرع بلا مسؤول — سلوك الـfallback",
+        "الأقسام",
+        "تبديل الشركة والنطاق",
+        "All Companies — الحالات الفارغة"
+      ]
+    },
+    {
+      "id": "M04",
+      "ar": "المواقع والكشك",
+      "en": "Locations & Kiosk",
+      "skill": "hrms-sweep-org",
+      "roles": [
+        "SuperAdmin",
+        "Manager",
+        "HR"
+      ],
+      "checks": [
+        "تعريف موقع الفرع/الإحداثيات",
+        "إعداد الكشك وربطه بفرع",
+        "مفاتيح الكشك وتدويرها",
+        "طرق التسجيل qr/gps/both/none",
+        "نطاق التحقق الجغرافي",
+        "تسجيل من خارج النطاق"
+      ]
+    },
+    {
+      "id": "M05",
+      "ar": "الموظفون",
+      "en": "Employees",
+      "skill": "hrms-sweep-employees",
+      "roles": [
+        "HR",
+        "Manager",
+        "Supervisor"
+      ],
+      "checks": [
+        "إنشاء موظف — تحقق ذري",
+        "الحقول الإلزامية والرفض الجزئي",
+        "توليد employee_no",
+        "الموظفون بلا رقم — backfill",
+        "تعديل البيانات الأساسية + Effective Date",
+        "الأرشفة وإيقاف الخدمة الذاتية",
+        "المؤرشف يختفي من KPIs/Payroll/Attendance/Selectors",
+        "البحث بالرقم الوظيفي"
+      ]
+    },
+    {
+      "id": "M06",
+      "ar": "مستندات الموظف",
+      "en": "Employee Documents",
+      "skill": "hrms-sweep-employees",
+      "roles": [
+        "HR",
+        "Employee",
+        "PRO"
+      ],
+      "checks": [
+        "رفع مستند وأنواعه",
+        "تواريخ الانتهاء والـOCR",
+        "النسخة Current",
+        "النسخ السابقة History",
+        "تنزيل نسخة قديمة",
+        "صلاحية العرض حسب الدور",
+        "لا Storage URL مكشوف"
+      ]
+    },
+    {
+      "id": "M07",
+      "ar": "كتالوج الطلبات",
+      "en": "Request Catalog",
+      "skill": "hrms-sweep-requests",
+      "roles": [
+        "Employee",
+        "all"
+      ],
+      "checks": [
+        "عدد الأنواع الظاهرة لكل دور",
+        "لا تكرار ولا legacy ولا internal_action",
+        "الأسماء بلا أكواد ولا لواصق",
+        "Canonical فقط في الإنشاء",
+        "الـbackend allowlist يرفض غير المسموح"
+      ]
+    },
+    {
+      "id": "M08",
+      "ar": "تقديم الطلب والنماذج",
+      "en": "Request Submission & Forms",
+      "skill": "hrms-sweep-requests",
+      "roles": [
+        "Employee",
+        "Manager",
+        "HR"
+      ],
+      "checks": [
+        "نموذج مخصص لكل نوع لا نموذج عام",
+        "الحقول الشرطية",
+        "التحقق في الواجهة والخادم",
+        "المرفقات وقواعدها",
+        "فشل الطلب لا ينشئ أثرا",
+        "لا Raw payload في التفاصيل"
+      ]
+    },
+    {
+      "id": "M09",
+      "ar": "محرك المسارات والاعتمادات",
+      "en": "Workflow & Approvals",
+      "skill": "hrms-sweep-requests",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "المعيّن الحالي فقط يرى أزراره",
+        "أنواع الخطوات لا Approve عام",
+        "Needs Info والاستئناف",
+        "منع الاعتماد الذاتي والمرحلتين",
+        "Claim/ONE_OF/ALL_OF",
+        "التفويض والـfallback",
+        "Idempotency ومنع الإجراء المكرر",
+        "لا حالة بلا مخرج",
+        "Timeline بالفاعل الحقيقي"
+      ]
+    },
+    {
+      "id": "M10",
+      "ar": "المهام والإشعارات",
+      "en": "Tasks & Notifications",
+      "skill": "hrms-sweep-insights",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "مهمة واحدة لكل إجراء",
+        "الإغلاق عند تغير المرحلة والاكتمال",
+        "فصل المهام عن الإشعارات",
+        "Digest لا يضخّم العدّاد",
+        "SLA تذكير يُحدَّث لا يُضاف",
+        "التسليم الفعلي للقنوات",
+        "العدّاد = القائمة"
+      ]
+    },
+    {
+      "id": "M11",
+      "ar": "الحضور",
+      "en": "Attendance",
+      "skill": "hrms-sweep-attendance",
+      "roles": [
+        "Employee",
+        "Supervisor",
+        "HR",
+        "Manager"
+      ],
+      "checks": [
+        "سياسة حضور أو إعفاء لكل موظف",
+        "تسجيل دخول/خروج ومنع التكرار",
+        "My Attendance للموظف",
+        "مراجعة الحضور لكل دور ونطاقه",
+        "تطابق العدد مع الموظفين النشطين",
+        "لا غياب قبل التعيين",
+        "لا حضور مفقود = غياب تلقائي",
+        "Attendance Close",
+        "تصحيح الحضور يُطبَّق فعلا"
+      ]
+    },
+    {
+      "id": "M12",
+      "ar": "الإجازات والأرصدة",
+      "en": "Leave & Balances",
+      "skill": "hrms-sweep-attendance",
+      "roles": [
+        "Employee",
+        "Manager",
+        "HR"
+      ],
+      "checks": [
+        "رصيد الإجازة — مصدر واحد",
+        "الإجازة العادية ومسارها",
+        "السفر: الفورم والتوجيه",
+        "خصم الرصيد بعد الاعتماد",
+        "تحديث الحضور",
+        "خصوصية التواريخ عن الموظف",
+        "الرصيد في EOS مطابق"
+      ]
+    },
+    {
+      "id": "M13",
+      "ar": "الرواتب",
+      "en": "Payroll",
+      "skill": "hrms-sweep-payroll-eos",
+      "roles": [
+        "Accountant",
+        "Manager",
+        "Owner"
+      ],
+      "checks": [
+        "شركة واحدة صريحة ومنع All Companies",
+        "الحضور معتمد ومغلق قبل التشغيل",
+        "تطابق الأعداد",
+        "الدورة Draft→Locked",
+        "Maker-Checker",
+        "منع التكرار لنفس الفترة",
+        "Adjustment Run بعد القفل",
+        "Breakdown كامل",
+        "استبعاد المؤرشفين والـsecondary PRO",
+        "قسيمة الراتب"
+      ]
+    },
+    {
+      "id": "M14",
+      "ar": "نهاية الخدمة والخروج",
+      "en": "EOS · Exit · Clearance",
+      "skill": "hrms-sweep-payroll-eos",
+      "roles": [
+        "HR",
+        "Finance",
+        "Manager"
+      ],
+      "checks": [
+        "منع التنفيذ المباشر",
+        "مسار موحّد للاستقالة والإنهاء",
+        "بيانات حقيقية لا قيم تجريبية",
+        "رفض salary<=0 و End<Hire",
+        "إخلاء الطرف المتوازي",
+        "المستند المبدئي والنهائي",
+        "إغلاق الوصول والأرشفة",
+        "Timeline خروج واضح"
+      ]
+    },
+    {
+      "id": "M15",
+      "ar": "الإقامات والمعاملات الحكومية",
+      "en": "Residency & Government",
+      "skill": "hrms-sweep-government",
+      "roles": [
+        "PRO",
+        "HR"
+      ],
+      "checks": [
+        "اكتشاف الانتهاء ومهمة واحدة",
+        "بدء المعاملة من التنبيه",
+        "توليد العقد الحكومي ومنع التكرار",
+        "إرسال للموظف وتوقيعه ورفعه",
+        "استلام المندوب",
+        "الإجراءات الحكومية والمرجع",
+        "الحزمة النهائية",
+        "OCR بثلاث نتائج",
+        "البيانات قبل التحقق النهائي",
+        "closure-check",
+        "تحديث المستندات والتاريخ في كل الشاشات",
+        "إغلاق التنبيهات والمهام"
+      ]
+    },
+    {
+      "id": "M16",
+      "ar": "محرك تواريخ الانتهاء",
+      "en": "Expiry Engine",
+      "skill": "hrms-sweep-government",
+      "roles": [
+        "PRO",
+        "HR",
+        "Owner"
+      ],
+      "checks": [
+        "مصدر واحد لكل الشاشات",
+        "تنبيهات 90/30/متكرر",
+        "مهمة نشطة واحدة لكل مستند",
+        "Daily Scan مرتين بلا تكرار",
+        "يراقب Current فقط",
+        "توقف تنبيهات النسخة القديمة",
+        "يشمل رخص الشركة والفروع"
+      ]
+    },
+    {
+      "id": "M17",
+      "ar": "القوالب وتوليد المستندات",
+      "en": "Templates & Generation",
+      "skill": "hrms-sweep-documents",
+      "roles": [
+        "SuperAdmin",
+        "HR"
+      ],
+      "checks": [
+        "إدارة القوالب لـSuperAdmin فقط",
+        "Versioning ومنع حذف المستخدم",
+        "WF→OD mapping صحيح",
+        "Preview لا ينشئ artifact",
+        "فصل Generate/Issue/Download/Print/File",
+        "PDF حقيقي وعربية سليمة",
+        "بيانات المستند الإلزامية",
+        "لا حقول تقنية ولا نوائب",
+        "تعقيم HTML"
+      ]
+    },
+    {
+      "id": "M18",
+      "ar": "التخزين والأرشيف",
+      "en": "Storage & Archive",
+      "skill": "hrms-sweep-documents",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "المستند يبقى بعد إعادة النشر",
+        "health/deep: storage ok",
+        "الأرشفة التلقائية لمكانها الصحيح",
+        "Current/Previous في الثلاثة أرشيفات",
+        "صلاحية التنزيل",
+        "تدقيق كل تنزيل",
+        "لا مسار ملف مكشوف"
+      ]
+    },
+    {
+      "id": "M19",
+      "ar": "التوقيع والمخوّلون",
+      "en": "Signatures & Signatories",
+      "skill": "hrms-sweep-documents",
+      "roles": [
+        "Employee",
+        "HR",
+        "SuperAdmin"
+      ],
+      "checks": [
+        "أول رفع مباشر",
+        "الاستبدال بطلب وسبب",
+        "القديم Active حتى الموافقة",
+        "سجل التاريخ",
+        "مسار واحد لا REQSIG موازٍ",
+        "سجل المخوّلين ونطاقهم",
+        "تحذير الإعداد الناقص",
+        "التوقيع عند Approval فقط",
+        "المستند المُصدَر يحتفظ بتوقيعه"
+      ]
+    },
+    {
+      "id": "M20",
+      "ar": "اللوحات والعدادات",
+      "en": "Dashboards & Counters",
+      "skill": "hrms-sweep-insights",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "لوحة لكل دور بمحتواها",
+        "كل رقم = القائمة التي يفتحها",
+        "نطاق الشركة المختارة",
+        "التمييز بين scoped و global",
+        "Quick Actions حسب الدور",
+        "لا أرقام متناقضة بين الشاشات"
+      ]
+    },
+    {
+      "id": "M21",
+      "ar": "التقارير والتصدير",
+      "en": "Reports & Export",
+      "skill": "hrms-sweep-insights",
+      "roles": [
+        "HR",
+        "Manager",
+        "Accountant",
+        "Owner"
+      ],
+      "checks": [
+        "التقارير الستة",
+        "الفلاتر والنطاق والفترة",
+        "صلاحية كل تقرير",
+        "لا Payroll نهائي قبل القفل",
+        "التصدير CSV/XLSX",
+        "الأرقام كنص بلا Scientific Notation",
+        "Masking حسب الدور",
+        "تدقيق التصدير"
+      ]
+    },
+    {
+      "id": "M22",
+      "ar": "سجل التدقيق",
+      "en": "Audit Log",
+      "skill": "hrms-sweep-insights",
+      "roles": [
+        "SuperAdmin",
+        "Auditor"
+      ],
+      "checks": [
+        "الحقول الستة عشر",
+        "تغطية كل الأحداث",
+        "لا نجاح عند الفشل",
+        "actor في الاكتمال الآلي",
+        "توقيت الكويت في العرض",
+        "تصفح وبحث",
+        "عدم الفقد أثناء الترحيل"
+      ]
+    },
+    {
+      "id": "M23",
+      "ar": "اللغة والواجهة",
+      "en": "i18n · UX States",
+      "skill": "hrms-sweep-crosscutting",
+      "roles": [
+        "all"
+      ],
+      "checks": [
+        "عربي/إنجليزي متسق",
+        "RTL/LTR والأرقام",
+        "لا قيم خام ولا أكواد",
+        "Loading≠Empty≠Error≠Unauthorized",
+        "Sidebar والتخطيط",
+        "Desktop و Mobile",
+        "Zoom 200% و Focus و Contrast"
+      ]
+    },
+    {
+      "id": "M24",
+      "ar": "النظام والتشغيل",
+      "en": "System & Ops",
+      "skill": "hrms-sweep-crosscutting",
+      "roles": [
+        "SuperAdmin"
+      ],
+      "checks": [
+        "هوية النسخة والـMigration",
+        "System Health وكل مكوّناته",
+        "الوظائف المجدولة ومراقبتها",
+        "ساعة الخادم NTP",
+        "Service Worker والتحديث",
+        "النسخ الاحتياطي والاسترجاع",
+        "إعدادات النظام"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": "discover",
+      "ar": "الاكتشاف",
+      "desc": "ما الموجود فعلا: الشاشات · المسارات · الجداول · الأدوار"
+    },
+    {
+      "id": "map",
+      "ar": "رسم المسار",
+      "desc": "ارسم الـworkflow كما هو منفّذ لا كما يُفترض"
+    },
+    {
+      "id": "compare",
+      "ar": "المقارنة",
+      "desc": "قارن المنفّذ بالمواصفة والمتوقع · سجّل الفروق"
+    },
+    {
+      "id": "test",
+      "ar": "الاختبار",
+      "desc": "نفّذ قائمة الفحص بكل دور وعلى الشركتين"
+    },
+    {
+      "id": "record",
+      "ar": "التسجيل",
+      "desc": "النتائج بدليل + ملف القسم"
+    }
+  ]
+}

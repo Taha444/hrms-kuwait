@@ -717,11 +717,8 @@ def close_attendance_month(period: str, request: Request,
 
     period: صيغة YYYY-MM
     """
-    try:
-        y, m = period.split("-")
-        int(y), int(m)
-    except Exception:
-        raise HTTPException(status_code=400, detail="صيغة الفترة يجب أن تكون YYYY-MM")
+    y, m = attendance_close.parse_period(period)
+    period = f"{y:04d}-{m:02d}"
     cid = scope_company_id(user, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="حدد الشركة")
@@ -766,6 +763,8 @@ def reopen_attendance_month(period: str, reason: str, request: Request,
     """V2.2 §17 — إعادة فتح شهر مقفل: مطلوب سبب موثّق (يُسجَّل في audit)."""
     if not reason or not reason.strip():
         raise HTTPException(status_code=400, detail="سبب إعادة الفتح مطلوب")
+    y, m = attendance_close.parse_period(period)
+    period = f"{y:04d}-{m:02d}"
     cid = scope_company_id(user, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="حدد الشركة")
@@ -790,6 +789,8 @@ def attendance_close_status(period: str, company_id: int | None = None,
                             user: models.User = Depends(require_perm("view_attendance")),
                             db: Session = Depends(get_db)):
     """V2.2 §17 — يستعلم حالة إقفال شهر (للـUI لإظهار Lock badge)."""
+    y, m = attendance_close.parse_period(period)
+    period = f"{y:04d}-{m:02d}"
     cid = scope_company_id(user, company_id)
     if cid is None:
         return {"period": period, "status": "open"}
