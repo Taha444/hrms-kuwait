@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -326,6 +326,26 @@ def expiry_severity(days_left: int) -> str:
     return "info"
 
 
+def _supersede_permit_alerts(db: Session, permit_id: int, current_key: str) -> int:
+    """مهمةٌ نشطةٌ واحدةٌ لكل تصريح: تنبيهُ الشريحة الأقرب يحلّ محلّ ما قبله.
+
+    مفتاحُ التكرار يحمل الشريحة (90 ثم 30 ثم 7 ثم منتهٍ)، فكانت مهمةُ كل شريحةٍ تُنشأ وتبقى ما قبلها
+    مفتوحة: يجد المندوبُ والموظف أربعَ مهامَّ لإقامةٍ واحدة، ثلاثٌ منها تقول «تنتهي خلال 80 يومًا»
+    وهي تنتهي خلال 5. (المستنداتُ تُفرَض عليها القاعدةُ نفسها أدناه.)
+    """
+    prefix = f"permit_expiring:{permit_id}:"
+    stale = [t for t in db.scalars(select(models.Task).where(
+        models.Task.related_entity_type == "permit",
+        models.Task.related_entity_id == permit_id,
+        models.Task.status.in_(("open", "in_progress")),
+        models.Task.dedup_key.like(prefix + "%"))).all()
+        if not (t.dedup_key == current_key or t.dedup_key.startswith(current_key + ":"))]
+    for t in stale:
+        t.status = "dismissed"
+        t.completed_at = datetime.now(timezone.utc)
+    return len(stale)
+
+
 def daily_scan(db: Session) -> dict:
     """يفحص الإقامات/الجوازات/التراخيص/المستندات ويولّد مهامًا للمستلِمين."""
     today = kuwait_today()
@@ -346,6 +366,7 @@ def daily_scan(db: Session) -> dict:
         sev = expiry_severity(days_left)
         name = emp.name if emp else f"#{permit.employee_id}"
         dk = f"permit_expiring:{permit.id}:{bucket}"
+        _supersede_permit_alerts(db, permit.id, dk)
 
         # **ومن انتهت خدمته لا يُقال عن إقامته «تجديد».** لا مساَر إنهاءٍ
         # يمسّ حالةَ الإقامة، فتبقى ``active`` ويصل المندوبَ «تجديد الإقامة»
