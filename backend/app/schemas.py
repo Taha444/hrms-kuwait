@@ -437,9 +437,9 @@ class BranchIn(BaseModel):
     code: str | None = Field(default=None, max_length=6)
     governorate: str | None = None
     governorate_en: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    geofence_radius_m: int = 100
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    geofence_radius_m: int = Field(default=100, ge=1, le=100000)
     auto_checkout_minutes: int = Field(default=15, ge=0, le=720)
     address: str | None = None
 
@@ -455,9 +455,9 @@ class BranchUpdate(BaseModel):
     code: str | None = Field(default=None, max_length=6)   # انظر BranchIn
     governorate: str | None = None
     governorate_en: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    geofence_radius_m: int | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    geofence_radius_m: int | None = Field(default=None, ge=1, le=100000)
     auto_checkout_minutes: int | None = Field(default=None, ge=0, le=720)
     address: str | None = None
 
@@ -482,14 +482,17 @@ class ShiftIn(BaseModel):
 # ----------------------------- الحضور -----------------------------
 
 class ValidateGpsIn(BaseModel):
-    lat: float
-    lng: float
+    # M04 — ``NaN`` كان يجتاز السياجَ الجغرافيّ: ``dist > radius`` تُقيَّم ``False`` حين
+    # ``dist`` عددٌ غير معرَّف، فتصدر تذكرةُ بصمة من أيّ مكان (قيس 200)؛ و``Infinity`` يسقط
+    # ``ValueError`` (500). فالمدى والمتناهي يُفرَضان عند المدخل.
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
 class ValidateQrIn(BaseModel):
     qr_token: str
-    lat: float | None = None
-    lng: float | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    lng: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
 
 
 # ----------------------------- المهام -----------------------------

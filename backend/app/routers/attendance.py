@@ -6,6 +6,7 @@
 """
 import calendar
 import os
+import math
 from datetime import date, datetime, timedelta, timezone
 
 import jwt
@@ -67,6 +68,9 @@ def _check_geofence(emp: models.Employee, branch: models.Branch,
             raise HTTPException(status_code=400, detail="إحداثيات GPS مطلوبة لهذا النمط")
     if lat is not None and lng is not None and branch.latitude is not None:
         dist = haversine_m(lat, lng, branch.latitude, branch.longitude)
+        # حارسٌ ثانٍ خلف المخطّط: مسافةٌ غير معرَّفة لا تُعدّ «داخل النطاق» (NaN > r = False).
+        if not math.isfinite(dist):
+            raise HTTPException(status_code=400, detail="إحداثيات غير صالحة")
         if dist > branch.geofence_radius_m:
             raise HTTPException(
                 status_code=400,

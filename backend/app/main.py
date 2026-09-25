@@ -311,6 +311,38 @@ def _out_of_range_response(request: Request, exc: Exception):
 
 app.add_exception_handler(OverflowError, _out_of_range_response)
 
+
+def _json_safe(v):
+    """يُحوِّل ما لا يقبله JSON الصارم (NaN/±Infinity) إلى نصّ — ويُبقي الباقي كما هو."""
+    import math
+
+    if isinstance(v, float) and not math.isfinite(v):
+        return str(v)
+    if isinstance(v, dict):
+        return {k: _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    return v
+
+
+async def _validation_response(request, exc):
+    """422 بنفس شكل الافتراضيّ — **لكن تُنقّى القيمة المُرسَلة قبل تسلسلها**.
+
+    المعالج الافتراضي يُعيد المدخَل الخاطئ في الجواب (``input``)؛ ومن أرسل ``NaN`` أو
+    ``Infinity`` جعل الجوابَ نفسَه غير قابلٍ للتسلسل (``ValueError: Out of range float values``)
+    فيسقط الرفضُ الصحيح إلى 500. والمدخَل الخاطئ هو بالتعريف ما لا يُفترض أنه سليم.
+    """
+    from fastapi.encoders import jsonable_encoder
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=422,
+                        content={"detail": _json_safe(jsonable_encoder(exc.errors()))})
+
+
+from fastapi.exceptions import RequestValidationError as _RequestValidationError  # noqa: E402
+
+app.add_exception_handler(_RequestValidationError, _validation_response)
+
 try:                                   # DataError = تجاوز المدى على PostgreSQL
     from sqlalchemy.exc import DataError as _DataError
 
