@@ -264,6 +264,9 @@ def list_request_types(category: str | None = None, creatable_only: bool = False
         # 54 و29. تبقى في الكتالوج الكامل فتُقرأ الطلبات التاريخية المبنية عليها.
         if creatable_only and canonical_info.get("internal_action"):
             continue
+        # M07 — ما لا يفتحه هذا الدور لا يُعرض له في «طلب جديد» (نفس دالة الإرسال).
+        if creatable_only and not may_originate_adm(user, rt.code):
+            continue
         if creatable_only:
             # الهوية مفتاحان لا واحد، والتكرار يُلغى بأيّهما:
             #   (المسار، النوع الفرعي) — يجمع كودين مختلفين لنفس الخدمة
@@ -408,6 +411,24 @@ ADM_ORIGINATORS: dict[str, set[str]] = {
     "ADMSIGN": {"hr", "company_manager"},
     "ADMRESCXL": {"hr", "company_manager"},
 }
+
+
+def may_originate_adm(user: models.User, code: str) -> bool:
+    """هل يفتح هذا المستخدم هذا الإجراء الإداريّ الداخلي؟ — **المصدر الواحد للإرسال والكتالوج**.
+
+    الإجراءات ``ADM*`` تخصّ موظفًا آخر دائمًا، فيلزم (١) أن يكون الدور من أصحاب سلطتها
+    (``ADM_ORIGINATORS``) و(٢) أن يحقّ له التقديم نيابةً (``can_submit_on_behalf``). كان الإرسالُ
+    يفحصهما والكتالوجُ لا يفحص شيئًا: فيرى المندوب «إصدار خصم» و«إنذار» و«مخالفة» و«إلغاء
+    إقامة» في «طلب جديد» وكلها 403 عند الإرسال، ويرى المدير الأربعة وهو ممنوع أصلًا من التقديم
+    نيابةً. وكتالوجٌ يعرض ما يرفضه الخادم هو العطلُ الذي وُحِّد له ``superseded_by``.
+    """
+    if not (code or "").startswith("ADM"):
+        return True
+    if user.role in ("super_admin", "company_owner"):
+        return True
+    if user.role not in ADM_ORIGINATORS.get(code, {"hr", "company_manager"}):
+        return False
+    return permissions.can_submit_on_behalf(user.role)
 
 
 @router.post("", status_code=201)
