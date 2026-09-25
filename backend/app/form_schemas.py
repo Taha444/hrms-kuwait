@@ -21,6 +21,7 @@
     text, textarea, number, amount, date, time, datetime, select, multi_select,
     checkbox, employee_ref, branch_ref, department_ref, attachment
 """
+import re
 from typing import Any
 
 
@@ -150,7 +151,8 @@ SCHEMAS: dict[str, dict] = {
                    ]),
             _field("amount", "المبلغ (د.ك)", "amount", required=True, min=1),
             _field("months", "عدد أشهر السداد", "number", min=1, max=24),
-            _field("first_deduction_month", "بداية الخصم (YYYY-MM)", "text", required=True),
+            _field("first_deduction_month", "بداية الخصم (YYYY-MM)", "text", required=True,
+                   max_length=7, format="month"),
             REASON,
         ],
         "conditional": [
@@ -221,7 +223,8 @@ SCHEMAS: dict[str, dict] = {
             _field("iban", "IBAN", "text", required=True, max_length=30,
                    pattern="^KW[0-9A-Z]{28}$"),
             _field("account_holder", "اسم صاحب الحساب", "text", required=True),
-            _field("effective_month", "شهر التطبيق (YYYY-MM)", "text", required=True),
+            _field("effective_month", "شهر التطبيق (YYYY-MM)", "text", required=True,
+                   max_length=7, format="month"),
             REASON,
         ],
         "attachments": {"required": ["bank_letter"], "optional": []},
@@ -333,7 +336,8 @@ SCHEMAS: dict[str, dict] = {
     # ------------------------- اعتراض راتب/خصم -------------------------
     "REQPAY": {
         "fields": [
-            _field("payroll_period", "شهر الراتب (YYYY-MM)", "text", required=True),
+            _field("payroll_period", "شهر الراتب (YYYY-MM)", "text", required=True,
+                   max_length=7, format="month"),
             _field("expected_amount", "المبلغ المتوقَّع", "amount"),
             _field("actual_amount", "المبلغ المدفوع", "amount"),
             _field("difference_amount", "الفرق", "amount"),
@@ -640,11 +644,11 @@ SCHEMAS.update({
     # مُصدِره — ويُقفل الشهر فلا يُقرأ الصفّ أبًدا.
     "ADMDED": {
         "fields": [
-            _field("deduction_amount", "مبلغ الخصم (د.ك)", "amount", required=True),
+            _field("deduction_amount", "مبلغ الخصم (د.ك)", "amount", required=True, min=0.001),
             _field("reason", "سبب الخصم ومستنده", "textarea", required=True,
                    max_length=1000),
             _field("payroll_month", "شهر المسيّر (YYYY-MM)", "text", required=True,
-                   max_length=7),
+                   max_length=7, format="month"),
         ],
         "attachments": {"required": [], "optional": ["evidence"]},
         "meta": {"legacy_aliases": ["deduction"]},
@@ -1028,6 +1032,11 @@ def validate_payload(code: str, payload: dict, strict: bool | None = None) -> li
         if f.get("type") in ("text", "textarea"):
             if isinstance(val, str) and f.get("max_length") and len(val) > f["max_length"]:
                 errors.append(f"{code_}: النص أطول من الحد ({f['max_length']})")
+            # M08 — شهرٌ بصيغة YYYY-MM: كان يُقبل «January» ثم يفشل الأثر بعد ثلاث مراحل اعتماد
+            # (``_apply_deduction``/القرض/الراتب). فيُردّ عند التقديم بنفس القاعدة.
+            if f.get("format") == "month" and isinstance(val, str) and val.strip():
+                if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", val.strip()):
+                    errors.append(f"{code_}: الصيغة YYYY-MM (مثل 2027-01)")
         # قيود select
         if f.get("type") == "select":
             valid_values = {o["value"] for o in (f.get("options") or [])}
