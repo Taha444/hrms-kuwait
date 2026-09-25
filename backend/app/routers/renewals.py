@@ -844,6 +844,28 @@ def _file_documents_to_employee(db, rn, user) -> list[str]:
     return filed
 
 
+def _extend_work_permit(db, rn) -> None:
+    """قرار المالك (2026-09-25): إذن العمل يتبع تاريخ الإقامة الجديد.
+
+    المندوب يرفع «إذن العمل الجديد» ضمن التجديد نفسه، لكنه يُحفظ مستندًا بلا تاريخ،
+    فيبقى تصريحُ ``work_permit`` القديم بتاريخه الأول وتستمرّ تنبيهاته. فيُمدَّد إلى تاريخ
+    الإقامة المعتمَد، وتُغلق بلاغاتُ انتهائه. ولا يُنشأ تصريحٌ لمن لا تصريح له.
+    """
+    wp = db.scalar(select(models.Permit).where(
+        models.Permit.employee_id == rn.employee_id, models.Permit.company_id == rn.company_id,
+        models.Permit.kind == "work_permit", models.Permit.status == "active",
+    ).order_by(models.Permit.expiry_date.desc()))
+    if not wp or (wp.expiry_date and wp.expiry_date >= rn.new_expiry_date):
+        return
+    wp.expiry_date = rn.new_expiry_date
+    for task in db.scalars(select(models.Task).where(
+            models.Task.related_entity_type == "permit",
+            models.Task.related_entity_id == wp.id,
+            models.Task.status.in_(("open", "in_progress")))).all():
+        task.status = "done"
+        task.completed_at = datetime.utcnow()
+
+
 def _close_renewal_tasks(db, rn) -> int:
     """RNW-19 — يغلق مهام المعاملة المفتوحة عند اكتمالها.
 
@@ -1185,6 +1207,7 @@ def hr_verify_renewal(rid: int, request: Request,
         status="active",
     )
     db.add(new_permit)
+    _extend_work_permit(db, rn)
 
     _file_documents_to_employee(db, rn, user)  # RNW-14 — لا يبقى محبوًسا في المعاملة
     closed = _close_renewal_tasks(db, rn)  # RNW-19
