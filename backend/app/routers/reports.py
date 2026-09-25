@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """التقارير والتصدير: الموظفون والرواتب والحضور إلى CSV / Excel (بدعم العربية)."""
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -160,12 +161,20 @@ def export_attendance(request: Request, month: str | None = None, fmt: str = "cs
                       db: Session = Depends(get_db)):
     cid = scope_company_id(user, company_id)
     today = datetime.today()
-    try:
-        y, m = (int(p) for p in month.split("-")) if month else (today.year, today.month)
-    except Exception:
+    # M21 — كان الشهر يُقرأ بـ``try/except`` عامّ: «abc» يُستبدَل بصمت بالشهر الحالي (تقرير
+    # لشهرٍ لم يُطلب باسمٍ لم يُطلب)، و«2026-13» يسقط ``ValueError`` غير ملتقَط (500). والفلتر
+    # كان ``>= أول الشهر`` **بلا حدٍّ أعلى** — فتقرير يونيو يحمل يوليو وأغسطس وسبتمبر.
+    if month:
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month.strip()):
+            raise HTTPException(status_code=400, detail="الشهر بصيغة YYYY-MM (مثل 2026-06)")
+        y, m = (int(p) for p in month.strip().split("-"))
+    else:
         y, m = today.year, today.month
+    start = datetime(y, m, 1)
+    end = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
     q = select(models.AttendanceRecord).where(
-        models.AttendanceRecord.check_in_at >= datetime(y, m, 1))
+        models.AttendanceRecord.check_in_at >= start,
+        models.AttendanceRecord.check_in_at < end)
     if cid is not None:
         q = q.where(models.AttendanceRecord.company_id == cid)
     bscope = _scoped_branches(user, db, branch_id)
