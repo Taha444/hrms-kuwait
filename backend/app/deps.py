@@ -91,6 +91,29 @@ def enforce_idle_timeout(db: Session, user: models.User,
         db.commit()
 
 
+def token_predates_invalidation(user: "models.User", payload: dict) -> bool:
+    """هل صدر هذا الرمز **قبل** آخر إبطالٍ لجلسات المستخدم (تغيير كلمة المرور/إعادة تعيينها)؟
+
+    **المصدر الواحد لبابين**: ``get_current_user`` (رمز الدخول) و``/auth/refresh`` (رمز التجديد).
+    كان التجديدُ لا يفحصها: بعد ``change-password`` يُرفض رمزُ الدخول القديم بـ401 لكنّ رمزَ التجديد
+    القديم يُنتج رمزَ دخولٍ جديدًا (200، قيس) — فمن سُرقت جلستُه وغيّر كلمةَ السرّ يبقى المهاجمُ
+    داخلًا أربعة عشر يومًا قابلةً للتمديد. والمقارنةُ بالثواني الصحيحة (``iat`` ثوانٍ) وبهامش ثانيةٍ
+    لتفادي حافّة الدخول مباشرةً بعد التغيير.
+    """
+    if not user.tokens_valid_after:
+        return False
+    iat = payload.get("iat")
+    if iat is None:
+        return False
+    try:
+        valid_after = user.tokens_valid_after
+        if valid_after.tzinfo is None:
+            valid_after = valid_after.replace(tzinfo=timezone.utc)
+        return int(iat) + 1 < int(valid_after.timestamp())
+    except Exception:  # noqa: BLE001 — iat غير صالح؟ لا نمنع الوصول لأسباب موازية
+        return False
+
+
 def get_current_user(
     request: Request,
     token: str | None = Depends(oauth2_scheme),
@@ -122,26 +145,13 @@ def get_current_user(
         raise cred_exc
 
     # V2.2 §9 — إبطال الجلسات القديمة: كل token صادر قبل tokens_valid_after يُرفض.
-    # يُستخدم لإنهاء الجلسات بعد تغيير كلمة المرور أو تعطيل الحساب.
-    # المقارنة تتم بدقّة الثانية (iat في الـ JWT ثوانٍ فقط) ونطاف بحاجز 1 ثانية
-    # لتفادي الحواف عند تسجيل الدخول مباشرة بعد التغيير.
-    if user.tokens_valid_after:
-        iat = payload.get("iat")
-        if iat is not None:
-            try:
-                valid_after = user.tokens_valid_after
-                if valid_after.tzinfo is None:
-                    valid_after = valid_after.replace(tzinfo=timezone.utc)
-                # نقارن بالثواني الصحيحة مع هامش ثانية واحدة للأمان
-                if int(iat) + 1 < int(valid_after.timestamp()):
-                    raise HTTPException(
-                        status_code=401,
-                        detail="انتهت الجلسة — تم تغيير كلمة المرور أو تعطيل الحساب",
-                    )
-            except HTTPException:
-                raise
-            except Exception:
-                pass  # iat غير صالح؟ لا نمنع الوصول لأسباب موازية
+    # يُستخدم لإنهاء الجلسات بعد تغيير كلمة المرور أو تعطيل الحساب. والقاعدةُ في دالةٍ واحدة
+    # (``token_predates_invalidation``) يستعملها هذا المسارُ ومسارُ التجديد معًا.
+    if token_predates_invalidation(user, payload):
+        raise HTTPException(
+            status_code=401,
+            detail="انتهت الجلسة — تم تغيير كلمة المرور أو تعطيل الحساب",
+        )
 
     # QA-23 — الخمول يُنهي الجلسة من الخادم، لا من مؤقّت المتصفح.
     # IMP-01 — بهوية هذه الجلسة (jti) وحدها: رمز الانتحال جديد، فلا يرث

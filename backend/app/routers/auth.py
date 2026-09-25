@@ -331,8 +331,12 @@ def refresh(data: schemas.RefreshIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
-    from ..deps import employment_ended
+    from ..deps import employment_ended, token_predates_invalidation
     if employment_ended(db, user):
+        raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
+    # **ورمزُ تجديدٍ صدر قبل تغيير كلمة المرور لا يُنتج جلسة**: كان يمرّ (200) فيُحيي جلسةً أبطلها
+    # المستخدمُ بتغيير كلمته — والفحصُ نفسُه في ``get_current_user`` بدالةٍ واحدة.
+    if token_predates_invalidation(user, payload):
         raise HTTPException(status_code=401, detail="رمز التجديد غير صالح")
     # التجديد لا يمرّ بـget_current_user — يفكّ الرمز بنفسه. فبلا هذا الفحص
     # ينجو رمز التجديد من الخروج ومن إنهاء الانتحال، وهو الأخطر: يولّد رموز
