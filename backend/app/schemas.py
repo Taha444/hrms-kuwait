@@ -232,6 +232,41 @@ class EmployeeIn(BaseModel):
             raise ValueError("الرقم المدني يجب أن يكون أرقامًا (6 إلى 12 خانة)")
         return v
 
+    # M05 — قيمٌ بلا معنى كانت تُقبل (201) ثم تُقرأ لاحقًا بلا شكوى: ``contract_type`` نصٌّ
+    # حرّ تعامله محرّكاتُ نهاية الخدمة والعقد على أنه «غير محدد» صامتًا، والبريد والجنس بلا
+    # صيغة، وتاريخُ ميلادٍ بعد التعيين أو في المستقبل. والمفردات هي ما تُرسله الواجهة والـOCR.
+    @field_validator("contract_type")
+    @classmethod
+    def _contract_type_known(cls, v):
+        if v not in ("indefinite", "definite"):
+            raise ValueError("نوع العقد يجب أن يكون indefinite أو definite")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def _gender_known(cls, v):
+        if v not in (None, "", "male", "female"):
+            raise ValueError("الجنس يجب أن يكون male أو female")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def _email_shape(cls, v):
+        if v and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v.strip()):
+            raise ValueError("صيغة البريد الإلكتروني غير صحيحة")
+        return v
+
+    @model_validator(mode="after")
+    def _birth_before_hire(self):
+        dob = self.date_of_birth
+        if dob is not None:
+            from .clock import today as kuwait_today   # ساعة الكويت الواحدة لا ساعة الخادم
+            if dob > kuwait_today():
+                raise ValueError("تاريخ الميلاد في المستقبل")
+            if self.hire_date is not None and dob >= self.hire_date:
+                raise ValueError("تاريخ الميلاد يجب أن يسبق تاريخ التعيين")
+        return self
+
     @field_validator("basic_salary", "annual_leave_balance",
                      "official_work_hours", "actual_work_hours")
     @classmethod
