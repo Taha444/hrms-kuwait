@@ -526,7 +526,10 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
     # R6-C §1 — Population parity: نُدرج كل الموظفين النشطين (بمن فيهم exempt)
     #   حتى يرى المراجع "13/13" في العدّاد. exempt يظهر بصف واحد مع badge
     #   يوضّح سبب الإعفاء، بدل الاختفاء الصامت.
-    emp_q = select(models.Employee).where(models.Employee.status == "active")
+    # **الفئةُ نفسُها التي يُعدّها المسيّر واللوحة** (قرار المالك 2026-09-18: من لم تنتهِ خدمته): كان
+    # ``active`` وحدها، فيختفي من في «إجازة» من المراجعة ومن رقم الإقفال ويُدفع راتبُه.
+    from ..deps import PAYABLE_STATUSES
+    emp_q = select(models.Employee).where(models.Employee.status.in_(PAYABLE_STATUSES))
     if cid is not None:
         emp_q = emp_q.where(models.Employee.company_id == cid)
     # PILOT-P0-11a: إن كان المستخدم مُقيَّدًا بفروع (supervisor)، نطبّق فروعه دائمًا،

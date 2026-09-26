@@ -57,13 +57,15 @@ def unrecorded_day_count(db: Session, company_id: int, period: str) -> int:
     import calendar
     from datetime import datetime
 
+    from .deps import PAYABLE_STATUSES
+
     y, m = (int(x) for x in period.split("-"))
     days_in_month = calendar.monthrange(y, m)[1]
     first, last = date(y, m, 1), date(y, m, days_in_month)
 
     employees = db.scalars(select(models.Employee).where(
         models.Employee.company_id == company_id,
-        models.Employee.status == "active",
+        models.Employee.status.in_(PAYABLE_STATUSES),
     )).all()
 
     # لا عمود date على السجل — اليوم مشتقّ من check_in_at، وهو المصدر الذي
