@@ -118,7 +118,13 @@ export default function SchemaForm({
   if (!schema) return null;
 
   const { required: condRequired, hidden } = evalConditionals(schema, payload);
-  const set = (code: string, value: any) => onChange({ ...payload, [code]: value });
+  // الحقلُ الذي يصير مخفيًّا **يُمسح**: الخادم يرفض حقلًا مخفيًّا يحمل قيمة («صحّح الشرط أو امسح الحقل»)،
+  // فمن أشّر السفر وكتب الوجهة ثم ألغى التأشير كان يُرسَل ما لا يراه ويُرفض بأمرٍ بمسح حقلٍ غير ظاهر.
+  const set = (code: string, value: any) => {
+    const next = { ...payload, [code]: value };
+    evalConditionals(schema, next).hidden.forEach((h) => { delete next[h]; });
+    onChange(next);
+  };
 
   return (
     <>
