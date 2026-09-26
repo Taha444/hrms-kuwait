@@ -31,8 +31,10 @@ export default function PayloadView({ typeCode, payload }: { typeCode?: string; 
     return () => { alive = false; };
   }, [typeCode]);
 
+  // المفاتيحُ التي تبدأ بـ«_» داخليةٌ (مرفقات، لقطات) لا تخصّ المعتمِد. وما لا يعرفه الـschema يُعرض
+  // مميَّزًا بأنه «حقل إضافي» — لا كأنه من نموذج النوع، فلا يُقرأ مفتاحٌ أدخله المُرسِل صفًّا رسميًّا.
   const entries = Object.entries(payload || {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== ""
+    ([k, v]) => !k.startsWith("_") && v !== null && v !== undefined && v !== ""
   );
   if (!entries.length) return <p className="muted">{t("rd_data")}: —</p>;
   if (fields === null) return <p className="muted">{t("rd_data")}: {t("loading")}</p>;
@@ -61,7 +63,8 @@ export default function PayloadView({ typeCode, payload }: { typeCode?: string; 
           {entries.map(([code, value]) => (
             <tr key={code}>
               <td className="muted" style={{ paddingInlineEnd: 12, whiteSpace: "nowrap" }}>
-                {byCode.get(code)?.label || code}
+                {byCode.get(code)?.label
+                  || <span title={t("pv_extra_field")} style={{ fontStyle: "italic", opacity: 0.75 }}>{code} *</span>}
               </td>
               <td>{render(code, value)}</td>
             </tr>

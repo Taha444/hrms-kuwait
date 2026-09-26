@@ -1029,6 +1029,7 @@ const dict: Record<string, { ar: string; en: string }> = {
   rd_employee: { ar: "الموظف", en: "Employee" },
   rd_status: { ar: "الحالة", en: "Status" },
   rd_data: { ar: "البيانات", en: "Data" },
+  pv_extra_field: { ar: "حقل إضافي أدخله مقدّم الطلب — ليس من نموذج هذا النوع", en: "Extra field entered by the requester — not part of this request form" },
   rd_print_doc: { ar: "🖨️ طباعة المستند", en: "🖨️ Print Document" },
   rd_path: { ar: "مسار الطلب", en: "Request Path" },
   rd_actions: { ar: "الإجراءات", en: "Actions" },
