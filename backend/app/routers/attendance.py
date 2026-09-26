@@ -291,6 +291,17 @@ async def check_in(request: Request, checkin_ticket: str = Form(...),
             "check_out_at": rec.check_out_at}
 
 
+def as_utc(moment: datetime | None) -> datetime | None:
+    """لحظةٌ **بصيغةٍ واحدة**: التخزينُ UTC، فالساذجُ يُختم UTC والواعي يُحوَّل إليه.
+
+    كان الردّ يحمل ``check_in_at`` بلا منطقة و``check_out_at`` بـ``+00:00`` في السجلّ نفسه (SW-025) — فيقرؤهما كلُّ عميلٍ بغير
+    ما يقرأ به الآخر. والواجهةُ مُحصَّنة (تختم UTC)، لكنّ الـAPI يبقى مصدرَ الحقيقة لأيّ قارئ.
+    """
+    if moment is None:
+        return None
+    return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
+
+
 def _local(moment: datetime) -> datetime:
     """اللحظة بتوقيت الكويت — **ووردٌية تُقاس بساعتها لا بساعة الخادم**.
 
@@ -407,7 +418,7 @@ def my_attendance(user: models.User = Depends(get_current_user), db: Session = D
         .where(models.AttendanceRecord.employee_id == emp.id)
         .order_by(models.AttendanceRecord.check_in_at.desc()).limit(60)
     ).all()
-    return [{"id": r.id, "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,
+    return [{"id": r.id, "check_in_at": as_utc(r.check_in_at), "check_out_at": as_utc(r.check_out_at),
              "status": r.status, "worked_minutes": r.worked_minutes,
              "overtime_minutes": r.overtime_minutes, "method": r.method} for r in rows]
 
@@ -840,7 +851,7 @@ def branch_attendance(branch_id: int,
                models.AttendanceRecord.employee_id.notin_(hidden))
         .order_by(models.AttendanceRecord.check_in_at.desc()).limit(200)
     ).all()
-    return [{"id": r.id, "employee_id": r.employee_id, "check_in_at": r.check_in_at,
-             "check_out_at": r.check_out_at, "status": r.status,
+    return [{"id": r.id, "employee_id": r.employee_id, "check_in_at": as_utc(r.check_in_at),
+             "check_out_at": as_utc(r.check_out_at), "status": r.status,
              "selfie_in": bool(r.selfie_in_path)} for r in rows]
 
