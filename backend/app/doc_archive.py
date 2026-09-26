@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import models
 
@@ -68,12 +68,18 @@ def archive_request_document(db, req, doc, *, title: str,
     )).all()
     for d in prev:
         d.is_current = False
+    # الإصدارُ التالي = أعلى إصدارٍ **بين كل النسخ** (الحالية والتاريخية). كان ``len(prev)+1`` على الحالية
+    # وحدها، فيخرج كلُّ مستندٍ بعد الثاني «إصدار 2» (شهادة الراتب الثالثة والرابعة…) وتضيع سلسلةُ النسخ.
+    top = db.scalar(select(func.max(models.Document.version)).where(
+        models.Document.entity_type == "employee",
+        models.Document.entity_id == req.employee_id,
+        models.Document.document_type_code == type_code)) or 0
 
     row = models.Document(
         company_id=req.company_id, entity_type="employee",
         entity_id=req.employee_id, document_type_code=type_code,
         title=title, file_path=doc.file_path, mime="application/pdf",
-        version=len(prev) + 1, is_current=True, uploaded_by=actor_id,
+        version=top + 1, is_current=True, uploaded_by=actor_id,
         is_issued=True,
         # السرّية من صنف المستند في السجلّ — لا من رأي الموضع.
         is_confidential=is_confidential_output(req, doc),
