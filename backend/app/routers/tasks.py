@@ -243,7 +243,7 @@ def update_status(task_id: int, status: str,
 
 
 @router.post("/run-scan")
-def run_scan(user: models.User = Depends(require_perm("manage_tasks")), db: Session = Depends(get_db)):
+def run_scan(request: Request, user: models.User = Depends(require_perm("manage_tasks")), db: Session = Depends(get_db)):
     """تشغيل المسح اليومي يدويًا لتوليد المهام (يستخدمه HR/المدير عند الحاجة).
 
     **ولا يتزامن مع جولةٍ جارية** — مجدولةٍ أو يدويةٍ أخرى. ويُسجَّل كجولةٍ
@@ -266,6 +266,9 @@ def run_scan(user: models.User = Depends(require_perm("manage_tasks")), db: Sess
         from ..scheduler import _resolve_job_failures
 
         result["failure_alerts_closed"] = _resolve_job_failures(db, "daily_scan")
+        audit(db, user, "run_daily_scan_manual", "system", None,
+              detail=f"generated={result.get('generated')}", request=request)
+        db.commit()
         return result
 
 
@@ -455,16 +458,24 @@ def retry_delivery(task_id: int,
 
 
 @router.post("/run-sla-scan")
-def run_sla_scan(user: models.User = Depends(require_perm("manage_tasks")),
+def run_sla_scan(request: Request, user: models.User = Depends(require_perm("manage_tasks")),
                  db: Session = Depends(get_db)):
-    """تشغيل مسح SLA يدويًا لتصعيد المهام المتأخرة (اختياري — يعمل تلقائيًا كل ساعة)."""
+    """تشغيل مسح SLA يدويًا لتصعيد المهام المتأخرة (اختياري — يعمل تلقائيًا كل ساعة).
+
+    يعمل على **كل الشركات** (مسحٌ عام) رغم أن صلاحيته بمستوى الشركة — فمن شغّله يُقيَّد في التدقيق."""
     from ..notifications import sla_scan
-    return sla_scan(db)
+    result = sla_scan(db)
+    audit(db, user, "run_sla_scan_manual", "system", None, request=request)
+    db.commit()
+    return result
 
 
 @router.post("/run-digest")
-def run_digest(user: models.User = Depends(require_perm("manage_tasks")),
+def run_digest(request: Request, user: models.User = Depends(require_perm("manage_tasks")),
                db: Session = Depends(get_db)):
-    """V2.2 §20 — تشغيل digest يومي يدويًا. يُشغَّل تلقائيًا كل يوم في 8 صباحًا."""
+    """V2.2 §20 — تشغيل digest يومي يدويًا. يُشغَّل تلقائيًا كل يوم في 8 صباحًا. (عامٌّ لكل الشركات: يُقيَّد من شغّله)"""
     from ..notifications import digest_scan
-    return digest_scan(db)
+    result = digest_scan(db)
+    audit(db, user, "run_digest_manual", "system", None, request=request)
+    db.commit()
+    return result

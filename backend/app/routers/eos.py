@@ -60,6 +60,8 @@ def leave_balance(employee_id: int, consumed_days: float = 0, as_of: date | None
     company = db.get(models.Company, emp.company_id)
     end = as_of or kuwait_today()
     _, _, _, _, decimal_years = eos_engine.service_breakdown(emp.hire_date, end)
+    audit(db, user, "eos_leave_balance_computed", "employee", emp.id, company_id=emp.company_id)
+    db.commit()
     per_year = float(company.annual_leave_days or 30)
     accrued = round(per_year * decimal_years, 2)
     remaining = round(accrued - float(consumed_days or 0), 2)
@@ -102,6 +104,10 @@ def for_employee(data: schemas.EosForEmployeeIn,
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     result["employee"] = {"id": emp.id, "name": emp.name, "job_title": emp.job_title}
+    # حسبةُ المكافأة تكشف قيمًا مشتقّة من راتب موظفٍ بعينه: من حسبها ولمن — تُقيَّد (لا تُخزَّن ولا تصرف)
+    audit(db, user, "eos_calculation_previewed", "employee", emp.id, company_id=emp.company_id,
+          detail=f"{data.reason} @ {data.end_date}")
+    db.commit()
     leave_balance_service.annotate_typed_usage(db, emp, result, data.used_leave_days)
     # V2.2 §30 (DOC-13) — حسبة مبدئية لا أمر صرف.
     #
