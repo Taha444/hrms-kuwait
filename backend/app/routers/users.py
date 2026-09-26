@@ -570,6 +570,9 @@ def impersonate(user_id: int, request: Request, reason: str | None = None,
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     if target.role == "super_admin":
         raise HTTPException(status_code=400, detail="لا يمكن انتحال إدارة عليا")
+    # حسابٌ معطَّل لا يُنتحل: كان يُرجع 200 برمزٍ يُرفض 401 في أول طلب، ويُقيَّد «بدء انتحال» لم يقع (SW-034)
+    if not target.is_active:
+        raise HTTPException(status_code=409, detail="الحساب معطَّل — لا يُنتحل. فعّله أولًا إن لزم.")
     audit(db, actor, "impersonate_start", "user", target.id,
           detail=f"reason={reason or '-'}", request=request, company_id=target.company_id)
     db.commit()

@@ -538,11 +538,17 @@ def list_licenses(company_id: int | None = None,
         q = q.where(models.License.company_id == cid)
     rows = db.scalars(q).all()
     out = []
+    today = kuwait_today()
     for lic in rows:
         actual = license_headcount(db, lic.id)
+        # «منتهٍ» **مشتقٌّ من التاريخ** لا يُكتب في الحالة المخزَّنة: مسحُ الانتهاء يمرّ على النشطة ويحسب الأيامَ منه، فقلبُ
+        # الحالة يُسكت تنبيهَ من انتهى ترخيصه فعلًا (SW-016). فالعرضُ يقول الصدق والتنبيهُ يبقى.
+        expired = bool(lic.expiry_date and lic.expiry_date < today)
         out.append({
             "id": lic.id, "name": lic.name, "license_no": lic.license_no,
             "issuing_authority": lic.issuing_authority, "status": lic.status,
+            "is_expired": expired,
+            "effective_status": "expired" if expired and lic.status == "active" else lic.status,
             "expiry_date": lic.expiry_date, "allowed_workers": lic.allowed_workers,
             "actual_workers": actual, "over_capacity": actual > (lic.allowed_workers or 0),
         })

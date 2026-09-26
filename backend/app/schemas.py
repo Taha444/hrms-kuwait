@@ -176,6 +176,8 @@ class UserOut(BaseModel):
     full_name: str | None
     role: str
     company_id: int | None
+    # ربطُ الحساب بسجلّ الموظف: من لا يراه يعجز عن التحقق أن كل حسابٍ إداريّ مربوطٌ بموظف من شاشة المستخدمين (SW-006)
+    employee_id: int | None = None
     email: str | None
     phone: str | None
     is_active: bool
