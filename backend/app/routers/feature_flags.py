@@ -55,6 +55,9 @@ def set_flag(data: FlagIn, request: Request,
              user: models.User = Depends(require_super_admin),
              db: Session = Depends(get_db)):
     """ضبط قيمة flag لشركة أو للجميع (upsert). يفشل بمفتاح غير معروف."""
+    if data.company_id is not None and db.get(models.Company, data.company_id) is None:
+        # شركةٌ غير موجودة كانت تسقط بـ500 على Postgres (مفتاحٌ أجنبي)، وتُخزَّن يتيمةً على غيره
+        raise HTTPException(status_code=400, detail=f"الشركة #{data.company_id} غير موجودة")
     try:
         row = ff.set_flag(
             db, data.key, data.value, company_id=data.company_id,

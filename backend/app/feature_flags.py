@@ -57,11 +57,15 @@ REGISTRY: dict[str, dict] = {
 }
 
 
+_ON_VALUES = frozenset({"on", "true", "1", "yes", "enabled"})
+_OFF_VALUES = frozenset({"off", "false", "0", "no", "disabled"})
+
+
 def _parse_value(v: str | None) -> bool:
     """يحوّل قيمة نصية إلى bool. القيم المفعّلة: on/true/1/yes."""
     if v is None:
         return False
-    return str(v).strip().lower() in ("on", "true", "1", "yes", "enabled")
+    return str(v).strip().lower() in _ON_VALUES
 
 
 def is_enabled(db: Session, company_id: int | None, key: str) -> bool:
@@ -101,6 +105,13 @@ def set_flag(db: Session, key: str, value: str, *,
     """يضبط قيمة flag لشركة (أو للجميع إن كان company_id=None). Upsert."""
     if key not in REGISTRY:
         raise ValueError(f"مفتاح flag غير معروف: {key!r}")
+    # علمٌ منطقيّ لا يقبل إلا مفردات التشغيل/الإيقاف المعروفة: ``"maybe"`` كانت تُخزَّن وتُقرأ صامتةً «معطَّلًا»،
+    # فيُظنّ أن الميزة فُعِّلت وهي لم تُفعَّل.
+    if isinstance(REGISTRY[key].get("default"), bool):
+        if str(value).strip().lower() not in _ON_VALUES | _OFF_VALUES:
+            raise ValueError(
+                f"قيمة العلَم «{key}» يجب أن تكون تشغيلًا ({'/'.join(sorted(_ON_VALUES))}) "
+                f"أو إيقافًا ({'/'.join(sorted(_OFF_VALUES))}) — لا: {value!r}")
     row = db.scalar(
         select(models.FeatureFlag).where(
             models.FeatureFlag.key == key,
