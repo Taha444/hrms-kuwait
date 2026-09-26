@@ -184,6 +184,10 @@ def _serialize_case(db: Session, case: models.EosCase) -> dict:
         "notice_served": case.notice_served,
         "notice_served_date": case.notice_served_date,
         "settlement": case.settlement_json,
+        # **المبدئيُّ لا يُقرأ التزامًا بالدفع**: التسويةُ «نهائيةٌ» عند مرحلة ``settled`` وحدها (بعد الإخلاء
+        # والإقرار والصرف)؛ قبلها حسبةٌ قابلة للتعديل. والوسمُ من الخادم لا تشتقّه كلُّ شاشةٍ وتصديرٍ بنفسه.
+        "is_final": case.status == "settled",
+        "not_for_payment": case.status != "settled",
         "initiated_by": case.initiated_by, "initiated_at": case.initiated_at,
         "calculated_by": case.calculated_by, "calculated_at": case.calculated_at,
         "approved_by": case.approved_by, "approved_at": case.approved_at,

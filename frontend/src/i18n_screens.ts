@@ -49,6 +49,8 @@ export const screens: Record<string, { ar: string; en: string }> = {
   eosc_notice_on: { ar: "أُبلغ في {d}", en: "Served on {d}" },
   eosc_notice_not: { ar: "لم يُبلَّغ", en: "Not served" },
   eosc_settlement: { ar: "التسوية", en: "Settlement" },
+  eosc_final: { ar: "نهائية", en: "Final" },
+  eosc_preliminary: { ar: "مبدئية — غير صالحة للصرف", en: "Preliminary — not for payment" },
   eosc_indemnity: { ar: "المكافأة", en: "Indemnity" },
   eosc_leave_pay: { ar: "بدل الإجازات", en: "Leave payout" },
   eosc_notice_pay: { ar: "بدل الإنذار", en: "Notice pay" },

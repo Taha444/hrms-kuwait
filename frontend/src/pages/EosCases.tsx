@@ -29,7 +29,7 @@ type Case = {
   employee_id: number; employee_name: string | null; employee_no: string | null;
   termination_date: string | null; termination_reason: string | null;
   notice_served: boolean | null; notice_served_date: string | null;
-  settlement: any; source_request_id: number | null;
+  settlement: any; is_final?: boolean; not_for_payment?: boolean; source_request_id: number | null;
   clearance_notes: string | null; acknowledgment_note: string | null;
   payment_reference: string | null; filing_location: string | null;
   document_status: string;
@@ -391,7 +391,11 @@ export default function EosCases() {
 
           {sel.settlement && (
             <div style={{ marginTop: 14 }}>
-              <h4 style={{ margin: "0 0 6px" }}>{t("eosc_settlement")}</h4>
+              <h4 style={{ margin: "0 0 6px" }}>{t("eosc_settlement")}{" "}
+                <span className={`pill ${sel.is_final ? "success" : "warn"}`} data-testid="eosc-final-pill">
+                  {sel.is_final ? t("eosc_final") : t("eosc_preliminary")}
+                </span>
+              </h4>
               <div className="muted" style={{ fontSize: 12 }}>
                 {t("eosc_indemnity")}: {money(sel.settlement?.indemnity)}
                 {" · "}{t("eosc_leave_pay")}: {money(sel.settlement?.leave_payout)}
