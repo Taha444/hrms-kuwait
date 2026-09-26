@@ -338,12 +338,61 @@ async def upload_document(
     return {"ok": True, "id": doc.id, "version": new_version}
 
 
+def _assert_entity_in_scope(db: Session, user: models.User, entity_type: str, entity_id: int) -> None:
+    """يفرض عزل الشركة على كيانٍ يُقرأ مستنداتُه **قبل** أي استعلام.
+
+    ``/history`` كان يقبل أي ``entity_id`` بلا فحص: قيس أن HR الشركة 1 يستلم ثلاث نسخ (العنوان، الرافع،
+    الحجم، الانتهاء) لمستندات موظفٍ في الشركة 2. و``/latest`` كان يفحص بعد الجلب — فالفرقُ بين 404 و403
+    يُنبئ بوجود الملف. وهنا الفحصُ أوّلًا وبردٍّ واحد (404) لمن لا يملك النطاق.
+    """
+    from ..permissions import CROSS_COMPANY_ROLES
+
+    if entity_type == "employee":
+        e = db.get(models.Employee, entity_id)
+        cid = e.company_id if e else None
+    elif entity_type == "company":
+        c = db.get(models.Company, entity_id)
+        cid = c.id if c else None
+    elif entity_type == "branch":
+        b = db.get(models.Branch, entity_id)
+        cid = b.company_id if b else None
+    elif entity_type == "user":
+        t = db.get(models.User, entity_id)
+        if not t or t.role != "company_owner" or user.role not in CROSS_COMPANY_ROLES:
+            raise HTTPException(status_code=404, detail="غير موجود")
+        return
+    elif entity_type == "renewal":
+        r = db.get(models.ResidencyRenewal, entity_id)
+        cid = r.company_id if r else None
+    elif entity_type == "request":
+        q = db.get(models.Request, entity_id)
+        cid = q.company_id if q else None
+    else:
+        # نوعُ كيانٍ آخر: لا يُرفض (سجلّاتٌ تاريخية بأنواعٍ أخرى)، ويُفرَض العزلُ على **صفوفه** لا على كيانه
+        return
+    if cid is None:
+        raise HTTPException(status_code=404, detail="غير موجود")
+    try:
+        assert_same_company(user, cid, db=db)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="غير موجود")
+
+
+def _in_scope(db: Session, user: models.User, company_id: int | None) -> bool:
+    try:
+        assert_same_company(user, company_id, db=db)
+        return True
+    except HTTPException:
+        return False
+
+
 @router.get("/latest")
 def latest_document(entity_type: str, entity_id: int, document_type_code: str,
                     request: Request,
                     user: models.User = Depends(require_perm("view_documents")),
                     db: Session = Depends(get_db)):
     """تنزيل أحدث نسخة لنوع مستند معيّن. R9 §4: كل تنزيل يظهر في Audit."""
+    _assert_entity_in_scope(db, user, entity_type, entity_id)
     doc = db.scalar(select(models.Document).where(
         models.Document.entity_type == entity_type,
         models.Document.entity_id == entity_id,
@@ -355,7 +404,8 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
         raise HTTPException(status_code=404, detail="المستند غير موجود")
     if not doc or not doc.file_path or not key_exists(doc.file_path):
         raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
-    assert_same_company(user, doc.company_id, db=db)
+    if not _in_scope(db, user, doc.company_id):
+        raise HTTPException(status_code=404, detail="لا توجد نسخة محفوظة")
     audit(db, user, "download_document", entity_type, entity_id,
           detail=f"{document_type_code} v{doc.version}",
           request=request, company_id=doc.company_id)
@@ -368,6 +418,7 @@ def latest_document(entity_type: str, entity_id: int, document_type_code: str,
 def document_history(entity_type: str, entity_id: int, document_type_code: str | None = None,
                      user: models.User = Depends(require_perm("view_documents")),
                      db: Session = Depends(get_db)):
+    _assert_entity_in_scope(db, user, entity_type, entity_id)
     q = select(models.Document).where(
         models.Document.entity_type == entity_type,
         models.Document.entity_id == entity_id,
@@ -377,6 +428,7 @@ def document_history(entity_type: str, entity_id: int, document_type_code: str |
     rows = visible_documents(db, user,
                              db.scalars(q.order_by(
                                  models.Document.created_at.desc())).all())
+    rows = [d for d in rows if _in_scope(db, user, d.company_id)]
 
     # ARC-01 — من رفعه وحجمه: نسخة قديمة بلا صاحب ولا حجم لا تُميَّز عن
     # غيرها. ومن يفتّش في إصدارات مستند رسمي يسأل أوًلا «من غيّره ومتى؟».
