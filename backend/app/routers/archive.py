@@ -19,7 +19,8 @@ from .. import models
 from ..config import settings
 from ..doc_archive import visible_documents
 from ..database import get_db
-from ..deps import assert_same_company, audit, get_current_user, require_perm, scope_company_id
+from ..deps import (assert_same_company, audit, get_current_user, require_perm, scope_company_id,
+                    scope_company_id_strict)
 from ..safe_files import read_limited, unique_path
 from ..clock import today as kuwait_today
 from ..storage import delete_key, file_response, key_exists, save_bytes
@@ -133,7 +134,7 @@ def company_archive(company_id: int | None = None,
 def update_company_info(file_number: str | None = None, company_id: int | None = None,
                         user: models.User = Depends(require_perm("manage_company")),
                         db: Session = Depends(get_db)):
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)     # كتابةٌ: لا تُنفَّذ على شركةٍ غير المطلوبة
     if cid is None:
         raise HTTPException(status_code=400, detail="اختر شركة")
     company = db.get(models.Company, cid)

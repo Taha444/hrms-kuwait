@@ -25,6 +25,7 @@ from ..deps import (
     require_super_admin,
     resolve_scope,
     scope_company_id,
+    scope_company_id_strict,
 )
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -1388,7 +1389,7 @@ def backfill_employee_numbers(company_id: int | None = None, request: Request = 
     """V2.2 §6 — يعطي employee_no لأي موظف قديم بدون رقم داخل الشركة.
     Idempotent — الموظفين اللي عندهم رقم بالفعل ما يتغيروا."""
     from .. import employee_no as _en
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)     # كتابةٌ: لا تُنفَّذ على شركةٍ غير المطلوبة
     count = _en.backfill_missing(db, company_id=cid)
     audit(db, user, "backfill_employee_no", "company", cid or 0,
           detail=f"count={count}", request=request)
