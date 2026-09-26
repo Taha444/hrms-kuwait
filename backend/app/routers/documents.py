@@ -509,6 +509,19 @@ def correct_document_expiry(doc_id: int, request: Request,
     if not doc:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
     assert_same_company(user, doc.company_id, db=db)
+    # كتابةٌ على مستندٍ لا يراه المستخدم (سرّي) ممنوعة كالقراءة
+    if not may_view_document(db, user, doc):
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    # تاريخُ الانتهاء يحرّك تنبيهاتٍ قانونية وسجلَّ التصريح: يُصحَّح على **النسخة الحالية** لا نسخةٍ من التاريخ
+    # (كانت نسخةٌ قديمة بتاريخٍ لاحق تكتب على التصريح)، وبسببٍ يُقرأ في التدقيق بعد شهور.
+    if not doc.is_current:
+        raise HTTPException(status_code=409, detail=(
+            "هذه نسخة قديمة من المستند — صحّح تاريخ النسخة الحالية (الأحدث)"))
+    if not (reason or "").strip():
+        raise HTTPException(status_code=400, detail="سبب تصحيح تاريخ الانتهاء إلزامي")
+    if expiry_date and doc.issue_date and expiry_date < doc.issue_date:
+        raise HTTPException(status_code=400, detail=(
+            f"تاريخ الانتهاء ({expiry_date}) أقدم من تاريخ الإصدار ({doc.issue_date})"))
 
     before = doc.expiry_date
     if before == expiry_date:
