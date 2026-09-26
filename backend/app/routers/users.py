@@ -726,16 +726,25 @@ def set_matrix(user_id: int, data: schemas.MatrixIn, request: Request,
                                           if pg in valid_pages for a in acts
                                           if a in valid_pages[pg]])
     # احذف كل المنح الدقيقة الحالية ثم اكتب الجديدة (لقطة كاملة)
+    before_codes = sorted(x.perm_code for x in target.permissions if "." in x.perm_code)
     for p in [x for x in target.permissions if "." in x.perm_code]:
         db.delete(p)
+    after_codes = []
     for page, actions in data.grants.items():
         if page not in valid_pages:
             continue
         db.add(models.UserPermission(user_id=target.id, perm_code=f"{page}._"))  # علامة "مُدارة"
+        after_codes.append(f"{page}._")
         for a in actions:
             if a in valid_pages[page]:
                 db.add(models.UserPermission(user_id=target.id, perm_code=f"{page}.{a}"))
-    audit(db, user, "set_permission_matrix", "user", target.id, request=request)
+                after_codes.append(f"{page}.{a}")
+    after_codes.sort()
+    # لقطةٌ كاملة تُستبدل: **ما سُحب وما مُنح يُقيَّدان** — سحبُ سلطةٍ بلا قائمةٍ لا يُفسَّر بعد شهور
+    # (كما يفعل ``reset_matrix``). كان السطر «ضُبطت المصفوفة» بلا قبل ولا بعد.
+    audit(db, user, "set_permission_matrix", "user", target.id, request=request,
+          detail=f"سُحب {len(set(before_codes) - set(after_codes))} ومُنح {len(set(after_codes) - set(before_codes))}",
+          before={"granted": before_codes}, after={"granted": after_codes})
     db.commit()
     return {"ok": True}
 
