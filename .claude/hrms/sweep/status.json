@@ -375,7 +375,7 @@
       "checks": {
         "1": "pass",
         "2": "pending",
-        "3": "fail",
+        "3": "pass",
         "4": "pass",
         "5": "pass",
         "6": "pending"
@@ -390,8 +390,8 @@
           "at": "2026-09-24"
         },
         "check3": {
-          "note": "قيس (201): ADMDED بـdeduction_amount=-500 وصفر وpayroll_month='January'؛ _apply_deduction يردّها apply_failed لكن بعد مراحل الاعتماد كلّها. أُضيف min=0.001 وformat='month' (YYYY-MM) للحقول الأربعة المعلنة بذلك (payroll_month، first_deduction_month، effective_month، payroll_period) وفحص الصيغة في validate_payload، واختبار يضمن أن كل حقل يحمل YYYY-MM في تسميته يحمل الفحص. لم يُقيَّد سقف مبلغ الخصم (9,999,999 يُقبل) — قرار عمل.",
-          "at": "2026-09-25"
+          "note": "حقول الشهر type=month + pattern؛ الحدود min/max/maxLength تحملها الواجهة",
+          "at": "2026-09-26"
         },
         "check4": {
           "note": "صلاحية النوع قبل الحفظ؛ generated_pdf للنظام",
@@ -736,13 +736,13 @@
       },
       "checks": {
         "1": "pass",
-        "2": "fail",
+        "2": "pass",
         "3": "pass",
         "4": "pass",
         "5": "na",
         "6": "pending",
         "7": "pass",
-        "8": "pending"
+        "8": "pass"
       },
       "notes": {
         "check5": {
@@ -754,8 +754,8 @@
           "at": "2026-09-25"
         },
         "check2": {
-          "note": "HR فتح حالة نهاية خدمة على مدير الشركة (201) رغم قرار #38؛ وحالة لموظف terminated؛ وتاريخ إنهاء قبل التعيين (يُرفض متأخرًا عند الحساب). الأبواب الثلاثة تلتقي في exit_case.open_case لكن الحراس كانت موزّعة. أُصلح وثُبّت باختبارات تفشل على القديم.",
-          "at": "2026-09-25"
+          "note": "حرّاس exit_master_case/single_exit/resignation_walkable",
+          "at": "2026-09-26"
         },
         "check3": {
           "note": "calculate_case يقرأ الراتب/التعيين من القاعدة فقط ويرفض الناقص؛ الحاسبة الحرة /eos/calculate super_admin وموسومة is_test_only؛ for-employee موسومة preliminary/not_for_payment.",
@@ -768,6 +768,10 @@
         "check7": {
           "note": "execute_termination يسحب الوصول عبر revoke_employee_access ويدقّق revoke_access_on_termination؛ الحالة تُضبط قبل فتح المرجع.",
           "at": "2026-09-25"
+        },
+        "check8": {
+          "note": "test_zzz_exit_linkage: الـtimeline يروي قصة الخروج",
+          "at": "2026-09-26"
         }
       }
     },

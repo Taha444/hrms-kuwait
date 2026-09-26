@@ -197,8 +197,13 @@ export default function SchemaForm({
         }
 
         // number / amount / date / time / datetime / text ومراجع الكيانات
+        // ``format: "month"`` يفرضه الخادم بـ YYYY-MM؛ حقل نصّي حرّ كان يقبل «January» (7 أحرف = max_length)
+        // ثم يرفضه الخادم بعد الإرسال. ``type=month`` يعطي القيمة نفسها YYYY-MM، و``pattern`` احتياطٌ لمتصفحٍ لا يدعمه.
+        const isMonth = (f as any).format === "month";
         const htmlType =
-          f.type === "number" || f.type === "amount"
+          isMonth
+            ? "month"
+            : f.type === "number" || f.type === "amount"
             ? "number"
             : f.type === "date"
             ? "date"
@@ -263,6 +268,7 @@ export default function SchemaForm({
               min={f.min}
               max={f.max}
               maxLength={f.max_length}
+              pattern={isMonth ? "[0-9]{4}-(0[1-9]|1[0-2])" : undefined}
               step={f.type === "amount" ? "0.001" : undefined}
               onChange={(e) => {
                 const raw = e.target.value;
