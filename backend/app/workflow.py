@@ -1872,15 +1872,23 @@ def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool
     except ValueError:
         return False, f"صيغة التاريخ غير صحيحة: {day_str}"
 
-    # نجد سجل الحضور: نفس الموظف ونفس اليوم
+    # **الأوقاتُ تُكتب بتوقيت الكويت وتُخزَّن UTC** — كما يفعل باب التصحيح المباشر. كان ``HH:MM`` يُدمج
+    # بلا منطقة فيُخزَّن كأنه UTC: «حضر 08:00» تظهر 11:00، فيُخطئ التأخير ودقائق العمل والإضافي.
     from sqlalchemy import and_
-    day_start = _dt.combine(day, _dt.min.time())
-    day_end = _dt.combine(day, _dt.max.time())
+    from datetime import timedelta as _td, timezone as _tz
+    from .clock import KUWAIT_TZ
+
+    def _utc(v: _dt) -> _dt:
+        return v if v.tzinfo else v.replace(tzinfo=_tz.utc)
+
+    # نجد سجل الحضور: نفس الموظف ويومُه **بتوقيت الكويت** (لا يوم UTC)
+    day_start = _dt.combine(day, _dt.min.time(), KUWAIT_TZ).astimezone(_tz.utc).replace(tzinfo=None)
+    day_end = day_start + _td(days=1)
     rec = db.scalar(
         select(models.AttendanceRecord).where(and_(
             models.AttendanceRecord.employee_id == req.employee_id,
             models.AttendanceRecord.check_in_at >= day_start,
-            models.AttendanceRecord.check_in_at <= day_end,
+            models.AttendanceRecord.check_in_at < day_end,
         ))
     )
 
@@ -1890,36 +1898,64 @@ def _apply_attendance_correction(db: Session, req: models.Request) -> tuple[bool
     def _combine(hhmm: str) -> _dt | None:
         try:
             h, m = str(hhmm).split(":")[:2]
-            return _dt.combine(day, _dt.min.time().replace(hour=int(h), minute=int(m)))
+            return _dt.combine(day, _dt.min.time().replace(hour=int(h), minute=int(m)),
+                               KUWAIT_TZ).astimezone(_tz.utc)
         except (ValueError, AttributeError):
             return None
+
+    ci_dt = _combine(new_ci) if new_ci else None
+    co_dt = _combine(new_co) if new_co else None
+    if new_ci and ci_dt is None:
+        return False, f"وقت الحضور غير صالح: {new_ci!r} (الصيغة HH:MM)"
+    if new_co and co_dt is None:
+        return False, f"وقت الانصراف غير صالح: {new_co!r} (الصيغة HH:MM)"
+
+    eff_in = ci_dt or (_utc(rec.check_in_at) if rec is not None and rec.check_in_at else None)
+    eff_out = co_dt or (_utc(rec.check_out_at) if rec is not None and rec.check_out_at else None)
+    if eff_in and eff_out and eff_out <= eff_in:
+        return False, "وقت الانصراف يجب أن يكون بعد وقت الحضور"
+
+    # لا تصحيحَ على شهرٍ مقفل (كما في الباب المباشر): شهرُ اليوم، وشهرُ السجلّ إن اختلف
+    from . import attendance_close
+    periods = {day.strftime("%Y-%m")}
+    if rec is not None and rec.check_in_at:
+        periods.add(rec.check_in_at.strftime("%Y-%m"))
+    for period in sorted(periods):
+        if attendance_close.is_closed(db, req.company_id, period):
+            return False, (f"الشهر {period} مُقفل — أعد فتحه من «مراجعة الحضور» ثم أعد تطبيق الطلب")
 
     changes: list[str] = []
     if rec is None:
         # لا سجل — ننشئه لو فيه على الأقل check_in
-        ci = _combine(new_ci) if new_ci else None
-        if not ci:
+        if not ci_dt:
             return False, "لا يوجد سجل حضور لليوم المحدد ولم يُقدَّم check_in لإنشائه"
         rec = models.AttendanceRecord(
             company_id=req.company_id, employee_id=req.employee_id,
-            check_in_at=ci, check_out_at=_combine(new_co) if new_co else None,
+            check_in_at=ci_dt, check_out_at=co_dt,
         )
         db.add(rec)
-        changes.append(f"إنشاء سجل: in={ci}")
+        changes.append(f"إنشاء سجل: in={ci_dt}")
     else:
-        if new_ci:
-            new_ci_dt = _combine(new_ci)
-            if new_ci_dt and new_ci_dt != rec.check_in_at:
-                changes.append(f"check_in: {rec.check_in_at} → {new_ci_dt}")
-                rec.check_in_at = new_ci_dt
-        if new_co:
-            new_co_dt = _combine(new_co)
-            if new_co_dt and new_co_dt != rec.check_out_at:
-                changes.append(f"check_out: {rec.check_out_at} → {new_co_dt}")
-                rec.check_out_at = new_co_dt
+        if ci_dt and _utc(rec.check_in_at) != ci_dt:
+            changes.append(f"check_in: {rec.check_in_at} → {ci_dt}")
+            rec.check_in_at = ci_dt
+        if co_dt and (rec.check_out_at is None or _utc(rec.check_out_at) != co_dt):
+            changes.append(f"check_out: {rec.check_out_at} → {co_dt}")
+            rec.check_out_at = co_dt
 
     if not changes:
         return False, "لم يُطلَب أي تعديل فعلي (نفس القيم القديمة)"
+
+    # **الأثرُ يشمل ما يُبنى عليه الراتب**: دقائق العمل والإضافي والحالة تُعاد كما في باب التصحيح المباشر،
+    # وإلا تغيّرت الساعاتُ وبقي السجلّ «غائبًا» يُخصم منه. من صُحِّح حضورُه لم يعد غائبًا.
+    if ci_dt and (rec.status or "").lower() == "absent":
+        rec.status = "present"
+    if rec.check_in_at and rec.check_out_at:
+        from .routers.attendance import _finalize_out
+        emp = db.get(models.Employee, req.employee_id)
+        rec.overtime_minutes = 0
+        if emp is not None:
+            _finalize_out(db, emp, rec, _utc(rec.check_out_at))
 
     return True, "; ".join(changes)
 
