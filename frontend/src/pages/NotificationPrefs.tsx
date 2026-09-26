@@ -21,11 +21,12 @@ const CHANNEL_LABEL_EN: Record<string, string> = {
 };
 
 export default function NotificationPrefs() {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const isEn = lang === "en";
   const [rows, setRows] = useState<Pref[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
+  const [devicesErr, setDevicesErr] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -39,7 +40,7 @@ export default function NotificationPrefs() {
     .then(r => setChannels(r.data)).catch(() => setChannels([]));
 
   const loadDevices = () => api.get("/notifications/devices")
-    .then(r => setDevices(r.data)).catch(() => setDevices([]));
+    .then(r => { setDevices(r.data); setDevicesErr(false); }).catch(() => { setDevices([]); setDevicesErr(true); });
 
   useEffect(() => { load(); loadChannels(); loadDevices(); }, []);
 
@@ -130,6 +131,7 @@ export default function NotificationPrefs() {
           </button>
         )}
 
+        {devicesErr && <p className="err" data-testid="devices-load-failed">⚠ {t("load_failed")}</p>}
         {devices.length > 0 && (
           <table style={{ width: "100%", borderCollapse: "collapse",
                           marginTop: 12 }}>

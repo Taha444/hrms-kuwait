@@ -36,8 +36,9 @@ export default function AttendanceReview() {
   // وكانت رسالة الرفض تسمّي **مساًرا خاًما** لا شاشة له. وهذه هي الشاشة:
   // نفس المكان الذي يُراجَع فيه الحضور ويُقفَل شهره.
   const [gaps, setGaps] = useState<any[]>([]);
+  const [gapsErr, setGapsErr] = useState(false);
   const loadGaps = () => api.get("/employees/attendance-policy/pending")
-    .then((r) => setGaps(r.data)).catch(() => setGaps([]));
+    .then((r) => { setGaps(r.data); setGapsErr(false); }).catch(() => { setGaps([]); setGapsErr(true); });
 
   // قرار المالك (2026-09-17) — تقويم العطل الرسمية، لسنة الشهر المعروض.
   const year = month.slice(0, 4);
@@ -136,6 +137,7 @@ export default function AttendanceReview() {
       {/* ATT-POL — موظفون نشطون بلا سياسة حضور موثَّقة. يوقفون إقفال
           المسيّر في الوضع الصارم، وكانت رسالة المنع تحيل إلى **مسار
           خام** لا شاشة له — أمٌر بفعل بلا باب. وهذا الباب. */}
+      {gapsErr && <p className="err" data-testid="gaps-load-failed">⚠ {t("load_failed")}</p>}
       {gaps.length > 0 && (
         <div className="card" style={{ marginBottom: 12,
                                        borderInlineStart: "3px solid var(--warning)" }}>

@@ -21,6 +21,7 @@ export default function Renewals() {
   // RNW-21 — قصة المعاملة. تُجلب عند اختيارها لا مع القائمة: القائمة تُحدَّث
   // كل بضع ثوانٍ، وجلب قصة كل معاملة معها استعلام لا يقرؤه أحد.
   const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineErr, setTimelineErr] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [reason, setReason] = useState("");
@@ -48,6 +49,7 @@ export default function Renewals() {
   // الملفات المبدوءة، ومركز العمليات يعرض الإقامات المقتربة من الانتهاء —
   // فرأى المستخدم "حالة حرجة" هناك وفراًغا هنا وقرأه عطًلا.
   const [duePermits, setDuePermits] = useState<any[]>([]);
+  const [dueErr, setDueErr] = useState(false);
   // RNW-01 — التنبيه المختار. البطاقات في «تستحق ولم يُفتح لها ملف» كانت
   // صفوف جدول بلا onClick، فالضغط لا يرسل طلًبا ولا يفتح شيًئا — تجاهل صامت.
   // اختياره منفصل عن اختيار المعاملة لأنهما نوعان مختلفان: الأول تنبيه محسوب
@@ -55,7 +57,8 @@ export default function Renewals() {
   const [selDue, setSelDue] = useState<any>(null);
 
   const load = () => {
-    api.get("/renewals/due/permits").then((r) => setDuePermits(r.data)).catch(() => setDuePermits([]));
+    api.get("/renewals/due/permits").then((r) => { setDuePermits(r.data); setDueErr(false); })
+      .catch(() => { setDuePermits([]); setDueErr(true); });
     return api.get("/renewals").then((r) => {
       setItems(r.data);
       if (sel) { const u = r.data.find((x: any) => x.id === sel.id); if (u) setSel(u); }
@@ -214,8 +217,8 @@ export default function Renewals() {
                 onClick={() => {
                   setSelDue(null); setSel(it);
                   api.get(`/renewals/${it.id}/timeline`)
-                     .then((r) => setTimeline(r.data.events || []))
-                     .catch(() => setTimeline([]));
+                     .then((r) => { setTimeline(r.data.events || []); setTimelineErr(false); })
+                     .catch(() => { setTimeline([]); setTimelineErr(true); });
                 }}>
                 <span className="r-name">{it.employee_name} <span className={`pill ${ST_PILL[it.status] || "neutral"}`} style={{ marginInlineStart: 6 }}>{t(`rnw_st_${it.status}`)}</span></span>
                 <span className="r-sub">{t(`rnw_type_${it.renewal_type}`)} · #{it.id}</span>
@@ -223,6 +226,7 @@ export default function Renewals() {
             ))}
             {!items.length && <div className="empty" style={{ padding: 24 }}>{t("rnw_no_items")}</div>}
             {/* QA-05 — ما يستحق فتح ملف ولم يُفتح له: الجسر بين هذه الصفحة ومركز العمليات */}
+            {dueErr && <p className="err" data-testid="due-permits-load-failed">⚠ {t("load_failed")}</p>}
             {duePermits.length > 0 && (
               <div className="card" style={{ marginTop: 12, borderTop: "3px solid var(--warning)" }}>
                 <h4 style={{ marginTop: 0 }}>{t("rnw_due_no_case", { n: duePermits.length })}</h4>
@@ -335,6 +339,7 @@ export default function Renewals() {
 
               {/* RNW-21 — القصة: من التنبيه إلى المستند النهائي. تُقرأ من
                   سجل التدقيق، فكل حدث بفاعله الحقيقي ودوره ووقته. */}
+              {timelineErr && <p className="err" data-testid="timeline-load-failed">⚠ {t("load_failed")}</p>}
               {timeline.length > 0 && (
                 <details style={{ margin: "10px 0" }}>
                   <summary style={{ cursor: "pointer", fontWeight: 600 }}>

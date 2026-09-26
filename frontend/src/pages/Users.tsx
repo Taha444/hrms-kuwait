@@ -179,10 +179,12 @@ export default function Users() {
   // وكانت القائمة لا تُرى إلا بعد ضغط زرّ الربط الآلي: فمن لم يضغطه لا
   // يعرف أن في شركته حساًبا مكسوًرا أصًلا.
   const [orphans, setOrphans] = useState<any[]>([]);
+  const [orphansErr, setOrphansErr] = useState(false);
   const [pickEmp, setPickEmp] = useState<Record<number, string>>({});
   const [empList, setEmpList] = useState<any[]>([]);
   const loadOrphans = () => {
-    api.get("/users/orphaned").then((r) => setOrphans(r.data)).catch(() => setOrphans([]));
+    api.get("/users/orphaned").then((r) => { setOrphans(r.data); setOrphansErr(false); })
+      .catch(() => { setOrphans([]); setOrphansErr(true); });
     api.get("/employees", { params: { limit: 500 } })
       .then((r) => setEmpList(r.data)).catch(() => {});
   };
@@ -249,6 +251,7 @@ export default function Users() {
           لا مطابق له، وكان تقريره يقول «يحتاج إنشاء Employee record»
           ولا يربط — **وإنشاء موظف وهمي ممنوع**، فالمخرج هو الربط بسجل
           قائم لا اختراع سجل. */}
+      {orphansErr && <p className="err" data-testid="orphans-load-failed">⚠ {t("load_failed")}</p>}
       {orphans.length > 0 && (
         <div className="card" style={{ borderInlineStart: "4px solid var(--warning)",
                                        marginBottom: 12 }}>

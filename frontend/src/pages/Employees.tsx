@@ -43,12 +43,14 @@ export default function Employees() {
   // القرار لا يجدها إلا بفتح الملفات واحًدا واحًدا. ثم بقيت النقطة بلا
   // طريق — فالبلاغ يقول إن هناك عمًلا ولا يقول أين هو.
   const [pendingChanges, setPendingChanges] = useState<any[]>([]);
+  const [pendingErr, setPendingErr] = useState(false);
   const isApprover = user?.role === "company_manager"
     || user?.role === "company_owner" || user?.role === "super_admin";
   const loadPending = () => {
     if (!isApprover) return;
     api.get("/employees/salary-change-requests/pending")
-      .then((r) => setPendingChanges(r.data)).catch(() => setPendingChanges([]));
+      .then((r) => { setPendingChanges(r.data); setPendingErr(false); })
+      .catch(() => { setPendingChanges([]); setPendingErr(true); });
   };
 
   const decideChange = async (reqId: number, decision: "approved" | "rejected") => {
@@ -121,6 +123,7 @@ export default function Employees() {
 
       {/* SCR-Q — ما ينتظر قرارك، مجموًعا. وبلا هذه الشاشة كان البلاغ يصل
           والمعتمِد يفتح الملفات واحًدا واحًدا بحًثا عمّا يخصّه. */}
+      {isApprover && pendingErr && <p className="err" data-testid="pending-changes-load-failed">⚠ {t("load_failed")}</p>}
       {isApprover && pendingChanges.length > 0 && (
         <div className="card" style={{ marginBottom: 12,
                                        borderInlineStart: "3px solid var(--warning)" }}>
