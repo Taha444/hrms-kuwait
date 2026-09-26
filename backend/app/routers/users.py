@@ -185,14 +185,26 @@ def list_orphaned_users(user: models.User = Depends(require_perm("manage_users")
 def link_user_to_employee(user_id: int, employee_id: int, request: Request,
                           user: models.User = Depends(require_perm("manage_users")),
                           db: Session = Depends(get_db)):
-    """V2.2 §3 — يربط user موجود بسجل موظف. يفشل لو الاثنين من شركات مختلفة
-    أو الموظف مربوط بحساب آخر بالفعل."""
+    """V2.2 §3 / §1 — يربط حسابًا **غير مربوط** بسجل موظف (معالجةُ الحسابات اليتيمة).
+
+    **معالجان على المسار نفسه كانا يتعارضان**: الأول (الفعّال، لأن الأول يسبق) يُعيد ربط حسابٍ مربوطٍ بموظفٍ
+    آخر — تبديلُ هويةٍ بصلاحية ``manage_users`` وحدها — والثاني المكتوبُ الميّت كان يرفض ذلك. فصار معالجًا واحدًا
+    بالقواعد الأشدّ: حسابٌ مربوطٌ يُرفض، ونفسُ الشركة، وحسابٌ واحد لكل موظف، ولا ربط بملفٍ انتهت خدمته.
+    """
+    from ..deps import INACTIVE_EMPLOYMENT
+
     target = _get_scoped_user(db, user, user_id)
+    if target.employee_id:
+        raise HTTPException(status_code=409,
+                            detail=f"المستخدم مربوط بالفعل بموظف #{target.employee_id}")
     emp = db.get(models.Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="سجل الموظف غير موجود")
     if target.company_id and emp.company_id != target.company_id:
         raise HTTPException(status_code=400, detail="سجل الموظف من شركة مختلفة")
+    if (emp.status or "").strip().lower() in INACTIVE_EMPLOYMENT:
+        raise HTTPException(status_code=409,
+                            detail=f"لا يُربط حسابٌ بملف موظفٍ حالته «{emp.status}»")
     other = db.scalar(select(models.User).where(
         models.User.employee_id == employee_id,
         models.User.id != user_id,
@@ -202,39 +214,9 @@ def link_user_to_employee(user_id: int, employee_id: int, request: Request,
             status_code=409,
             detail=f"هذا الموظف مربوط بحساب آخر (#{other.id})",
         )
-    old = target.employee_id
     target.employee_id = employee_id
     if not target.company_id:
         target.company_id = emp.company_id
-    audit(db, user, "link_user_to_employee", "user", target.id,
-          detail=f"{old} → {employee_id}", request=request)
-    db.commit()
-    return {"ok": True, "user_id": target.id, "employee_id": employee_id}
-
-
-@router.post("/{user_id}/link-employee")
-def link_orphan_to_employee(user_id: int, employee_id: int, request: Request,
-                            user: models.User = Depends(require_perm("manage_users")),
-                            db: Session = Depends(get_db)):
-    """V2.2 §1 (نهاية القائمة): معالجة الحسابات القديمة بدون employee_id.
-    HR/Admin يربط User يتيم بسجل Employee متطابق (نفس الشركة، لا رابط سابق)."""
-    target = _get_scoped_user(db, user, user_id)
-    if target.employee_id:
-        raise HTTPException(status_code=409,
-                            detail=f"المستخدم مربوط بالفعل بموظف #{target.employee_id}")
-    emp = db.get(models.Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="الموظف غير موجود")
-    if emp.company_id != target.company_id:
-        raise HTTPException(status_code=400,
-                            detail="الموظف من شركة مختلفة عن حساب المستخدم")
-    # ما فيش يوزر تاني مربوط بنفس الموظف
-    existing = db.scalar(select(models.User).where(
-        models.User.employee_id == employee_id, models.User.id != target.id))
-    if existing:
-        raise HTTPException(status_code=409,
-                            detail=f"الموظف مربوط بحساب مستخدم آخر (#{existing.id})")
-    target.employee_id = employee_id
     audit(db, user, "link_user_to_employee", "user", target.id,
           detail=f"employee_id={employee_id}", request=request)
     db.commit()

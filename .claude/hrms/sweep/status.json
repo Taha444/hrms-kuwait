@@ -82,7 +82,7 @@
         "record": "done"
       },
       "checks": {
-        "1": "fail",
+        "1": "pass",
         "2": "pass",
         "3": "pass",
         "4": "pass",
@@ -101,8 +101,8 @@
           "at": "2026-09-24"
         },
         "check1": {
-          "note": "4 حسابات بلا employee_id (orphaned) — الربط الذري بين User وEmployee لم يحدث لها عند الإنشاء الأصلي.",
-          "at": "2026-09-24"
+          "note": "معالج link-employee واحد بالقواعد الأشدّ + حارس تكرار المسارات",
+          "at": "2026-09-26"
         },
         "check4": {
           "note": "الواجهة تقرأ can()/user.permissions من /auth/me (المصفوفة الفعلية للخادم)، والخادم يفحص require_perm→check_legacy، ومستند docs/PERMISSIONS_MATRIX.md محروس باختبار يطابق الشيفرة.",

@@ -149,8 +149,9 @@ def test_linking_by_hand_closes_it(client, orphan):
     try:
         taken = {u.employee_id for u in db.scalars(select(models.User)).all()
                  if u.employee_id}
+        # نشِطٌ فقط: الربط بملفٍ انتهت خدمته يُرفض (وتُخلّف اختباراتٌ أخرى في القاعدة المشتركة موظفين مستقيلين)
         free = db.scalars(select(models.Employee).where(
-            models.Employee.company_id == 1)).all()
+            models.Employee.company_id == 1, models.Employee.status == "active")).all()
         free_id = next((e.id for e in free if e.id not in taken), None)
     finally:
         db.close()
