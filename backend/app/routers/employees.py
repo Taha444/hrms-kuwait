@@ -561,6 +561,22 @@ def set_actual_salary(emp_id: int, amount: float, request: Request = None,
     return {"ok": True, "actual_salary": amount}
 
 
+def _assert_attendance_mode_usable(db: Session, emp: models.Employee, mode: str) -> None:
+    """نمطٌ فعليّ يجب أن يكون قابلًا للتنفيذ: ``gps``/``both`` تحتاج فرعًا **بإحداثيات**.
+
+    كان يُضبط لموظفٍ بلا فرعٍ أو فرعُه بلا موقع، فيُرفض بصمُه أبدًا برسالةٍ عن «إحداثيات GPS مطلوبة» توهم
+    أن العيب في هاتفه (وهو ما ظهر في SW-020). فيُرفض الضبطُ هنا ويُسمّى ما ينقص.
+    """
+    if mode not in ("gps", "both"):
+        return
+    branch = db.get(models.Branch, emp.branch_id) if emp.branch_id else None
+    if branch is None or branch.latitude is None or branch.longitude is None:
+        raise HTTPException(status_code=409, detail=(
+            f"نمط «{mode}» يحتاج فرعًا له إحداثيات — "
+            + ("الموظف بلا فرع" if branch is None else f"فرع «{branch.name}» بلا موقع مسجَّل")
+            + ". سجّل موقع الفرع أولًا أو اختر نمط «qr»."))
+
+
 @router.post("/{emp_id}/attendance-mode")
 def set_attendance_mode(emp_id: int, mode: str, request: Request,
                         user: models.User = Depends(require_perm("manage_attendance")),
@@ -585,6 +601,7 @@ def set_attendance_mode(emp_id: int, mode: str, request: Request,
                     "إقفال مسيّر الرواتب."))
     emp = _get_emp(db, user, emp_id)
     assert_outranks_record(db, user, emp, allow_self=False)
+    _assert_attendance_mode_usable(db, emp, mode)
     emp.attendance_mode = mode
     # ونمٌط فعليّ يُلغي إعفاًء سابًقا: بقاؤهما معًا يعني موظًفا يبصم ويُعدّ معفًى.
     emp.attendance_exempt = False
@@ -1403,6 +1420,13 @@ def set_attendance_policy(emp_id: int, mode: str, exempt: bool = False,
                 status_code=400,
                 detail="mode='none' يتطلب exempt=True + سبب موثّق (attendance_exempt_reason)",
             )
+    else:
+        # موظفٌ يبصم لا يُعدّ معفًى: كان ``qr`` مع ``exempt=True`` يُخزَّنان معًا فيبصم ويُستثنى من الحساب
+        if exempt:
+            raise HTTPException(status_code=400, detail=(
+                f"نمط «{mode}» يعني أن الموظف يبصم — لا يجتمع مع الإعفاء. "
+                "للإعفاء اختر نمط «none» مع سببٍ موثَّق."))
+        _assert_attendance_mode_usable(db, emp, mode)
     before = f"{emp.attendance_mode}/exempt={emp.attendance_exempt}"
     emp.attendance_mode = mode
     emp.attendance_exempt = bool(exempt)
