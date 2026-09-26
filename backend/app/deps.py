@@ -400,6 +400,25 @@ def scope_company_id(user: models.User, requested: int | None = None) -> int | N
     return user.company_id
 
 
+def refuse_other_company(cid: int | None, requested: int | None) -> None:
+    """**شركةٌ صريحة تخالف شركة الجلسة تُرفَض ولا تُستبدَل بصمت** (SW-009، وعُمِّمت على الحضور).
+
+    ``scope_company_id`` يُجبر غير الإدارة العليا على شركته — حاجزٌ مقصود. لكنّ الردّ 200 ببياناتها لمن طلب شركةً
+    أخرى يُضلّله، وفي **الكتابة** يُنفّذ على غير ما طلب: طلبُ إقفال «شركة 2» من حساب شركة 1 كان يُقفل شهرَ شركة 1.
+    """
+    if requested and cid is not None and int(requested) != int(cid):
+        raise HTTPException(status_code=403, detail=(
+            f"الشركة المطلوبة (#{requested}) ليست شركة جلستك (#{cid}) — بدّل الشركة أولًا "
+            "ثم أعد الطلب."))
+
+
+def scope_company_id_strict(user: models.User, requested: int | None = None) -> int | None:
+    """``scope_company_id`` مع رفض الطلب الصريح المخالف بدل استبداله صامتًا."""
+    cid = scope_company_id(user, requested)
+    refuse_other_company(cid, requested)
+    return cid
+
+
 from dataclasses import dataclass
 from .clock import today as kuwait_today
 

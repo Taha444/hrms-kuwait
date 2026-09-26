@@ -19,7 +19,7 @@ from .. import attendance_close, models, schemas
 from ..config import settings
 from ..database import get_db
 from ..deps import (assert_outranks_record, assert_same_company, audit, get_current_user,
-                    require_perm, scope_company_id)
+                    require_perm, scope_company_id, scope_company_id_strict)
 from ..qr import haversine_m
 from ..safe_files import read_limited
 from .. import qr_token
@@ -513,7 +513,7 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
     """
     from ..deps import resolve_scope
     scope = resolve_scope(user, db)
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)
     today = kuwait_today()
     try:
         y, m = (int(p) for p in month.split("-")) if month else (today.year, today.month)
@@ -637,7 +637,7 @@ def attendance_review(month: str | None = None, branch_id: int | None = None,
 # ---------------------------------------------------------------------------
 
 def _holiday_company(user: models.User, company_id: int | None) -> int:
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="حدد الشركة")
     return cid
@@ -722,7 +722,7 @@ def close_attendance_month(period: str, request: Request,
     """
     y, m = attendance_close.parse_period(period)
     period = f"{y:04d}-{m:02d}"
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="حدد الشركة")
     existing = db.scalar(select(models.AttendanceMonthClose).where(
@@ -768,7 +768,7 @@ def reopen_attendance_month(period: str, reason: str, request: Request,
         raise HTTPException(status_code=400, detail="سبب إعادة الفتح مطلوب")
     y, m = attendance_close.parse_period(period)
     period = f"{y:04d}-{m:02d}"
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)
     if cid is None:
         raise HTTPException(status_code=400, detail="حدد الشركة")
     c = db.scalar(select(models.AttendanceMonthClose).where(
@@ -794,7 +794,7 @@ def attendance_close_status(period: str, company_id: int | None = None,
     """V2.2 §17 — يستعلم حالة إقفال شهر (للـUI لإظهار Lock badge)."""
     y, m = attendance_close.parse_period(period)
     period = f"{y:04d}-{m:02d}"
-    cid = scope_company_id(user, company_id)
+    cid = scope_company_id_strict(user, company_id)
     if cid is None:
         return {"period": period, "status": "open"}
     c = db.scalar(select(models.AttendanceMonthClose).where(
