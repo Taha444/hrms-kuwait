@@ -307,8 +307,8 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
                     effective_date: date | None = None, change_reason: str | None = None,
                     user: models.User = Depends(require_perm("edit_employee")),
                     db: Session = Depends(get_db)):
-    """R3-C — يقبل effective_date اختياري: لو موجود، التغييرات على الحقول الحرجة
-    تُسجَّل بتاريخ سريان مستقبلي (مفيد لزيادة راتب تسري الشهر القادم).
+    """R3-C — يقبل effective_date اختياري (اليوم أو ماضٍ) يُقيَّد به التغييرُ الحرج في السجلّ.
+    التاريخُ المستقبليّ يُرفض: التعديلُ هنا فوريّ، والتأجيلُ بمسار «اقتراح تعديل».
     الافتراضي: effective_date = اليوم = تسري فورًا."""
     emp = _get_emp(db, user, emp_id)
     assert_outranks_record(db, user, emp, allow_self=True)
@@ -397,6 +397,14 @@ def update_employee(emp_id: int, data: schemas.EmployeeCreateIn, request: Reques
 
     # R3-C — التقاط snapshot قبل + تسجيل التغييرات الحرجة في جدول التاريخ
     eff = effective_date or kuwait_today()
+    # **هذا الباب يُطبّق فورًا ولا يؤجّل.** كان تاريخُ سريانٍ مستقبليٌّ يُقيَّد في السجلّ («تسري الشهر
+    # القادم») بينما القيمةُ تغيّرت في الملف اليوم — فيكذب السجلّ على الواقع، وليس ثمّة مجدوِلٌ يُطبّقه لاحقًا.
+    # والتأجيلُ الحقيقيّ في «اقتراح تعديل» (يعتمده مستخدمٌ آخر ويسري بتاريخه).
+    if eff > kuwait_today() and any(
+            k in CRITICAL_FIELDS and getattr(emp, k, None) != v for k, v in payload.items()):
+        raise HTTPException(status_code=400, detail=(
+            "هذا التعديل يسري فورًا ولا يؤجَّل — لتاريخ سريانٍ مستقبليّ قدّمه من «اقتراح تعديل» "
+            "في ملف الموظف، أو اترك تاريخ السريان فارغًا."))
     for k, v in payload.items():
         old = getattr(emp, k, None)
         if k in CRITICAL_FIELDS and old != v:

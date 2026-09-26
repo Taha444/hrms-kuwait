@@ -265,9 +265,9 @@
         "1": "pass",
         "2": "pass",
         "3": "pass",
-        "4": "pending",
-        "5": "pending",
-        "6": "pending",
+        "4": "pass",
+        "5": "pass",
+        "6": "pass",
         "7": "pass",
         "8": "pass"
       },
@@ -291,6 +291,18 @@
         "check1": {
           "note": "create_employee: _assert_no_duplicates (رقم مدني/جواز داخل الشركة)، _assert_branch_in_scope، _assert_refs_in_company (فرع/مدير/قسم/وردية من شركة أخرى تُرفض 400 — قيس)، وflush ثم employee_no ثم audit ثم commit واحد.",
           "at": "2026-09-25"
+        },
+        "check6": {
+          "note": "اختبارات termination_revokes_access + status_bypass",
+          "at": "2026-09-26"
+        },
+        "check4": {
+          "note": "أداة backfill بفحص قبل الكتابة + endpoint + unique؛ ملاحظة: rollback داخل generate",
+          "at": "2026-09-26"
+        },
+        "check5": {
+          "note": "PUT يرفض تاريخ سريان مستقبليًا؛ التأجيل بمسار الاقتراح",
+          "at": "2026-09-26"
         }
       }
     },
