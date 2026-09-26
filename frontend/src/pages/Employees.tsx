@@ -4,6 +4,7 @@ import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { fieldAr } from "../labels";
+import { ErrorRetry, Skeleton } from "../components/States";
 import EmployeeProfile from "./EmployeeProfile";
 import EmployeeOnboarding from "./EmployeeOnboarding";
 
@@ -24,6 +25,8 @@ export default function Employees() {
   const selectedId = routeParams.id ? Number(routeParams.id) : null;
   const [params, setParams] = useSearchParams();
   const [emps, setEmps] = useState<any[]>([]);
+  // التحميل ≠ الفراغ ≠ الخطأ: كانت القائمة تقول «لا بيانات» أثناء التحميل وعند فشله (SW-032)
+  const [listState, setListState] = useState<"loading" | "ok" | "error">("loading");
   const [branches, setBranches] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [branch, setBranch] = useState<string>(params.get("branch") || "");
@@ -36,7 +39,8 @@ export default function Employees() {
 
   const load = (p = page, br = branch, dp = dept, query = q) => api.get("/employees", {
     params: { q: query || undefined, branch_id: br || undefined, department_id: dp || undefined, limit: PAGE, offset: p * PAGE },
-  }).then((r) => { setEmps(r.data); setTotal(Number(r.headers["x-total-count"] || r.data.length)); });
+  }).then((r) => { setEmps(r.data); setTotal(Number(r.headers["x-total-count"] || r.data.length)); setListState("ok"); })
+    .catch(() => setListState("error"));
 
   // SCR-Q — طابور تغييرات الحقول الحرجة. النقطة بُنيت ليجد المعتمِد ما
   // ينتظره **مجموًعا**: القائمة الوحيدة كانت داخل ملف الموظف، فمن يملك
@@ -194,7 +198,9 @@ export default function Employees() {
                 <span className="r-sub">{e.job_title || "—"} · {e.nationality || "—"}</span>
               </button>
             ))}
-            {!emps.length && <div className="md-row muted">{t("no_data")}</div>}
+            {!emps.length && listState === "loading" && <Skeleton rows={5} />}
+            {!emps.length && listState === "error" && <ErrorRetry onRetry={() => { setListState("loading"); load(); }} />}
+            {!emps.length && listState === "ok" && <div className="md-row muted">{t("no_data")}</div>}
           </div>
           {total > PAGE && (
             <div className="row" style={{ justifyContent: "center", gap: 12, padding: 10 }}>

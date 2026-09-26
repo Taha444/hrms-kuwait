@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import api from "../api";
+import { ErrorRetry } from "../components/States";
 import { useI18n } from "../i18n";
 import { roleAr } from "../labels";
 import { fmtKuwaitDateTime, KUWAIT_TZ_LABEL, KUWAIT_TZ_LABEL_EN } from "../utils/datetime";
@@ -14,6 +15,8 @@ export default function Audit() {
   const [rows, setRows] = useState<any[]>([]);
   const [action, setAction] = useState("");
   const [loading, setLoading] = useState(true);
+  // فشلُ جلب سجلّ التدقيق لا يُعرض «لا بيانات»: فالسجلُّ الفارغ يقول «لم يحدث شيء» وهو غيرُ معروف
+  const [loadErr, setLoadErr] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
   // نتيجةُ الفعل كما خُزِّنت: نجح/فشل/تعارض/مرفوض — والقيمة الغريبة تُعرض كما هي لا تُخفى.
   const resultLabel = (res: string | null) => {
@@ -29,7 +32,9 @@ export default function Audit() {
   const load = () => {
     setLoading(true);
     api.get("/audit", { params: { limit: 200, action: action || undefined } })
-      .then((r) => setRows(r.data)).finally(() => setLoading(false));
+      .then((r) => { setRows(r.data); setLoadErr(false); })
+      .catch(() => { setRows([]); setLoadErr(true); })
+      .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [action]);
 
@@ -96,7 +101,8 @@ export default function Audit() {
                   )}
                 </Fragment>
               ))}
-            {!loading && !rows.length && <tr><td colSpan={8} className="empty">{t("no_data")}</td></tr>}
+            {!loading && loadErr && <tr><td colSpan={8}><ErrorRetry onRetry={load} /></td></tr>}
+            {!loading && !loadErr && !rows.length && <tr><td colSpan={8} className="empty">{t("no_data")}</td></tr>}
           </tbody>
         </table>
       </div>
