@@ -210,6 +210,7 @@ const dict: Record<string, { ar: string; en: string }> = {
   // TSK-CLM — الالتقاط بُني ليمنع أن يعمل المهمَة الواحدة اثنان، وكان
   // يُكتَب بالواجهة البرمجية ولا يُقرأ من الشاشة ولا يُلتقَط منها.
   tasks_claim: { ar: "التقطها", en: "Claim" },
+  tasks_go: { ar: "افتح", en: "Open" },
   tasks_release: { ar: "أطلِقها", en: "Release" },
   tasks_claimed_by: { ar: "عليها الآن", en: "Being handled by" },
   tasks_kind_task: { ar: "يحتاج إجراء", en: "Needs action" },

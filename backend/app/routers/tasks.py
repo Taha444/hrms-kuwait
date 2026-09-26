@@ -92,6 +92,24 @@ def _category(task_type: str) -> str:
 from ..task_kinds import NOTIFICATION_TYPES, inbox_query, is_notification  # noqa: E402,F401
 
 
+#: كيانُ المهمة ← شاشتُه. المصدرُ الواحد الذي تقرؤه الواجهة؛ لا خريطةٌ ثانية عندها تتقادم.
+_TARGET_BY_ENTITY = {
+    "renewal": "/renewals", "payroll_run": "/payroll", "eos_case": "/eos/cases", "license": "/operations",
+    "user": "/users", "branch": "/branches",
+}
+
+
+def task_target_path(t: "models.Task") -> str | None:
+    et, eid = t.related_entity_type, t.related_entity_id
+    if et == "request" and eid:
+        return f"/requests/{eid}"
+    if et == "employee" and eid:
+        return f"/employees/{eid}"
+    if et == "permit":
+        return "/renewals" if t.type == "renew_residency" else "/pro"
+    return _TARGET_BY_ENTITY.get(et or "")
+
+
 @router.get("/my")
 def my_tasks(response: Response, status: str | None = "open",
              category: str | None = None,
@@ -150,6 +168,8 @@ def my_tasks(response: Response, status: str | None = "open",
             names[uid] = u.full_name if u else None
 
     out = [{"id": t.id, "type": t.type, "category": _category(t.type), "title": t.title,
+            # وجهةُ المهمة: كان الصندوق طريقًا مسدودًا («تجديد الإقامة: فلان» بلا مكانٍ يُبدأ منه التجديد)
+            "target_path": task_target_path(t),
             "detail": t.detail, "status": t.status, "severity": t.severity,
             "due_date": t.due_date, "related_entity_type": t.related_entity_type,
             "related_entity_id": t.related_entity_id, "created_at": t.created_at,

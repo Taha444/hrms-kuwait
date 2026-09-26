@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -124,6 +125,7 @@ export default function Tasks() {
                       التصنيف من الخادم (kind) لا من قائمة أنواع مكرّرة هنا. */}
                   {status === "open" && x.kind !== "notification" && (
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {x.target_path && <Link className="sm" to={x.target_path}>{t("tasks_go")}</Link>}
                       {/* الالتقاط قبل العمل: يقول للبقية «هذه معي». */}
                       {x.can_claim && !x.claimed_by_user_id && (
                         <button className="sm" onClick={() => claim(x.id, "claim")}>{t("tasks_claim")}</button>
