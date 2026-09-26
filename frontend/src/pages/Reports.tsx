@@ -14,6 +14,13 @@ export default function Reports() {
   const [branches, setBranches] = useState<any[]>([]);
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState("");
+  // تقرير تشغيل المسارات (AC-15): كان نقطةً على الخادم بلا شاشة — فلا يُعرف أين يقف الطلب ولا كم خُرقت المهلة.
+  const [ops, setOps] = useState<any | null>(null);
+  const [opsErr, setOpsErr] = useState(false);
+  useEffect(() => {
+    api.get("/reports/workflow-operations").then((r) => setOps(r.data)).catch(() => setOpsErr(true));
+  }, []);
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(1)}%`);
 
   useEffect(() => { api.get("/branches").then((r) => setBranches(r.data)).catch(() => {}); }, []);
   const br = branch ? { branch_id: branch } : {};
@@ -64,6 +71,39 @@ export default function Reports() {
           CSV
         </button>
       </Card>
+      <div className="card" data-testid="wf-ops-report">
+        <h3 style={{ marginBottom: 4 }}>{t("rep_wf_title")}</h3>
+        <p className="muted" style={{ marginTop: 0 }}>{t("rep_wf_sub")}</p>
+        {opsErr && <p className="muted">{t("rep_wf_unavailable")}</p>}
+        {ops && (
+          <>
+            <div className="row" style={{ flexWrap: "wrap", gap: 16 }}>
+              <span>{t("rep_wf_requests")}: <b>{ops.requests?.total ?? 0}</b> ({t("rep_wf_closed")}: {ops.requests?.closed ?? 0})</span>
+              <span>{t("rep_wf_cycle")}: <b>{ops.requests?.avg_cycle_hours ?? "—"}</b></span>
+              <span>{t("rep_wf_return_rate")}: <b>{pct(ops.return_rate)}</b></span>
+              <span>{t("rep_wf_reject_rate")}: <b>{pct(ops.rejection_rate)}</b></span>
+              <span>{t("rep_wf_sla")}: <b>{ops.sla?.breached ?? 0}</b> / {ops.sla?.tasks_with_sla ?? 0} ({pct(ops.sla?.breach_rate)})</span>
+              <span>{t("rep_wf_auto")}: <b>{pct(ops.automation?.ratio)}</b></span>
+            </div>
+            {!!ops.steps?.length && (
+              <table style={{ marginTop: 10 }}>
+                <thead><tr>
+                  <th>{t("rep_wf_stage")}</th><th>{t("rep_wf_decisions")}</th><th>{t("rep_wf_wait")}</th>
+                  <th>{t("rep_wf_returned")}</th><th>{t("rep_wf_rejected")}</th>
+                </tr></thead>
+                <tbody>
+                  {ops.steps.map((st: any) => (
+                    <tr key={st.stage}>
+                      <td>{st.stage}</td><td>{st.decisions}</td><td>{st.avg_wait_hours ?? "—"}</td>
+                      <td>{st.returned}</td><td>{st.rejected}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
