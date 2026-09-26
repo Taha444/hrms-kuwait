@@ -10,7 +10,7 @@ from functools import lru_cache
 
 import bleach
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import or_ as sa_or, select
+from sqlalchemy import func, or_ as sa_or, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -689,6 +689,28 @@ def _resolve_company_data(db: Session, company: models.Company,
     return ctx
 
 
+#: خانتا التوقيع تُملآن يدويًا بعد الطباعة: فراغُهما ليس نقصَ بيانات.
+_MANUAL_KEYS = frozenset({"company_signature", "employee_signature"})
+
+
+def unfilled_fields(t: models.DocumentTemplate, ctx: dict) -> list[dict]:
+    """الحقولُ التي يستعملها القالب ولم يجد لها قيمة — **مسمّاةً**.
+
+    ``_prune_unfilled`` يحذف الحقل الفارغ من المستند عمدًا (لا نائبَ مطبوع)، فتصدر شهادةُ راتبٍ **بلا صفّ الراتب** أو
+    خطابٌ بلا تاريخ التعيين، ولا تُخبر HR كلمة. الحذفُ سليم؛ الصمتُ هو العطل. فيُسمّى الناقص في الردّ (بلا حظر: بروحِ
+    قرار 2026-09-22 في العقد الحكومي) ليُكمِل HR الملفَّ ويعيد الإصدار إن شاء.
+    """
+    seen, out = set(), []
+    for key in _TOKEN_RE.findall(_sanitize_body_html(t.body_html)):
+        if key in seen or key in _MANUAL_KEYS or key == "ref_no":
+            continue
+        seen.add(key)
+        val = ctx.get(key)
+        if val is None or str(val).strip() == "":
+            out.append({"key": key, "label": PLACEHOLDERS.get(key, key)})
+    return out
+
+
 def _fill_html(t: models.DocumentTemplate, ctx: dict) -> str:
     def repl(m):
         key = m.group(1)
@@ -737,6 +759,7 @@ def preview_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reque
 
     ctx = _resolve_authoritative_data(db, emp, data.extra or {})
     rendered = _fill_html(t, ctx)
+    missing = unfilled_fields(t, ctx)
     audit(db, user, "preview_template", "employee", emp.id,
           detail=f"{t.name} (preview only, not stored)", request=request)
     db.commit()
@@ -744,6 +767,7 @@ def preview_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Reque
         "html": rendered,
         "is_preview": True,
         "is_issued": False,
+        "missing_fields": missing,
         "warning": "هذه معاينة فقط — لا تُعتبر مستندًا رسميًا. استخدم زر «توليد» لإصدار مستند مرجعي.",
     }
 
@@ -768,11 +792,13 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
         assert_same_company(user, t.company_id, db=db)
 
     doc, rendered = issue_employee_document(db, t, emp, data.extra or {}, user)
+    missing = unfilled_fields(t, _resolve_authoritative_data(db, emp, data.extra or {}))
     reference_no, checksum = doc.reference_no, doc.checksum_sha256
     safe_ref, sig_version = reference_no.replace("/", "_"), doc.signature_version
 
+    missing_note = (" — حقول ناقصة: " + "، ".join(m["label"] for m in missing)) if missing else ""
     audit(db, user, "generate_template", "employee", emp.id,
-          detail=f"{t.name} → {reference_no}", request=request,
+          detail=f"{t.name} → {reference_no}{missing_note}", request=request,
           after={"reference_no": reference_no, "checksum_sha256": checksum,
                 "template_version": t.version or 1})
     db.commit()
@@ -787,6 +813,7 @@ def generate_template(tpl_id: int, data: schemas.TemplateRenderIn, request: Requ
         "checksum_sha256": checksum,
         "generated_at": doc.generated_at.isoformat() + "Z",
         "signature_version": sig_version,
+        "missing_fields": missing,
         "filename": f"{safe_ref}.html",
     }
 
@@ -862,7 +889,8 @@ def preview_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn,
     audit(db, user, "preview_company_template", "company", company.id,
           detail=f"{t.name} (preview only, not stored)", request=request)
     db.commit()
-    return {"html": rendered, "is_preview": True, "is_issued": False}
+    return {"html": rendered, "is_preview": True, "is_issued": False,
+            "missing_fields": unfilled_fields(t, ctx)}
 
 
 @router.post("/{tpl_id}/company-generate")
@@ -896,6 +924,7 @@ def generate_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn
     ctx["ref_no"] = reference_no
 
     rendered = _fill_html(t, ctx)
+    missing = unfilled_fields(t, ctx)
     payload = rendered.encode("utf-8")
     checksum = hashlib.sha256(payload).hexdigest()
     safe_ref = reference_no.replace("/", "-")
@@ -910,11 +939,16 @@ def generate_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn
     )).all()
     for d in prev:
         d.is_current = False
+    # أعلى إصدارٍ **بين كل النسخ** لا عددُ الحالية (كان كلُّ مستندٍ بعد الثاني «إصدار 2»)
+    top = db.scalar(select(func.max(models.Document.version)).where(
+        models.Document.entity_type == "company",
+        models.Document.entity_id == company.id,
+        models.Document.document_type_code == f"form_{t.code or t.id}")) or 0
 
     doc = models.Document(
         company_id=company.id, entity_type="company", entity_id=company.id,
         document_type_code=f"form_{t.code or t.id}", title=t.name, file_path=fpath,
-        mime="text/html", version=len(prev) + 1, is_current=True,
+        mime="text/html", version=top + 1, is_current=True,
         uploaded_by=user.id,
         is_issued=True,
         reference_no=reference_no,
@@ -936,6 +970,7 @@ def generate_company_template(tpl_id: int, data: schemas.CompanyTemplateRenderIn
         "document_id": doc.id, "reference_no": reference_no,
         "template_version": t.version or 1, "checksum_sha256": checksum,
         "generated_at": doc.generated_at.isoformat() + "Z",
+        "missing_fields": missing,
         "filename": f"{safe_ref}.html",
     }
 

@@ -45,6 +45,8 @@ export default function Templates() {
   const [extra, setExtra] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  // الحقولُ التي حُذفت من المستند لأنها بلا قيمة — تُسمّى بعد المعاينة والإصدار بدل الصمت
+  const [missing, setMissing] = useState<{ key: string; label: string }[]>([]);
   const [lastGenerated, setLastGenerated] = useState<{
     reference_no: string; checksum_sha256: string; template_version: number;
     generated_at: string; document_id: number;
@@ -99,7 +101,7 @@ export default function Templates() {
 
   // R1-A §8 — Preview: يفتح HTML بلا حفظ. لا reference، لا يعتبر مستندًا رسميًا.
   const previewOnly = async () => {
-    setErr(""); setLastGenerated(null);
+    setErr(""); setLastGenerated(null); setMissing([]);
     try {
       const r = subject === "company"
         ? await api.post(`/templates/${filling.id}/company-preview`, { company_id: companyId, extra })
@@ -112,6 +114,7 @@ export default function Templates() {
           </div>`;
         openAndPrint(banner + r.data.html, false);  // معاينة — لا تُطبع تلقائًيا
       }
+      setMissing(r.data.missing_fields || []);
       setMsg(t("tpl_preview_msg"));
     } catch (e: any) { setErr(errMsg(e, t("error"))); }
   };
@@ -119,12 +122,13 @@ export default function Templates() {
   // R1-A §8 — Generate: يُصدر مستندًا رسميًا برقم مرجعي وbصمة SHA-256.
   const generateOfficial = async () => {
     if (!confirm(t("tpl_generate_confirm"))) return;
-    setErr(""); setLastGenerated(null);
+    setErr(""); setLastGenerated(null); setMissing([]);
     try {
       const r = subject === "company"
         ? await api.post(`/templates/${filling.id}/company-generate`, { company_id: companyId, extra })
         : await api.post(`/templates/${filling.id}/generate`, { employee_id: empId, extra });
       setLastGenerated(r.data);
+      setMissing(r.data.missing_fields || []);
       if (!openAndPrint(r.data.html)) {
         setErr(t("tpl_popup_blocked"));
       }
@@ -148,6 +152,11 @@ export default function Templates() {
       </div>
 
       {msg && <div className="ok">{msg}</div>}
+      {missing.length > 0 && (
+        <div className="err" data-testid="tpl-missing-fields">
+          ⚠ {t("tpl_missing_fields", { list: missing.map((m) => (lang === "en" ? m.key : m.label)).join(t("list_sep")) })}
+        </div>
+      )}
       {err && <div className="err">{err}</div>}
 
       {/* محرّر الصيغة */}

@@ -278,6 +278,7 @@ export const screens: Record<string, { ar: string; en: string }> = {
   day_6: { ar: "السبت", en: "Saturday" },
   tpl_preview_banner: { ar: "⚠ معاينة فقط — ليست مستندًا رسميًا", en: "⚠ Preview only — not an official document" },
   tpl_preview_msg: { ar: "معاينة فقط — لم يُحفظ أي مستند.", en: "Preview only — no document was saved." },
+  tpl_missing_fields: { ar: "حقول بلا قيمة في ملف الموظف حُذفت من هذا المستند: {list} — أكمل الملف وأعد الإصدار إن لزم.", en: "Fields with no value in the record were left out of this document: {list} — complete the record and re-issue if needed." },
   tpl_generate_confirm: { ar: "سيتم إصدار مستند رسمي بختم مرجعي دائم. متابعة؟", en: "An official document with a permanent reference stamp will be issued. Continue?" },
   tpl_popup_blocked: { ar: "مانع النوافذ المنبثقة منع فتح المستند — اسمح بالنوافذ لهذا الموقع.", en: "The pop-up blocker stopped the document from opening — allow pop-ups for this site." },
   tpl_issued: { ar: "✓ تم إصدار المستند — رقم مرجعي: {ref}", en: "✓ Document issued — reference: {ref}" },
