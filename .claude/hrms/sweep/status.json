@@ -450,12 +450,12 @@
       "checks": {
         "1": "pass",
         "2": "pass",
-        "3": "fail",
+        "3": "pass",
         "4": "pass",
         "5": "pass",
         "6": "pass",
         "7": "pass",
-        "8": "pending",
+        "8": "pass",
         "9": "pass"
       },
       "notes": {
@@ -472,8 +472,8 @@
           "at": "2026-09-25"
         },
         "check3": {
-          "note": "workflow.resubmit يقلب returned→pending بلا BLOCKED_EMPLOYEE_STATUSES ولا بصمة التكرار. (أ) طلب موظف terminated أعاده HR إلى صندوق المعتمدين بـ200. (ب) البصمة القديمة تبقى بعد تصحيح الحمولة (حمولة مصحَّحة ≠ بصمة)، وتصادم طلب مطابق يسقط IntegrityError خام (500). أُثبت بـtest_zzz_resubmit_guards.py (فشل على القديم) وأُصلح: 409 لكليهما + إعادة اشتقاق البصمة + التقاط سباق الالتزام.",
-          "at": "2026-09-25"
+          "note": "returned: يُغلق مهام المعتمدين ويُشعَر صاحبه؛ resubmit محروس (test_zzz_resubmit_guards)",
+          "at": "2026-09-26"
         },
         "check5": {
           "note": "claim_decision تحديث شرطي ذرّي (يعمل في SQLite وPostgres)، المرحلة المتوازية All-of بنصيب لكل جهة مرة واحدة (parallel_stage_complete)، مرحلة الدور One-of يفوز فيها أول قرار وخاسر السباق يُسجَّل request_decision_conflict.",
@@ -492,8 +492,8 @@
           "at": "2026-09-25"
         },
         "check8": {
-          "note": "لم يُستقصَ بعد: مخارج awaiting_delegate/apply_failed/ready_for_pickup؛ والمرجَع returned مخرجه resubmit/cancel(إدارة عليا فقط — SW-023).",
-          "at": "2026-09-25"
+          "note": "حارس: كل حالة يكتبها الكود نهاية أو لها مخرج مسمّى",
+          "at": "2026-09-26"
         },
         "discover": {
           "note": "M09: قرئ workflow.py (decide/claim/resolve/resubmit/cancel) وrequests.py (decide/cancel/resubmit)؛ اختُبر resubmit محليًّا؛ 8/9 فحوص موثّقة والثامن مؤجَّل صراحة",
