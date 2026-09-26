@@ -26,7 +26,7 @@ export function fmtKuwaitDateTime(raw: string | Date | null | undefined,
                                   lang: "ar" | "en" = "ar"): string {
   const d = _parse(raw);
   if (!d) return "—";
-  const locale = lang === "en" ? "en-GB" : "ar-EG";
+  const locale = lang === "en" ? "en-GB" : "ar-EG-u-nu-latn";
   // en-GB يعطي DD/MM/YYYY HH:mm — مناسب دوليًا وأوضح من MM/DD الأمريكي
   return d.toLocaleString(locale, {
     timeZone: KUWAIT_TZ,
@@ -40,7 +40,7 @@ export function fmtKuwaitDate(raw: string | Date | null | undefined,
                               lang: "ar" | "en" = "ar"): string {
   const d = _parse(raw);
   if (!d) return "—";
-  const locale = lang === "en" ? "en-GB" : "ar-EG";
+  const locale = lang === "en" ? "en-GB" : "ar-EG-u-nu-latn";
   return d.toLocaleDateString(locale, {
     timeZone: KUWAIT_TZ,
     year: "numeric", month: "2-digit", day: "2-digit",
